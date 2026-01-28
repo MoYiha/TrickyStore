@@ -14,8 +14,10 @@
 #include <shared_mutex>
 #include <vector>
 #include <queue>
-#include <set>
 #include <string>
+#include <string_view>
+#include <array>
+#include <algorithm>
 // #include <android/log.h> // logging.hpp should cover this
 #include <sys/system_properties.h> // For PROP_VALUE_MAX
 
@@ -29,7 +31,9 @@ using namespace SandHook;
 using namespace android;
 
 // Define Target Properties
-static std::set<std::string> g_target_properties = {
+// Optimization: Use std::array<std::string_view> instead of std::set<std::string>
+// to avoid std::string construction (heap allocation) on every property access check.
+static constexpr std::array<std::string_view, 8> g_target_properties = {
     "ro.boot.verifiedbootstate",
     "ro.boot.flash.locked",
     "ro.boot.veritymode",
@@ -56,7 +60,18 @@ static const String16 PROPERTY_SERVICE_INTERFACE_TOKEN = String16("android.os.IP
 // Implement Hook Function
 int new_system_property_get(const char* name, char* value) {
     // LOGD("Property get: %s", name); // Too verbose for every property get
-    if (g_target_properties.count(name)) {
+    bool found = false;
+    if (name != nullptr) {
+        std::string_view name_sv(name);
+        for (const auto& prop : g_target_properties) {
+            if (prop == name_sv) {
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if (found) {
         LOGI("Targeted property access: %s", name);
         if (gBinderInterceptor != nullptr && gBinderInterceptor->gPropertyServiceBinder != nullptr) {
             Parcel data_parcel, reply_parcel; // These can be declared

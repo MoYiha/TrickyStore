@@ -58,7 +58,7 @@ open class BinderInterceptor : Binder() {
                 backdoor.transact(REGISTER_PROPERTY_SERVICE_TRANSACTION_CODE, data, reply, 0)
                 // Check reply for errors if necessary
                 if (reply.readInt() != 0) { // Assuming 0 is success from C++
-                    Logger.e("Native layer failed to register property service, error: ${reply.readExceptionCode()}")
+                    Logger.e("Native layer failed to register property service")
                 } else {
                     Logger.i("PropertyHiderService registered successfully with native layer.")
                 }

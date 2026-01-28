@@ -9,11 +9,13 @@ fun getTransactCode(clazz: Class<*>, method: String) =
     clazz.getDeclaredField("TRANSACTION_$method").apply { isAccessible = true }
         .getInt(null) // 2
 
+@OptIn(ExperimentalStdlibApi::class)
 val bootHash by lazy {
     getBootHashFromProp() ?: "d75926e016f5acee00523712b830379c53203ac08cb8a485583005f529ee7587".hexToByteArray()
 }
 
 // TODO: get verified boot keys
+@OptIn(ExperimentalStdlibApi::class)
 val bootKey by lazy {
     "c34b68e0571933605261e790156658696e4788a88cb5b71d6173cf214c7e87ca".hexToByteArray()
 }
