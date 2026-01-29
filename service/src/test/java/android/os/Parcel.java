@@ -17,7 +17,7 @@ public class Parcel {
     public void recycle() {}
 
     public int dataSize() {
-        return 100; // Simulated size
+        return items.size() * 4; // Mock size
     }
 
     public void writeNoException() {}
