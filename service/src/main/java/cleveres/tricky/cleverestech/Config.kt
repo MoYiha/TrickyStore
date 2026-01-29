@@ -56,15 +56,13 @@ object Config {
         val (h, g) = parsePackages(f?.readLines() ?: emptyList(), isTeeBrokenMode)
         hackPackages = h
         generatePackages = g
-        Logger.i("update hack packages: $hackPackages, generate packages=$generatePackages")
+        Logger.i { "update hack packages: $hackPackages, generate packages=$generatePackages" }
     }.onFailure {
         Logger.e("failed to update target files", it)
     }
 
     private fun updateKeyBox(f: File?) = runCatching {
         CertHack.readFromXml(f?.readText())
-        // Encourage GC to free the large XML string memory immediately
-        System.gc()
     }.onFailure {
         Logger.e("failed to update keybox", it)
     }
@@ -88,16 +86,18 @@ object Config {
 
     private fun updateBuildVars(f: File?) = runCatching {
         val newVars = mutableMapOf<String, String>()
-        f?.readLines()?.forEach { line ->
-            if (line.isNotBlank() && !line.startsWith("#")) {
-                val parts = line.split("=", limit = 2)
-                if (parts.size == 2) {
-                    newVars[parts[0].trim()] = parts[1].trim()
+        f?.useLines { lines ->
+            lines.forEach { line ->
+                if (line.isNotBlank() && !line.startsWith("#")) {
+                    val parts = line.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        newVars[parts[0].trim()] = parts[1].trim()
+                    }
                 }
             }
         }
         buildVars = newVars
-        Logger.i("update build vars: $buildVars")
+        Logger.i { "update build vars: $buildVars" }
     }.onFailure {
         Logger.e("failed to update build vars", it)
     }
