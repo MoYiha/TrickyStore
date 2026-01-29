@@ -53,4 +53,9 @@ public class Logger {
     public static void i(String msg) {
         impl.i(TAG, msg);
     }
+
+    public static boolean isDebugEnabled() {
+        return Log.isLoggable(TAG, Log.DEBUG);
+    }
+
 }
