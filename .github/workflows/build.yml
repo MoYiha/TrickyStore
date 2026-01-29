@@ -7,6 +7,9 @@ on:
     branches: [ "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,10 +45,16 @@ jobs:
         if: success()
         id: prepareArtifact
         run: |
-          releaseName=`ls module/release/Tricky-Store-v*-release.zip | awk -F '(/|.zip)' '{print $3}'` && echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
-          debugName=`ls module/release/Tricky-Store-v*-debug.zip | awk -F '(/|.zip)' '{print $3}'` && echo "debugName=$debugName" >> $GITHUB_OUTPUT
-          unzip module/release/Tricky-Store-v*-release.zip -d module-release
-          unzip module/release/Tricky-Store-v*-debug.zip -d module-debug
+          releasePath=$(ls module/release/*-release.zip)
+          releaseName=$(basename "$releasePath" .zip)
+          echo "releaseName=$releaseName" >> $GITHUB_OUTPUT
+
+          debugPath=$(ls module/release/*-debug.zip)
+          debugName=$(basename "$debugPath" .zip)
+          echo "debugName=$debugName" >> $GITHUB_OUTPUT
+
+          unzip "$releasePath" -d module-release
+          unzip "$debugPath" -d module-debug
 
       - name: Upload release
         uses: actions/upload-artifact@v4
@@ -64,3 +73,51 @@ jobs:
         with:
           name: release-mappings
           path: "./service/build/outputs/mapping/release"
+
+      - name: Check for Release
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
+        id: check_release
+        run: |
+          VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists."
+            echo "create_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag v$VERSION does not exist."
+            echo "create_release=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Tag
+        if: steps.check_release.outputs.create_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
+
+      - name: Generate Changelog
+        if: steps.check_release.outputs.create_release == 'true'
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "v${{ env.VERSION }}^" 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "v${{ env.VERSION }}")
+          else
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "$PREV_TAG..v${{ env.VERSION }}")
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        if: steps.check_release.outputs.create_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ env.VERSION }}"
+          name: "Release v${{ env.VERSION }}"
+          body: ${{ steps.changelog.outputs.changelog }}
+          files: |
+            module/release/*-release.zip
+            module/release/*-debug.zip
