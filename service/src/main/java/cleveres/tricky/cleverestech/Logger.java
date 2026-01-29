@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech;
 
 import android.util.Log;
+import kotlin.jvm.functions.Function0;
 
 public class Logger {
     private static final String TAG = "TrickyStore";
@@ -56,6 +57,12 @@ public class Logger {
 
     public static boolean isDebugEnabled() {
         return Log.isLoggable(TAG, Log.DEBUG);
+    }
+
+    public static void i(Function0<String> msgProvider) {
+        if (Log.isLoggable(TAG, Log.INFO)) {
+            Log.i(TAG, msgProvider.invoke());
+        }
     }
 
 }
