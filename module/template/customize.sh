@@ -78,15 +78,18 @@ if [ "$ARCH" = "x64" ]; then
   extract "$ZIPFILE" "lib/x86_64/libinject.so" "$MODPATH" true
   extract "$ZIPFILE" "lib/x86_64/libtszygisk.so" "$MODPATH/zygisk" true
   mv "$MODPATH/zygisk/libtszygisk.so" "$MODPATH/zygisk/x86_64.so"
+  [ -f "$MODPATH/zygisk/libtszygisk.so.sha256" ] && mv "$MODPATH/zygisk/libtszygisk.so.sha256" "$MODPATH/zygisk/x86_64.so.sha256"
 else
   ui_print "- Extracting arm64 libraries"
   extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
   extract "$ZIPFILE" "lib/arm64-v8a/libinject.so" "$MODPATH" true
   extract "$ZIPFILE" "lib/arm64-v8a/libtszygisk.so" "$MODPATH/zygisk" true
   mv "$MODPATH/zygisk/libtszygisk.so" "$MODPATH/zygisk/arm64-v8a.so"
+  [ -f "$MODPATH/zygisk/libtszygisk.so.sha256" ] && mv "$MODPATH/zygisk/libtszygisk.so.sha256" "$MODPATH/zygisk/arm64-v8a.so.sha256"
 fi
 
 mv "$MODPATH/libinject.so" "$MODPATH/inject"
+[ -f "$MODPATH/libinject.so.sha256" ] && mv "$MODPATH/libinject.so.sha256" "$MODPATH/inject.sha256"
 chmod 755 "$MODPATH/inject"
 
 CONFIG_DIR=/data/adb/cleveres_tricky

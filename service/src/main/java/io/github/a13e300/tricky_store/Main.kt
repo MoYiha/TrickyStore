@@ -5,6 +5,7 @@ import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     Logger.i("Welcome to TrickyStore!")
+    Verification.check()
     while (true) {
         if (!KeystoreInterceptor.tryRunKeystoreInterceptor()) {
             Thread.sleep(1000)
