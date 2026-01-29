@@ -78,11 +78,35 @@ object Config {
         Logger.i("TEE broken mode is ${if (isTeeBrokenMode) "enabled" else "disabled"}")
     }
 
+    @Volatile
+    private var buildVars: Map<String, String> = emptyMap()
+
+    fun getBuildVar(key: String): String? {
+        return buildVars[key]
+    }
+
+    private fun updateBuildVars(f: File?) = runCatching {
+        val newVars = mutableMapOf<String, String>()
+        f?.readLines()?.forEach { line ->
+            if (line.isNotBlank() && !line.startsWith("#")) {
+                val parts = line.split("=", limit = 2)
+                if (parts.size == 2) {
+                    newVars[parts[0].trim()] = parts[1].trim()
+                }
+            }
+        }
+        buildVars = newVars
+        Logger.i("update build vars: $buildVars")
+    }.onFailure {
+        Logger.e("failed to update build vars", it)
+    }
+
     private const val CONFIG_PATH = "/data/adb/tricky_store"
     private const val TARGET_FILE = "target.txt"
     private const val KEYBOX_FILE = "keybox.xml"
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
+    private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
     private val root = File(CONFIG_PATH)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
@@ -96,6 +120,7 @@ object Config {
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
                 KEYBOX_FILE -> updateKeyBox(f)
+                SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 GLOBAL_MODE_FILE -> {
                     updateGlobalMode(f)
                     updateTargetPackages(File(root, TARGET_FILE))
@@ -113,6 +138,7 @@ object Config {
         root.mkdirs()
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
+        updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
             if (scope.exists()) {
