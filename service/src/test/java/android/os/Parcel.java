@@ -16,10 +16,17 @@ public class Parcel {
         return new Parcel();
     }
 
-    public void recycle() {}
+    public static void resetStats() {
+        obtainCount.set(0);
+    }
+
+    public void recycle() {
+        mObjects.clear();
+        mReadPosition = 0;
+    }
 
     public int dataSize() {
-        return 100; // Simulated size
+        return items.size() * 4; // Mock size
     }
 
     public void writeNoException() {}
