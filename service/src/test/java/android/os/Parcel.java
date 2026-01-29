@@ -37,19 +37,19 @@ public class Parcel {
     public void writeTypedObject(Parcelable val, int parcelableFlags) {}
     public void enforceInterface(String interfaceName) {}
 
-    // Stub methods for BinderInterceptorTest compilation
-    public void pushBinder(IBinder b) {}
-    public void pushInt(int i) {}
-    public void pushLong(long l) {}
+    // Mock helper methods
+    public void pushBinder(IBinder binder) {}
+    public void pushInt(int val) {}
+    public void pushLong(long val) {}
 
-    // Methods called by BinderInterceptor but not in original stub
     public IBinder readStrongBinder() { return null; }
     public int readInt() { return 0; }
     public long readLong() { return 0; }
+
     public void appendFrom(Parcel parcel, int offset, int length) {}
     public void setDataPosition(int pos) {}
     public int dataPosition() { return 0; }
-    public void writeInt(int i) {}
-    public void writeLong(long l) {}
-    public void writeStrongBinder(IBinder b) {}
+    public void writeStrongBinder(IBinder val) {}
+    public void writeInt(int val) {}
+    public void writeLong(long val) {}
 }
