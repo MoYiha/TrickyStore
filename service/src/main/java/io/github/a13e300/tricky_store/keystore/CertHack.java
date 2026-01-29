@@ -183,10 +183,13 @@ public final class CertHack {
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
             ASN1EncodableVector vector = new ASN1EncodableVector();
             ASN1Encodable rootOfTrust = null;
+            byte[] moduleHash = Config.INSTANCE.getModuleHash();
+            boolean moduleHashAdded = false;
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
                 ASN1TaggedObject taggedObject = (ASN1TaggedObject) asn1Encodable;
-                if (taggedObject.getTagNo() == 704) {
+                int tag = taggedObject.getTagNo();
+                if (tag == 704) {
                     rootOfTrust = taggedObject.getBaseObject().toASN1Primitive();
                     continue;
                 }
@@ -195,6 +198,9 @@ public final class CertHack {
                     continue;
                 }
                 vector.add(taggedObject);
+            }
+            if (moduleHash != null && !moduleHashAdded) {
+                vector.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
             }
 
             // ModuleHash injection (Tag 724) for hackCertificateChain
@@ -274,7 +280,7 @@ public final class CertHack {
             return certificates.toArray(new Certificate[0]);
 
         } catch (Throwable t) {
-            Logger.e("", t);
+            Logger.e("Exception in hackCertificateChain", t);
         }
         return caList;
     }
@@ -406,7 +412,11 @@ public final class CertHack {
             var vendorPatchLevel = new DERTaggedObject(true, 718, AvendorPatchLevel);
             var bootPatchLevel = new DERTaggedObject(true, 719, AbootPatchlevel);
 
-            ASN1Encodable[] teeEnforcedEncodables;
+            List<ASN1Encodable> teeEnforcedList = new ArrayList<>(Arrays.asList(
+                    purpose, algorithm, keySize, digest, ecCurve,
+                    noAuthRequired, origin, rootOfTrust, osVersion, osPatchLevel, vendorPatchLevel,
+                    bootPatchLevel
+            ));
 
             // Support device properties attestation
             if (params.brand != null) {
@@ -421,14 +431,21 @@ public final class CertHack {
                 var manufacturer = new DERTaggedObject(true, 716, Amanufacturer);
                 var model = new DERTaggedObject(true, 717, Amodel);
 
-                teeEnforcedEncodables = new ASN1Encodable[]{purpose, algorithm, keySize, digest, ecCurve,
-                        noAuthRequired, origin, rootOfTrust, osVersion, osPatchLevel, vendorPatchLevel,
-                        bootPatchLevel, brand, device, product, manufacturer, model};
-            } else {
-                teeEnforcedEncodables = new ASN1Encodable[]{purpose, algorithm, keySize, digest, ecCurve,
-                        noAuthRequired, origin, rootOfTrust, osVersion, osPatchLevel, vendorPatchLevel,
-                        bootPatchLevel};
+                teeEnforcedList.addAll(Arrays.asList(brand, device, product, manufacturer, model));
             }
+
+            byte[] moduleHash = Config.INSTANCE.getModuleHash();
+            if (moduleHash != null) {
+                teeEnforcedList.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
+            }
+
+            teeEnforcedList.sort((a, b) -> {
+                int tagA = ((ASN1TaggedObject) a).getTagNo();
+                int tagB = ((ASN1TaggedObject) b).getTagNo();
+                return Integer.compare(tagA, tagB);
+            });
+
+            ASN1Encodable[] teeEnforcedEncodables = teeEnforcedList.toArray(new ASN1Encodable[0]);
 
             ASN1Encodable[] softwareEnforced = {applicationID, creationDateTime};
 

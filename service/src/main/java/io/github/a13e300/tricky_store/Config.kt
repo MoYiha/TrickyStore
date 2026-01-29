@@ -30,6 +30,9 @@ object Config {
     private val generatePackages = mutableSetOf<String>()
     private var isGlobalMode = false
     private var isTeeBrokenMode = false
+    private var moduleHash: ByteArray? = null
+
+    fun getModuleHash(): ByteArray? = moduleHash
 
     fun parsePackages(lines: List<String>, isTeeBrokenMode: Boolean): Pair<Set<String>, Set<String>> {
         val hackPackages = mutableSetOf<String>()
@@ -99,6 +102,13 @@ object Config {
         Logger.i("update build vars: $buildVars")
     }.onFailure {
         Logger.e("failed to update build vars", it)
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun updateModuleHash(f: File?) = runCatching {
+        moduleHash = f?.readText()?.trim()?.hexToByteArray()
+        Logger.i("update module hash: ${moduleHash?.joinToString("") { "%02x".format(it) }}")
+    }.onFailure {
+        moduleHash = null
+        Logger.e("failed to update module hash", it)
     }
 
     private const val CONFIG_PATH = "/data/adb/tricky_store"
@@ -130,6 +140,8 @@ object Config {
                     updateTeeBrokenMode(f)
                     updateTargetPackages(File(root, TARGET_FILE))
                 }
+
+                MODULE_HASH_FILE -> updateModuleHash(f)
             }
         }
     }
