@@ -62,7 +62,11 @@ object Config {
     }
 
     private fun updateKeyBox(f: File?) = runCatching {
-        CertHack.readFromXml(f?.readText())
+        if (f == null) {
+            CertHack.readFromXml(null)
+        } else {
+            f.bufferedReader().use { CertHack.readFromXml(it) }
+        }
     }.onFailure {
         Logger.e("failed to update keybox", it)
     }
