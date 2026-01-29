@@ -19,10 +19,13 @@ object Config {
         "ro.oem_unlock_supported" to "0"
     )
 
-    private val hackPackages = mutableSetOf<String>()
-    private val generatePackages = mutableSetOf<String>()
+    @Volatile
+    private var hackPackages: Set<String> = emptySet()
+    @Volatile
+    private var generatePackages: Set<String> = emptySet()
     private var isGlobalMode = false
     private var isTeeBrokenMode = false
+    @Volatile
     private var moduleHash: ByteArray? = null
 
     fun getModuleHash(): ByteArray? = moduleHash
@@ -44,15 +47,15 @@ object Config {
     }
 
     private fun updateTargetPackages(f: File?) = runCatching {
-        hackPackages.clear()
-        generatePackages.clear()
         if (isGlobalMode) {
+            hackPackages = emptySet()
+            generatePackages = emptySet()
             Logger.i("Global mode is enabled, skipping updateTargetPackages execution.")
             return@runCatching
         }
         val (h, g) = parsePackages(f?.readLines() ?: emptyList(), isTeeBrokenMode)
-        hackPackages.addAll(h)
-        generatePackages.addAll(g)
+        hackPackages = h
+        generatePackages = g
         Logger.i("update hack packages: $hackPackages, generate packages=$generatePackages")
     }.onFailure {
         Logger.e("failed to update target files", it)
