@@ -20,4 +20,8 @@ public class Logger {
         Log.i(TAG, msg);
     }
 
+    public static boolean isDebugEnabled() {
+        return Log.isLoggable(TAG, Log.DEBUG);
+    }
+
 }
