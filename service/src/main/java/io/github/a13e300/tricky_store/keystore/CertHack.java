@@ -160,7 +160,7 @@ public final class CertHack {
                 }
                 var pemKp = parseKeyPair(privateKey);
                 var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
-                keyboxes.put(algo, new KeyBox(pemKp, kp, certificateChain));
+                keyboxes.put(algo, new KeyBox(kp, certificateChain));
             }
             Logger.i("update " + numberOfKeyboxes + " keyboxes");
         } catch (Throwable t) {
@@ -208,8 +208,8 @@ public final class CertHack {
             if (moduleHashStr != null && !moduleHashStr.isEmpty()) {
                 try {
                     byte[] moduleHashBytes = hexToByteArray(moduleHashStr);
-                    ASN1Encodable moduleHash = new DERTaggedObject(true, 724, new DEROctetString(moduleHashBytes));
-                    vector.add(moduleHash);
+                    ASN1Encodable moduleHashEnc = new DERTaggedObject(true, 724, new DEROctetString(moduleHashBytes));
+                    vector.add(moduleHashEnc);
                 } catch (Exception e) {
                     Logger.e("Failed to inject moduleHash in hackCertificateChain", e);
                 }
@@ -454,9 +454,9 @@ public final class CertHack {
             if (moduleHashStr != null && !moduleHashStr.isEmpty()) {
                 try {
                     byte[] moduleHashBytes = hexToByteArray(moduleHashStr);
-                    ASN1Encodable moduleHash = new DERTaggedObject(true, 724, new DEROctetString(moduleHashBytes));
+                    ASN1Encodable moduleHashEnc = new DERTaggedObject(true, 724, new DEROctetString(moduleHashBytes));
                     List<ASN1Encodable> list = new ArrayList<>(Arrays.asList(teeEnforcedEncodables));
-                    list.add(moduleHash);
+                    list.add(moduleHashEnc);
                     teeEnforcedEncodables = list.toArray(new ASN1Encodable[0]);
                 } catch (Exception e) {
                     Logger.e("Failed to inject moduleHash", e);
@@ -561,7 +561,7 @@ public final class CertHack {
         }
     }
 
-    record KeyBox(PEMKeyPair pemKeyPair, KeyPair keyPair, List<Certificate> certificates) {
+    record KeyBox(KeyPair keyPair, List<Certificate> certificates) {
     }
 
     public static class KeyGenParameters {

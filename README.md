@@ -11,6 +11,10 @@ A trick of keystore. **Android 12 or above is required**.
 
 **All configuration files will take effect immediately.**
 
+## Low RAM Usage
+
+Tricky Store is optimized for low RAM devices. It automatically releases memory used by configuration files (like `keybox.xml`) immediately after parsing.
+
 ## keybox.xml
 
 format:
