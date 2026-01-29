@@ -102,6 +102,8 @@ object Config {
         Logger.i("update build vars: $buildVars")
     }.onFailure {
         Logger.e("failed to update build vars", it)
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun updateModuleHash(f: File?) = runCatching {
         moduleHash = f?.readText()?.trim()?.hexToByteArray()
@@ -117,6 +119,7 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
+    private const val MODULE_HASH_FILE = "module_hash"
     private val root = File(CONFIG_PATH)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
