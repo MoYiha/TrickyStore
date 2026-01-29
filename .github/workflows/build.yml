@@ -78,7 +78,7 @@ jobs:
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         id: check_release
         run: |
-          VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2)
+          VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2 | sed 's/^v//')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "Tag v$VERSION already exists."
