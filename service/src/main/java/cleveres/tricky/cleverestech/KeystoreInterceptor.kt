@@ -73,7 +73,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
             val chain = Utils.getCertificateChain(response)
             if (chain != null) {
-                val newChain = CertHack.hackCertificateChain(chain)
+                val newChain = CertHack.hackCertificateChain(chain, callingUid)
                 Utils.putCertificateChain(response, newChain)
                 Logger.i("hacked cert of uid=$callingUid")
                 p.writeNoException()
