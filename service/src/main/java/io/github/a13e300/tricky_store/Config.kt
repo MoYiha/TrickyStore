@@ -3,6 +3,7 @@ package io.github.a13e300.tricky_store
 import android.content.pm.IPackageManager
 import android.os.FileObserver
 import android.os.ServiceManager
+import android.system.Os
 import io.github.a13e300.tricky_store.keystore.CertHack
 import java.io.File
 
@@ -102,6 +103,8 @@ object Config {
         Logger.i("update build vars: $buildVars")
     }.onFailure {
         Logger.e("failed to update build vars", it)
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun updateModuleHash(f: File?) = runCatching {
         moduleHash = f?.readText()?.trim()?.hexToByteArray()
@@ -117,6 +120,7 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
+    private const val MODULE_HASH_FILE = "module_hash"
     private val root = File(CONFIG_PATH)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
@@ -148,6 +152,11 @@ object Config {
 
     fun initialize() {
         root.mkdirs()
+        try {
+            Os.chmod(root.absolutePath, 448) // 0700
+        } catch (t: Throwable) {
+            Logger.e("failed to set permissions for config dir", t)
+        }
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
