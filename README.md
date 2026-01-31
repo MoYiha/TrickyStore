@@ -11,7 +11,6 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 **Core Features:**
 - Binder level system property spoofing (invisible to DroidGuard/GMS)
 - KeyMint 4.0 support
-- KeyMint 4.0 support
 - **Advanced RKP Emulation** for MEETS_STRONG_INTEGRITY
 - **Dynamic Identity Mutation** (Anti-Fingerprinting)
 - Automatic Pixel Beta fingerprint fetching
