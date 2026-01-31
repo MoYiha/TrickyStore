@@ -447,7 +447,7 @@ object Config {
      * Retrieves the list of packages for a given UID, using a cache to avoid frequent IPC calls.
      * Returns an empty array if the UID has no associated packages or if PackageManager is unavailable.
      */
-    private fun getPackages(uid: Int): Array<String> {
+    fun getPackages(uid: Int): Array<String> {
         packageCache[uid]?.let { return it }
         val pm = getPm() ?: return emptyArray()
         val ps = pm.getPackagesForUid(uid) ?: emptyArray()
