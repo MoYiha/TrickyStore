@@ -30,8 +30,17 @@ object LocalRkpProxy {
         try {
             val file = java.io.File(KEY_FILE_PATH)
             if (file.exists()) {
-                serverHmacKey = file.readBytes()
-                Logger.d("LocalRkpProxy: Loaded existing root secret")
+                // Check age
+                val lastMod = file.lastModified()
+                val now = System.currentTimeMillis()
+                // 24 hours = 86400000 ms
+                if (now - lastMod > 86400000) {
+                     Logger.i("LocalRkpProxy: Key expired (>24h), rotating...")
+                     rotateKey()
+                } else {
+                    serverHmacKey = file.readBytes()
+                    Logger.d("LocalRkpProxy: Loaded valid existing root secret")
+                }
             } else {
                 rotateKey() // Generate new
             }
