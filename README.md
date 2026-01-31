@@ -176,9 +176,6 @@ Special values:
 
 ## Roadmap
 
-- App Attest Key support
-- Automatic mode selection
-
 Contributions welcome.
 
 ## Acknowledgements
