@@ -32,7 +32,7 @@ public class CborEncoder {
         return baos.toByteArray();
     }
 
-    private static void encodeItem(ByteArrayOutputStream os, Object value) throws IOException {
+    public static void encodeItem(ByteArrayOutputStream os, Object value) throws IOException {
         if (value == null) {
             writeTypeAndArgument(os, MT_SIMPLE, 22); // null
         } else if (value instanceof Integer) {

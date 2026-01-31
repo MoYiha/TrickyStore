@@ -209,8 +209,21 @@ class RkpInterceptor(
 
     private fun createMacedPublicKey(keyPair: KeyPair): ByteArray {
         val pubKey = keyPair.public.encoded
-        // wrap in COSE_Mac0 structure
-        return CertHack.generateMacedPublicKey(keyPair) ?: pubKey
+        // Obtain key from the "Authority" (Local Proxy)
+        val hmacKey = cleveres.tricky.cleverestech.rkp.LocalRkpProxy.getMacKey()
+        
+        // Provision the key (wrap in COSE_Mac0) using the device's keystore logic (CertHack)
+        val macedKey = CertHack.generateMacedPublicKey(keyPair, hmacKey) ?: pubKey
+        
+        // Validate with Authority/Proxy (Schema Check / Proof of Trust)
+        if (cleveres.tricky.cleverestech.rkp.LocalRkpProxy.validateMacedPublicKey(macedKey)) {
+             Logger.d("RkpInterceptor: MacedPublicKey validated by LocalRkpProxy")
+        } else {
+             Logger.e("RkpInterceptor: MacedPublicKey validation FAILED by LocalRkpProxy")
+             // In a real scenario, we might return failure here, but for "bypass" we proceed
+        }
+        
+        return macedKey
     }
 
     private fun resolveDeviceInfo(keysToSign: Array<MacedPublicKey>?): ByteArray {
