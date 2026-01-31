@@ -126,6 +126,42 @@ rm /data/adb/cleverestricky/rkp_bypass
 **Custom keys (optional):**
 Place custom remote keys at `/data/adb/cleverestricky/remote_keys.xml`.
 
+### Smart RKP Identity (Custom Keys)
+
+For advanced users, you can provide custom RKP keys to be used instead of auto-generated ones.
+This improves resilience by allowing:
+1.  **Usage of valid RKP keys** dumped from other devices.
+2.  **Smart Rotation:** Supply multiple keys, and the module will randomly rotate between them to avoid pattern detection.
+3.  **Hardware Info Overrides:** spoof RKP hardware properties.
+
+Place configuration at `/data/adb/cleverestricky/remote_keys.xml`:
+
+```xml
+<RemoteKeyProvisioning>
+    <Keys>
+        <!-- Repeat <Key> block for multiple keys -->
+        <Key>
+            <PrivateKey format="pem">
+-----BEGIN EC PRIVATE KEY-----
+...
+-----END EC PRIVATE KEY-----
+            </PrivateKey>
+            <!-- Optional: Override COSE_Mac0 public key (Base64) -->
+            <PublicKeyCose>...</PublicKeyCose>
+            <!-- Optional: Override DeviceInfo CBOR (Base64) -->
+            <DeviceInfo>...</DeviceInfo>
+        </Key>
+    </Keys>
+    <!-- Optional: Override Hardware Info -->
+    <HardwareInfo>
+        <RpcAuthorName>Google</RpcAuthorName>
+        <VersionNumber>3</VersionNumber>
+    </HardwareInfo>
+</RemoteKeyProvisioning>
+```
+
+If the file is missing, the module falls back to generating fresh random keys for every request.
+
 **Verification:**
 Use [Play Integrity API Checker](https://play.google.com/store/apps/details?id=gr.nickas.playintegrity) to confirm all three integrity levels pass.
 

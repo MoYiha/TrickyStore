@@ -736,6 +736,11 @@ public final class CertHack {
      * This is what gets STRONG integrity working.
      */
     public static byte[] generateMacedPublicKey(KeyPair keyPair) {
+        return generateMacedPublicKey(keyPair, null);
+    }
+
+    public static byte[] generateMacedPublicKey(KeyPair keyPair, byte[] overrideMacedKey) {
+        if (overrideMacedKey != null) return overrideMacedKey;
         try {
             // Get public key bytes
             byte[] pubKeyEncoded = keyPair.getPublic().getEncoded();

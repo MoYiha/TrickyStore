@@ -349,6 +349,7 @@ object Config {
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
     private const val MODULE_HASH_FILE = "module_hash"
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
+    private const val REMOTE_KEYS_FILE = "remote_keys.xml"
     private val root = File(CONFIG_PATH)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
@@ -364,6 +365,7 @@ object Config {
                 KEYBOX_FILE -> updateKeyBox(f)
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
+                REMOTE_KEYS_FILE -> RemoteKeyManager.update(f)
                 GLOBAL_MODE_FILE -> {
                     updateGlobalMode(f)
                     updateTargetPackages(File(root, TARGET_FILE))
@@ -394,6 +396,7 @@ object Config {
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateModuleHash(File(root, MODULE_HASH_FILE))
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
+        RemoteKeyManager.update(File(root, REMOTE_KEYS_FILE))
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
             if (scope.exists()) {

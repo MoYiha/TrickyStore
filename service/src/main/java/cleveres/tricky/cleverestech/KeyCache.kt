@@ -14,4 +14,6 @@ internal class KeyCache<K, V>(private val maxEntries: Int) {
     operator fun set(key: K, value: V) {
         map[key] = value
     }
+
+    fun values(): Collection<V> = map.values
 }
