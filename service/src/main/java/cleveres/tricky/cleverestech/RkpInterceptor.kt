@@ -14,10 +14,9 @@ import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 
 /**
- * Intercepts IRemotelyProvisionedComponent transactions to spoof RKP responses.
- * Primary goal: Achieve MEETS_STRONG_INTEGRITY in Play Integrity.
- * 
- * Supports both legacy (V1) and modern (V2) certificate request flows.
+ * Handles RKP (Remote Key Provisioning) interception.
+ * This intercepts calls to IRemotelyProvisionedComponent and returns
+ * spoofed responses so Play Integrity sees valid attestation.
  */
 class RkpInterceptor(
     private val original: IRemotelyProvisionedComponent,
@@ -34,7 +33,7 @@ class RkpInterceptor(
         private val generateCertificateRequestV2Transaction = 
             getTransactCode(IRemotelyProvisionedComponent.Stub::class.java, "generateCertificateRequestV2")
         
-        // Cache for generated key pairs
+        // we cache generated keys so they can be reused in cert requests
         private val keyPairCache = KeyCache<Int, KeyPairInfo>(100)
         private var keyPairCounter = 0
         
@@ -86,19 +85,17 @@ class RkpInterceptor(
         reply: Parcel?,
         resultCode: Int
     ): Result {
-        // Post-transaction handling if needed
+        // nothing to do after the transaction
         return Skip
     }
 
-    /**
-     * Intercepts getHardwareInfo to return spoofed RPC hardware info.
-     */
+    // returns fake hardware info that matches what Google expects
     private fun interceptGetHardwareInfo(): Result {
         kotlin.runCatching {
             val info = RpcHardwareInfo().apply {
-                versionNumber = 3 // Version 3 for Android 14+
+                versionNumber = 3 // android 14+ uses version 3
                 rpcAuthorName = "Google"
-                supportedEekCurve = 2 // CURVE_P256
+                supportedEekCurve = 2 // P-256 curve
                 uniqueId = Config.getBuildVar("DEVICE") ?: "generic"
                 supportedNumKeysInCsr = 20
             }
@@ -113,23 +110,21 @@ class RkpInterceptor(
         return Skip
     }
 
-    /**
-     * Intercepts key pair generation and returns spoofed EC P-256 key pair.
-     */
+    // generates a new EC P-256 key pair and wraps it in COSE format
     private fun interceptKeyPairGeneration(uid: Int, data: Parcel): Result {
         kotlin.runCatching {
             data.enforceInterface(IRemotelyProvisionedComponent.DESCRIPTOR)
             val testMode = data.readInt() != 0
             
-            // Generate EC P-256 key pair
+            // create new P-256 key
             val keyPairGen = KeyPairGenerator.getInstance("EC")
             keyPairGen.initialize(ECGenParameterSpec("secp256r1"))
             val keyPair = keyPairGen.generateKeyPair()
             
-            // Create COSE_Mac0 wrapped public key
+            // wrap in COSE_Mac0 format
             val macedKey = createMacedPublicKey(keyPair)
             
-            // Create private key handle (just an index for our cache)
+            // store handle for later use in cert requests
             val handleIndex = keyPairCounter++
             val privateKeyHandle = ByteArray(32)
             privateKeyHandle[0] = (handleIndex shr 24).toByte()
@@ -137,17 +132,14 @@ class RkpInterceptor(
             privateKeyHandle[2] = (handleIndex shr 8).toByte()
             privateKeyHandle[3] = handleIndex.toByte()
             
-            // Cache the key pair info
             keyPairCache[handleIndex] = KeyPairInfo(keyPair, macedKey, privateKeyHandle)
             
             Logger.i("generated RKP key pair handle=$handleIndex for uid=$uid")
             
             val p = Parcel.obtain()
             p.writeNoException()
-            // Write MacedPublicKey
             val mpk = MacedPublicKey(macedKey)
             p.writeTypedObject(mpk, 0)
-            // Write private key handle as out parameter
             p.writeByteArray(privateKeyHandle)
             
             return OverrideReply(0, p)
@@ -157,9 +149,7 @@ class RkpInterceptor(
         return Skip
     }
 
-    /**
-     * Intercepts certificate request and returns spoofed response.
-     */
+    // handles both v1 and v2 cert request formats
     private fun interceptCertificateRequest(uid: Int, data: Parcel, isV2: Boolean): Result {
         kotlin.runCatching {
             data.enforceInterface(IRemotelyProvisionedComponent.DESCRIPTOR)
@@ -168,18 +158,16 @@ class RkpInterceptor(
             val challenge: ByteArray?
             
             if (isV2) {
-                // V2: keysToSign, challenge
                 keysToSign = data.createTypedArray(MacedPublicKey.CREATOR)
                 challenge = data.createByteArray()
             } else {
-                // V1: testMode, keysToSign, endpointEncryptionCertChain, challenge, deviceInfo, protectedData
+                // v1 has extra params we need to skip
                 val testMode = data.readInt() != 0
                 keysToSign = data.createTypedArray(MacedPublicKey.CREATOR)
                 val endpointCertChain = data.createByteArray()
                 challenge = data.createByteArray()
             }
             
-            // Create spoofed certificate request response
             val response = createCertificateRequestResponse(keysToSign, challenge, isV2)
             
             Logger.i("generated RKP certificate request response for uid=$uid isV2=$isV2")
@@ -188,15 +176,12 @@ class RkpInterceptor(
             p.writeNoException()
             
             if (isV2) {
-                // V2 returns byte[] directly
                 p.writeByteArray(response)
             } else {
-                // V1 also populates DeviceInfo and ProtectedData out params
+                // v1 needs extra out params
                 p.writeByteArray(response)
-                // Write DeviceInfo
                 val deviceInfo = DeviceInfo(createDeviceInfo())
                 p.writeTypedObject(deviceInfo, 0)
-                // Write ProtectedData
                 val protectedData = ProtectedData(createProtectedData())
                 p.writeTypedObject(protectedData, 0)
             }
@@ -208,30 +193,17 @@ class RkpInterceptor(
         return Skip
     }
 
-    /**
-     * Creates a COSE_Mac0 wrapped public key.
-     */
     private fun createMacedPublicKey(keyPair: KeyPair): ByteArray {
-        // Simplified COSE_Mac0 structure for EC P-256 public key
-        // In production, this should use proper COSE encoding
         val pubKey = keyPair.public.encoded
-        
-        // COSE_Mac0 = [protected, unprotected, payload, tag]
-        // For simplicity, we create a basic structure
-        // TODO: Use proper CBOR/COSE library for production
+        // wrap in COSE_Mac0 structure
         return CertHack.generateMacedPublicKey(keyPair) ?: pubKey
     }
 
-    /**
-     * Creates a spoofed certificate request response.
-     */
     private fun createCertificateRequestResponse(
         keysToSign: Array<MacedPublicKey>?,
         challenge: ByteArray?,
         isV2: Boolean
     ): ByteArray {
-        // Create CBOR encoded certificate request
-        // This should contain the public keys and challenge signed appropriately
         return CertHack.createCertificateRequestResponse(
             keysToSign?.map { it.macedKey }?.filterNotNull() ?: emptyList(),
             challenge ?: ByteArray(0),
@@ -239,30 +211,19 @@ class RkpInterceptor(
         ) ?: ByteArray(0)
     }
 
-    /**
-     * Creates CBOR encoded device info.
-     */
     private fun createDeviceInfo(): ByteArray {
-        // CBOR map with device information
-        // Keys: brand, manufacturer, product, model, device, vb_state, etc.
         val brand = Config.getBuildVar("BRAND") ?: "google"
         val manufacturer = Config.getBuildVar("MANUFACTURER") ?: "Google"
         val product = Config.getBuildVar("PRODUCT") ?: "generic"
         val model = Config.getBuildVar("MODEL") ?: "Pixel"
         val device = Config.getBuildVar("DEVICE") ?: "generic"
         
-        // Simplified device info - should use proper CBOR encoding
-        // TODO: Use proper CBOR library
         return CertHack.createDeviceInfoCbor(brand, manufacturer, product, model, device)
             ?: ByteArray(0)
     }
 
-    /**
-     * Creates COSE_Encrypt protected data.
-     */
     private fun createProtectedData(): ByteArray {
-        // COSE_Encrypt structure containing MAC key
-        // For now, return empty - this is populated if endpoint encryption is needed
+        // empty for now, only needed if endpoint encryption is used
         return ByteArray(0)
     }
 }

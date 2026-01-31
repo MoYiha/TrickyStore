@@ -714,14 +714,11 @@ public final class CertHack {
         }
     }
 
-    // ============ RKP (Remote Key Provisioning) Support Methods ============
+    // ============ RKP support ============
 
     /**
-     * Generates a COSE_Mac0 wrapped public key for RKP.
-     * Used to achieve MEETS_STRONG_INTEGRITY in Play Integrity.
-     *
-     * @param keyPair The EC P-256 key pair to wrap
-     * @return COSE_Mac0 encoded public key, or null on failure
+     * Wraps EC P-256 public key in COSE_Mac0 format for RKP.
+     * This is what gets STRONG integrity working.
      */
     public static byte[] generateMacedPublicKey(KeyPair keyPair) {
         try {
@@ -751,12 +748,7 @@ public final class CertHack {
     }
 
     /**
-     * Creates a spoofed certificate request response for RKP.
-     *
-     * @param publicKeys List of public keys to certify
-     * @param challenge The attestation challenge
-     * @param deviceInfo CBOR encoded device info
-     * @return CBOR encoded certificate request response
+     * Builds the certificate request response that gets sent back to GMS.
      */
     public static byte[] createCertificateRequestResponse(
             java.util.List<byte[]> publicKeys,
@@ -802,14 +794,7 @@ public final class CertHack {
     }
 
     /**
-     * Creates CBOR encoded device info for RKP.
-     *
-     * @param brand Device brand
-     * @param manufacturer Device manufacturer
-     * @param product Device product name
-     * @param model Device model
-     * @param device Device codename
-     * @return CBOR encoded device info map
+     * Builds device info CBOR map. GMS checks these values so they need to look legit.
      */
     public static byte[] createDeviceInfoCbor(
             String brand,
