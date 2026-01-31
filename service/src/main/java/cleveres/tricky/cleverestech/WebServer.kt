@@ -187,6 +187,10 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         select { padding: 10px; background-color: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; width: 100%; margin-bottom: 10px; }
         input[type="checkbox"] { transform: scale(1.5); }
         .status { text-align: center; color: #888; margin-top: 10px; }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #333; color: white; padding: 12px 24px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000; }
+        .toast.show { opacity: 1; }
+        .toast.success { background-color: #2e7d32; }
+        .toast.error { background-color: #d32f2f; }
     </style>
 </head>
 <body>
@@ -237,6 +241,15 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
 
         function getAuthUrl(path) {
             return path + (path.includes('?') ? '&' : '?') + 'token=' + token;
+        }
+
+        let toastTimeout;
+        function showToast(msg, type) {
+            let t = document.getElementById('toast');
+            if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+            t.textContent = msg; t.className = 'toast show ' + (type || '');
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => { t.className = t.className.replace('show', ''); }, 3000);
         }
 
         async function init() {
@@ -336,10 +349,10 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                     body: params
                 });
 
-                if (res.ok) alert('Saved!');
-                else alert('Failed to save');
+                if (res.ok) showToast('Saved!', 'success');
+                else showToast('Failed to save', 'error');
             } catch (e) {
-                alert('Error: ' + e);
+                showToast('Error: ' + e, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerText = originalText;
@@ -357,13 +370,13 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                 const res = await fetch(getAuthUrl(baseUrl + '/fetch_beta'), { method: 'POST' });
                 const text = await res.text();
                 if (res.ok) {
-                    alert(text);
+                    showToast(text, 'success');
                     loadFile(); // Reload editor if viewing var file
                 } else {
-                    alert(text);
+                    showToast(text, 'error');
                 }
             } catch (e) {
-                alert('Error: ' + e);
+                showToast('Error: ' + e, 'error');
             } finally {
                 btn.disabled = false;
                 btn.innerText = originalText;
