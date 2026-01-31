@@ -174,17 +174,6 @@ Special values:
 - `no` disables patching for that component
 - `prop` keeps system prop consistent
 
-**TrickyStore sync:**
-```bash
-# Enable sync
-sh /data/adb/modules/cleveres_tricky/security_patch.sh --enable
-
-# Disable sync
-sh /data/adb/modules/cleveres_tricky/security_patch.sh --disable
-```
-
-Supports both standard TrickyStore and James fork formats.
-
 ## Roadmap
 
 - App Attest Key support
