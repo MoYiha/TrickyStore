@@ -71,7 +71,13 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             // Let's load them via separate API calls or just embed them in the HTML initial load?
             // Let's return the toggles here.
             config.append("\"files\": [\"keybox.xml\", \"target.txt\", \"security_patch.txt\", \"spoof_build_vars\"],")
-            config.append("\"keybox_count\": ${CertHack.getKeyboxCount()}")
+            config.append("\"keybox_count\": ${CertHack.getKeyboxCount()},")
+            config.append("\"templates\": [")
+            Config.getTemplateNames().forEachIndexed { index, name ->
+                if (index > 0) config.append(",")
+                config.append("\"$name\"")
+            }
+            config.append("]")
             config.append("}")
             return newFixedLengthResponse(Response.Status.OK, "application/json", config.toString())
         }
@@ -181,6 +187,16 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             <option value="security_patch.txt">security_patch.txt</option>
             <option value="spoof_build_vars">spoof_build_vars</option>
         </select>
+
+        <div id="templateSection" style="display:none; margin-bottom: 10px;">
+             <div class="row">
+                <select id="templateSelector" style="flex-grow: 1; margin-right: 10px;" aria-label="Select device template">
+                    <option value="" disabled selected>Select a device template...</option>
+                </select>
+                <button onclick="applyTemplate()" class="btn-primary">Load Template</button>
+             </div>
+        </div>
+
         <textarea id="editor" aria-label="Configuration editor"></textarea>
         <div class="row" style="margin-top: 10px;">
             <button id="saveBtn" class="btn-primary" onclick="saveFile()">Save File</button>
@@ -225,6 +241,16 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                 statusEl.style.color = '#f44336';
             }
 
+            const tmplSel = document.getElementById('templateSelector');
+            if (data.templates) {
+                data.templates.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    opt.innerText = t;
+                    tmplSel.appendChild(opt);
+                });
+            }
+
             loadFile();
         }
 
@@ -239,9 +265,31 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
 
         async function loadFile() {
             const filename = document.getElementById('fileSelector').value;
+
+            const tmplSection = document.getElementById('templateSection');
+            if (filename === 'spoof_build_vars') {
+                tmplSection.style.display = 'block';
+            } else {
+                tmplSection.style.display = 'none';
+            }
+
             const res = await fetch(getAuthUrl(baseUrl + '/file?filename=' + filename));
             const text = await res.text();
             document.getElementById('editor').value = text;
+        }
+
+        function applyTemplate() {
+            const tmpl = document.getElementById('templateSelector').value;
+            if (!tmpl) return;
+            const editor = document.getElementById('editor');
+            const current = editor.value;
+
+            if (current.includes('TEMPLATE=')) {
+                if (!confirm('This file already contains a TEMPLATE directive. Replace it?')) return;
+                editor.value = current.replace(/TEMPLATE=[^\n]*/, 'TEMPLATE=' + tmpl);
+            } else {
+                editor.value = 'TEMPLATE=' + tmpl + '\n' + current;
+            }
         }
 
         async function saveFile() {

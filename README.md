@@ -21,8 +21,8 @@ Compared to the standard TrickyStore, **CleveresTricky** brings:
 ## Usage
 
 1. Flash this module and reboot.  
-2. For more than DEVICE integrity, put an unrevoked hardware keybox.xml at `/data/adb/cleveres_tricky/keybox.xml` (Optional).
-3. Customize target packages at `/data/adb/cleveres_tricky/target.txt` (Optional).
+2. For more than DEVICE integrity, put an unrevoked hardware keybox.xml at `/data/adb/cleverestricky/keybox.xml` (Optional).
+3. Customize target packages at `/data/adb/cleverestricky/target.txt` (Optional).
 4. Enjoy!  
 
 **All configuration files will take effect immediately.**
@@ -62,7 +62,7 @@ format:
 
 CleveresTricky allows you to spoof ANY system property via Binder interception, making it invisible to standard `getprop` checks from targeted apps.
 
-Create/edit `/data/adb/cleveres_tricky/spoof_build_vars`.
+Create/edit `/data/adb/cleverestricky/spoof_build_vars`.
 
 Example:
 
@@ -86,6 +86,33 @@ ro.boot.flash.locked=1
 
 For Magisk users: if you don't need this feature and zygisk is disabled, please remove or rename the
 folder `/data/adb/modules/cleveres_tricky/zygisk` manually.
+
+## Device Templates
+
+CleveresTricky includes built-in templates for popular devices to make spoofing easier. You can apply these templates via the Web UI or by adding `TEMPLATE=<name>` to your `spoof_build_vars` file.
+
+**Available Templates:**
+*   `pixel8pro` (Google Pixel 8 Pro)
+*   `pixel7pro` (Google Pixel 7 Pro)
+*   `pixel6pro` (Google Pixel 6 Pro)
+*   `xiaomi14` (Xiaomi 14)
+*   `s23ultra` (Samsung Galaxy S23 Ultra)
+*   `oneplus11` (OnePlus 11)
+
+**Usage via Web UI:**
+1.  Open the Web UI.
+2.  Select `spoof_build_vars` from the file selector.
+3.  Choose a device from the "Select a device template..." dropdown.
+4.  Click "Load Template".
+5.  Click "Save File".
+
+**Usage via File:**
+Edit `/data/adb/cleverestricky/spoof_build_vars`:
+```text
+TEMPLATE=pixel7pro
+# You can override specific variables if needed
+MODEL=My Custom Model
+```
 
 ## Support TEE broken devices
 

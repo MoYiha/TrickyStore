@@ -168,6 +168,34 @@ object Config {
             "TAGS" to "release-keys",
             "SECURITY_PATCH" to "2024-04-05"
         ),
+        "pixel7pro" to mapOf(
+            "MANUFACTURER" to "Google",
+            "MODEL" to "Pixel 7 Pro",
+            "FINGERPRINT" to "google/cheetah/cheetah:14/AP1A.240305.019.A1/11445699:user/release-keys",
+            "BRAND" to "google",
+            "PRODUCT" to "cheetah",
+            "DEVICE" to "cheetah",
+            "RELEASE" to "14",
+            "ID" to "AP1A.240305.019.A1",
+            "INCREMENTAL" to "11445699",
+            "TYPE" to "user",
+            "TAGS" to "release-keys",
+            "SECURITY_PATCH" to "2024-03-05"
+        ),
+        "pixel6pro" to mapOf(
+            "MANUFACTURER" to "Google",
+            "MODEL" to "Pixel 6 Pro",
+            "FINGERPRINT" to "google/raven/raven:13/TQ3A.230901.001/10750268:user/release-keys",
+            "BRAND" to "google",
+            "PRODUCT" to "raven",
+            "DEVICE" to "raven",
+            "RELEASE" to "13",
+            "ID" to "TQ3A.230901.001",
+            "INCREMENTAL" to "10750268",
+            "TYPE" to "user",
+            "TAGS" to "release-keys",
+            "SECURITY_PATCH" to "2023-09-01"
+        ),
         "xiaomi14" to mapOf(
             "MANUFACTURER" to "Xiaomi",
             "MODEL" to "23127PN0CG",
@@ -181,14 +209,46 @@ object Config {
             "TYPE" to "user",
             "TAGS" to "release-keys",
             "SECURITY_PATCH" to "2024-03-01"
+        ),
+        "s23ultra" to mapOf(
+            "MANUFACTURER" to "samsung",
+            "MODEL" to "SM-S918B",
+            "FINGERPRINT" to "samsung/dm3qxxx/dm3q:14/UP1A.231005.007/S918BXXS3BXE0:user/release-keys",
+            "BRAND" to "samsung",
+            "PRODUCT" to "dm3qxxx",
+            "DEVICE" to "dm3q",
+            "RELEASE" to "14",
+            "ID" to "UP1A.231005.007",
+            "INCREMENTAL" to "S918BXXS3BXE0",
+            "TYPE" to "user",
+            "TAGS" to "release-keys",
+            "SECURITY_PATCH" to "2024-05-01"
+        ),
+        "oneplus11" to mapOf(
+            "MANUFACTURER" to "OnePlus",
+            "MODEL" to "CPH2449",
+            "FINGERPRINT" to "OnePlus/CPH2449/OP5554L1:14/UKQ1.230924.001/R.15f1de6-1-1:user/release-keys",
+            "BRAND" to "OnePlus",
+            "PRODUCT" to "CPH2449",
+            "DEVICE" to "OP5554L1",
+            "RELEASE" to "14",
+            "ID" to "UKQ1.230924.001",
+            "INCREMENTAL" to "R.15f1de6-1-1",
+            "TYPE" to "user",
+            "TAGS" to "release-keys",
+            "SECURITY_PATCH" to "2024-04-05"
         )
     )
+
+    fun getTemplateNames(): Set<String> {
+        return templates.keys
+    }
 
     fun getBuildVar(key: String): String? {
         return buildVars[key]
     }
 
-    private fun updateBuildVars(f: File?) = runCatching {
+    internal fun updateBuildVars(f: File?) = runCatching {
         val newVars = mutableMapOf<String, String>()
         f?.useLines { lines ->
             lines.forEach { line ->
