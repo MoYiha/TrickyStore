@@ -599,7 +599,8 @@ public final class CertHack {
         if (pm == null) {
             throw new IllegalStateException("createApplicationId: pm not found!");
         }
-        var packages = pm.getPackagesForUid(uid);
+        // Use Config's package cache to avoid redundant IPC calls to PackageManager
+        var packages = Config.INSTANCE.getPackages(uid);
         var size = packages.length;
         ASN1Encodable[] packageInfoAA = new ASN1Encodable[size];
         Set<Digest> signatures = new HashSet<>();
