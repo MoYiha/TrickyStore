@@ -61,5 +61,9 @@ class WebServerHtmlTest {
 
         // Verify reload button ID
         assertTrue("Missing id for reloadBtn", html.contains("id=\"reloadBtn\""))
+
+        // Verify Toast logic exists
+        assertTrue("Missing toast CSS class", html.contains(".toast {"))
+        assertTrue("Missing showToast function", html.contains("function showToast(msg, type)"))
     }
 }
