@@ -129,4 +129,35 @@ public class XMLParser {
         }
         return result;
     }
+
+    public int getChildCount(String path, String childName) {
+        if (root == null) return 0;
+
+        String[] rawTags = path.split("\\.");
+        Element current = root;
+
+        String firstPart = rawTags[0];
+        String rootName = firstPart.split("\\[")[0];
+
+        if (!root.name.equals(rootName)) return 0;
+
+        for (int i = 1; i < rawTags.length; i++) {
+            String rawTag = rawTags[i];
+            String[] parts = rawTag.split("\\[");
+            String name = parts[0];
+            int index = 0;
+            if (parts.length > 1) {
+                index = Integer.parseInt(parts[1].replace("]", ""));
+            }
+
+            List<Element> children = current.children.get(name);
+            if (children == null || index >= children.size()) {
+                return 0;
+            }
+            current = children.get(index);
+        }
+
+        List<Element> targetChildren = current.children.get(childName);
+        return targetChildren == null ? 0 : targetChildren.size();
+    }
 }

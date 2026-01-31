@@ -40,7 +40,8 @@ class RkpInterceptor(
         data class KeyPairInfo(
             val keyPair: KeyPair,
             val macedPublicKey: ByteArray,
-            val privateKeyHandle: ByteArray
+            val privateKeyHandle: ByteArray,
+            val deviceInfo: ByteArray? = null
         )
     }
 
@@ -92,14 +93,15 @@ class RkpInterceptor(
     // returns fake hardware info that matches what Google expects
     private fun interceptGetHardwareInfo(): Result {
         kotlin.runCatching {
-            val info = RpcHardwareInfo().apply {
+            val override = RemoteKeyManager.getHardwareInfo()
+            val info = override ?: RpcHardwareInfo().apply {
                 versionNumber = 3 // android 14+ uses version 3
                 rpcAuthorName = "Google"
                 supportedEekCurve = 2 // P-256 curve
                 uniqueId = Config.getBuildVar("DEVICE") ?: "generic"
                 supportedNumKeysInCsr = 20
             }
-            
+
             val p = Parcel.obtain()
             p.writeNoException()
             p.writeTypedObject(info, 0)
@@ -116,13 +118,24 @@ class RkpInterceptor(
             data.enforceInterface(IRemotelyProvisionedComponent.DESCRIPTOR)
             val testMode = data.readInt() != 0
             
-            // create new P-256 key
-            val keyPairGen = KeyPairGenerator.getInstance("EC")
-            keyPairGen.initialize(ECGenParameterSpec("secp256r1"))
-            val keyPair = keyPairGen.generateKeyPair()
-            
-            // wrap in COSE_Mac0 format
-            val macedKey = createMacedPublicKey(keyPair)
+            val rkpKey = RemoteKeyManager.getKeyPair()
+            val keyPair: KeyPair
+            val macedKey: ByteArray
+            val deviceInfo: ByteArray?
+
+            if (rkpKey != null) {
+                keyPair = rkpKey.keyPair
+                macedKey = rkpKey.macedPublicKey ?: createMacedPublicKey(keyPair)
+                deviceInfo = rkpKey.deviceInfo
+                Logger.i("Using remote key for uid=$uid")
+            } else {
+                // create new P-256 key
+                val keyPairGen = KeyPairGenerator.getInstance("EC")
+                keyPairGen.initialize(ECGenParameterSpec("secp256r1"))
+                keyPair = keyPairGen.generateKeyPair()
+                macedKey = createMacedPublicKey(keyPair)
+                deviceInfo = null
+            }
             
             // store handle for later use in cert requests
             val handleIndex = keyPairCounter++
@@ -132,7 +145,7 @@ class RkpInterceptor(
             privateKeyHandle[2] = (handleIndex shr 8).toByte()
             privateKeyHandle[3] = handleIndex.toByte()
             
-            keyPairCache[handleIndex] = KeyPairInfo(keyPair, macedKey, privateKeyHandle)
+            keyPairCache[handleIndex] = KeyPairInfo(keyPair, macedKey, privateKeyHandle, deviceInfo)
             
             Logger.i("generated RKP key pair handle=$handleIndex for uid=$uid")
             
@@ -168,7 +181,8 @@ class RkpInterceptor(
                 challenge = data.createByteArray()
             }
             
-            val response = createCertificateRequestResponse(keysToSign, challenge, isV2)
+            val deviceInfoBytes = resolveDeviceInfo(keysToSign)
+            val response = createCertificateRequestResponse(keysToSign, challenge, isV2, deviceInfoBytes)
             
             Logger.i("generated RKP certificate request response for uid=$uid isV2=$isV2")
             
@@ -180,7 +194,7 @@ class RkpInterceptor(
             } else {
                 // v1 needs extra out params
                 p.writeByteArray(response)
-                val deviceInfo = DeviceInfo(createDeviceInfo())
+                val deviceInfo = DeviceInfo(deviceInfoBytes)
                 p.writeTypedObject(deviceInfo, 0)
                 val protectedData = ProtectedData(createProtectedData())
                 p.writeTypedObject(protectedData, 0)
@@ -199,15 +213,30 @@ class RkpInterceptor(
         return CertHack.generateMacedPublicKey(keyPair) ?: pubKey
     }
 
+    private fun resolveDeviceInfo(keysToSign: Array<MacedPublicKey>?): ByteArray {
+        if (keysToSign != null) {
+            for (k in keysToSign) {
+                if (k.macedKey == null) continue
+                // KeyCache values() added in previous step
+                val cached = keyPairCache.values().find {
+                    java.util.Arrays.equals(it.macedPublicKey, k.macedKey)
+                }
+                if (cached?.deviceInfo != null) return cached.deviceInfo
+            }
+        }
+        return createDeviceInfo()
+    }
+
     private fun createCertificateRequestResponse(
         keysToSign: Array<MacedPublicKey>?,
         challenge: ByteArray?,
-        isV2: Boolean
+        isV2: Boolean,
+        deviceInfo: ByteArray
     ): ByteArray {
         return CertHack.createCertificateRequestResponse(
             keysToSign?.map { it.macedKey }?.filterNotNull() ?: emptyList(),
             challenge ?: ByteArray(0),
-            createDeviceInfo()
+            deviceInfo
         ) ?: ByteArray(0)
     }
 
