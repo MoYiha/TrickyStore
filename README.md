@@ -136,13 +136,13 @@ Fetches latest Pixel Beta/Canary fingerprints from Google servers.
 **Manual execution:**
 ```bash
 # Random device
-sh /data/adb/modules/cleveres_tricky/autopif.sh
+sh /data/adb/modules/cleverestricky/autopif.sh
 
 # Specific device
-sh /data/adb/modules/cleveres_tricky/autopif.sh --device husky
+sh /data/adb/modules/cleverestricky/autopif.sh --device husky
 
 # List devices
-sh /data/adb/modules/cleveres_tricky/autopif.sh --list
+sh /data/adb/modules/cleverestricky/autopif.sh --list
 ```
 
 **Background updates (24 hour interval, battery optimized):**
@@ -174,21 +174,7 @@ Special values:
 - `no` disables patching for that component
 - `prop` keeps system prop consistent
 
-**TrickyStore sync:**
-```bash
-# Enable sync
-sh /data/adb/modules/cleveres_tricky/security_patch.sh --enable
-
-# Disable sync
-sh /data/adb/modules/cleveres_tricky/security_patch.sh --disable
-```
-
-Supports both standard TrickyStore and James fork formats.
-
 ## Roadmap
-
-- App Attest Key support
-- Automatic mode selection
 
 Contributions welcome.
 
