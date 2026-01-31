@@ -18,9 +18,7 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 - Low memory footprint with immediate config release
 
 **Integrity Support:**
-- MEETS_BASIC_INTEGRITY
-- MEETS_DEVICE_INTEGRITY
-- MEETS_STRONG_INTEGRITY (via RKP spoofing)
+- MEETS_USE_BRAIN
 
 ## Quick Start
 
