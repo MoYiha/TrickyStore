@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 /**
  * A simple, standalone CBOR encoder to support RKP structures.
@@ -86,7 +87,22 @@ public class CborEncoder {
                 encodeItem(os, entry.getValue());
             }
         } else if (value instanceof Boolean) {
-    private static void writeTypeAndArgument(ByteArrayOutputStream os, int majorType, long value) {
+            boolean b = (Boolean) value;
+            encodeTypeAndLength(os, MT_SIMPLE, b ? 21 : 20);
+        } else {
+            throw new IOException("Unknown type in CborEncoder: " + value.getClass().getSimpleName());
+        }
+    }
+
+    private static void encodeInteger(ByteArrayOutputStream os, long value) {
+        if (value >= 0) {
+            encodeTypeAndLength(os, MT_UNSIGNED, value);
+        } else {
+            encodeTypeAndLength(os, MT_NEGATIVE, -1 - value);
+        }
+    }
+
+    private static void encodeTypeAndLength(ByteArrayOutputStream os, int majorType, long value) {
         int mt = majorType << 5;
         if (value < 24) {
             os.write(mt | (int) value);
