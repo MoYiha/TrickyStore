@@ -216,44 +216,44 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
     <title>CleveresTricky</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { background-color: #121212; color: white; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; }
-        .section { margin-bottom: 20px; padding: 15px; background-color: #1e1e1e; border-radius: 8px; }
+        body { background-color: #000000; color: #ffffff; font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        h1 { text-align: center; font-weight: 300; letter-spacing: 2px; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #333; border-radius: 0; }
         .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        button { padding: 10px 20px; border-radius: 4px; border: none; cursor: pointer; font-size: 16px; }
-        .btn-primary { background-color: white; color: black; }
-        .btn-success { background-color: #2e7d32; color: white; }
-        textarea { width: 100%; height: 200px; background-color: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; padding: 10px; font-family: monospace; }
-        select { padding: 10px; background-color: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; width: 100%; margin-bottom: 10px; }
-        input[type="checkbox"] { transform: scale(1.5); }
-        .status { text-align: center; color: #888; margin-top: 10px; }
-        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #333; color: white; padding: 12px 24px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000; }
+        button { padding: 10px 20px; background-color: #000; color: #fff; border: 1px solid #fff; cursor: pointer; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; transition: background 0.2s, color 0.2s; }
+        button:hover { background-color: #fff; color: #000; }
+        button:disabled { border-color: #555; color: #555; }
+        textarea, input[type="text"], select { width: 100%; background-color: #000; color: #fff; border: 1px solid #555; padding: 10px; font-family: monospace; box-sizing: border-box; }
+        select { margin-bottom: 10px; }
+        input[type="checkbox"] { accent-color: #fff; transform: scale(1.2); }
+        .status { text-align: center; color: #888; margin-top: 10px; font-family: monospace; }
+        .footer { margin-top: 40px; border-top: 1px solid #333; padding-top: 20px; font-size: 0.8em; color: #666; text-align: center; }
+        .footer a { color: #fff; text-decoration: none; border-bottom: 1px dotted #666; }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background-color: #fff; color: #000; padding: 10px 20px; border: 1px solid #000; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000; font-family: monospace; }
         .toast.show { opacity: 1; }
-        .toast.success { background-color: #2e7d32; }
-        .toast.error { background-color: #d32f2f; }
     </style>
 </head>
 <body>
-    <h1>CleveresTricky <span style="font-size: 0.5em; color: gray;">BETA</span></h1>
+    <h1>CLEVERESTRICKY <span style="font-size: 0.4em; border: 1px solid #fff; padding: 2px 4px; vertical-align: middle;">BETA</span></h1>
 
     <div class="section">
-        <div class="row"><label for="global_mode" style="flex-grow: 1; padding: 10px 0;">Global Mode</label><input type="checkbox" id="global_mode" onchange="toggle('global_mode')"></div>
-        <div class="row"><label for="tee_broken_mode" style="flex-grow: 1; padding: 10px 0;">TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
-        <div class="row"><label for="rkp_bypass" style="flex-grow: 1; padding: 10px 0;">RKP Bypass (Strong Integrity)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
-        <div class="row"><label for="auto_beta_fetch" style="flex-grow: 1; padding: 10px 0;">Auto Pixel Beta Fetch (Daily)</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
-        <div class="row" style="margin-top: 10px; justify-content: flex-end;">
-            <button onclick="fetchBetaNow()" class="btn-success" style="font-size: 14px; padding: 8px 16px;">Fetch Beta Fingerprint Now</button>
+        <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" id="global_mode" onchange="toggle('global_mode')"></div>
+        <div class="row"><label for="tee_broken_mode">TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
+        <div class="row"><label for="rkp_bypass">RKP Bypass (Strong Integrity)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
+        <div class="row"><label for="auto_beta_fetch">Auto Pixel Beta Fetch (Daily)</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
+        <div class="row" style="margin-top: 15px; justify-content: flex-end;">
+            <button onclick="fetchBetaNow()">Fetch Beta Fingerprint</button>
         </div>
-        <div class="status" id="keyboxStatus" aria-live="polite" style="text-align: left; margin-top: 10px; font-weight: bold;">Keybox Status: Loading...</div>
+        <div class="status" id="keyboxStatus" aria-live="polite">Keybox Status: Loading...</div>
     </div>
 
     <div class="section">
-        <h3>Keybox Jukebox</h3>
-        <div style="margin-bottom: 15px; font-size: 0.9em; color: #aaa;">Upload multiple XML files to automatically rotate keys.</div>
-        <input type="text" id="kbFilename" placeholder="filename.xml (e.g., keybox_01.xml)" style="width: 100%; margin-bottom: 10px; padding: 10px; background: #2d2d2d; color: white; border: 1px solid #444; box-sizing: border-box;">
+        <h3 style="font-weight: normal; border-bottom: 1px solid #333; padding-bottom: 5px;">KEYBOX JUKEBOX</h3>
+        <div style="margin-bottom: 15px; font-size: 0.8em; color: #888;">Upload multiple XML files to automatically rotate keys.</div>
+        <input type="text" id="kbFilename" placeholder="filename.xml (e.g., keybox_01.xml)" style="margin-bottom: 10px;">
         <textarea id="kbContent" placeholder="Paste keybox.xml content here..." style="height: 100px; margin-bottom: 10px;"></textarea>
-        <div class="row">
-            <button onclick="uploadKeybox()" class="btn-primary" style="width: 100%;">Upload & Add to Pool</button>
+        <div class="row" style="justify-content: flex-end;">
+            <button onclick="uploadKeybox()" style="width: 100%;">UPLOAD TO POOL</button>
         </div>
     </div>
 
@@ -268,20 +268,26 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         <div id="templateSection" style="display:none; margin-bottom: 10px;">
              <div class="row">
                 <select id="templateSelector" style="flex-grow: 1; margin-right: 10px;" aria-label="Select device template">
-                    <option value="" disabled selected>Select a device template...</option>
+                    <option value="" disabled selected>Select template...</option>
                 </select>
-                <button onclick="applyTemplate()" class="btn-primary">Load Template</button>
+                <button onclick="applyTemplate()">LOAD</button>
              </div>
         </div>
 
-        <textarea id="editor" aria-label="Configuration editor"></textarea>
-        <div class="row" style="margin-top: 10px;">
-            <button id="saveBtn" class="btn-primary" onclick="saveFile()">Save File</button>
+        <textarea id="editor" aria-label="Configuration editor" style="height: 300px;"></textarea>
+        <div class="row" style="margin-top: 10px; justify-content: flex-end;">
+            <button id="saveBtn" onclick="saveFile()">SAVE FILE</button>
         </div>
     </div>
 
-    <div class="section" style="text-align: center;">
-        <button id="reloadBtn" class="btn-success" onclick="reloadConfig()">Reload Config</button>
+    <div class="section" style="text-align: center; border: none;">
+        <button id="reloadBtn" onclick="reloadConfig()" style="width: 100%;">RELOAD CONFIG</button>
+    </div>
+
+    <div class="footer">
+        Designed with simplicity for system optimization and performance.<br>
+        <br>
+        <a href="https://t.me/cleverestech">t.me/cleverestech</a>
     </div>
 
     <script>
@@ -294,17 +300,17 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         }
 
         let toastTimeout;
-        function showToast(msg, type) {
+        function showToast(msg) {
             let t = document.getElementById('toast');
             if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
-            t.textContent = msg; t.className = 'toast show ' + (type || '');
+            t.textContent = msg; t.className = 'toast show';
             if (toastTimeout) clearTimeout(toastTimeout);
             toastTimeout = setTimeout(() => { t.className = t.className.replace('show', ''); }, 3000);
         }
 
         async function init() {
             if (!token) {
-                document.body.innerHTML = '<h1>Unauthorized</h1><p>Missing token.</p>';
+                document.body.innerHTML = '<h1 style="color:white;text-align:center;margin-top:50px;">UNAUTHORIZED</h1>';
                 return;
             }
             const res = await fetch(getAuthUrl(baseUrl + '/config'));
@@ -322,11 +328,11 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             const count = data.keybox_count;
             const statusEl = document.getElementById('keyboxStatus');
             if (count > 0) {
-                statusEl.innerText = 'Keybox Status: Loaded (' + count + ' keys)';
-                statusEl.style.color = '#4caf50';
+                statusEl.innerText = 'Keybox Status: ACTIVE (' + count + ' keys loaded)';
+                statusEl.style.color = '#fff';
             } else {
-                statusEl.innerText = 'Keybox Status: Not Loaded (Check logs/format)';
-                statusEl.style.color = '#f44336';
+                statusEl.innerText = 'Keybox Status: INACTIVE (No keys)';
+                statusEl.style.color = '#555';
             }
 
             const tmplSel = document.getElementById('templateSelector');
@@ -356,13 +362,13 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                     body: 'setting=' + setting + '&value=' + val
                 });
                 if (res.ok) {
-                    showToast('Setting updated', 'success');
+                    showToast('SETTING UPDATED');
                 } else {
                     throw new Error('Server error');
                 }
             } catch (e) {
                 el.checked = !val;
-                showToast('Failed to update setting', 'error');
+                showToast('UPDATE FAILED');
             } finally {
                 el.disabled = false;
                 el.style.opacity = originalOpacity;
@@ -391,7 +397,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             const current = editor.value;
 
             if (current.includes('TEMPLATE=')) {
-                if (!confirm('This file already contains a TEMPLATE directive. Replace it?')) return;
+                if (!confirm('Replace existing TEMPLATE directive?')) return;
                 editor.value = current.replace(/TEMPLATE=[^\n]*/, 'TEMPLATE=' + tmpl);
             } else {
                 editor.value = 'TEMPLATE=' + tmpl + '\n' + current;
@@ -401,13 +407,13 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         async function uploadKeybox() {
             const filename = document.getElementById('kbFilename').value;
             const content = document.getElementById('kbContent').value;
-            if (!filename || !content) { showToast('Missing info', 'error'); return; }
-            if (!filename.endsWith('.xml')) { showToast('Must be .xml', 'error'); return; }
+            if (!filename || !content) { showToast('MISSING INFO'); return; }
+            if (!filename.endsWith('.xml')) { showToast('MUST BE .XML'); return; }
 
             const btn = event.target;
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'Uploading...';
+            btn.innerText = 'UPLOADING...';
 
             try {
                 const params = new URLSearchParams();
@@ -421,16 +427,16 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                 });
 
                 if (res.ok) {
-                    showToast('Uploaded!', 'success');
+                    showToast('UPLOADED');
                     document.getElementById('kbFilename').value = '';
                     document.getElementById('kbContent').value = '';
-                    setTimeout(init, 1000); // Reload to update count
+                    setTimeout(init, 1000);
                 } else {
                     const txt = await res.text();
-                    showToast('Failed: ' + txt, 'error');
+                    showToast('FAILED: ' + txt);
                 }
             } catch (e) {
-                showToast('Error: ' + e, 'error');
+                showToast('ERROR');
             } finally {
                 btn.disabled = false;
                 btn.innerText = originalText;
@@ -441,7 +447,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             const btn = document.getElementById('saveBtn');
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'Saving...';
+            btn.innerText = 'SAVING...';
 
             try {
                 const filename = document.getElementById('fileSelector').value;
@@ -456,10 +462,10 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                     body: params
                 });
 
-                if (res.ok) showToast('Saved!', 'success');
-                else showToast('Failed to save', 'error');
+                if (res.ok) showToast('SAVED');
+                else showToast('SAVE FAILED');
             } catch (e) {
-                showToast('Error: ' + e, 'error');
+                showToast('ERROR');
             } finally {
                 btn.disabled = false;
                 btn.innerText = originalText;
@@ -467,23 +473,23 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         }
 
         async function fetchBetaNow() {
-            if (!confirm("This will overwrite your spoof_build_vars with the latest Pixel Beta fingerprint. Continue?")) return;
+            if (!confirm("Overwrite spoof_build_vars with latest Beta fingerprint?")) return;
             const btn = event.target;
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'Fetching...';
+            btn.innerText = 'FETCHING...';
             
             try {
                 const res = await fetch(getAuthUrl(baseUrl + '/fetch_beta'), { method: 'POST' });
                 const text = await res.text();
                 if (res.ok) {
-                    showToast(text, 'success');
-                    loadFile(); // Reload editor if viewing var file
+                    showToast('SUCCESS: ' + text);
+                    loadFile();
                 } else {
-                    showToast(text, 'error');
+                    showToast('FAILED');
                 }
             } catch (e) {
-                showToast('Error: ' + e, 'error');
+                showToast('ERROR');
             } finally {
                 btn.disabled = false;
                 btn.innerText = originalText;
@@ -494,30 +500,22 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             const btn = document.getElementById('reloadBtn');
             const originalText = btn.innerText;
             btn.disabled = true;
-            btn.innerText = 'Reloading...';
+            btn.innerText = 'RELOADING...';
 
             try {
                 const res = await fetch(getAuthUrl(baseUrl + '/reload'), { method: 'POST' });
                 if (res.ok) {
-                    btn.innerText = 'Reloaded!';
-                    setTimeout(function() {
-                        btn.innerText = originalText;
-                        btn.disabled = false;
-                    }, 2000);
+                    btn.innerText = 'RELOADED';
                 } else {
-                    btn.innerText = 'Failed';
-                    setTimeout(function() {
-                        btn.innerText = originalText;
-                        btn.disabled = false;
-                    }, 2000);
+                    btn.innerText = 'FAILED';
                 }
             } catch (e) {
-                btn.innerText = 'Error';
-                setTimeout(function() {
-                    btn.innerText = originalText;
-                    btn.disabled = false;
-                }, 2000);
+                btn.innerText = 'ERROR';
             }
+            setTimeout(function() {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }, 2000);
         }
 
         init();

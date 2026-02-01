@@ -67,10 +67,10 @@ class WebServerHtmlTest {
 
         // Verify Toast logic exists
         assertTrue("Missing toast CSS class", html.contains(".toast {"))
-        assertTrue("Missing showToast function", html.contains("function showToast(msg, type)"))
+        assertTrue("Missing showToast function", html.contains("function showToast(msg)"))
 
         // Verify toggle logic
         assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
-        assertTrue("Missing showToast logic in toggle", html.contains("showToast('Setting updated', 'success');"))
+        assertTrue("Missing showToast logic in toggle", html.contains("showToast('SETTING UPDATED');"))
     }
 }
