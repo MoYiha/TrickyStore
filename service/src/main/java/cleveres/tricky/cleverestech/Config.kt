@@ -115,7 +115,7 @@ object Config {
                         var template: String? = null
                         var keybox: String? = null
 
-                        if (parts.size > 1 && parts[1] != "null") template = parts[1]
+                        if (parts.size > 1 && parts[1] != "null") template = parts[1].lowercase()
                         if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
 
                         if (template != null || keybox != null) {
@@ -220,23 +220,18 @@ object Config {
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
 
     fun getAttestationId(tag: String, uid: Int): ByteArray? {
+        // 1. Explicit override (highest priority)
         val global = attestationIds[tag]
         if (global != null) return global
 
-        val appConfig = getAppConfig(uid)
-        if (appConfig?.template != null) {
-            val template = templates[appConfig.template]
-            if (template != null) {
-                val value = template[tag]
-                if (value != null) {
-                    return value.toByteArray(Charsets.UTF_8)
-                }
-            }
-        }
-        return null
+        // 2. Smart Fallback (Build Var via Template or Global)
+        // This leverages getBuildVar which handles "Smart Property Mapping" for templates
+        // and falls back to global build vars.
+        val value = getBuildVar(tag, uid)
+        return value?.toByteArray(Charsets.UTF_8)
     }
 
-    private val templates = mapOf(
+    private val defaultTemplates = mapOf(
         "pixel8pro" to mapOf(
             "MANUFACTURER" to "Google",
             "MODEL" to "Pixel 8 Pro",
@@ -322,6 +317,48 @@ object Config {
             "SECURITY_PATCH" to "2024-04-05"
         )
     )
+
+    @Volatile
+    private var templates: Map<String, Map<String, String>> = defaultTemplates
+
+    internal fun updateCustomTemplates(f: File?) = runCatching {
+        val newTemplates = LinkedHashMap(defaultTemplates)
+
+        if (f != null && f.exists()) {
+             var currentTemplate: String? = null
+             var currentProps: MutableMap<String, String>? = null
+
+             f.useLines { lines ->
+                 lines.forEach { line ->
+                     val l = line.trim()
+                     if (l.isEmpty() || l.startsWith("#")) return@forEach
+
+                     if (l.startsWith("[") && l.endsWith("]")) {
+                         // Save previous
+                         if (currentTemplate != null && currentProps != null) {
+                             newTemplates[currentTemplate!!] = currentProps!!
+                         }
+                         currentTemplate = l.substring(1, l.length - 1).lowercase()
+                         // Extend existing or create new
+                         currentProps = newTemplates[currentTemplate]?.toMutableMap() ?: HashMap()
+                     } else if (currentTemplate != null) {
+                         val parts = l.split("=", limit = 2)
+                         if (parts.size == 2) {
+                             currentProps?.put(parts[0].trim(), parts[1].trim())
+                         }
+                     }
+                 }
+             }
+             // Save last
+             if (currentTemplate != null && currentProps != null) {
+                 newTemplates[currentTemplate!!] = currentProps!!
+             }
+        }
+        templates = newTemplates
+        Logger.i("Updated templates: ${templates.keys}")
+    }.onFailure {
+        Logger.e("failed to update custom templates", it)
+    }
 
     fun getTemplateNames(): Set<String> {
         return templates.keys
@@ -493,6 +530,7 @@ object Config {
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
     private const val REMOTE_KEYS_FILE = "remote_keys.xml"
     private const val APP_CONFIG_FILE = "app_config"
+    private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private val root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
 
@@ -511,6 +549,7 @@ object Config {
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
                 REMOTE_KEYS_FILE -> RemoteKeyManager.update(f)
                 APP_CONFIG_FILE -> updateAppConfigs(f)
+                CUSTOM_TEMPLATES_FILE -> updateCustomTemplates(f)
                 GLOBAL_MODE_FILE -> {
                     updateGlobalMode(f)
                     updateTargetPackages(File(root, TARGET_FILE))
@@ -552,6 +591,7 @@ object Config {
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         RemoteKeyManager.update(File(root, REMOTE_KEYS_FILE))
         updateAppConfigs(File(root, APP_CONFIG_FILE))
+        updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
