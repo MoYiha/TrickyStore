@@ -60,6 +60,7 @@ import java.security.spec.ECGenParameterSpec;
 import java.security.spec.RSAKeyGenParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,10 +91,21 @@ public final class CertHack {
 
     private static final int ATTESTATION_APPLICATION_ID_PACKAGE_INFOS_INDEX = 0;
     private static final int ATTESTATION_APPLICATION_ID_SIGNATURE_DIGESTS_INDEX = 1;
-    private static final Map<String, KeyBox> keyboxes = new HashMap<>();
     private static final int ATTESTATION_PACKAGE_INFO_PACKAGE_NAME_INDEX = 0;
 
     private static final CertificateFactory certificateFactory;
+
+    private static class State {
+        final Map<String, KeyBox> keyboxes;
+        final Map<CacheKey, Certificate[]> certificateCache;
+
+        State(Map<String, KeyBox> keyboxes) {
+            this.keyboxes = keyboxes;
+            this.certificateCache = Collections.synchronizedMap(new HashMap<>());
+        }
+    }
+
+    private static volatile State state = new State(Collections.emptyMap());
 
     static {
         try {
@@ -107,11 +119,11 @@ public final class CertHack {
     private static final int ATTESTATION_PACKAGE_INFO_VERSION_INDEX = 1;
 
     public static boolean canHack() {
-        return !keyboxes.isEmpty();
+        return !state.keyboxes.isEmpty();
     }
 
     public static int getKeyboxCount() {
-        return keyboxes.size();
+        return state.keyboxes.size();
     }
 
     private static PEMKeyPair parseKeyPair(String key) throws Throwable {
@@ -142,9 +154,6 @@ public final class CertHack {
         }
         return data;
     }
-
-    // Cache for hacked certificates: Leaf Encoded Bytes + Patch Level (int) -> Certificate[]
-    private static final Map<CacheKey, Certificate[]> certificateCache = new HashMap<>();
 
     /**
      * Optimization: Use a custom key object to avoid expensive Base64 encoding
@@ -177,13 +186,13 @@ public final class CertHack {
     }
 
     public static void readFromXml(Reader reader) {
-        keyboxes.clear();
-        certificateCache.clear();
         if (reader == null) {
             Logger.i("clear all keyboxes");
+            state = new State(Collections.emptyMap());
             return;
         }
 
+        Map<String, KeyBox> newKeyboxes = new HashMap<>();
         try {
             XMLParser xmlParser = new XMLParser(reader);
             int numberOfKeyboxes = Integer.parseInt(Objects.requireNonNull(xmlParser.obtainPath(
@@ -211,27 +220,31 @@ public final class CertHack {
                 }
                 var pemKp = parseKeyPair(privateKey);
                 var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
-                keyboxes.put(algo, new KeyBox(kp, certificateChain));
+                newKeyboxes.put(algo, new KeyBox(kp, certificateChain));
             }
             Logger.i("update " + numberOfKeyboxes + " keyboxes");
+            state = new State(newKeyboxes);
         } catch (Throwable t) {
             // Do not log the exception details as it might contain sensitive data from the keybox file.
             // Only log the exception type to avoid leaking private keys from XML snippets in the message.
             Logger.e("Error loading xml file (keyboxes cleared): " + t.getClass().getName());
+            state = new State(Collections.emptyMap());
         }
     }
 
     public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
         if (caList == null) throw new UnsupportedOperationException("caList is null!");
         try {
+            State currentState = state;
             byte[] leafEncoded = caList[0].getEncoded();
             int patchLevel = Config.INSTANCE.getPatchLevel(uid);
             CacheKey cacheKey = new CacheKey(leafEncoded, patchLevel);
 
-            synchronized (certificateCache) {
-                 if (certificateCache.containsKey(cacheKey)) {
+            Map<CacheKey, Certificate[]> cache = currentState.certificateCache;
+            synchronized (cache) {
+                 if (cache.containsKey(cacheKey)) {
                      // Logger.d("Cache hit for uid=" + uid);
-                     return certificateCache.get(cacheKey);
+                     return cache.get(cacheKey);
                  }
             }
 
@@ -284,7 +297,7 @@ public final class CertHack {
             X509v3CertificateBuilder builder;
             ContentSigner signer;
 
-            var k = keyboxes.get(leaf.getPublicKey().getAlgorithm());
+            var k = currentState.keyboxes.get(leaf.getPublicKey().getAlgorithm());
             if (k == null)
                 throw new UnsupportedOperationException("unsupported algorithm " + leaf.getPublicKey().getAlgorithm());
             certificates = new LinkedList<>(k.certificates);
@@ -346,8 +359,8 @@ public final class CertHack {
             certificates.addFirst(new JcaX509CertificateConverter().getCertificate(builder.build(signer)));
 
             Certificate[] result = certificates.toArray(new Certificate[0]);
-            synchronized (certificateCache) {
-                certificateCache.put(cacheKey, result);
+            synchronized (cache) {
+                cache.put(cacheKey, result);
             }
             return result;
 
@@ -370,15 +383,16 @@ public final class CertHack {
         KeyPair kp = null;
         KeyBox keyBox = null;
         try {
+            State currentState = state;
             var algo = params.algorithm;
             if (algo == Algorithm.EC) {
                 Logger.d("GENERATING EC KEYPAIR OF SIZE " + size);
                 kp = buildECKeyPair(params);
-                keyBox = keyboxes.get(KeyProperties.KEY_ALGORITHM_EC);
+                keyBox = currentState.keyboxes.get(KeyProperties.KEY_ALGORITHM_EC);
             } else if (algo == Algorithm.RSA) {
                 Logger.d("GENERATING RSA KEYPAIR OF SIZE " + size);
                 kp = buildRSAKeyPair(params);
-                keyBox = keyboxes.get(KeyProperties.KEY_ALGORITHM_RSA);
+                keyBox = currentState.keyboxes.get(KeyProperties.KEY_ALGORITHM_RSA);
             }
             if (keyBox == null) {
                 Logger.e("UNSUPPORTED ALGORITHM: " + algo);
