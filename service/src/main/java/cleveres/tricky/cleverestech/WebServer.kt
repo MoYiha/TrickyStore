@@ -204,7 +204,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         <div class="row" style="margin-top: 10px; justify-content: flex-end;">
             <button onclick="fetchBetaNow()" class="btn-success" style="font-size: 14px; padding: 8px 16px;">Fetch Beta Fingerprint Now</button>
         </div>
-        <div class="status" id="keyboxStatus" style="text-align: left; margin-top: 10px; font-weight: bold;">Keybox Status: Loading...</div>
+        <div class="status" id="keyboxStatus" aria-live="polite" style="text-align: left; margin-top: 10px; font-weight: bold;">Keybox Status: Loading...</div>
     </div>
 
     <div class="section">
@@ -293,12 +293,30 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         }
 
         async function toggle(setting) {
-            const val = document.getElementById(setting).checked;
-            await fetch(getAuthUrl(baseUrl + '/toggle'), {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: 'setting=' + setting + '&value=' + val
-            });
+            const el = document.getElementById(setting);
+            const val = el.checked;
+            const originalOpacity = el.style.opacity;
+            el.disabled = true;
+            el.style.opacity = '0.5';
+
+            try {
+                const res = await fetch(getAuthUrl(baseUrl + '/toggle'), {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'setting=' + setting + '&value=' + val
+                });
+                if (res.ok) {
+                    showToast('Setting updated', 'success');
+                } else {
+                    throw new Error('Server error');
+                }
+            } catch (e) {
+                el.checked = !val;
+                showToast('Failed to update setting', 'error');
+            } finally {
+                el.disabled = false;
+                el.style.opacity = originalOpacity;
+            }
         }
 
         async function loadFile() {
