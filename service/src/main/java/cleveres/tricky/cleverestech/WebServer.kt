@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
@@ -20,9 +21,14 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
 
     private fun saveFile(filename: String, content: String): Boolean {
         return try {
-            File(configDir, filename).writeText(content)
-            // Ensure proper permissions
-            // File(configDir, filename).setReadable(true, true) // 600 or 644? Customize.sh sets 600.
+            val f = File(configDir, filename)
+            f.writeText(content)
+            // Ensure proper permissions (0600)
+            try {
+                Os.chmod(f.absolutePath, 384)
+            } catch (t: Throwable) {
+                Logger.e("failed to set permissions for $filename", t)
+            }
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -34,11 +40,23 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         return File(configDir, filename).exists()
     }
 
+    private fun isValidSetting(name: String): Boolean {
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch")
+    }
+
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
+        if (!isValidSetting(filename)) return false
         val f = File(configDir, filename)
         return try {
             if (enable) {
-                if (!f.exists()) f.createNewFile()
+                if (!f.exists()) {
+                    f.createNewFile()
+                    try {
+                        Os.chmod(f.absolutePath, 384) // 0600
+                    } catch (t: Throwable) {
+                        Logger.e("failed to set permissions for $filename", t)
+                    }
+                }
             } else {
                 if (f.exists()) f.delete()
             }
