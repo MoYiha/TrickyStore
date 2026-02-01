@@ -134,6 +134,28 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
              return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
         }
 
+        if (uri == "/api/upload_keybox" && method == Method.POST) {
+             val map = HashMap<String, String>()
+             try { session.parseBody(map) } catch(e:Exception){}
+             val filename = session.parms["filename"]
+             val content = session.parms["content"]
+
+             if (filename != null && content != null && filename.endsWith(".xml") && !filename.contains("/")) {
+                 val keyboxDir = File(configDir, "keyboxes")
+                 if (!keyboxDir.exists()) keyboxDir.mkdirs()
+
+                 val file = File(keyboxDir, filename)
+                 try {
+                     file.writeText(content)
+                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "Saved")
+                 } catch (e: Exception) {
+                     e.printStackTrace()
+                     return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
+                 }
+             }
+             return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
+        }
+
         if (uri == "/api/toggle" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
@@ -223,6 +245,16 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             <button onclick="fetchBetaNow()" class="btn-success" style="font-size: 14px; padding: 8px 16px;">Fetch Beta Fingerprint Now</button>
         </div>
         <div class="status" id="keyboxStatus" aria-live="polite" style="text-align: left; margin-top: 10px; font-weight: bold;">Keybox Status: Loading...</div>
+    </div>
+
+    <div class="section">
+        <h3>Keybox Jukebox</h3>
+        <div style="margin-bottom: 15px; font-size: 0.9em; color: #aaa;">Upload multiple XML files to automatically rotate keys.</div>
+        <input type="text" id="kbFilename" placeholder="filename.xml (e.g., keybox_01.xml)" style="width: 100%; margin-bottom: 10px; padding: 10px; background: #2d2d2d; color: white; border: 1px solid #444; box-sizing: border-box;">
+        <textarea id="kbContent" placeholder="Paste keybox.xml content here..." style="height: 100px; margin-bottom: 10px;"></textarea>
+        <div class="row">
+            <button onclick="uploadKeybox()" class="btn-primary" style="width: 100%;">Upload & Add to Pool</button>
+        </div>
     </div>
 
     <div class="section">
@@ -363,6 +395,45 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                 editor.value = current.replace(/TEMPLATE=[^\n]*/, 'TEMPLATE=' + tmpl);
             } else {
                 editor.value = 'TEMPLATE=' + tmpl + '\n' + current;
+            }
+        }
+
+        async function uploadKeybox() {
+            const filename = document.getElementById('kbFilename').value;
+            const content = document.getElementById('kbContent').value;
+            if (!filename || !content) { showToast('Missing info', 'error'); return; }
+            if (!filename.endsWith('.xml')) { showToast('Must be .xml', 'error'); return; }
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = 'Uploading...';
+
+            try {
+                const params = new URLSearchParams();
+                params.append('filename', filename);
+                params.append('content', content);
+
+                const res = await fetch(getAuthUrl(baseUrl + '/upload_keybox'), {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: params
+                });
+
+                if (res.ok) {
+                    showToast('Uploaded!', 'success');
+                    document.getElementById('kbFilename').value = '';
+                    document.getElementById('kbContent').value = '';
+                    setTimeout(init, 1000); // Reload to update count
+                } else {
+                    const txt = await res.text();
+                    showToast('Failed: ' + txt, 'error');
+                }
+            } catch (e) {
+                showToast('Error: ' + e, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = originalText;
             }
         }
 

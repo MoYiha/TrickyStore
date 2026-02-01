@@ -29,6 +29,16 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 
 Configuration changes take effect immediately.
 
+## Keybox Jukebox (Multi-Key Rotation)
+
+CleveresTricky supports **automatic rotation** of multiple keyboxes to evade detection and distribute load.
+
+1.  **Legacy:** Place a single file at `/data/adb/cleverestricky/keybox.xml`.
+2.  **Jukebox Mode:** Place multiple XML files in `/data/adb/cleverestricky/keyboxes/` (e.g., `kb1.xml`, `kb2.xml`).
+    - The module loads ALL valid XML files from this folder.
+    - Keys are rotated in a round-robin fashion for every attestation request.
+    - **WebUI Upload:** You can upload new keyboxes directly via the "Keybox Jukebox" section in the web interface.
+
 ## Configuration
 
 ### keybox.xml
