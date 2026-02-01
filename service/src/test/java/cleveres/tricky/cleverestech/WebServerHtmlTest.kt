@@ -56,6 +56,9 @@ class WebServerHtmlTest {
         assertTrue("Missing aria-label for fileSelector", html.contains("aria-label=\"Select configuration file\""))
         assertTrue("Missing aria-label for editor", html.contains("aria-label=\"Configuration editor\""))
 
+        // Verify aria-live
+        assertTrue("Missing aria-live for keyboxStatus", html.contains("id=\"keyboxStatus\" aria-live=\"polite\""))
+
         // Verify save button ID
         assertTrue("Missing id for saveBtn", html.contains("id=\"saveBtn\""))
 
@@ -65,5 +68,9 @@ class WebServerHtmlTest {
         // Verify Toast logic exists
         assertTrue("Missing toast CSS class", html.contains(".toast {"))
         assertTrue("Missing showToast function", html.contains("function showToast(msg, type)"))
+
+        // Verify toggle logic
+        assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
+        assertTrue("Missing showToast logic in toggle", html.contains("showToast('Setting updated', 'success');"))
     }
 }
