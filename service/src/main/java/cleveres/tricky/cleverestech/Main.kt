@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import android.system.Os
+import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess
@@ -8,6 +9,9 @@ import kotlin.system.exitProcess
 fun main(args: Array<String>) {
     Logger.i("Welcome to CleveresTricky!")
     Verification.check()
+
+    // Start Auto Cleaner
+    KeyboxAutoCleaner.start()
 
     // Start Web Server
     try {

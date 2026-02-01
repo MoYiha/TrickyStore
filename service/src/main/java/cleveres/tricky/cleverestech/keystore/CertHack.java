@@ -805,7 +805,7 @@ public final class CertHack {
         }
     }
 
-    record KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
+    public record KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
     }
 
     public static class KeyGenParameters {

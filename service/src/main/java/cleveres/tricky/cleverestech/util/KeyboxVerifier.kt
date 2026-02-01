@@ -64,7 +64,14 @@ object KeyboxVerifier {
 
             val set = HashSet<String>(entries.length())
             for (i in 0 until entries.length()) {
-                set.add(entries.getString(i).lowercase())
+                // Convert decimal string to hex string to match cert.serialNumber.toString(16)
+                try {
+                    val decStr = entries.getString(i)
+                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                    set.add(hexStr)
+                } catch (e: Exception) {
+                    Logger.e("Failed to parse CRL entry: ${entries.getString(i)}")
+                }
             }
             set
         } catch (e: Exception) {

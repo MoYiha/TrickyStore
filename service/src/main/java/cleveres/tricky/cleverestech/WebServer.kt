@@ -42,7 +42,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -85,6 +85,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             config.append("\"tee_broken_mode\": ${fileExists("tee_broken_mode")},")
             config.append("\"rkp_bypass\": ${fileExists("rkp_bypass")},")
             config.append("\"auto_beta\": ${fileExists("auto_beta_fetch")},")
+            config.append("\"auto_keybox_check\": ${fileExists("auto_keybox_check")},")
             config.append("\"files\": [\"keybox.xml\", \"target.txt\", \"security_patch.txt\", \"spoof_build_vars\", \"app_config\"],")
             config.append("\"keybox_count\": ${CertHack.getKeyboxCount()},")
             config.append("\"templates\": [")
@@ -240,6 +241,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         <div class="row"><label for="tee_broken_mode">TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
         <div class="row"><label for="rkp_bypass">RKP Bypass (Strong Integrity)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
         <div class="row"><label for="auto_beta_fetch">Auto Pixel Beta Fetch (Daily)</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
+        <div class="row"><label for="auto_keybox_check">Auto Keybox Revocation Check (Daily)</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
         <div class="row" style="margin-top: 15px; justify-content: flex-end;">
             <button onclick="fetchBetaNow()">Fetch Beta Fingerprint</button>
         </div>
@@ -328,6 +330,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             document.getElementById('tee_broken_mode').checked = data.tee_broken_mode;
             document.getElementById('rkp_bypass').checked = data.rkp_bypass;
             document.getElementById('auto_beta_fetch').checked = data.auto_beta;
+            document.getElementById('auto_keybox_check').checked = data.auto_keybox_check;
 
             const count = data.keybox_count;
             const statusEl = document.getElementById('keyboxStatus');

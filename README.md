@@ -239,6 +239,23 @@ touch /data/adb/cleverestricky/auto_beta_fetch
 rm /data/adb/cleverestricky/auto_beta_fetch
 ```
 
+## Auto Keybox Revocation Check
+
+Automatically checks all keyboxes against Google's Certificate Revocation List (CRL) every 24 hours.
+If a keybox is found to be revoked:
+1. It is moved to the `revoked/` folder.
+2. A system notification is posted to alert the user.
+
+**Enable:**
+```bash
+touch /data/adb/cleverestricky/auto_keybox_check
+```
+
+**Disable:**
+```bash
+rm /data/adb/cleverestricky/auto_keybox_check
+```
+
 ## Security Patch Customization
 
 Create `/data/adb/cleverestricky/security_patch.txt`:
@@ -271,9 +288,6 @@ sh /data/adb/modules/cleverestricky/security_patch.sh --disable
 ## Roadmap
 
 Contributions welcome.
-
-**Under Development:**
-See the `Features for the future` file for upcoming application-specific spoofing capabilities.
 
 ## Acknowledgements
 
