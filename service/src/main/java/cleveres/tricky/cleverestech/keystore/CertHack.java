@@ -302,10 +302,11 @@ public final class CertHack {
             ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
             ASN1Encodable[] encodables = sequence.toArray();
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
-            ASN1EncodableVector vector = new ASN1EncodableVector();
+
+            // List to collect all tags for sorting
+            List<ASN1TaggedObject> allTags = new ArrayList<>();
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
-            boolean moduleHashAdded = false;
 
             // Check for ID Attestation overrides
             Map<Integer, byte[]> idAttestationTags = new HashMap<>();
@@ -332,21 +333,21 @@ public final class CertHack {
                 if (tag == 724 || tag == 706) {
                     continue;
                 }
-                // Filter ID Attestation tags if we are overriding
-                if (hasIdAttestation && (tag >= 710 && tag <= 717)) {
+                // Filter ID Attestation tags ONLY if we are overriding THAT specific tag
+                // If hasIdAttestation is true but idAttestationTags doesn't have this tag, we KEEP it (Patch strategy)
+                if (hasIdAttestation && idAttestationTags.containsKey(tag)) {
                     continue;
                 }
-                vector.add(taggedObject);
+                allTags.add(taggedObject);
             }
+
             // Add spoofed patch level
-            vector.add(new DERTaggedObject(true, 706, new ASN1Integer(patchLevel)));
+            allTags.add(new DERTaggedObject(true, 706, new ASN1Integer(patchLevel)));
 
             // Add spoofed ID Attestation tags
             if (hasIdAttestation) {
-                List<Integer> sortedTags = new ArrayList<>(idAttestationTags.keySet());
-                Collections.sort(sortedTags);
-                for (Integer tag : sortedTags) {
-                    vector.add(new DERTaggedObject(true, tag, new DEROctetString(idAttestationTags.get(tag))));
+                for (Map.Entry<Integer, byte[]> entry : idAttestationTags.entrySet()) {
+                    allTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
                 }
             }
 
@@ -361,8 +362,8 @@ public final class CertHack {
                 }
             }
 
-            if (moduleHash != null && !moduleHashAdded) {
-                vector.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
+            if (moduleHash != null) {
+                allTags.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
             }
 
             LinkedList<Certificate> certificates;
@@ -430,7 +431,13 @@ public final class CertHack {
 
             ASN1Sequence hackedRootOfTrust = new DERSequence(rootOfTrustEnc);
             ASN1TaggedObject rootOfTrustTagObj = new DERTaggedObject(704, hackedRootOfTrust);
-            vector.add(rootOfTrustTagObj);
+            allTags.add(rootOfTrustTagObj);
+
+            // Sort tags by tag number to ensure ASN.1 compliance (and correct order for injection)
+            Collections.sort(allTags, (a, b) -> Integer.compare(a.getTagNo(), b.getTagNo()));
+
+            ASN1EncodableVector vector = new ASN1EncodableVector();
+            for(ASN1TaggedObject t : allTags) vector.add(t);
 
             ASN1Sequence hackEnforced = new DERSequence(vector);
             encodables[7] = hackEnforced;
