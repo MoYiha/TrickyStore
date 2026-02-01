@@ -4,6 +4,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import cleveres.tricky.cleverestech.Config;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -89,10 +90,19 @@ public class ModuleHashTest {
 
         // Inject keybox
         CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert));
-        Field keyboxesField = CertHack.class.getDeclaredField("keyboxes");
-        keyboxesField.setAccessible(true);
-        Map<String, CertHack.KeyBox> keyboxes = (Map) keyboxesField.get(null);
-        keyboxes.put("RSA", keyBox);
+
+        // Create new state via reflection
+        Map<String, CertHack.KeyBox> newKeyboxes = new java.util.HashMap<>();
+        newKeyboxes.put("RSA", keyBox);
+
+        Class<?> stateClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack$State");
+        Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class);
+        ctor.setAccessible(true);
+        Object newState = ctor.newInstance(newKeyboxes);
+
+        Field stateField = CertHack.class.getDeclaredField("state");
+        stateField.setAccessible(true);
+        stateField.set(null, newState);
 
         Certificate[] chain = new Certificate[] { cert };
         Certificate[] hackedChain = CertHack.hackCertificateChain(chain, 0);
