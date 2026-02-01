@@ -38,6 +38,7 @@ CleveresTricky supports **automatic rotation** of multiple keyboxes to evade det
     - The module loads ALL valid XML files from this folder.
     - Keys are rotated in a round-robin fashion for every attestation request.
     - **WebUI Upload:** You can upload new keyboxes directly via the "Keybox Jukebox" section in the web interface.
+    - **Verification:** Click "VERIFY KEYBOXES" in the WebUI to check your keys against Google's Certificate Revocation List (CRL).
 
 ## Configuration
 
@@ -90,7 +91,42 @@ ro.boot.verifiedbootstate=green
 ro.boot.flash.locked=1
 ```
 
+**Device ID Attestation Spoofing (RKP/KeyMint):**
+To pass Strong Integrity on devices enforcing RKP rotation, you may need to spoof ID attestation tags. Add these to `spoof_build_vars`:
+
+```
+ATTESTATION_ID_BRAND=google
+ATTESTATION_ID_DEVICE=husky
+ATTESTATION_ID_PRODUCT=husky
+ATTESTATION_ID_MANUFACTURER=Google
+ATTESTATION_ID_MODEL=Pixel 8 Pro
+ATTESTATION_ID_SERIAL=...
+ATTESTATION_ID_IMEI=...
+```
+
 For Magisk users without Zygisk, remove `/data/adb/modules/cleverestricky/zygisk`.
+
+### Application Specific Spoofing
+
+You can assign specific templates and keyboxes to individual apps.
+Create/edit `/data/adb/cleverestricky/app_config` (or use the WebUI "App Config" selector).
+
+**Format:**
+```
+packageName [TEMPLATE] [keybox_filename]
+```
+
+**Examples:**
+```
+# Force GMS to use Pixel 8 Pro template and a specific keybox
+com.google.android.gms pixel8pro keybox_beta.xml
+
+# Force Wallet to use a different keybox (keep default template)
+com.google.android.apps.walletnfcrel null keybox_wallet.xml
+
+# Force Netflix to use Xiaomi 14 template (keep default keybox)
+com.netflix.mediaclient xiaomi14 null
+```
 
 ### Device Templates
 

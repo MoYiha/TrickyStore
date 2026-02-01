@@ -68,6 +68,8 @@ object Config {
         "ro.oem_unlock_supported" to "0"
     )
 
+    data class AppSpoofConfig(val template: String?, val keyboxFilename: String?)
+
     @Volatile
     private var hackPackages: PackageTrie = PackageTrie()
     @Volatile
@@ -81,6 +83,9 @@ object Config {
     private var moduleHash: ByteArray? = null
     private var isRkpBypass = false
 
+    @Volatile
+    private var appConfigs: Map<String, AppSpoofConfig> = emptyMap()
+
     fun shouldBypassRkp() = isRkpBypass
 
     fun setTeeBroken(broken: Boolean) {
@@ -89,6 +94,42 @@ object Config {
     }
 
     fun getModuleHash(): ByteArray? = moduleHash
+
+    fun getAppConfig(uid: Int): AppSpoofConfig? {
+        val pkgs = getPackages(uid)
+        for (pkg in pkgs) {
+            val config = appConfigs[pkg]
+            if (config != null) return config
+        }
+        return null
+    }
+
+    private fun updateAppConfigs(f: File?) = runCatching {
+        val newConfigs = mutableMapOf<String, AppSpoofConfig>()
+        f?.useLines { lines ->
+            lines.forEach { line ->
+                if (line.isNotBlank() && !line.startsWith("#")) {
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.isNotEmpty()) {
+                        val pkg = parts[0]
+                        var template: String? = null
+                        var keybox: String? = null
+
+                        if (parts.size > 1 && parts[1] != "null") template = parts[1]
+                        if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
+
+                        if (template != null || keybox != null) {
+                            newConfigs[pkg] = AppSpoofConfig(template, keybox)
+                        }
+                    }
+                }
+            }
+        }
+        appConfigs = newConfigs
+        Logger.i { "update app configs: ${appConfigs.size}" }
+    }.onFailure {
+        Logger.e("failed to update app configs", it)
+    }
 
     fun parsePackages(lines: List<String>, isTeeBrokenMode: Boolean): Pair<PackageTrie, PackageTrie> {
         val hackPackages = PackageTrie()
@@ -130,7 +171,7 @@ object Config {
         val legacyFile = File(root, KEYBOX_FILE)
         if (legacyFile.exists()) {
              legacyFile.bufferedReader().use { reader ->
-                 allKeyboxes.addAll(CertHack.parseKeyboxXml(reader))
+                 allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, KEYBOX_FILE))
              }
         }
 
@@ -140,7 +181,7 @@ object Config {
             files?.forEach { file ->
                 try {
                     file.bufferedReader().use { reader ->
-                        allKeyboxes.addAll(CertHack.parseKeyboxXml(reader))
+                        allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, file.name))
                     }
                 } catch (e: Exception) {
                     Logger.e("Failed to parse keybox file: ${file.name}", e)
@@ -173,6 +214,27 @@ object Config {
 
     @Volatile
     private var buildVars: Map<String, String> = emptyMap()
+    @Volatile
+    private var attestationIds: Map<String, ByteArray> = emptyMap()
+
+    fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
+
+    fun getAttestationId(tag: String, uid: Int): ByteArray? {
+        val global = attestationIds[tag]
+        if (global != null) return global
+
+        val appConfig = getAppConfig(uid)
+        if (appConfig?.template != null) {
+            val template = templates[appConfig.template]
+            if (template != null) {
+                val value = template[tag]
+                if (value != null) {
+                    return value.toByteArray(Charsets.UTF_8)
+                }
+            }
+        }
+        return null
+    }
 
     private val templates = mapOf(
         "pixel8pro" to mapOf(
@@ -265,12 +327,28 @@ object Config {
         return templates.keys
     }
 
+    fun getTemplate(name: String): Map<String, String>? {
+        return templates[name]
+    }
+
     fun getBuildVar(key: String): String? {
+        return buildVars[key]
+    }
+
+    fun getBuildVar(key: String, uid: Int): String? {
+        val appConfig = getAppConfig(uid)
+        if (appConfig?.template != null) {
+            val template = templates[appConfig.template]
+            if (template != null && template.containsKey(key)) {
+                return template[key]
+            }
+        }
         return buildVars[key]
     }
 
     internal fun updateBuildVars(f: File?) = runCatching {
         val newVars = mutableMapOf<String, String>()
+        val newIds = mutableMapOf<String, ByteArray>()
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
@@ -282,13 +360,18 @@ object Config {
                             templates[value.lowercase()]?.let { newVars.putAll(it) }
                         } else {
                             newVars[key] = value
+                            if (key.startsWith("ATTESTATION_ID_")) {
+                                val tag = key.removePrefix("ATTESTATION_ID_")
+                                newIds[tag] = value.toByteArray(Charsets.UTF_8)
+                            }
                         }
                     }
                 }
             }
         }
         buildVars = newVars
-        Logger.i { "update build vars: $buildVars" }
+        attestationIds = newIds
+        Logger.i { "update build vars: $buildVars, attestation ids: ${attestationIds.keys}" }
     }.onFailure {
         Logger.e("failed to update build vars", it)
     }
@@ -372,6 +455,7 @@ object Config {
     private const val MODULE_HASH_FILE = "module_hash"
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
     private const val REMOTE_KEYS_FILE = "remote_keys.xml"
+    private const val APP_CONFIG_FILE = "app_config"
     private val root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
 
@@ -389,6 +473,7 @@ object Config {
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
                 REMOTE_KEYS_FILE -> RemoteKeyManager.update(f)
+                APP_CONFIG_FILE -> updateAppConfigs(f)
                 GLOBAL_MODE_FILE -> {
                     updateGlobalMode(f)
                     updateTargetPackages(File(root, TARGET_FILE))
@@ -429,6 +514,8 @@ object Config {
         updateModuleHash(File(root, MODULE_HASH_FILE))
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         RemoteKeyManager.update(File(root, REMOTE_KEYS_FILE))
+        updateAppConfigs(File(root, APP_CONFIG_FILE))
+
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
             if (scope.exists()) {
