@@ -98,15 +98,17 @@ public final class CertHack {
 
     private static class State {
         final Map<String, List<KeyBox>> keyboxes;
+        final Map<String, List<KeyBox>> keyboxFiles;
         final Map<CacheKey, Certificate[]> certificateCache;
 
-        State(Map<String, List<KeyBox>> keyboxes) {
+        State(Map<String, List<KeyBox>> keyboxes, Map<String, List<KeyBox>> keyboxFiles) {
             this.keyboxes = keyboxes;
+            this.keyboxFiles = keyboxFiles;
             this.certificateCache = Collections.synchronizedMap(new HashMap<>());
         }
     }
 
-    private static volatile State state = new State(Collections.emptyMap());
+    private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
     private static final Map<String, AtomicInteger> rotationCounters = new HashMap<>();
 
     static {
@@ -194,6 +196,10 @@ public final class CertHack {
     }
 
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
+        return parseKeyboxXml(reader, "unknown.xml");
+    }
+
+    public static List<KeyBox> parseKeyboxXml(Reader reader, String filename) {
         if (reader == null) return Collections.emptyList();
         List<KeyBox> parsedList = new ArrayList<>();
         try {
@@ -226,7 +232,7 @@ public final class CertHack {
                 // Verify keys
                 var pemKp = parseKeyPair(privateKey);
                 var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
-                parsedList.add(new KeyBox(kp, certificateChain));
+                parsedList.add(new KeyBox(kp, certificateChain, filename));
             }
             return parsedList;
         } catch (Throwable t) {
@@ -238,11 +244,13 @@ public final class CertHack {
     public static void setKeyboxes(List<KeyBox> boxes) {
         if (boxes == null || boxes.isEmpty()) {
             Logger.i("clear all keyboxes");
-            state = new State(Collections.emptyMap());
+            state = new State(Collections.emptyMap(), Collections.emptyMap());
             return;
         }
 
         Map<String, List<KeyBox>> newKeyboxes = new HashMap<>();
+        Map<String, List<KeyBox>> newKeyboxFiles = new HashMap<>();
+
         for (KeyBox box : boxes) {
             String algo = box.keyPair.getPublic().getAlgorithm();
             if ("ECDSA".equalsIgnoreCase(algo) || "EC".equalsIgnoreCase(algo)) {
@@ -251,13 +259,14 @@ public final class CertHack {
                 algo = KeyProperties.KEY_ALGORITHM_RSA;
             }
             newKeyboxes.computeIfAbsent(algo, k -> new ArrayList<>()).add(box);
+            newKeyboxFiles.computeIfAbsent(box.filename, k -> new ArrayList<>()).add(box);
         }
 
         int ecCount = newKeyboxes.getOrDefault(KeyProperties.KEY_ALGORITHM_EC, Collections.emptyList()).size();
         int rsaCount = newKeyboxes.getOrDefault(KeyProperties.KEY_ALGORITHM_RSA, Collections.emptyList()).size();
         Logger.i("update keyboxes: total=" + boxes.size() + " (EC=" + ecCount + ", RSA=" + rsaCount + ")");
 
-        state = new State(newKeyboxes);
+        state = new State(newKeyboxes, newKeyboxFiles);
     }
 
     public static void readFromXml(Reader reader) {
@@ -298,6 +307,20 @@ public final class CertHack {
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
             boolean moduleHashAdded = false;
 
+            // Check for ID Attestation overrides
+            Map<Integer, byte[]> idAttestationTags = new HashMap<>();
+            String[] tags = {"BRAND", "DEVICE", "PRODUCT", "SERIAL", "IMEI", "MEID", "MANUFACTURER", "MODEL"};
+            int[] tagIds = {710, 711, 712, 713, 714, 715, 716, 717};
+            boolean hasIdAttestation = false;
+
+            for (int i = 0; i < tags.length; i++) {
+                byte[] val = Config.INSTANCE.getAttestationId(tags[i], uid);
+                if (val != null) {
+                    idAttestationTags.put(tagIds[i], val);
+                    hasIdAttestation = true;
+                }
+            }
+
             for (ASN1Encodable asn1Encodable : teeEnforced) {
                 ASN1TaggedObject taggedObject = (ASN1TaggedObject) asn1Encodable;
                 int tag = taggedObject.getTagNo();
@@ -309,10 +332,23 @@ public final class CertHack {
                 if (tag == 724 || tag == 706) {
                     continue;
                 }
+                // Filter ID Attestation tags if we are overriding
+                if (hasIdAttestation && (tag >= 710 && tag <= 717)) {
+                    continue;
+                }
                 vector.add(taggedObject);
             }
             // Add spoofed patch level
             vector.add(new DERTaggedObject(true, 706, new ASN1Integer(patchLevel)));
+
+            // Add spoofed ID Attestation tags
+            if (hasIdAttestation) {
+                List<Integer> sortedTags = new ArrayList<>(idAttestationTags.keySet());
+                Collections.sort(sortedTags);
+                for (Integer tag : sortedTags) {
+                    vector.add(new DERTaggedObject(true, tag, new DEROctetString(idAttestationTags.get(tag))));
+                }
+            }
 
             if (moduleHash == null) {
                 String moduleHashStr = Config.INSTANCE.getBuildVar("MODULE_HASH");
@@ -334,7 +370,21 @@ public final class CertHack {
             ContentSigner signer;
 
             String leafAlgo = leaf.getPublicKey().getAlgorithm();
-            var list = currentState.keyboxes.get(leafAlgo);
+
+            // App-specific keybox selection
+            List<KeyBox> list = null;
+            var appConfig = Config.INSTANCE.getAppConfig(uid);
+            if (appConfig != null && appConfig.getKeyboxFilename() != null) {
+                list = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+                if (list == null || list.isEmpty()) {
+                    Logger.e("App requested keybox " + appConfig.getKeyboxFilename() + " but it's not loaded/valid.");
+                }
+            }
+
+            if (list == null || list.isEmpty()) {
+                list = currentState.keyboxes.get(leafAlgo);
+            }
+
             if (list == null || list.isEmpty())
                 throw new UnsupportedOperationException("unsupported algorithm " + leafAlgo);
 
@@ -439,7 +489,16 @@ public final class CertHack {
             }
 
             if (keyAlgo != null) {
-                List<KeyBox> list = currentState.keyboxes.get(keyAlgo);
+                // App specific check
+                var appConfig = Config.INSTANCE.getAppConfig(uid);
+                List<KeyBox> list = null;
+                if (appConfig != null && appConfig.getKeyboxFilename() != null) {
+                     list = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+                }
+                if (list == null || list.isEmpty()) {
+                     list = currentState.keyboxes.get(keyAlgo);
+                }
+
                 if (list != null && !list.isEmpty()) {
                     int idx = (rotationCounters.get(keyAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
                     keyBox = list.get(idx);
@@ -450,6 +509,24 @@ public final class CertHack {
                 Logger.e("UNSUPPORTED ALGORITHM or NO KEYBOX: " + algo);
                 return null;
             }
+
+            // Inject ID attestation overrides
+            byte[] brand = Config.INSTANCE.getAttestationId("BRAND", uid);
+            if (brand != null) params.brand = brand;
+            byte[] device = Config.INSTANCE.getAttestationId("DEVICE", uid);
+            if (device != null) params.device = device;
+            byte[] product = Config.INSTANCE.getAttestationId("PRODUCT", uid);
+            if (product != null) params.product = product;
+            byte[] manufacturer = Config.INSTANCE.getAttestationId("MANUFACTURER", uid);
+            if (manufacturer != null) params.manufacturer = manufacturer;
+            byte[] model = Config.INSTANCE.getAttestationId("MODEL", uid);
+            if (model != null) params.model = model;
+            byte[] serial = Config.INSTANCE.getAttestationId("SERIAL", uid);
+            if (serial != null) params.serial = serial;
+            byte[] imei = Config.INSTANCE.getAttestationId("IMEI", uid);
+            if (imei != null) params.imei = imei;
+            byte[] meid = Config.INSTANCE.getAttestationId("MEID", uid);
+            if (meid != null) params.meid = meid;
 
             List<Certificate> signingChain;
             if (issuerKeyPair != null && issuerChain != null && !issuerChain.isEmpty()) {
@@ -587,18 +664,21 @@ public final class CertHack {
 
             // Support device properties attestation
             if (params.brand != null) {
-                var Abrand = new DEROctetString(params.brand);
-                var Adevice = new DEROctetString(params.device);
-                var Aproduct = new DEROctetString(params.product);
-                var Amanufacturer = new DEROctetString(params.manufacturer);
-                var Amodel = new DEROctetString(params.model);
-                var brand = new DERTaggedObject(true, 710, Abrand);
-                var device = new DERTaggedObject(true, 711, Adevice);
-                var product = new DERTaggedObject(true, 712, Aproduct);
-                var manufacturer = new DERTaggedObject(true, 716, Amanufacturer);
-                var model = new DERTaggedObject(true, 717, Amodel);
+                teeEnforcedList.add(new DERTaggedObject(true, 710, new DEROctetString(params.brand)));
+                teeEnforcedList.add(new DERTaggedObject(true, 711, new DEROctetString(params.device)));
+                teeEnforcedList.add(new DERTaggedObject(true, 712, new DEROctetString(params.product)));
+                teeEnforcedList.add(new DERTaggedObject(true, 716, new DEROctetString(params.manufacturer)));
+                teeEnforcedList.add(new DERTaggedObject(true, 717, new DEROctetString(params.model)));
+            }
 
-                teeEnforcedList.addAll(Arrays.asList(brand, device, product, manufacturer, model));
+            if (params.serial != null) {
+                teeEnforcedList.add(new DERTaggedObject(true, 713, new DEROctetString(params.serial)));
+            }
+            if (params.imei != null) {
+                teeEnforcedList.add(new DERTaggedObject(true, 714, new DEROctetString(params.imei)));
+            }
+            if (params.meid != null) {
+                teeEnforcedList.add(new DERTaggedObject(true, 715, new DEROctetString(params.meid)));
             }
 
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
@@ -725,7 +805,7 @@ public final class CertHack {
         }
     }
 
-    record KeyBox(KeyPair keyPair, List<Certificate> certificates) {
+    public record KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
     }
 
     public static class KeyGenParameters {
@@ -754,6 +834,9 @@ public final class CertHack {
         public byte[] product;
         public byte[] manufacturer;
         public byte[] model;
+        public byte[] serial;
+        public byte[] imei;
+        public byte[] meid;
 
         public KeyGenParameters(KeyParameter[] params) {
             for (var kp : params) {
@@ -789,6 +872,9 @@ public final class CertHack {
                     case Tag.ATTESTATION_ID_PRODUCT -> product = p.getBlob();
                     case Tag.ATTESTATION_ID_MANUFACTURER -> manufacturer = p.getBlob();
                     case Tag.ATTESTATION_ID_MODEL -> model = p.getBlob();
+                    case Tag.ATTESTATION_ID_SERIAL -> serial = p.getBlob();
+                    case Tag.ATTESTATION_ID_IMEI -> imei = p.getBlob();
+                    case Tag.ATTESTATION_ID_MEID -> meid = p.getBlob();
                 }
             }
         }
