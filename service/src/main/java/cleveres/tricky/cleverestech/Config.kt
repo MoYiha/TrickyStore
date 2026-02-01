@@ -332,18 +332,55 @@ object Config {
     }
 
     fun getBuildVar(key: String): String? {
-        return buildVars[key]
+        return buildVars[key] ?: spoofedProperties[key]
     }
 
     fun getBuildVar(key: String, uid: Int): String? {
         val appConfig = getAppConfig(uid)
-        if (appConfig?.template != null) {
-            val template = templates[appConfig.template]
-            if (template != null && template.containsKey(key)) {
+        val template = if (appConfig?.template != null) templates[appConfig.template] else null
+
+        if (template != null) {
+            // 1. Direct match in template
+            if (template.containsKey(key)) {
                 return template[key]
             }
+            // 2. Smart mapping to template keys
+            val mapped = mapPropertyToTemplate(key, template)
+            if (mapped != null) return mapped
         }
-        return buildVars[key]
+
+        // 3. Global build vars or default spoofed properties
+        return buildVars[key] ?: spoofedProperties[key]
+    }
+
+    private fun mapPropertyToTemplate(key: String, template: Map<String, String>): String? {
+        return when {
+            // Fingerprint
+            key.endsWith("fingerprint") -> template["FINGERPRINT"]
+            // Security Patch
+            key.endsWith("security_patch") -> template["SECURITY_PATCH"]
+            // Model
+            key.endsWith("model") -> template["MODEL"]
+            // Brand
+            key.endsWith("brand") -> template["BRAND"]
+            // Manufacturer
+            key.endsWith("manufacturer") -> template["MANUFACTURER"]
+            // Device
+            key.endsWith("device") -> template["DEVICE"]
+            // Product
+            key.endsWith("product") || key.endsWith("name") -> template["PRODUCT"]
+            // ID
+            key.endsWith("build.id") || key.endsWith("display.id") -> template["ID"]
+            // Release
+            key.endsWith("version.release") || key.endsWith("version.release_or_codename") -> template["RELEASE"]
+            // Incremental
+            key.endsWith("version.incremental") -> template["INCREMENTAL"]
+            // Type
+            key.endsWith("build.type") -> template["TYPE"]
+            // Tags
+            key.endsWith("build.tags") -> template["TAGS"]
+            else -> null
+        }
     }
 
     internal fun updateBuildVars(f: File?) = runCatching {
