@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.security.auth.x500.X500Principal;
 
@@ -96,18 +97,21 @@ public final class CertHack {
     private static final CertificateFactory certificateFactory;
 
     private static class State {
-        final Map<String, KeyBox> keyboxes;
+        final Map<String, List<KeyBox>> keyboxes;
         final Map<CacheKey, Certificate[]> certificateCache;
 
-        State(Map<String, KeyBox> keyboxes) {
+        State(Map<String, List<KeyBox>> keyboxes) {
             this.keyboxes = keyboxes;
             this.certificateCache = Collections.synchronizedMap(new HashMap<>());
         }
     }
 
     private static volatile State state = new State(Collections.emptyMap());
+    private static final Map<String, AtomicInteger> rotationCounters = new HashMap<>();
 
     static {
+        rotationCounters.put(KeyProperties.KEY_ALGORITHM_EC, new AtomicInteger(0));
+        rotationCounters.put(KeyProperties.KEY_ALGORITHM_RSA, new AtomicInteger(0));
         try {
             certificateFactory = CertificateFactory.getInstance("X.509");
         } catch (Throwable t) {
@@ -123,7 +127,11 @@ public final class CertHack {
     }
 
     public static int getKeyboxCount() {
-        return state.keyboxes.size();
+        int count = 0;
+        for (List<KeyBox> list : state.keyboxes.values()) {
+            count += list.size();
+        }
+        return count;
     }
 
     private static PEMKeyPair parseKeyPair(String key) throws Throwable {
@@ -185,25 +193,28 @@ public final class CertHack {
         }
     }
 
-    public static void readFromXml(Reader reader) {
-        if (reader == null) {
-            Logger.i("clear all keyboxes");
-            state = new State(Collections.emptyMap());
-            return;
-        }
-
-        Map<String, KeyBox> newKeyboxes = new HashMap<>();
+    public static List<KeyBox> parseKeyboxXml(Reader reader) {
+        if (reader == null) return Collections.emptyList();
+        List<KeyBox> parsedList = new ArrayList<>();
         try {
             XMLParser xmlParser = new XMLParser(reader);
-            int numberOfKeyboxes = Integer.parseInt(Objects.requireNonNull(xmlParser.obtainPath(
-                    "AndroidAttestation.NumberOfKeyboxes").get("text")));
+            var numPath = xmlParser.obtainPath("AndroidAttestation.NumberOfKeyboxes");
+            if (numPath == null || numPath.get("text") == null) {
+                return Collections.emptyList();
+            }
+            int numberOfKeyboxes = Integer.parseInt(Objects.requireNonNull(numPath.get("text")));
+
             for (int i = 0; i < numberOfKeyboxes; i++) {
                 String keyboxAlgorithm = xmlParser.obtainPath(
                         "AndroidAttestation.Keybox.Key[" + i + "]").get("algorithm");
                 String privateKey = xmlParser.obtainPath(
                         "AndroidAttestation.Keybox.Key[" + i + "].PrivateKey").get("text");
-                int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(xmlParser.obtainPath(
-                        "AndroidAttestation.Keybox.Key[" + i + "].CertificateChain.NumberOfCertificates").get("text")));
+
+                var numCertsPath = xmlParser.obtainPath(
+                        "AndroidAttestation.Keybox.Key[" + i + "].CertificateChain.NumberOfCertificates");
+                if (numCertsPath == null || numCertsPath.get("text") == null) continue;
+
+                int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsPath.get("text")));
 
                 LinkedList<Certificate> certificateChain = new LinkedList<>();
                 for (int j = 0; j < numberOfCertificates; j++) {
@@ -212,24 +223,49 @@ public final class CertHack {
                     certificateChain.add(parseCert(certPem));
                 }
 
-                String algo;
-                if (keyboxAlgorithm != null && keyboxAlgorithm.equalsIgnoreCase("ecdsa")) {
-                    algo = KeyProperties.KEY_ALGORITHM_EC;
-                } else {
-                    algo = KeyProperties.KEY_ALGORITHM_RSA;
-                }
+                // Verify keys
                 var pemKp = parseKeyPair(privateKey);
                 var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
-                newKeyboxes.put(algo, new KeyBox(kp, certificateChain));
+                parsedList.add(new KeyBox(kp, certificateChain));
             }
-            Logger.i("update " + numberOfKeyboxes + " keyboxes");
-            state = new State(newKeyboxes);
+            return parsedList;
         } catch (Throwable t) {
-            // Do not log the exception details as it might contain sensitive data from the keybox file.
-            // Only log the exception type to avoid leaking private keys from XML snippets in the message.
-            Logger.e("Error loading xml file (keyboxes cleared): " + t.getClass().getName());
-            state = new State(Collections.emptyMap());
+            Logger.e("Error parsing xml: " + t.getClass().getName());
         }
+        return Collections.emptyList();
+    }
+
+    public static void setKeyboxes(List<KeyBox> boxes) {
+        if (boxes == null || boxes.isEmpty()) {
+            Logger.i("clear all keyboxes");
+            state = new State(Collections.emptyMap());
+            return;
+        }
+
+        Map<String, List<KeyBox>> newKeyboxes = new HashMap<>();
+        for (KeyBox box : boxes) {
+            String algo = box.keyPair.getPublic().getAlgorithm();
+            if ("ECDSA".equalsIgnoreCase(algo) || "EC".equalsIgnoreCase(algo)) {
+                algo = KeyProperties.KEY_ALGORITHM_EC;
+            } else {
+                algo = KeyProperties.KEY_ALGORITHM_RSA;
+            }
+            newKeyboxes.computeIfAbsent(algo, k -> new ArrayList<>()).add(box);
+        }
+
+        int ecCount = newKeyboxes.getOrDefault(KeyProperties.KEY_ALGORITHM_EC, Collections.emptyList()).size();
+        int rsaCount = newKeyboxes.getOrDefault(KeyProperties.KEY_ALGORITHM_RSA, Collections.emptyList()).size();
+        Logger.i("update keyboxes: total=" + boxes.size() + " (EC=" + ecCount + ", RSA=" + rsaCount + ")");
+
+        state = new State(newKeyboxes);
+    }
+
+    public static void readFromXml(Reader reader) {
+        if (reader == null) {
+            setKeyboxes(Collections.emptyList());
+            return;
+        }
+        setKeyboxes(parseKeyboxXml(reader));
     }
 
     public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
@@ -297,9 +333,14 @@ public final class CertHack {
             X509v3CertificateBuilder builder;
             ContentSigner signer;
 
-            var k = currentState.keyboxes.get(leaf.getPublicKey().getAlgorithm());
-            if (k == null)
-                throw new UnsupportedOperationException("unsupported algorithm " + leaf.getPublicKey().getAlgorithm());
+            String leafAlgo = leaf.getPublicKey().getAlgorithm();
+            var list = currentState.keyboxes.get(leafAlgo);
+            if (list == null || list.isEmpty())
+                throw new UnsupportedOperationException("unsupported algorithm " + leafAlgo);
+
+            int idx = (rotationCounters.get(leafAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
+            var k = list.get(idx);
+
             certificates = new LinkedList<>(k.certificates);
             builder = new X509v3CertificateBuilder(
                     new X509CertificateHolder(
@@ -385,17 +426,28 @@ public final class CertHack {
         try {
             State currentState = state;
             var algo = params.algorithm;
+            String keyAlgo = null;
+
             if (algo == Algorithm.EC) {
                 Logger.d("GENERATING EC KEYPAIR OF SIZE " + size);
                 kp = buildECKeyPair(params);
-                keyBox = currentState.keyboxes.get(KeyProperties.KEY_ALGORITHM_EC);
+                keyAlgo = KeyProperties.KEY_ALGORITHM_EC;
             } else if (algo == Algorithm.RSA) {
                 Logger.d("GENERATING RSA KEYPAIR OF SIZE " + size);
                 kp = buildRSAKeyPair(params);
-                keyBox = currentState.keyboxes.get(KeyProperties.KEY_ALGORITHM_RSA);
+                keyAlgo = KeyProperties.KEY_ALGORITHM_RSA;
             }
+
+            if (keyAlgo != null) {
+                List<KeyBox> list = currentState.keyboxes.get(keyAlgo);
+                if (list != null && !list.isEmpty()) {
+                    int idx = (rotationCounters.get(keyAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
+                    keyBox = list.get(idx);
+                }
+            }
+
             if (keyBox == null) {
-                Logger.e("UNSUPPORTED ALGORITHM: " + algo);
+                Logger.e("UNSUPPORTED ALGORITHM or NO KEYBOX: " + algo);
                 return null;
             }
 

@@ -123,16 +123,37 @@ object Config {
 
     private var keyboxPoller: FilePoller? = null
 
-    // Stream file content to avoid large String allocation and explicit GC
-    private fun updateKeyBox(f: File?) = runCatching {
-        if (f == null) {
-            CertHack.readFromXml(null)
-        } else {
-            f.bufferedReader().use { CertHack.readFromXml(it) }
+    private fun updateKeyBoxes() = runCatching {
+        val allKeyboxes = ArrayList<CertHack.KeyBox>()
+
+        // 1. Legacy keybox.xml
+        val legacyFile = File(root, KEYBOX_FILE)
+        if (legacyFile.exists()) {
+             legacyFile.bufferedReader().use { reader ->
+                 allKeyboxes.addAll(CertHack.parseKeyboxXml(reader))
+             }
         }
+
+        // 2. Directory files
+        if (keyboxDir.exists() && keyboxDir.isDirectory) {
+            val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+            files?.forEach { file ->
+                try {
+                    file.bufferedReader().use { reader ->
+                        allKeyboxes.addAll(CertHack.parseKeyboxXml(reader))
+                    }
+                } catch (e: Exception) {
+                    Logger.e("Failed to parse keybox file: ${file.name}", e)
+                }
+            }
+        }
+
+        CertHack.setKeyboxes(allKeyboxes)
+
+        // Update poller for legacy file consistency
         keyboxPoller?.updateLastModified()
     }.onFailure {
-        Logger.e("failed to update keybox", it)
+        Logger.e("failed to update keyboxes", it)
     }
 
     private fun updateGlobalMode(f: File?) {
@@ -341,6 +362,7 @@ object Config {
     }
 
     private const val CONFIG_PATH = "/data/adb/cleverestricky"
+    private const val KEYBOX_DIR = "keyboxes"
     private const val TARGET_FILE = "target.txt"
     private const val KEYBOX_FILE = "keybox.xml"
     private const val GLOBAL_MODE_FILE = "global_mode"
@@ -351,6 +373,7 @@ object Config {
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
     private const val REMOTE_KEYS_FILE = "remote_keys.xml"
     private val root = File(CONFIG_PATH)
+    private val keyboxDir = File(root, KEYBOX_DIR)
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
         override fun onEvent(event: Int, path: String?) {
@@ -362,7 +385,7 @@ object Config {
             }
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
-                KEYBOX_FILE -> updateKeyBox(f)
+                KEYBOX_FILE -> updateKeyBoxes()
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
                 REMOTE_KEYS_FILE -> RemoteKeyManager.update(f)
@@ -383,10 +406,19 @@ object Config {
         }
     }
 
+    object KeyboxDirObserver : FileObserver(keyboxDir, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
+        override fun onEvent(event: Int, path: String?) {
+             Logger.i("Keybox directory event: $path")
+             updateKeyBoxes()
+        }
+    }
+
     fun initialize() {
         root.mkdirs()
+        keyboxDir.mkdirs()
         try {
             Os.chmod(root.absolutePath, 448) // 0700
+            Os.chmod(keyboxDir.absolutePath, 448) // 0700
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }
@@ -405,17 +437,15 @@ object Config {
                 Logger.e("target.txt file not found, please put it to $scope !")
             }
         }
-        val keybox = File(root, KEYBOX_FILE)
-        if (!keybox.exists()) {
-            Logger.e("keybox file not found, please put it to $keybox !")
-        } else {
-            updateKeyBox(keybox)
-        }
+
+        updateKeyBoxes()
+
         ConfigObserver.startWatching()
+        KeyboxDirObserver.startWatching()
         keyboxPoller?.stop()
         keyboxPoller = FilePoller(File(root, KEYBOX_FILE), 5000) {
             Logger.i("Detected keybox change via polling")
-            updateKeyBox(it)
+            updateKeyBoxes()
         }
         keyboxPoller?.start()
     }
