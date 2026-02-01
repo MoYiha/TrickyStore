@@ -94,7 +94,7 @@ public class CborEncoder {
         }
     }
 
-    private static void encodeInteger(ByteArrayOutputStream os, long value) {
+    private static void encodeInteger(ByteArrayOutputStream os, long value) throws IOException {
         if (value >= 0) {
             encodeTypeAndLength(os, MT_UNSIGNED, value);
         } else {
@@ -102,33 +102,42 @@ public class CborEncoder {
         }
     }
 
-    private static void encodeTypeAndLength(ByteArrayOutputStream os, int majorType, long value) {
+    // Optimization: Batch writes to reduce synchronization overhead of ByteArrayOutputStream
+    private static void encodeTypeAndLength(ByteArrayOutputStream os, int majorType, long value) throws IOException {
         int mt = majorType << 5;
         if (value < 24) {
             os.write(mt | (int) value);
         } else if (value <= 0xFF) {
-            os.write(mt | 24);
-            os.write((int) value);
+            byte[] buf = new byte[2];
+            buf[0] = (byte) (mt | 24);
+            buf[1] = (byte) value;
+            os.write(buf);
         } else if (value <= 0xFFFF) {
-            os.write(mt | 25);
-            os.write((int) (value >> 8));
-            os.write((int) (value & 0xFF));
+            byte[] buf = new byte[3];
+            buf[0] = (byte) (mt | 25);
+            buf[1] = (byte) (value >> 8);
+            buf[2] = (byte) value;
+            os.write(buf);
         } else if (value <= 0xFFFFFFFFL) {
-            os.write(mt | 26);
-            os.write((int) (value >> 24));
-            os.write((int) (value >> 16));
-            os.write((int) (value >> 8));
-            os.write((int) (value & 0xFF));
+            byte[] buf = new byte[5];
+            buf[0] = (byte) (mt | 26);
+            buf[1] = (byte) (value >> 24);
+            buf[2] = (byte) (value >> 16);
+            buf[3] = (byte) (value >> 8);
+            buf[4] = (byte) value;
+            os.write(buf);
         } else {
-            os.write(mt | 27);
-            os.write((int) (value >> 56));
-            os.write((int) (value >> 48));
-            os.write((int) (value >> 40));
-            os.write((int) (value >> 32));
-            os.write((int) (value >> 24));
-            os.write((int) (value >> 16));
-            os.write((int) (value >> 8));
-            os.write((int) (value & 0xFF));
+            byte[] buf = new byte[9];
+            buf[0] = (byte) (mt | 27);
+            buf[1] = (byte) (value >> 56);
+            buf[2] = (byte) (value >> 48);
+            buf[3] = (byte) (value >> 40);
+            buf[4] = (byte) (value >> 32);
+            buf[5] = (byte) (value >> 24);
+            buf[6] = (byte) (value >> 16);
+            buf[7] = (byte) (value >> 8);
+            buf[8] = (byte) value;
+            os.write(buf);
         }
     }
 }
