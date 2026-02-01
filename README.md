@@ -236,6 +236,9 @@ sh /data/adb/modules/cleverestricky/security_patch.sh --disable
 
 Contributions welcome.
 
+**Under Development:**
+See the `Features for the future` file for upcoming application-specific spoofing capabilities.
+
 ## Acknowledgements
 
 - [PlayIntegrityFix](https://github.com/chiteroman/PlayIntegrityFix)
