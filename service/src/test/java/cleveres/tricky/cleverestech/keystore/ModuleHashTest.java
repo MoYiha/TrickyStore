@@ -92,8 +92,8 @@ public class ModuleHashTest {
         CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert));
 
         // Create new state via reflection
-        Map<String, CertHack.KeyBox> newKeyboxes = new java.util.HashMap<>();
-        newKeyboxes.put("RSA", keyBox);
+        Map<String, List<CertHack.KeyBox>> newKeyboxes = new java.util.HashMap<>();
+        newKeyboxes.put("RSA", Collections.singletonList(keyBox));
 
         Class<?> stateClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack$State");
         Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class);
