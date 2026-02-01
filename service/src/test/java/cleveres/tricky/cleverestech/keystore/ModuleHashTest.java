@@ -89,16 +89,19 @@ public class ModuleHashTest {
         X509Certificate cert = generateSelfSignedCert(kp);
 
         // Inject keybox
-        CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert));
+        CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert), "test.xml");
 
         // Create new state via reflection
         Map<String, List<CertHack.KeyBox>> newKeyboxes = new java.util.HashMap<>();
         newKeyboxes.put("RSA", Collections.singletonList(keyBox));
 
+        Map<String, List<CertHack.KeyBox>> newKeyboxFiles = new java.util.HashMap<>();
+        newKeyboxFiles.put("test.xml", Collections.singletonList(keyBox));
+
         Class<?> stateClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack$State");
-        Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class);
+        Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class, Map.class);
         ctor.setAccessible(true);
-        Object newState = ctor.newInstance(newKeyboxes);
+        Object newState = ctor.newInstance(newKeyboxes, newKeyboxFiles);
 
         Field stateField = CertHack.class.getDeclaredField("state");
         stateField.setAccessible(true);
