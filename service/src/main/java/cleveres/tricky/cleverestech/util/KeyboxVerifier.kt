@@ -59,24 +59,33 @@ object KeyboxVerifier {
             }
 
             val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+            parseCrl(jsonStr)
+        } catch (e: Exception) {
+            Logger.e("Failed to fetch CRL", e)
+            null
+        }
+    }
+
+    fun parseCrl(jsonStr: String): Set<String> {
+        return try {
             val json = JSONObject(jsonStr)
-            val entries = json.optJSONArray("entries") ?: return emptySet()
+            val entries = json.optJSONObject("entries") ?: return emptySet()
 
             val set = HashSet<String>(entries.length())
-            for (i in 0 until entries.length()) {
-                // Convert decimal string to hex string to match cert.serialNumber.toString(16)
+            val keys = entries.keys()
+            while (keys.hasNext()) {
+                val decStr = keys.next()
                 try {
-                    val decStr = entries.getString(i)
                     val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
                     set.add(hexStr)
                 } catch (e: Exception) {
-                    Logger.e("Failed to parse CRL entry: ${entries.getString(i)}")
+                    Logger.e("Failed to parse CRL entry key: $decStr")
                 }
             }
             set
         } catch (e: Exception) {
-            Logger.e("Failed to fetch CRL", e)
-            null
+            Logger.e("Failed to parse CRL JSON", e)
+            emptySet()
         }
     }
 
