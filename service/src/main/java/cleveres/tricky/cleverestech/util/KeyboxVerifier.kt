@@ -79,7 +79,12 @@ object KeyboxVerifier {
                     val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
                     set.add(hexStr)
                 } catch (e: Exception) {
-                    Logger.e("Failed to parse CRL entry key: $decStr")
+                    // It might be a hex string already (e.g. c3574...)
+                    if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                        set.add(decStr.lowercase())
+                    } else {
+                        Logger.e("Failed to parse CRL entry key: $decStr")
+                    }
                 }
             }
             set

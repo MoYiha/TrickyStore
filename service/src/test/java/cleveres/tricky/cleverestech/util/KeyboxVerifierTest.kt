@@ -30,4 +30,28 @@ class KeyboxVerifierTest {
         assertTrue("Should contain 5cb838f1fe157a85 but got $revoked", revoked.contains("5cb838f1fe157a85"))
         assertTrue("Should contain 3039 but got $revoked", revoked.contains("3039"))
     }
+
+    @Test
+    fun testParseCrl_WithHexStrings() {
+        // CRL containing both Decimal and Hex keys
+        // "6681152659205225093" -> 5cb838f1fe157a85 (Decimal)
+        // "c35747a084470c3135aeefe2b8d40cd6" -> (Hex)
+        val json = """
+        {
+          "entries": {
+            "6681152659205225093" : {
+              "status": "REVOKED"
+            },
+            "c35747a084470c3135aeefe2b8d40cd6" : {
+              "status": "REVOKED"
+            }
+          }
+        }
+        """.trimIndent()
+
+        val revoked = KeyboxVerifier.parseCrl(json)
+
+        assertTrue("Should contain decimal-converted key", revoked.contains("5cb838f1fe157a85"))
+        assertTrue("Should contain hex key", revoked.contains("c35747a084470c3135aeefe2b8d40cd6"))
+    }
 }
