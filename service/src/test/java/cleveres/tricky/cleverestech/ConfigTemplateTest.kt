@@ -1,10 +1,23 @@
 package cleveres.tricky.cleverestech
 
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 
 class ConfigTemplateTest {
+
+    @Before
+    fun setUp() {
+        val tempDir = java.nio.file.Files.createTempDirectory("test_config_template").toFile()
+        tempDir.deleteOnExit()
+
+        // Initialize DeviceTemplateManager with built-ins
+        DeviceTemplateManager.initialize(tempDir)
+
+        // Force Config to reload templates from Manager
+        Config.updateCustomTemplates(null)
+    }
 
     @Test
     fun testUpdateBuildVars_withTemplate() {

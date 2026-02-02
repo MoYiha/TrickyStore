@@ -341,14 +341,14 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
     <!-- DASHBOARD -->
     <div id="dashboard" class="content active">
         <div class="panel">
-            <div class="row"><label>Global Mode</label><input type="checkbox" id="global_mode" onchange="toggle('global_mode')"></div>
-            <div class="row"><label>TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
-            <div class="row"><label>RKP Bypass (Strong)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
-            <div class="row"><label>Auto Beta Fetch</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
-            <div class="row"><label>Auto Keybox Check</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
+            <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" id="global_mode" onchange="toggle('global_mode')"></div>
+            <div class="row"><label for="tee_broken_mode">TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
+            <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
+            <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
+            <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
             <div class="row" style="margin-top:20px;">
-                <div id="keyboxStatus">Loading keys...</div>
-                <button onclick="reloadConfig()">RELOAD CONFIG</button>
+                <div id="keyboxStatus" aria-live="polite">Loading keys...</div>
+                <button onclick="reloadConfig()" id="reloadBtn">RELOAD CONFIG</button>
             </div>
         </div>
     </div>
@@ -432,15 +432,15 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
     <!-- EDITOR -->
     <div id="editor" class="content">
         <div class="panel">
-            <select id="fileSelector" onchange="loadFile()">
+            <select id="fileSelector" onchange="loadFile()" aria-label="Select configuration file">
                 <option value="target.txt">target.txt</option>
                 <option value="security_patch.txt">security_patch.txt</option>
                 <option value="spoof_build_vars">spoof_build_vars</option>
                 <option value="custom_templates">custom_templates</option>
                 <option value="templates.json">templates.json</option>
             </select>
-            <textarea id="fileEditor" style="height:400px; margin-top:10px;"></textarea>
-            <button onclick="saveFile()" style="width:100%; margin-top:10px;">SAVE FILE</button>
+            <textarea id="fileEditor" style="height:400px; margin-top:10px;" aria-label="Configuration editor"></textarea>
+            <button onclick="saveFile()" style="width:100%; margin-top:10px;" id="saveBtn">SAVE FILE</button>
         </div>
     </div>
 
@@ -506,13 +506,15 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
 
         async function toggle(setting) {
             const el = document.getElementById(setting);
+            el.disabled = true;
             try {
                 await fetch(getAuthUrl('/api/toggle'), {
                     method: 'POST',
                     body: new URLSearchParams({setting, value: el.checked})
                 });
-                showToast('Updated');
-            } catch(e) { el.checked = !el.checked; showToast('Error'); }
+                showToast('SETTING UPDATED');
+            } catch(e) { el.checked = !el.checked; showToast('UPDATE FAILED'); }
+            finally { el.disabled = false; }
         }
 
         function previewTemplate() {
