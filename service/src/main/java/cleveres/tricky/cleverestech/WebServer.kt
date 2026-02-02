@@ -236,17 +236,8 @@ class WebServer(
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
                 val results = KeyboxVerifier.verify(File(configDir, "keyboxes"))
-                val sb = StringBuilder("[")
-                results.forEachIndexed { index, res ->
-                    if (index > 0) sb.append(",")
-                    sb.append("{")
-                    sb.append("\"filename\": \"${res.filename}\",")
-                    sb.append("\"status\": \"${res.status}\",")
-                    sb.append("\"details\": \"${res.details}\"")
-                    sb.append("}")
-                }
-                sb.append("]")
-                return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString())
+                val json = createKeyboxVerificationJson(results)
+                return newFixedLengthResponse(Response.Status.OK, "application/json", json)
              } catch(e: Exception) {
                  return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
@@ -639,11 +630,14 @@ class WebServer(
              showToast('Verifying...');
              const res = await fetch(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
              const data = await res.json();
-             let html = '';
+             const container = document.getElementById('verifyResult');
+             container.innerHTML = '';
              data.forEach(d => {
-                 html += `<div style="color:${'$'}{d.status==='VALID'?'#0f0':'#f00'}">[${'$'}{d.status}] ${'$'}{d.filename}</div>`;
+                 const div = document.createElement('div');
+                 div.style.color = d.status === 'VALID' ? '#0f0' : '#f00';
+                 div.innerText = `[${'$'}{d.status}] ${'$'}{d.filename}`;
+                 container.appendChild(div);
              });
-             document.getElementById('verifyResult').innerHTML = html;
         }
 
         init();
@@ -651,5 +645,19 @@ class WebServer(
 </body>
 </html>
         """.trimIndent()
+    }
+
+    companion object {
+        fun createKeyboxVerificationJson(results: List<KeyboxVerifier.Result>): String {
+            val array = JSONArray()
+            results.forEach { res ->
+                val obj = JSONObject()
+                obj.put("filename", res.filename)
+                obj.put("status", res.status.toString())
+                obj.put("details", res.details)
+                array.put(obj)
+            }
+            return array.toString()
+        }
     }
 }

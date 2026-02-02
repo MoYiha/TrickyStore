@@ -86,6 +86,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(project(":stub"))
     testImplementation("net.sf.kxml:kxml2:2.3.0")
+    testImplementation("org.json:json:20240303")
     implementation(libs.nanohttpd)
 }
 
