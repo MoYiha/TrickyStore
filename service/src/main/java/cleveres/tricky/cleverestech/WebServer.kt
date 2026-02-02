@@ -355,7 +355,7 @@ class WebServer(
             <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
             <div class="row" style="margin-top:20px;">
                 <div id="keyboxStatus" aria-live="polite">Loading keys...</div>
-                <button onclick="reloadConfig()" id="reloadBtn">RELOAD CONFIG</button>
+                <button onclick="runWithState(this, 'RELOADING...', reloadConfig)" id="reloadBtn">RELOAD CONFIG</button>
             </div>
         </div>
     </div>
@@ -375,13 +375,13 @@ class WebServer(
             </div>
 
             <div class="row" style="margin-top:15px;">
-                <button onclick="applyTemplateToGlobal()">APPLY GLOBALLY</button>
+                <button onclick="runWithState(this, 'APPLYING...', applyTemplateToGlobal)">APPLY GLOBALLY</button>
                 <button class="primary" onclick="switchTab('apps')">USE IN APP CONFIG</button>
             </div>
         </div>
         <div class="panel">
             <h3>BETA FETCHER</h3>
-            <button onclick="fetchBetaNow()">FETCH LATEST PIXEL BETA</button>
+            <button onclick="runWithState(this, 'FETCHING...', fetchBetaNow)">FETCH LATEST PIXEL BETA</button>
         </div>
     </div>
 
@@ -414,7 +414,7 @@ class WebServer(
                 <tbody></tbody>
             </table>
             <div class="row" style="margin-top:15px; justify-content:flex-end;">
-                <button onclick="saveAppConfig()" class="primary">SAVE CHANGES</button>
+                <button onclick="runWithState(this, 'SAVING...', saveAppConfig)" class="primary">SAVE CHANGES</button>
             </div>
         </div>
     </div>
@@ -425,12 +425,12 @@ class WebServer(
             <h3>UPLOAD KEYBOX</h3>
             <input type="text" id="kbFilename" placeholder="filename.xml" aria-label="Keybox Filename">
             <textarea id="kbContent" placeholder="Paste XML content..." style="height:100px; margin-top:10px;" aria-label="Keybox Content"></textarea>
-            <button onclick="uploadKeybox()" style="width:100%; margin-top:10px;">UPLOAD</button>
+            <button onclick="runWithState(this, 'UPLOADING...', uploadKeybox)" style="width:100%; margin-top:10px;">UPLOAD</button>
         </div>
         <div class="panel">
             <div class="row">
                 <h3>VERIFICATION</h3>
-                <button onclick="verifyKeyboxes()">RUN CHECK</button>
+                <button onclick="runWithState(this, 'CHECKING...', verifyKeyboxes)">RUN CHECK</button>
             </div>
             <div id="verifyResult"></div>
         </div>
@@ -447,7 +447,7 @@ class WebServer(
                 <option value="templates.json">templates.json</option>
             </select>
             <textarea id="fileEditor" style="height:400px; margin-top:10px;" aria-label="Configuration editor"></textarea>
-            <button onclick="saveFile()" style="width:100%; margin-top:10px;" id="saveBtn">SAVE FILE</button>
+            <button onclick="runWithState(this, 'SAVING...', saveFile)" style="width:100%; margin-top:10px;" id="saveBtn">SAVE FILE</button>
         </div>
     </div>
 
@@ -464,6 +464,14 @@ class WebServer(
             t.innerText = msg;
             t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        async function runWithState(btn, text, task) {
+             const orig = btn.innerText;
+             btn.disabled = true;
+             btn.innerText = text;
+             try { await task(); }
+             finally { btn.disabled = false; btn.innerText = orig; }
         }
 
         function switchTab(id) {
