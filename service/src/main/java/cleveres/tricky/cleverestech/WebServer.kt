@@ -10,7 +10,17 @@ import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
-class WebServer(port: Int, private val configDir: File = File("/data/adb/cleverestricky")) : NanoHTTPD("127.0.0.1", port) {
+class WebServer(
+    port: Int,
+    private val configDir: File = File("/data/adb/cleverestricky"),
+    private val permissionSetter: (File, Int) -> Unit = { f, m ->
+        try {
+            Os.chmod(f.absolutePath, m)
+        } catch (t: Throwable) {
+            Logger.e("failed to set permissions for ${f.name}", t)
+        }
+    }
+) : NanoHTTPD("127.0.0.1", port) {
 
     val token = UUID.randomUUID().toString()
 
@@ -27,11 +37,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             val f = File(configDir, filename)
             f.writeText(content)
             // Ensure proper permissions (0600)
-            try {
-                Os.chmod(f.absolutePath, 384)
-            } catch (t: Throwable) {
-                Logger.e("failed to set permissions for $filename", t)
-            }
+            permissionSetter(f, 384)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -54,11 +60,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             if (enable) {
                 if (!f.exists()) {
                     f.createNewFile()
-                    try {
-                        Os.chmod(f.absolutePath, 384) // 0600
-                    } catch (t: Throwable) {
-                        Logger.e("failed to set permissions for $filename", t)
-                    }
+                    permissionSetter(f, 384) // 0600
                 }
             } else {
                 if (f.exists()) f.delete()
@@ -213,11 +215,15 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
 
              if (filename != null && content != null && filename.endsWith(".xml") && !filename.contains("/")) {
                  val keyboxDir = File(configDir, "keyboxes")
-                 if (!keyboxDir.exists()) keyboxDir.mkdirs()
+                 if (!keyboxDir.exists()) {
+                     keyboxDir.mkdirs()
+                     permissionSetter(keyboxDir, 448) // 0700
+                 }
 
                  val file = File(keyboxDir, filename)
                  try {
                      file.writeText(content)
+                     permissionSetter(file, 384) // 0600
                      return newFixedLengthResponse(Response.Status.OK, "text/plain", "Saved")
                  } catch (e: Exception) {
                      e.printStackTrace()
