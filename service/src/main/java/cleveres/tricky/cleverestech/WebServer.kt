@@ -325,6 +325,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
         th { color: #888; font-size: 0.8em; text-transform: uppercase; }
         .badge { display: inline-block; padding: 2px 6px; border: 1px solid #555; font-size: 0.7em; margin-right: 5px; }
+        *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </style>
 </head>
 <body>
@@ -384,7 +385,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
             <h3>ADD NEW RULE</h3>
             <div style="margin-bottom:10px;">
                 <label style="font-size:0.8em; color:#888;">TARGET PACKAGE</label>
-                <input type="text" id="appPkg" list="pkgList" placeholder="com.example.app">
+                <input type="text" id="appPkg" list="pkgList" placeholder="com.example.app" aria-label="Target Package">
                 <datalist id="pkgList"></datalist>
             </div>
             <div style="margin-bottom:10px;">
@@ -416,8 +417,8 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
     <div id="keys" class="content">
         <div class="panel">
             <h3>UPLOAD KEYBOX</h3>
-            <input type="text" id="kbFilename" placeholder="filename.xml">
-            <textarea id="kbContent" placeholder="Paste XML content..." style="height:100px; margin-top:10px;"></textarea>
+            <input type="text" id="kbFilename" placeholder="filename.xml" aria-label="Keybox Filename">
+            <textarea id="kbContent" placeholder="Paste XML content..." style="height:100px; margin-top:10px;" aria-label="Keybox Content"></textarea>
             <button onclick="uploadKeybox()" style="width:100%; margin-top:10px;">UPLOAD</button>
         </div>
         <div class="panel">
@@ -444,7 +445,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
         </div>
     </div>
 
-    <div id="toast" class="toast">Action Successful</div>
+    <div id="toast" class="toast" role="alert" aria-live="assertive">Action Successful</div>
 
     <script>
         const baseUrl = '/api';
@@ -544,7 +545,7 @@ class WebServer(port: Int, private val configDir: File = File("/data/adb/clevere
                     <td>${'$'}{rule.package}</td>
                     <td>${'$'}{rule.template || '-'}</td>
                     <td>${'$'}{rule.keybox || '-'}</td>
-                    <td><button onclick="removeAppRule(${'$'}{idx})" style="padding:2px 8px; font-size:0.8em;">DEL</button></td>
+                    <td><button onclick="removeAppRule(${'$'}{idx})" aria-label="Delete rule for ${'$'}{rule.package}" style="padding:2px 8px; font-size:0.8em;">DEL</button></td>
                 `;
                 tbody.appendChild(tr);
             });
