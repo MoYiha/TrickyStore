@@ -81,13 +81,13 @@ jobs:
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         id: check_release
         run: |
-          VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2 | sed 's/^v//')
+          VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2 | sed 's/^[vV]//')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists."
+          if git rev-parse "V$VERSION" >/dev/null 2>&1; then
+            echo "Tag V$VERSION already exists."
             echo "create_release=false" >> $GITHUB_OUTPUT
           else
-            echo "Tag v$VERSION does not exist."
+            echo "Tag V$VERSION does not exist."
             echo "create_release=true" >> $GITHUB_OUTPUT
           fi
 
@@ -96,18 +96,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ env.VERSION }}"
-          git push origin "v${{ env.VERSION }}"
+          git tag "V${{ env.VERSION }}"
+          git push origin "V${{ env.VERSION }}"
 
       - name: Generate Changelog
         if: steps.check_release.outputs.create_release == 'true'
         id: changelog
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 "v${{ env.VERSION }}^" 2>/dev/null || echo "")
+          PREV_TAG=$(git describe --tags --abbrev=0 "V${{ env.VERSION }}^" 2>/dev/null || echo "")
           if [ -z "$PREV_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "v${{ env.VERSION }}")
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "V${{ env.VERSION }}")
           else
-            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "$PREV_TAG..v${{ env.VERSION }}")
+            CHANGELOG=$(git log --pretty=format:"* %s (%h)" "$PREV_TAG..V${{ env.VERSION }}")
           fi
 
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
@@ -118,8 +118,8 @@ jobs:
         if: steps.check_release.outputs.create_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ env.VERSION }}"
-          name: "Release v${{ env.VERSION }}"
+          tag_name: "V${{ env.VERSION }}"
+          name: "Release V${{ env.VERSION }}"
           body: ${{ steps.changelog.outputs.changelog }}
           files: |
             module/release/*-release.zip
