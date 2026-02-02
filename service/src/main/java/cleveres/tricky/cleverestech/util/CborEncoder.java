@@ -66,7 +66,22 @@ public class CborEncoder {
                 Object k2 = e2.getKey();
                 // Compare Integers
                 if (k1 instanceof Integer && k2 instanceof Integer) {
-                    return Integer.compare((Integer) k1, (Integer) k2);
+                    int i1 = (Integer) k1;
+                    int i2 = (Integer) k2;
+                    // Check Major Types: Positive (MT0) < Negative (MT1)
+                    if (i1 >= 0 && i2 < 0) return -1;
+                    if (i1 < 0 && i2 >= 0) return 1;
+
+                    // Same Major Type
+                    if (i1 >= 0) {
+                        // Both positive: 1 < 2
+                        return Integer.compare(i1, i2);
+                    } else {
+                        // Both negative: -1 (0) < -2 (1).
+                        // Java compare(-1, -2) is 1. We want -1.
+                        // So reverse comparison.
+                        return Integer.compare(i2, i1);
+                    }
                 }
                 // Compare Strings
                 if (k1 instanceof String && k2 instanceof String) {
