@@ -599,12 +599,29 @@ class WebServer(
             tbody.innerHTML = '';
             appRules.forEach((rule, idx) => {
                 const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${'$'}{rule.package}</td>
-                    <td>${'$'}{rule.template || '-'}</td>
-                    <td>${'$'}{rule.keybox || '-'}</td>
-                    <td><button onclick="removeAppRule(${'$'}{idx})" aria-label="Delete rule for ${'$'}{rule.package}" style="padding:2px 8px; font-size:0.8em;">DEL</button></td>
-                `;
+
+                const tdPkg = document.createElement('td');
+                tdPkg.textContent = rule.package;
+                tr.appendChild(tdPkg);
+
+                const tdTmpl = document.createElement('td');
+                tdTmpl.textContent = rule.template || '-';
+                tr.appendChild(tdTmpl);
+
+                const tdKb = document.createElement('td');
+                tdKb.textContent = rule.keybox || '-';
+                tr.appendChild(tdKb);
+
+                const tdAction = document.createElement('td');
+                const btn = document.createElement('button');
+                btn.textContent = 'DEL';
+                btn.onclick = () => removeAppRule(idx);
+                btn.ariaLabel = `Delete rule for ${'$'}{rule.package}`;
+                btn.style.padding = '2px 8px';
+                btn.style.fontSize = '0.8em';
+                tdAction.appendChild(btn);
+                tr.appendChild(tdAction);
+
                 tbody.appendChild(tr);
             });
         }
@@ -697,6 +714,14 @@ class WebServer(
                  const div = document.createElement('div');
                  div.style.color = d.status === 'VALID' ? '#0f0' : '#f00';
                  div.innerText = `[${'$'}{d.status}] ${'$'}{d.filename}`;
+                 if (d.details) {
+                     const details = document.createElement('div');
+                     details.style.color = '#888';
+                     details.style.fontSize = '0.8em';
+                     details.style.marginLeft = '10px';
+                     details.innerText = d.details;
+                     div.appendChild(details);
+                 }
                  container.appendChild(div);
              });
         }
