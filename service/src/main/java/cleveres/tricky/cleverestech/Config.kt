@@ -369,12 +369,12 @@ object Config {
     }
 
     @Volatile
-    private var securityPatch: Map<String, String> = emptyMap()
-    private var defaultSecurityPatch: String? = null
+    private var securityPatch: Map<String, Any> = emptyMap()
+    private var defaultSecurityPatch: Any? = null
 
     fun getPatchLevel(callingUid: Int): Int {
         val defaultLevel = patchLevel
-        val patchStr = if (securityPatch.isNotEmpty()) {
+        val patchVal = if (securityPatch.isNotEmpty()) {
             // Use cached getPackages to avoid expensive IPC call
             val pkgName = getPackages(callingUid).firstOrNull()
             if (pkgName != null) {
@@ -386,8 +386,11 @@ object Config {
             defaultSecurityPatch
         }
 
-        if (patchStr == null) return defaultLevel
+        if (patchVal == null) return defaultLevel
 
+        if (patchVal is Int) return patchVal
+
+        val patchStr = patchVal as String
         val effectiveDate = if (patchStr.equals("today", ignoreCase = true)) {
             java.time.LocalDate.now().toString()
         } else if (patchStr.contains("YYYY") || patchStr.contains("MM") || patchStr.contains("DD")) {
@@ -403,17 +406,36 @@ object Config {
     }
 
     private fun updateSecurityPatch(f: File?) = runCatching {
-        val newPatch = mutableMapOf<String, String>()
-        var newDefault: String? = null
+        val newPatch = mutableMapOf<String, Any>()
+        var newDefault: Any? = null
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
                     val parts = line.split("=", limit = 2)
                     if (parts.size == 2) {
-                        newPatch[parts[0].trim()] = parts[1].trim()
+                        val key = parts[0].trim()
+                        val value = parts[1].trim()
+                        val preCalc = if (value.contains("today", ignoreCase = true) ||
+                                          value.contains("YYYY") ||
+                                          value.contains("MM") ||
+                                          value.contains("DD")) {
+                            null
+                        } else {
+                            runCatching { value.convertPatchLevel(false) }.getOrNull()
+                        }
+                        newPatch[key] = preCalc ?: value
                     } else if (parts.size == 1) {
                          // Assume it's the default if it looks like a date or keyword
-                         newDefault = parts[0].trim()
+                         val value = parts[0].trim()
+                         val preCalc = if (value.contains("today", ignoreCase = true) ||
+                                          value.contains("YYYY") ||
+                                          value.contains("MM") ||
+                                          value.contains("DD")) {
+                            null
+                        } else {
+                            runCatching { value.convertPatchLevel(false) }.getOrNull()
+                        }
+                         newDefault = preCalc ?: value
                     }
                 }
             }
