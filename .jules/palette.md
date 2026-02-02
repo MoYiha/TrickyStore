@@ -5,3 +5,7 @@
 ## 2024-05-23 - Async Feedback in Embedded WebUI
 **Learning:** Embedded WebUIs often lack native browser feedback. Users may double-submit actions if buttons don't immediately react.
 **Action:** Implement a reusable 'runWithState' pattern in JS to immediately disable buttons and show loading state during async operations.
+
+## 2026-02-02 - Custom Tab Component Accessibility
+**Learning:** Custom tab implementations using `div` elements are invisible to screen readers and keyboard users unless explicitly managed with ARIA roles (`tablist`, `tab`, `aria-selected`) and `keydown` handlers.
+**Action:** Always check custom navigation components for keyboard accessibility (Enter/Space support) and proper ARIA roles.
