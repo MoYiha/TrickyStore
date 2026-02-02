@@ -71,6 +71,15 @@ class WebServerHtmlTest {
 
         // Verify toggle logic
         assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
-        assertTrue("Missing showToast logic in toggle", html.contains("showToast('SETTING UPDATED');"))
+
+        // Debugging failure
+        val hasToast = html.contains("showToast('SETTING UPDATED')")
+        if (!hasToast) {
+             val idx = html.indexOf("function toggle")
+             val snippet = if (idx != -1) html.substring(idx, (idx + 400).coerceAtMost(html.length)) else "Function not found"
+             // Replace newlines to make it readable in single line output
+             val safeSnippet = snippet.replace("\n", "\\n").replace("\r", "")
+             assertTrue("Missing showToast logic. Snippet: $safeSnippet", false)
+        }
     }
 }

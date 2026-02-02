@@ -3,13 +3,22 @@ package cleveres.tricky.cleverestech
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 import java.lang.reflect.Field
 
 class ConfigSmartMappingTest {
 
     @Before
     fun setUp() {
-        // Reset Config state if needed
+        // Reset Config state
+        val tempDir = java.nio.file.Files.createTempDirectory("test_config_smart").toFile()
+        tempDir.deleteOnExit()
+
+        // Initialize DeviceTemplateManager with built-ins
+        DeviceTemplateManager.initialize(tempDir)
+
+        // Force Config to reload templates from Manager
+        Config.updateCustomTemplates(null)
     }
 
     private fun setPackageCache(uid: Int, packages: Array<String>) {
@@ -41,8 +50,7 @@ class ConfigSmartMappingTest {
         assertEquals("Pixel 8 Pro", Config.getBuildVar("ro.product.vendor.model", testUid))
 
         // ro.build.fingerprint -> FINGERPRINT
-        // Note: The actual string depends on the hardcoded template in Config.kt.
-        // I'll just check it's not null and matches what I expect from the code I saw.
+        // Note: The actual string depends on the hardcoded template in DeviceTemplateManager.kt.
         val expectedFingerprint = "google/husky/husky:14/AP1A.240405.002/11480754:user/release-keys"
         assertEquals(expectedFingerprint, Config.getBuildVar("ro.build.fingerprint", testUid))
         assertEquals(expectedFingerprint, Config.getBuildVar("ro.vendor.build.fingerprint", testUid))
