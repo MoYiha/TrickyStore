@@ -5,6 +5,7 @@ import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
+import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
 import org.json.JSONArray
@@ -69,6 +70,32 @@ class WebServer(
         } catch (e: Exception) {
             e.printStackTrace()
             false
+        }
+    }
+
+    private fun fetchTelegramCount(): String {
+        return try {
+            val url = URL("https://t.me/cleverestech")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+
+            if (conn.responseCode == 200) {
+                val html = conn.inputStream.bufferedReader().use { it.readText() }
+                val regex = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
+                val matcher = regex.matcher(html)
+                if (matcher.find()) {
+                    matcher.group(1)?.trim() ?: "Unknown"
+                } else {
+                    "Unknown"
+                }
+            } else {
+                "Error: ${conn.responseCode}"
+            }
+        } catch (e: Exception) {
+            "Error"
         }
     }
 
@@ -288,6 +315,14 @@ class WebServer(
              }
         }
 
+        // NEW: Community Stats
+        if (uri == "/api/stats" && method == Method.GET) {
+            val count = fetchTelegramCount()
+            val json = JSONObject()
+            json.put("members", count)
+            return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+        }
+
         if (uri == "/" || uri == "/index.html") {
             return newFixedLengthResponse(Response.Status.OK, "text/html", getHtml())
         }
@@ -357,6 +392,14 @@ class WebServer(
                 <div id="keyboxStatus" aria-live="polite">Loading keys...</div>
                 <button onclick="reloadConfig()" id="reloadBtn">RELOAD CONFIG</button>
             </div>
+        </div>
+
+        <!-- NEW COMMUNITY SECTION -->
+        <div class="panel" style="text-align:center; border: 1px solid var(--accent);">
+            <h3 style="margin:5px 0; color:var(--accent); letter-spacing:2px;">COMMUNITY POWERED</h3>
+            <div id="communityCount" style="font-size:2.5em; font-weight:300;">Loading...</div>
+            <div style="font-size:0.8em; color:#888; margin-bottom:5px;">TELEGRAM MEMBERS</div>
+            <a href="https://t.me/cleverestech" target="_blank" style="color:#fff; text-decoration:none; font-size:0.8em; border-bottom:1px dotted #fff;">JOIN US</a>
         </div>
     </div>
 
@@ -483,6 +526,16 @@ class WebServer(
                 if(document.getElementById(k)) document.getElementById(k).checked = data[k];
             });
             document.getElementById('keyboxStatus').innerText = `Active Keys: ${'$'}{data.keybox_count}`;
+
+            // Load Community Stats
+            fetch(getAuthUrl('/api/stats'))
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('communityCount').innerText = data.members;
+                })
+                .catch(() => {
+                    document.getElementById('communityCount').innerText = 'Offline';
+                });
 
             // Load Templates
             const tRes = await fetch(getAuthUrl('/api/templates'));
