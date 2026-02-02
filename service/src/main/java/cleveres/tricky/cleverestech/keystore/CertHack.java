@@ -293,11 +293,19 @@ public final class CertHack {
                  }
             }
 
-            X509Certificate leaf = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(leafEncoded));
+            // Optimization: Avoid redundant parsing if already X509Certificate
+            X509Certificate leaf;
+            if (caList[0] instanceof X509Certificate) {
+                leaf = (X509Certificate) caList[0];
+            } else {
+                leaf = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(leafEncoded));
+            }
+
             byte[] bytes = leaf.getExtensionValue(OID.getId());
             if (bytes == null) return caList;
 
-            X509CertificateHolder leafHolder = new X509CertificateHolder(leaf.getEncoded());
+            // Optimization: Use original encoded bytes to avoid copy/re-encoding
+            X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
             Extension ext = leafHolder.getExtension(OID);
             ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
             ASN1Encodable[] encodables = sequence.toArray();
