@@ -363,12 +363,12 @@ class WebServer(
 <body>
     <h1>CLEVERESTRICKY <span style="font-size:0.4em; color:var(--accent); vertical-align:middle;">GOD-MODE</span></h1>
 
-    <div class="tabs">
-        <div class="tab active" onclick="switchTab('dashboard')">DASHBOARD</div>
-        <div class="tab" onclick="switchTab('lab')">SPOOFING LAB</div>
-        <div class="tab" onclick="switchTab('apps')">APP CONFIG</div>
-        <div class="tab" onclick="switchTab('keys')">KEYBOXES</div>
-        <div class="tab" onclick="switchTab('editor')">EDITOR</div>
+    <div class="tabs" role="tablist">
+        <div class="tab active" id="tab_dashboard" role="tab" tabindex="0" aria-selected="true" onclick="switchTab('dashboard')">DASHBOARD</div>
+        <div class="tab" id="tab_lab" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('lab')">SPOOFING LAB</div>
+        <div class="tab" id="tab_apps" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('apps')">APP CONFIG</div>
+        <div class="tab" id="tab_keys" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('keys')">KEYBOXES</div>
+        <div class="tab" id="tab_editor" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('editor')">EDITOR</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -509,9 +509,16 @@ class WebServer(
         }
 
         function switchTab(id) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
             document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-            document.querySelector(`.tab[onclick="switchTab('${'$'}{id}')"]`).classList.add('active');
+            const activeTab = document.getElementById('tab_' + id);
+            if (activeTab) {
+                activeTab.classList.add('active');
+                activeTab.setAttribute('aria-selected', 'true');
+            }
             document.getElementById(id).classList.add('active');
             if (id === 'apps') loadAppConfig();
         }
@@ -559,6 +566,16 @@ class WebServer(
                     const opt = document.createElement('option');
                     opt.value = p;
                     dl.appendChild(opt);
+                });
+            });
+
+            // Keyboard Nav
+            document.querySelectorAll('.tab').forEach(t => {
+                t.addEventListener('keydown', e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        t.click();
+                    }
                 });
             });
         }
