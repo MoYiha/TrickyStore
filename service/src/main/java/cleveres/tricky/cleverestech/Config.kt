@@ -375,7 +375,8 @@ object Config {
     fun getPatchLevel(callingUid: Int): Int {
         val defaultLevel = patchLevel
         val patchStr = if (securityPatch.isNotEmpty()) {
-            val pkgName = getPm()?.getPackagesForUid(callingUid)?.firstOrNull()
+            // Use cached getPackages to avoid expensive IPC call
+            val pkgName = getPackages(callingUid).firstOrNull()
             if (pkgName != null) {
                 securityPatch[pkgName] ?: defaultSecurityPatch
             } else {
