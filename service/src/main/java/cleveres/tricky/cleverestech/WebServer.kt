@@ -614,6 +614,21 @@ class WebServer(
         function renderAppTable() {
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
+
+            if (appRules.length === 0) {
+                const tr = document.createElement('tr');
+                const td = document.createElement('td');
+                td.colSpan = 4;
+                td.style.textAlign = 'center';
+                td.style.padding = '20px';
+                td.style.color = '#888';
+                td.style.fontStyle = 'italic';
+                td.innerText = 'No active rules. Add a package above.';
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+                return;
+            }
+
             appRules.forEach((rule, idx) => {
                 const tr = document.createElement('tr');
 
