@@ -9,3 +9,7 @@
 ## 2026-02-02 - Custom Tab Component Accessibility
 **Learning:** Custom tab implementations using `div` elements are invisible to screen readers and keyboard users unless explicitly managed with ARIA roles (`tablist`, `tab`, `aria-selected`) and `keydown` handlers.
 **Action:** Always check custom navigation components for keyboard accessibility (Enter/Space support) and proper ARIA roles.
+
+## 2026-02-03 - Mobile Text Selection
+**Learning:** Selecting long technical strings (like fingerprints) inside `div` elements is often frustrating on mobile touch interfaces due to imprecise cursors.
+**Action:** Always provide a dedicated "Copy" button for long, non-editable text fields to improve usability.

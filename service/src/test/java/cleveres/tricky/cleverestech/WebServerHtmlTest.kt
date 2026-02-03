@@ -69,6 +69,10 @@ class WebServerHtmlTest {
         assertTrue("Missing toast CSS class", html.contains(".toast {"))
         assertTrue("Missing showToast function", html.contains("function showToast(msg)"))
 
+        // Verify Copy Fingerprint button
+        assertTrue("Missing Copy button for fingerprint", html.contains("onclick=\"copyFingerprint()\""))
+        assertTrue("Missing copyFingerprint function", html.contains("function copyFingerprint()"))
+
         // Verify toggle logic
         assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
 

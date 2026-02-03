@@ -405,7 +405,10 @@ class WebServer(
                 <div class="row"><span>Model:</span> <b id="pModel"></b></div>
                 <div class="row"><span>Manufacturer:</span> <span id="pManuf"></span></div>
                 <div class="row"><span>Security Patch:</span> <span id="pPatch"></span></div>
-                <div style="font-size:0.7em; color:#666; word-break:break-all;" id="pFing"></div>
+                <div class="row" style="margin-top: 5px; align-items: flex-start;">
+                    <div style="font-size:0.7em; color:#666; word-break:break-all; padding-right: 10px;" id="pFing"></div>
+                    <button onclick="copyFingerprint()" style="padding: 4px 8px; font-size: 0.7em; white-space: nowrap;" aria-label="Copy fingerprint">COPY</button>
+                </div>
             </div>
 
             <div class="row" style="margin-top:15px;">
@@ -734,6 +737,17 @@ class WebServer(
                  body: new URLSearchParams({ filename: f, content: c })
              });
              showToast('Uploaded');
+        }
+
+        function copyFingerprint() {
+             const text = document.getElementById('pFing').innerText;
+             if (text) {
+                 navigator.clipboard.writeText(text).then(() => {
+                     showToast('COPIED TO CLIPBOARD');
+                 }).catch(() => {
+                     showToast('COPY FAILED');
+                 });
+             }
         }
 
         async function verifyKeyboxes() {
