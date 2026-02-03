@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import org.json.JSONArray
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.fail
@@ -16,7 +17,7 @@ class WebServerJsonTest {
         // Resulting "filename": "hack", "injected": "true", "x": "" ...
         val payload = "hack\", \"injected\": \"true\", \"x\": \""
         val results = listOf(
-            KeyboxVerifier.Result(payload, KeyboxVerifier.Status.INVALID, "Bad")
+            KeyboxVerifier.Result(File("dummy"), payload, KeyboxVerifier.Status.INVALID, "Bad")
         )
         val json = WebServer.createKeyboxVerificationJson(results)
 

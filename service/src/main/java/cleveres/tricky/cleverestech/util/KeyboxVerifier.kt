@@ -12,6 +12,7 @@ import java.util.concurrent.Executors
 object KeyboxVerifier {
 
     data class Result(
+        val file: File,
         val filename: String,
         val status: Status,
         val details: String
@@ -23,22 +24,31 @@ object KeyboxVerifier {
 
     private const val CRL_URL = "https://android.googleapis.com/attestation/status"
 
-    fun verify(keyboxDir: File): List<Result> {
+    fun verify(configDir: File, crlFetcher: () -> Set<String>? = { fetchCrl() }): List<Result> {
         val results = ArrayList<Result>()
-        val revokedSerials = fetchCrl()
+        val revokedSerials = crlFetcher()
 
         if (revokedSerials == null) {
-            return listOf(Result("Global", Status.ERROR, "Failed to fetch CRL from Google"))
+            return listOf(Result(File(""), "Global", Status.ERROR, "Failed to fetch CRL from Google"))
         }
 
-        if (!keyboxDir.exists() || !keyboxDir.isDirectory) {
-             return listOf(Result("Global", Status.ERROR, "Keybox directory not found"))
+        if (!configDir.exists() || !configDir.isDirectory) {
+             return listOf(Result(File(""), "Global", Status.ERROR, "Config directory not found"))
         }
 
-        val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") } ?: emptyArray()
+        // Check legacy keybox.xml
+        val legacyFile = File(configDir, "keybox.xml")
+        if (legacyFile.exists()) {
+            results.add(checkFile(legacyFile, revokedSerials))
+        }
 
-        for (file in files) {
-            results.add(checkFile(file, revokedSerials))
+        // Check jukebox files
+        val keyboxDir = File(configDir, "keyboxes")
+        if (keyboxDir.exists() && keyboxDir.isDirectory) {
+            val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") } ?: emptyArray()
+            for (file in files) {
+                results.add(checkFile(file, revokedSerials))
+            }
         }
 
         return results
@@ -98,7 +108,7 @@ object KeyboxVerifier {
         return try {
             val keyboxes = file.reader().use { CertHack.parseKeyboxXml(it) }
             if (keyboxes.isEmpty()) {
-                return Result(file.name, Status.INVALID, "No valid keyboxes found or parse error")
+                return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
             }
 
             for (kb in keyboxes) {
@@ -115,15 +125,15 @@ object KeyboxVerifier {
                     if (cert is X509Certificate) {
                         val sn = cert.serialNumber.toString(16).lowercase()
                         if (revokedSerials.contains(sn)) {
-                            return Result(file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
+                            return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
                         }
                     }
                 }
             }
 
-            Result(file.name, Status.VALID, "Active (${keyboxes.size} keys)")
+            Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
         } catch (e: Exception) {
-            Result(file.name, Status.ERROR, "Exception: ${e.message}")
+            Result(file, file.name, Status.ERROR, "Exception: ${e.message}")
         }
     }
 }
