@@ -2,9 +2,18 @@ package cleveres.tricky.cleverestech.keystore;
 
 import org.junit.Test;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertFalse;
 
 import cleveres.tricky.cleverestech.Logger;
+import cleveres.tricky.cleverestech.UtilKt;
+import cleveres.tricky.cleverestech.keystore.CertHack;
 
 public class CertHackTest {
 
@@ -53,5 +62,56 @@ public class CertHackTest {
         CertHack.readFromXml(new StringReader(xml));
 
         assertTrue("Keybox should be loaded", CertHack.canHack());
+    }
+
+    private int findSequence(byte[] data, byte[] sequence) {
+        for (int i = 0; i <= data.length - sequence.length; i++) {
+            boolean match = true;
+            for (int j = 0; j < sequence.length; j++) {
+                if (data[i + j] != sequence[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) return i;
+        }
+        return -1;
+    }
+
+    @Test
+    public void testDeviceInfoVbmetaDigest() {
+        // Generate DeviceInfo CBOR
+        byte[] cbor = CertHack.createDeviceInfoCbor("Google", "Google", "generic", "Pixel", "generic");
+
+        assertNotNull("CBOR should not be null", cbor);
+
+        // Search for "vbmeta_digest" key encoded in CBOR
+        // "vbmeta_digest" is 13 chars.
+        // CBOR String header: Major Type 3 (Text), Length 13 -> 0x6D
+        byte[] keyBytes = "vbmeta_digest".getBytes(StandardCharsets.UTF_8);
+        byte[] searchPattern = new byte[keyBytes.length + 1];
+        searchPattern[0] = (byte) 0x6D;
+        System.arraycopy(keyBytes, 0, searchPattern, 1, keyBytes.length);
+
+        int keyIndex = findSequence(cbor, searchPattern);
+        assertTrue("vbmeta_digest key not found in CBOR", keyIndex != -1);
+
+        // Value follows the key.
+        // Expected Value header: Major Type 2 (Bytes), Length 32 -> 0x58 0x20
+        int valueIndex = keyIndex + searchPattern.length;
+        assertEquals("Expected byte string header 0x58", (byte)0x58, cbor[valueIndex]);
+        assertEquals("Expected byte string length 0x20", (byte)0x20, cbor[valueIndex + 1]);
+
+        // The actual 32 bytes of the digest
+        byte[] digest = Arrays.copyOfRange(cbor, valueIndex + 2, valueIndex + 2 + 32);
+
+        // Current Fix: Digest should match UtilKt.getBootHash()
+        byte[] expectedHash = UtilKt.getBootHash();
+
+        assertArrayEquals("Digest should match UtilKt.getBootHash()", expectedHash, digest);
+
+        // Ensure it is not just zeros (unless bootHash is zeros, which it shouldn't be)
+        byte[] zeros = new byte[32];
+        assertFalse("Digest should not be all zeros", Arrays.equals(zeros, digest));
     }
 }

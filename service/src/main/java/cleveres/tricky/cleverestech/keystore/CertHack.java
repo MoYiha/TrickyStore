@@ -1105,7 +1105,7 @@ public final class CertHack {
             map.put("device", device != null ? device : "generic");
             map.put("vb_state", "green");
             map.put("bootloader_state", "locked");
-            map.put("vbmeta_digest", new byte[32]); // 32 bytes of zeros or random
+            map.put("vbmeta_digest", UtilKt.getBootHash());
             map.put("os_version", String.valueOf(UtilKt.getOsVersion()));
             map.put("security_level", "tee");
             map.put("fused", 1); // Often required
