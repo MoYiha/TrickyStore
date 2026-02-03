@@ -75,16 +75,28 @@ object KeyboxVerifier {
             val keys = entries.keys()
             while (keys.hasNext()) {
                 val decStr = keys.next()
+                var added = false
+
+                // Try treating as Decimal
                 try {
                     val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
                     set.add(hexStr)
+                    added = true
                 } catch (e: Exception) {
-                    // It might be a hex string already (e.g. c3574...)
-                    if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                        set.add(decStr.lowercase())
-                    } else {
-                        Logger.e("Failed to parse CRL entry key: $decStr")
-                    }
+                    // Not a valid decimal
+                }
+
+                // Try treating as Hex (literal)
+                // If it matches hex pattern, add it too.
+                // This covers cases where a hex string was purely numeric (e.g. "123456")
+                // which would have been consumed by the decimal block above but transformed incorrectly.
+                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                    set.add(decStr.lowercase())
+                    added = true
+                }
+
+                if (!added) {
+                    Logger.e("Failed to parse CRL entry key: $decStr")
                 }
             }
             set
