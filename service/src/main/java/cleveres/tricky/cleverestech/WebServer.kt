@@ -411,7 +411,7 @@ class WebServer(
                 <div class="row"><span>Security Patch:</span> <span id="pPatch"></span></div>
                 <div class="row" style="margin-top: 5px; align-items: flex-start;">
                     <div style="font-size:0.7em; color:#666; word-break:break-all; padding-right: 10px;" id="pFing"></div>
-                    <button onclick="copyFingerprint()" style="padding: 4px 8px; font-size: 0.7em; white-space: nowrap;" aria-label="Copy fingerprint">COPY</button>
+                    <button onclick="copyFingerprint(this)" style="padding: 4px 8px; font-size: 0.7em; white-space: nowrap;" aria-label="Copy fingerprint">COPY</button>
                 </div>
             </div>
 
@@ -743,11 +743,16 @@ class WebServer(
              showToast('Uploaded');
         }
 
-        function copyFingerprint() {
+        function copyFingerprint(btn) {
              const text = document.getElementById('pFing').innerText;
              if (text) {
                  navigator.clipboard.writeText(text).then(() => {
                      showToast('COPIED TO CLIPBOARD');
+                     if (btn) {
+                        const original = btn.innerText;
+                        btn.innerText = 'COPIED!';
+                        setTimeout(() => btn.innerText = original, 2000);
+                     }
                  }).catch(() => {
                      showToast('COPY FAILED');
                  });
@@ -760,6 +765,14 @@ class WebServer(
              const data = await res.json();
              const container = document.getElementById('verifyResult');
              container.innerHTML = '';
+             if (data.length === 0) {
+                 const div = document.createElement('div');
+                 div.style.color = '#888';
+                 div.style.fontStyle = 'italic';
+                 div.style.marginTop = '10px';
+                 div.innerText = 'No keyboxes found. Upload one above or place in /data/adb/cleverestricky/keyboxes/';
+                 container.appendChild(div);
+             }
              data.forEach(d => {
                  const div = document.createElement('div');
                  div.style.color = d.status === 'VALID' ? '#0f0' : '#f00';
