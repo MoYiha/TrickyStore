@@ -118,7 +118,7 @@ class ActionTest {
         val port = server.listeningPort
         val token = server.token
         // Pass params in URL to avoid body parsing issues in test
-        val saveUrl = URL("http://localhost:$port/api/save?token=$token&filename=keybox.xml&content=TEST_CONTENT")
+        val saveUrl = URL("http://localhost:$port/api/save?token=$token&filename=target.txt&content=TEST_CONTENT")
 
         val conn = saveUrl.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
@@ -128,7 +128,7 @@ class ActionTest {
 
         assertEquals(200, conn.responseCode)
 
-        val savedFile = File(configDir, "keybox.xml")
+        val savedFile = File(configDir, "target.txt")
         assertTrue("File should exist", savedFile.exists())
         assertEquals("File content mismatch", "TEST_CONTENT", savedFile.readText())
     }

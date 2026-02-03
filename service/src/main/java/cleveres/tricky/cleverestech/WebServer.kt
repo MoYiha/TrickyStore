@@ -322,7 +322,7 @@ class WebServer(
     }
 
     private fun isValidFilename(name: String): Boolean {
-        return name in setOf("keybox.xml", "target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json")
+        return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json")
     }
 
     private fun getHtml(): String {
