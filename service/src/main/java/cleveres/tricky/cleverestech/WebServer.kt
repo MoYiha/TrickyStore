@@ -262,7 +262,7 @@ class WebServer(
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
-                val results = KeyboxVerifier.verify(File(configDir, "keyboxes"))
+                val results = KeyboxVerifier.verify(configDir)
                 val json = createKeyboxVerificationJson(results)
                 return newFixedLengthResponse(Response.Status.OK, "application/json", json)
              } catch(e: Exception) {
