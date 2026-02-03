@@ -77,37 +77,35 @@ object KeyboxVerifier {
     }
 
     fun parseCrl(jsonStr: String): Set<String> {
-        return try {
-            val json = JSONObject(jsonStr)
-            val entries = json.optJSONObject("entries") ?: return emptySet()
+        val json = JSONObject(jsonStr)
+        val entries = json.getJSONObject("entries")
 
-            val set = HashSet<String>(entries.length())
-            val keys = entries.keys()
-            while (keys.hasNext()) {
-                val decStr = keys.next()
-                var added = false
+        val set = HashSet<String>(entries.length())
+        val keys = entries.keys()
+        while (keys.hasNext()) {
+            val decStr = keys.next()
+            var added = false
 
-                // Try treating as Decimal
-                try {
-                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                    set.add(hexStr)
-                    added = true
-                } catch (e: Exception) {
-                    // Not a valid decimal
-                }
+            // Try treating as Decimal
+            try {
+                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                set.add(hexStr)
+                added = true
+            } catch (e: Exception) {
+                // Not a valid decimal
+            }
 
-                // Try treating as Hex (literal)
-                // If it matches hex pattern, add it too.
-                // This covers cases where a hex string was purely numeric (e.g. "123456")
-                // which would have been consumed by the decimal block above but transformed incorrectly.
-                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                    set.add(decStr.lowercase())
-                    added = true
-                }
+            // Try treating as Hex (literal)
+            // If it matches hex pattern, add it too.
+            // This covers cases where a hex string was purely numeric (e.g. "123456")
+            // which would have been consumed by the decimal block above but transformed incorrectly.
+            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                set.add(decStr.lowercase())
+                added = true
+            }
 
-                if (!added) {
-                    Logger.e("Failed to parse CRL entry key: $decStr")
-                }
+            if (!added) {
+                Logger.e("Failed to parse CRL entry key: $decStr")
             }
         }
         return set
@@ -142,7 +140,7 @@ object KeyboxVerifier {
 
             Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
         } catch (e: Exception) {
-            Result(file, file.name, Status.ERROR, "Exception: ${e.message}")
+            Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
         }
     }
 }
