@@ -140,7 +140,7 @@ object KeyboxVerifier {
 
             Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
         } catch (e: Exception) {
-            Result(file, file.name, Status.ERROR, "Exception: ${e.message}")
+            Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
         }
     }
 }
