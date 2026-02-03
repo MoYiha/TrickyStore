@@ -95,11 +95,10 @@ object KeyboxVerifier {
                 // Not a valid decimal
             }
 
-            // Try treating as Hex (literal)
-            // If it matches hex pattern, add it too.
-            // This covers cases where a hex string was purely numeric (e.g. "123456")
-            // which would have been consumed by the decimal block above but transformed incorrectly.
-            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+            // Try treating as Hex (literal) ONLY if decimal parsing failed.
+            // This prevents false positives where a decimal string (e.g. "10")
+            // is interpreted as hex (0x10 = 16) in addition to decimal (10 = 0xA).
+            if (!added && decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
                 set.add(decStr.lowercase())
                 added = true
             }
