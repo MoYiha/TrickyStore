@@ -12,6 +12,7 @@ import java.io.File
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
+import org.json.JSONObject
 
 class ActionTest {
 
@@ -88,7 +89,8 @@ class ActionTest {
         println("Config response: $content")
 
         // Initial state: 0 keys
-        assertTrue(content.contains("\"keybox_count\": 0"))
+        val json = JSONObject(content)
+        assertEquals(0, json.getInt("keybox_count"))
     }
 
     @Test
@@ -102,7 +104,8 @@ class ActionTest {
 
         var conn = url.openConnection() as HttpURLConnection
         var content = conn.inputStream.bufferedReader().readText()
-        assertTrue("Should have 1 key", content.contains("\"keybox_count\": 1"))
+        var json = JSONObject(content)
+        assertEquals(1, json.getInt("keybox_count"))
 
         // 2. Invalid XML
         val invalidXml = "<AndroidAttestation><NumberOfKeyboxes>1</NumberOfKeyboxes>INVALID</AndroidAttestation>"
@@ -110,7 +113,8 @@ class ActionTest {
 
         conn = url.openConnection() as HttpURLConnection
         content = conn.inputStream.bufferedReader().readText()
-        assertTrue("Should have 0 keys after invalid XML", content.contains("\"keybox_count\": 0"))
+        json = JSONObject(content)
+        assertEquals(0, json.getInt("keybox_count"))
     }
 
     @Test

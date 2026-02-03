@@ -22,7 +22,7 @@ object KeyboxAutoCleaner {
         if (!toggleFile.exists()) return
 
         Logger.i("AutoCleaner: Starting daily revocation check...")
-        val results = KeyboxVerifier.verify(keyboxDir)
+        val results = KeyboxVerifier.verify(configDir)
         var revokedCount = 0
 
         if (!revokedDir.exists()) revokedDir.mkdirs()
@@ -30,7 +30,7 @@ object KeyboxAutoCleaner {
         for (res in results) {
             if (res.status == KeyboxVerifier.Status.REVOKED || res.status == KeyboxVerifier.Status.INVALID) {
                 Logger.i("AutoCleaner: Keybox ${res.filename} is ${res.status}. Moving to revoked.")
-                val file = File(keyboxDir, res.filename)
+                val file = res.file
                 val target = File(revokedDir, res.filename)
                 if (file.exists()) {
                     try {
