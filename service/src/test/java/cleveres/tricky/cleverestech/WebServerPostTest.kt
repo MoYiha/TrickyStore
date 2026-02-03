@@ -44,7 +44,7 @@ class WebServerPostTest {
         conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
 
-        val postData = "filename=keybox.xml&content=BODY_CONTENT"
+        val postData = "filename=target.txt&content=BODY_CONTENT"
         val postDataBytes = postData.toByteArray(StandardCharsets.UTF_8)
 
         conn.outputStream.use { it.write(postDataBytes) }
@@ -62,7 +62,7 @@ class WebServerPostTest {
 
         assertEquals(200, responseCode)
 
-        val savedFile = File(configDir, "keybox.xml")
+        val savedFile = File(configDir, "target.txt")
         assertTrue("File should exist", savedFile.exists())
         assertEquals("File content mismatch", "BODY_CONTENT", savedFile.readText())
     }
