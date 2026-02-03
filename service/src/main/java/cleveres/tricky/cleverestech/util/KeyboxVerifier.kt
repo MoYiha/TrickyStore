@@ -78,6 +78,9 @@ object KeyboxVerifier {
 
     fun parseCrl(jsonStr: String): Set<String> {
         val json = JSONObject(jsonStr)
+        if (!json.has("entries")) {
+            throw Exception("Missing entries field")
+        }
         val entries = json.getJSONObject("entries")
 
         val set = HashSet<String>(entries.length())

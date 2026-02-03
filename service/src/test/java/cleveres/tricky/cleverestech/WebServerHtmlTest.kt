@@ -70,8 +70,12 @@ class WebServerHtmlTest {
         assertTrue("Missing showToast function", html.contains("function showToast(msg)"))
 
         // Verify Copy Fingerprint button
-        assertTrue("Missing Copy button for fingerprint", html.contains("onclick=\"copyFingerprint()\""))
-        assertTrue("Missing copyFingerprint function", html.contains("function copyFingerprint()"))
+        assertTrue("Missing Copy button for fingerprint", html.contains("onclick=\"copyFingerprint(this)\""))
+        assertTrue("Missing copyFingerprint function", html.contains("function copyFingerprint(btn)"))
+        assertTrue("Missing feedback logic in copyFingerprint", html.contains("btn.innerText = 'COPIED!';"))
+
+        // Verify Empty State Logic
+        assertTrue("Missing empty state logic in verifyKeyboxes", html.contains("No keyboxes found."))
 
         // Verify toggle logic
         assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
