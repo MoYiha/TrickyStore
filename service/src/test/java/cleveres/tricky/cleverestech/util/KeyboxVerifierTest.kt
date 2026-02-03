@@ -1,57 +1,81 @@
 package cleveres.tricky.cleverestech.util
 
+import cleveres.tricky.cleverestech.Logger
 import org.junit.Test
 import org.junit.Assert.*
+import org.junit.Before
 
 class KeyboxVerifierTest {
-    @Test
-    fun testParseCrl_RealFormat() {
-        // Sample from https://android.googleapis.com/attestation/status
-        // entries is a Map/Object, not an Array
-        val json = """
-        {
-          "entries": {
-            "6681152659205225093" : {
-              "status": "REVOKED",
-              "reason": "KEY_COMPROMISE"
-            },
-            "12345" : {
-              "status": "REVOKED"
-            }
-          }
-        }
-        """.trimIndent()
 
-        val revoked = KeyboxVerifier.parseCrl(json)
-
-        // 6681152659205225093 (dec) -> 5cb838f1fe157a85 (hex)
-        // 12345 (dec) -> 3039 (hex)
-
-        assertTrue("Should contain 5cb838f1fe157a85 but got $revoked", revoked.contains("5cb838f1fe157a85"))
-        assertTrue("Should contain 3039 but got $revoked", revoked.contains("3039"))
+    @Before
+    fun setup() {
+        Logger.setImpl(object : Logger.LogImpl {
+            override fun d(tag: String, msg: String) {}
+            override fun e(tag: String, msg: String) {}
+            override fun e(tag: String, msg: String, t: Throwable?) {}
+            override fun i(tag: String, msg: String) {}
+        })
     }
 
     @Test
-    fun testParseCrl_WithHexStrings() {
-        // CRL containing both Decimal and Hex keys
-        // "6681152659205225093" -> 5cb838f1fe157a85 (Decimal)
-        // "c35747a084470c3135aeefe2b8d40cd6" -> (Hex)
-        val json = """
-        {
-          "entries": {
-            "6681152659205225093" : {
-              "status": "REVOKED"
-            },
-            "c35747a084470c3135aeefe2b8d40cd6" : {
-              "status": "REVOKED"
-            }
-          }
+    fun parseCrl_shouldThrowOnInvalidJson() {
+        try {
+            KeyboxVerifier.parseCrl("{ invalid_json }")
+            fail("Should have thrown exception on invalid JSON")
+        } catch (e: Exception) {
+            // Expected
         }
-        """.trimIndent()
+    }
 
-        val revoked = KeyboxVerifier.parseCrl(json)
+    @Test
+    fun parseCrl_shouldThrowOnMissingEntries() {
+        try {
+            KeyboxVerifier.parseCrl("{}")
+            fail("Should have thrown exception on missing entries")
+        } catch (e: Exception) {
+            // Expected
+        }
+    }
 
-        assertTrue("Should contain decimal-converted key", revoked.contains("5cb838f1fe157a85"))
-        assertTrue("Should contain hex key", revoked.contains("c35747a084470c3135aeefe2b8d40cd6"))
+    @Test
+    fun parseCrl_validJson_decimal() {
+        val json = """
+            {
+              "entries": {
+                "12345": { "status": "REVOKED" }
+              }
+            }
+        """
+        val result = KeyboxVerifier.parseCrl(json)
+        // 12345 (dec) -> 3039 (hex)
+        assertTrue("Should contain hex of 12345", result.contains("3039"))
+    }
+
+    @Test
+    fun parseCrl_validJson_hex() {
+        val json = """
+            {
+              "entries": {
+                "c35747a084470c3135aeefe2b8d40cd6": { "status": "REVOKED" }
+              }
+            }
+        """
+        val result = KeyboxVerifier.parseCrl(json)
+        assertTrue("Should contain hex string", result.contains("c35747a084470c3135aeefe2b8d40cd6"))
+    }
+
+    @Test
+    fun parseCrl_mixed() {
+        val json = """
+            {
+              "entries": {
+                "12345": { "status": "REVOKED" },
+                "aabbcc": { "status": "REVOKED" }
+              }
+            }
+        """
+        val result = KeyboxVerifier.parseCrl(json)
+        assertTrue(result.contains("3039"))
+        assertTrue(result.contains("aabbcc"))
     }
 }

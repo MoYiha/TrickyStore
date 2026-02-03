@@ -77,31 +77,26 @@ object KeyboxVerifier {
     }
 
     fun parseCrl(jsonStr: String): Set<String> {
-        return try {
-            val json = JSONObject(jsonStr)
-            val entries = json.optJSONObject("entries") ?: return emptySet()
+        val json = JSONObject(jsonStr)
+        val entries = json.optJSONObject("entries") ?: throw Exception("CRL missing 'entries' field")
 
-            val set = HashSet<String>(entries.length())
-            val keys = entries.keys()
-            while (keys.hasNext()) {
-                val decStr = keys.next()
-                try {
-                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                    set.add(hexStr)
-                } catch (e: Exception) {
-                    // It might be a hex string already (e.g. c3574...)
-                    if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                        set.add(decStr.lowercase())
-                    } else {
-                        Logger.e("Failed to parse CRL entry key: $decStr")
-                    }
+        val set = HashSet<String>(entries.length())
+        val keys = entries.keys()
+        while (keys.hasNext()) {
+            val decStr = keys.next()
+            try {
+                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                set.add(hexStr)
+            } catch (e: Exception) {
+                // It might be a hex string already (e.g. c3574...)
+                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                    set.add(decStr.lowercase())
+                } else {
+                    Logger.e("Failed to parse CRL entry key: $decStr")
                 }
             }
-            set
-        } catch (e: Exception) {
-            Logger.e("Failed to parse CRL JSON", e)
-            emptySet()
         }
+        return set
     }
 
     private fun checkFile(file: File, revokedSerials: Set<String>): Result {
