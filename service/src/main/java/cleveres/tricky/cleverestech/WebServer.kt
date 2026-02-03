@@ -111,22 +111,26 @@ class WebServer(
         }
 
         if (uri == "/api/config" && method == Method.GET) {
-            val config = StringBuilder("{")
-            config.append("\"global_mode\": ${fileExists("global_mode")},")
-            config.append("\"tee_broken_mode\": ${fileExists("tee_broken_mode")},")
-            config.append("\"rkp_bypass\": ${fileExists("rkp_bypass")},")
-            config.append("\"auto_beta\": ${fileExists("auto_beta_fetch")},")
-            config.append("\"auto_keybox_check\": ${fileExists("auto_keybox_check")},")
-            config.append("\"files\": [\"keybox.xml\", \"target.txt\", \"security_patch.txt\", \"spoof_build_vars\", \"app_config\"],")
-            config.append("\"keybox_count\": ${CertHack.getKeyboxCount()},")
-            config.append("\"templates\": [")
-            Config.getTemplateNames().forEachIndexed { index, name ->
-                if (index > 0) config.append(",")
-                config.append("\"$name\"")
+            val json = JSONObject()
+            json.put("global_mode", fileExists("global_mode"))
+            json.put("tee_broken_mode", fileExists("tee_broken_mode"))
+            json.put("rkp_bypass", fileExists("rkp_bypass"))
+            json.put("auto_beta", fileExists("auto_beta_fetch"))
+            json.put("auto_keybox_check", fileExists("auto_keybox_check"))
+            val files = JSONArray()
+            files.put("keybox.xml")
+            files.put("target.txt")
+            files.put("security_patch.txt")
+            files.put("spoof_build_vars")
+            files.put("app_config")
+            json.put("files", files)
+            json.put("keybox_count", CertHack.getKeyboxCount())
+            val templates = JSONArray()
+            Config.getTemplateNames().forEach { name ->
+                templates.put(name)
             }
-            config.append("]")
-            config.append("}")
-            return newFixedLengthResponse(Response.Status.OK, "application/json", config.toString())
+            json.put("templates", templates)
+            return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
         }
 
         // NEW: Get Templates List
