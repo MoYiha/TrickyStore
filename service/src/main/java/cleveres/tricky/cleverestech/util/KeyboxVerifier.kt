@@ -86,19 +86,8 @@ object KeyboxVerifier {
             val decStr = keys.next()
             var added = false
 
-            // Try treating as Decimal
-            try {
-                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                set.add(hexStr)
-                added = true
-            } catch (e: Exception) {
-                // Not a valid decimal
-            }
-
-            // Try treating as Hex (literal) ONLY if decimal parsing failed.
-            // This prevents false positives where a decimal string (e.g. "10")
-            // is interpreted as hex (0x10 = 16) in addition to decimal (10 = 0xA).
-            if (!added && decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+            // Try treating as Hex (literal)
+            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
                 try {
                     val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
                     set.add(hexStr)
@@ -106,6 +95,15 @@ object KeyboxVerifier {
                 } catch (e: Exception) {
                     // Should not happen due to regex check, but safety first
                 }
+            }
+
+            // Try treating as Decimal
+            try {
+                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                set.add(hexStr)
+                added = true
+            } catch (e: Exception) {
+                // Not a valid decimal
             }
 
             if (!added) {
