@@ -99,8 +99,13 @@ object KeyboxVerifier {
             // This prevents false positives where a decimal string (e.g. "10")
             // is interpreted as hex (0x10 = 16) in addition to decimal (10 = 0xA).
             if (!added && decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                set.add(decStr.lowercase())
-                added = true
+                try {
+                    val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
+                    set.add(hexStr)
+                    added = true
+                } catch (e: Exception) {
+                    // Should not happen due to regex check, but safety first
+                }
             }
 
             if (!added) {
