@@ -599,6 +599,14 @@ class WebServer(
                     }
                 });
             });
+
+            // Init Editor
+            currentFile = document.getElementById('fileSelector').value;
+            await loadFile();
+            document.getElementById('fileEditor').addEventListener('input', () => {
+                editorDirty = true;
+                document.getElementById('saveBtn').innerText = 'SAVE FILE *';
+            });
         }
 
         async function toggle(setting) {
@@ -724,10 +732,23 @@ class WebServer(
             setTimeout(() => window.location.reload(), 1000);
         }
 
+        let editorDirty = false;
+        let currentFile = '';
+
         async function loadFile() {
-            const f = document.getElementById('fileSelector').value;
+            const sel = document.getElementById('fileSelector');
+            const f = sel.value;
+            if (editorDirty && currentFile && currentFile !== f) {
+                if (!confirm('You have unsaved changes. Discard them?')) {
+                    sel.value = currentFile;
+                    return;
+                }
+            }
+            currentFile = f;
             const res = await fetch(getAuthUrl('/api/file?filename=' + f));
             document.getElementById('fileEditor').value = await res.text();
+            editorDirty = false;
+            document.getElementById('saveBtn').innerText = 'SAVE FILE';
         }
 
         async function saveFile() {
@@ -738,6 +759,8 @@ class WebServer(
                  body: new URLSearchParams({ filename: f, content: c })
              });
              showToast('File Saved');
+             editorDirty = false;
+             document.getElementById('saveBtn').innerText = 'SAVE FILE';
         }
 
         async function fetchBetaNow() {
