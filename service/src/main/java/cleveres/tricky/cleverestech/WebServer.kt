@@ -24,6 +24,7 @@ class WebServer(
 ) : NanoHTTPD("127.0.0.1", port) {
 
     val token = UUID.randomUUID().toString()
+    private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB
 
     private fun readFile(filename: String): String {
         return try {
@@ -103,6 +104,19 @@ class WebServer(
         val uri = session.uri
         val method = session.method
         val params = session.parms
+
+        // Security: Enforce max upload size to prevent DoS
+        if (method == Method.POST || method == Method.PUT) {
+             val lenStr = session.headers["content-length"]
+             if (lenStr != null) {
+                  try {
+                      val len = lenStr.toLong()
+                      if (len > MAX_UPLOAD_SIZE) {
+                           return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
+                      }
+                  } catch (e: Exception) {}
+             }
+        }
 
         // Simple Token Auth
         val requestToken = params["token"]
