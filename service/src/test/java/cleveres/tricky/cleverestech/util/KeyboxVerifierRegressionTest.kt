@@ -28,7 +28,8 @@ class KeyboxVerifierReproTest {
         assertTrue("Set should contain '1e240' (Decimal interpretation)", revoked.contains("1e240"))
 
         // 123456 (Hex) -> 123456.
-        // This is the Ambiguous Hex interpretation. We now include this to prevent false negatives (fail-closed).
-        assertTrue("Set should contain '123456' (Ambiguous Hex interpretation)", revoked.contains("123456"))
+        // This is the Ambiguous Hex interpretation. We used to include this, but it causes false positives.
+        // We now enforce Decimal interpretation for digit-only strings.
+        assertFalse("Set should NOT contain '123456' (Ambiguous Hex interpretation)", revoked.contains("123456"))
     }
 }
