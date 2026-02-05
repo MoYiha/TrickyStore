@@ -80,6 +80,11 @@ class WebServerHtmlTest {
         // Verify toggle logic
         assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
 
+        // Verify File Picker
+        assertTrue("Missing file picker input", html.contains("id=\"kbFilePicker\""))
+        assertTrue("Missing load from file button", html.contains("LOAD FROM FILE"))
+        assertTrue("Missing loadFileContent function", html.contains("function loadFileContent(input)"))
+
         // Debugging failure
         val hasToast = html.contains("showToast('SETTING UPDATED')")
         if (!hasToast) {

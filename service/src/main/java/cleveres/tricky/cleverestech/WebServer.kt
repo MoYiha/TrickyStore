@@ -348,6 +348,7 @@ class WebServer(
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>CleveresTricky GOD-MODE</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
@@ -478,6 +479,10 @@ class WebServer(
     <div id="keys" class="content">
         <div class="panel">
             <h3>UPLOAD KEYBOX</h3>
+            <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null">
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <button onclick="document.getElementById('kbFilePicker').click()" style="flex:1;">📂 LOAD FROM FILE</button>
+            </div>
             <input type="text" id="kbFilename" placeholder="filename.xml" aria-label="Keybox Filename">
             <textarea id="kbContent" placeholder="Paste XML content..." style="height:100px; margin-top:10px;" aria-label="Keybox Content"></textarea>
             <button onclick="runWithState(this, 'UPLOADING...', uploadKeybox)" style="width:100%; margin-top:10px;">UPLOAD</button>
@@ -778,6 +783,18 @@ class WebServer(
                  body: new URLSearchParams({ filename: f, content: c })
              });
              showToast('Uploaded');
+        }
+
+        function loadFileContent(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                document.getElementById('kbFilename').value = file.name;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    document.getElementById('kbContent').value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
         }
 
         function copyFingerprint(btn) {
