@@ -209,15 +209,20 @@ public final class CertHack {
                 return Collections.emptyList();
             }
             int numberOfKeyboxes = Integer.parseInt(Objects.requireNonNull(numPath.get("text")));
+            int actualKeyboxElements = xmlParser.getChildCount("AndroidAttestation", "Keybox");
 
             for (int i = 0; i < numberOfKeyboxes; i++) {
-                String keyboxAlgorithm = xmlParser.obtainPath(
-                        "AndroidAttestation.Keybox.Key[" + i + "]").get("algorithm");
-                String privateKey = xmlParser.obtainPath(
-                        "AndroidAttestation.Keybox.Key[" + i + "].PrivateKey").get("text");
+                String keyBasePath;
+                if (actualKeyboxElements > 1 && i < actualKeyboxElements) {
+                    keyBasePath = "AndroidAttestation.Keybox[" + i + "].Key";
+                } else {
+                    keyBasePath = "AndroidAttestation.Keybox.Key[" + i + "]";
+                }
 
-                var numCertsPath = xmlParser.obtainPath(
-                        "AndroidAttestation.Keybox.Key[" + i + "].CertificateChain.NumberOfCertificates");
+                String keyboxAlgorithm = xmlParser.obtainPath(keyBasePath).get("algorithm");
+                String privateKey = xmlParser.obtainPath(keyBasePath + ".PrivateKey").get("text");
+
+                var numCertsPath = xmlParser.obtainPath(keyBasePath + ".CertificateChain.NumberOfCertificates");
                 if (numCertsPath == null || numCertsPath.get("text") == null) continue;
 
                 int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsPath.get("text")));
@@ -225,7 +230,7 @@ public final class CertHack {
                 LinkedList<Certificate> certificateChain = new LinkedList<>();
                 for (int j = 0; j < numberOfCertificates; j++) {
                     String certPem = xmlParser.obtainPath(
-                            "AndroidAttestation.Keybox.Key[" + i + "].CertificateChain.Certificate[" + j + "]").get("text");
+                            keyBasePath + ".CertificateChain.Certificate[" + j + "]").get("text");
                     certificateChain.add(parseCert(certPem));
                 }
 
