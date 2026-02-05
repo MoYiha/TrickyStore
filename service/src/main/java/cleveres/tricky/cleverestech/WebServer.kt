@@ -115,6 +115,8 @@ class WebServer(
                            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
                       }
                   } catch (e: Exception) {}
+             } else {
+                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
              }
         }
 
