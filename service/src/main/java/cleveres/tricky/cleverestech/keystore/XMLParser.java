@@ -95,34 +95,7 @@ public class XMLParser {
     }
 
     public Map<String, String> obtainPath(String path) {
-        if (root == null) throw new RuntimeException("XML not parsed");
-
-        String[] rawTags = path.split("\\.");
-        Element current = root;
-
-        String firstPart = rawTags[0];
-        String rootName = firstPart.split("\\[")[0];
-
-        if (!root.name.equals(rootName)) {
-             throw new RuntimeException("Path root mismatch: " + rootName + " vs " + root.name);
-        }
-
-        for (int i = 1; i < rawTags.length; i++) {
-            String rawTag = rawTags[i];
-            String[] parts = rawTag.split("\\[");
-            String name = parts[0];
-            int index = 0;
-            if (parts.length > 1) {
-                index = Integer.parseInt(parts[1].replace("]", ""));
-            }
-
-            List<Element> children = current.children.get(name);
-            if (children == null || index >= children.size()) {
-                 throw new RuntimeException("Path not found: " + path);
-            }
-            current = children.get(index);
-        }
-
+        Element current = getElement(path, true);
         Map<String, String> result = new HashMap<>(current.attributes);
         if (current.text != null) {
             result.put("text", current.text);
@@ -131,33 +104,63 @@ public class XMLParser {
     }
 
     public int getChildCount(String path, String childName) {
-        if (root == null) return 0;
+        Element element = getElement(path, false);
+        if (element == null) return 0;
+        List<Element> targetChildren = element.children.get(childName);
+        return targetChildren == null ? 0 : targetChildren.size();
+    }
 
-        String[] rawTags = path.split("\\.");
+    private Element getElement(String path, boolean strict) {
+        if (root == null) {
+            if (strict) throw new RuntimeException("XML not parsed");
+            return null;
+        }
+
         Element current = root;
+        int len = path.length();
+        int start = 0;
 
-        String firstPart = rawTags[0];
-        String rootName = firstPart.split("\\[")[0];
+        int dotIndex = path.indexOf('.', start);
+        String firstPart = (dotIndex == -1) ? path : path.substring(start, dotIndex);
 
-        if (!root.name.equals(rootName)) return 0;
+        int bracketIndex = firstPart.indexOf('[');
+        String rootName = (bracketIndex == -1) ? firstPart : firstPart.substring(0, bracketIndex);
 
-        for (int i = 1; i < rawTags.length; i++) {
-            String rawTag = rawTags[i];
-            String[] parts = rawTag.split("\\[");
-            String name = parts[0];
+        if (!root.name.equals(rootName)) {
+            if (strict) throw new RuntimeException("Path root mismatch: " + rootName + " vs " + root.name);
+            return null;
+        }
+
+        if (dotIndex == -1) return current;
+
+        start = dotIndex + 1;
+        while (start < len) {
+            dotIndex = path.indexOf('.', start);
+            String rawTag = (dotIndex == -1) ? path.substring(start) : path.substring(start, dotIndex);
+
+            bracketIndex = rawTag.indexOf('[');
+            String name;
             int index = 0;
-            if (parts.length > 1) {
-                index = Integer.parseInt(parts[1].replace("]", ""));
+            if (bracketIndex != -1) {
+                name = rawTag.substring(0, bracketIndex);
+                int closeBracket = rawTag.indexOf(']', bracketIndex);
+                if (closeBracket != -1) {
+                    index = Integer.parseInt(rawTag.substring(bracketIndex + 1, closeBracket));
+                }
+            } else {
+                name = rawTag;
             }
 
             List<Element> children = current.children.get(name);
             if (children == null || index >= children.size()) {
-                return 0;
+                if (strict) throw new RuntimeException("Path not found: " + path);
+                return null;
             }
             current = children.get(index);
-        }
 
-        List<Element> targetChildren = current.children.get(childName);
-        return targetChildren == null ? 0 : targetChildren.size();
+            if (dotIndex == -1) break;
+            start = dotIndex + 1;
+        }
+        return current;
     }
 }
