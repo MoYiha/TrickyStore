@@ -29,7 +29,6 @@ class KeyboxVerifierReproTest {
 
         // 123456 (Hex) -> 123456.
         // This is the Ambiguous Hex interpretation. We should NOT include this as it causes false positives.
-        // Strings consisting solely of digits are strictly treated as decimal integers.
         assertFalse("Set should NOT contain '123456' (Ambiguous Hex interpretation)", revoked.contains("123456"))
     }
 }
