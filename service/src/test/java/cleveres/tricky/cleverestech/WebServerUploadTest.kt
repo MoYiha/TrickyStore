@@ -6,6 +6,8 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -18,6 +20,7 @@ class WebServerUploadTest {
 
     private lateinit var server: WebServer
     private lateinit var configDir: File
+    private lateinit var originalSecureFileImpl: SecureFileOperations
 
     @Before
     fun setUp() {
@@ -29,12 +32,20 @@ class WebServerUploadTest {
         })
         configDir = tempFolder.newFolder("config")
 
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = object : SecureFileOperations {
+            override fun writeText(file: File, content: String) {
+                file.writeText(content)
+            }
+        }
+
         server = WebServer(0, configDir)
         server.start()
     }
 
     @After
     fun tearDown() {
+        SecureFile.impl = originalSecureFileImpl
         server.stop()
     }
 

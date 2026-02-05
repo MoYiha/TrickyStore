@@ -6,6 +6,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.Rule
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import java.io.File
 import java.io.InputStream
 
@@ -17,11 +19,23 @@ class WebServerXssTest {
 
     private lateinit var webServer: WebServer
     private lateinit var configDir: File
+    private lateinit var originalSecureFileImpl: SecureFileOperations
 
     @Before
     fun setUp() {
         configDir = tempFolder.newFolder("config")
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = object : SecureFileOperations {
+            override fun writeText(file: File, content: String) {
+                file.writeText(content)
+            }
+        }
         webServer = WebServer(8080, configDir)
+    }
+
+    @org.junit.After
+    fun tearDown() {
+        SecureFile.impl = originalSecureFileImpl
     }
 
     @Test

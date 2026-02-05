@@ -5,6 +5,7 @@ import kotlin.jvm.Synchronized
 import org.json.JSONArray
 import org.json.JSONObject
 import cleveres.tricky.cleverestech.Logger
+import cleveres.tricky.cleverestech.util.SecureFile
 
 data class DeviceTemplate(
     val id: String, // unique ID, e.g. "pixel8pro"
@@ -199,7 +200,7 @@ object DeviceTemplateManager {
                 obj.put("securityPatch", t.securityPatch)
                 array.put(obj)
             }
-            File(configDir, TEMPLATES_FILE).writeText(array.toString(4))
+            SecureFile.writeText(File(configDir, TEMPLATES_FILE), array.toString(4))
         } catch (e: Exception) {
             Logger.e("Failed to save templates.json", e)
         }
