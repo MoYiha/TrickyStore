@@ -5,15 +5,6 @@ type tricky_store_exec, exec_type, file_type, system_file_type;
 # Define a type for CleveresTricky's data files in /data/adb/cleverestricky
 type tricky_store_data_file, file_type, data_file_type;
 
-# Allow init or zygote to transition the daemon executable to tricky_store_daemon type
-# This might be handled by Magisk's general service handling; these are for explicit typing.
-# type_transition init module_file:"daemon" tricky_store_daemon;
-# type_transition zygote module_file:"daemon" tricky_store_daemon;
-# It's safer to rely on Magisk's service context or use magisk --post-fs-data to chcon the service script/daemon if needed.
-# For now, we'll assume the daemon runs as tricky_store_daemon.
-# If the service runs as a generic Magisk context (e.g., u:r:magisk_service:s0),
-# replace 'tricky_store_daemon' with that context in the rules below.
-
 # Allow the daemon to execute its own 'inject' program (assumed to be labeled tricky_store_exec or module_file)
 allow tricky_store_daemon tricky_store_exec:file { execute read open getattr execute_no_trans };
 allow tricky_store_daemon module_file:file { execute read open getattr execute_no_trans }; # More generic for files in MODDIR
@@ -26,19 +17,12 @@ allow keystore_server tricky_store_daemon:binder { call transfer };
 allow tricky_store_daemon keystore_server:binder { transfer }; # For replies and C++ calling back to Java interceptors
 
 # Permissions for tricky_store_daemon to read its config files in /data/adb/cleverestricky
-# Assumes files in /data/adb/cleverestricky are (or can be) labeled tricky_store_data_file.
-# Alternatively, use a broader context like 'adb_data_file' if managed by Magisk that way.
 allow tricky_store_daemon tricky_store_data_file:dir { search read open getattr };
 allow tricky_store_daemon tricky_store_data_file:file { read open getattr };
-# Fallback/alternative if using a common Magisk label for /data/adb/module_id/*
-# allow tricky_store_daemon adb_data_file:dir { search read open getattr };
-# allow tricky_store_daemon adb_data_file:file { read open getattr };
-
 
 # Allow tricky_store_daemon (Java service part) to find and call essential system services
 allow tricky_store_daemon keystore_service:service_manager { find };
 allow tricky_store_daemon package_service:service_manager { find };
-# allow tricky_store_daemon activity_service:service_manager { find }; # If needed
 
 # Allow tricky_store_daemon to read system properties (e.g., ro.boot.vbmeta.digest by util.kt)
 allow tricky_store_daemon system_prop:file { read open getattr };
@@ -47,8 +31,34 @@ allow tricky_store_daemon exported_default_prop:file { read open getattr }; # Co
 # Allow daemon to execute /system/bin/sh (used by KeystoreInterceptor to call inject)
 allow tricky_store_daemon shell_exec:file { execute read open getattr execute_no_trans };
 
-# Grant tricky_store_daemon necessary permissions to function as a Magisk service
-# These might be partly covered if it runs in a generic Magisk service context.
-# allow tricky_store_daemon self:process { execmem }; # If JIT or certain reflection is used heavily
-# allow tricky_store_daemon dalvikcache_data_file:dir { search write add_name };
-# allow tricky_store_daemon dalvikcache_data_file:file { create read write open getattr setattr };
+# make lsposed happy
+# TODO: remove those rules
+type magisk_file file_type
+typeattribute magisk_file mlstrustedobject
+allow * magisk_file file *
+allow * magisk_file dir *
+allow * magisk_file fifo_file *
+allow * magisk_file chr_file *
+allow * magisk_file lnk_file *
+allow * magisk_file sock_file *
+
+# allow hooking system server
+allow system_server system_server process execmem
+allow zygote zygote process execmem
+
+# allow zygote unmounting
+allow zygote adb_data_file dir search
+allow zygote mnt_vendor_file dir search
+allow zygote system_file dir mounton
+allow zygote labeledfs filesystem mount
+allow zygote fs_type filesystem unmount
+
+allow zygote unlabeled file { open read getattr }
+allow zygote zygote capability sys_chroot
+allow zygote nsfs file { open read }
+
+# TelephonyInterceptor support (System-Wide IMEI Spoofing)
+allow radio radio process execmem
+allow tricky_store_daemon radio:process { ptrace }
+allow radio tricky_store_daemon:binder { call transfer }
+allow tricky_store_daemon radio:binder { transfer }
