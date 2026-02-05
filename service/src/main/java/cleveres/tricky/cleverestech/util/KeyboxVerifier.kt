@@ -87,12 +87,16 @@ object KeyboxVerifier {
             var added = false
 
             // Try treating as Decimal first (Spec compliant)
-            try {
-                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                set.add(hexStr)
-                added = true
-            } catch (e: Exception) {
-                // Not a valid decimal, fall back to Hex
+            // Heuristic: If string is longer than 20 chars, it cannot be a Decimal u64 (max 20 digits).
+            // It is likely a 128-bit Hex string. We skip Decimal parsing to avoid ambiguity with all-digit Hex strings.
+            if (decStr.length <= 20) {
+                try {
+                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                    set.add(hexStr)
+                    added = true
+                } catch (e: Exception) {
+                    // Not a valid decimal, fall back to Hex
+                }
             }
 
             if (!added) {
