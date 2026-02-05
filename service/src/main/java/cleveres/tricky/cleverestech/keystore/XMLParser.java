@@ -15,7 +15,7 @@ public class XMLParser {
     private static class Element {
         String name;
         Map<String, String> attributes = new HashMap<>();
-        String text;
+        StringBuilder textBuilder;
         Map<String, List<Element>> children = new HashMap<>();
 
         Element(String name) {
@@ -70,10 +70,10 @@ public class XMLParser {
                     if (currentElement != null && parser.getText() != null) {
                         String text = parser.getText().trim();
                         if (!text.isEmpty()) {
-                            if (currentElement.text == null) {
-                                currentElement.text = text;
+                            if (currentElement.textBuilder == null) {
+                                currentElement.textBuilder = new StringBuilder(text);
                             } else {
-                                currentElement.text += text;
+                                currentElement.textBuilder.append(text);
                             }
                         }
                     }
@@ -124,8 +124,8 @@ public class XMLParser {
         }
 
         Map<String, String> result = new HashMap<>(current.attributes);
-        if (current.text != null) {
-            result.put("text", current.text);
+        if (current.textBuilder != null) {
+            result.put("text", current.textBuilder.toString());
         }
         return result;
     }
