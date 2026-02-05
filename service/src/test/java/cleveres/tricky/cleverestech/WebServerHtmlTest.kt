@@ -66,7 +66,15 @@ class WebServerHtmlTest {
         // Verify Random Logic
         assertTrue("Missing Randomized Extras Header", html.contains("<h3>System-Wide Spoofing (Global Hardware)</h3>"))
         assertTrue("Missing IMEI Input", html.contains("id=\"inputImei\""))
+        assertTrue("Missing IMEI Label", html.contains("<label for=\"inputImei\""))
+        assertTrue("Missing IMSI Label", html.contains("<label for=\"inputImsi\""))
+        assertTrue("Missing ICCID Label", html.contains("<label for=\"inputIccid\""))
+        assertTrue("Missing Serial Label", html.contains("<label for=\"inputSerial\""))
+        assertTrue("Missing WiFi MAC Label", html.contains("<label for=\"inputWifiMac\""))
+        assertTrue("Missing BT MAC Label", html.contains("<label for=\"inputBtMac\""))
         assertTrue("Missing SIM ISO Input", html.contains("id=\"inputSimIso\""))
+        assertTrue("Missing SIM ISO Label", html.contains("<label for=\"inputSimIso\""))
+        assertTrue("Missing Operator Label", html.contains("<label for=\"inputSimOp\""))
         assertTrue("Missing Generate Random Button", html.contains("generateRandomIdentity"))
 
         // Verify Apps Logic
