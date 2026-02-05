@@ -1,6 +1,6 @@
 # CleveresTricky
 
-**Advanced Keystore and Attestation Spoofing Module for Android**
+**Advanced Spoofing Module for Android**
 
 **Requires Android 12+**
 
