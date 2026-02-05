@@ -694,14 +694,21 @@ class WebServer(
         <div class="panel">
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
+                <label for="appPkg" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Package</label>
                 <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()">
                 <datalist id="pkgList"></datalist>
             </div>
             <div class="grid-2" style="margin-bottom:10px;">
-                <select id="appTemplate">
-                    <option value="null">No Identity Spoof</option>
-                </select>
-                <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)">
+                <div>
+                    <label for="appTemplate" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Device Identity</label>
+                    <select id="appTemplate">
+                        <option value="null">No Identity Spoof</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
+                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)">
+                </div>
             </div>
 
             <div class="section-header" style="margin-top:10px;">Blank Permissions (Privacy)</div>

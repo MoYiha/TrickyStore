@@ -79,6 +79,9 @@ class WebServerHtmlTest {
 
         // Verify Apps Logic
         assertTrue("Missing App Package Input", html.contains("id=\"appPkg\""))
+        assertTrue("Missing App Package Label", html.contains("<label for=\"appPkg\""))
+        assertTrue("Missing App Template Label", html.contains("<label for=\"appTemplate\""))
+        assertTrue("Missing App Keybox Label", html.contains("<label for=\"appKeybox\""))
         assertTrue("Missing Blank Permissions Logic", html.contains("Blank Permissions (Privacy)"))
         assertTrue("Missing Contacts Permission Toggle", html.contains("id=\"permContacts\""))
         assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for \${rule.package}\""))
