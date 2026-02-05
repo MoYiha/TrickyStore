@@ -15,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec
 object LocalRkpProxy {
 
     private const val RKP_MAC_KEY_ALGORITHM = "HmacSHA256"
-    private const val KEY_FILE_PATH = "/data/adb/cleverestricky/rkp_root_secret"
+    internal const val KEY_FILE_PATH = "/data/adb/cleverestricky/rkp_root_secret"
     
     // Dynamic Root Secret
     // Loaded from file or generated randomly to ensure persistence across reboots but 
