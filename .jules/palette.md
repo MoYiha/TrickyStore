@@ -13,3 +13,7 @@
 ## 2026-02-03 - Mobile Text Selection
 **Learning:** Selecting long technical strings (like fingerprints) inside `div` elements is often frustrating on mobile touch interfaces due to imprecise cursors.
 **Action:** Always provide a dedicated "Copy" button for long, non-editable text fields to improve usability.
+
+## 2026-05-21 - Automated Accessibility Verification
+**Learning:** This project utilizes unit tests (`WebServerHtmlTest`) to parse and verify the existence of accessibility attributes (`aria-label`, `label for`) in the server-generated HTML.
+**Action:** When working on backend-generated UIs, leverage or create similar string-parsing unit tests to enforce accessibility standards in the CI pipeline, rather than relying solely on frontend inspection.

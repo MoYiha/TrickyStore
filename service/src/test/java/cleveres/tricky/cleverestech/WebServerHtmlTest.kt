@@ -52,9 +52,15 @@ class WebServerHtmlTest {
         assertTrue("Missing label for tee_broken_mode", html.contains("<label for=\"tee_broken_mode\""))
         assertTrue("Missing label for rkp_bypass", html.contains("<label for=\"rkp_bypass\""))
 
+        // Verify new labels for App Config
+        assertTrue("Missing label for appPkg", html.contains("<label for=\"appPkg\""))
+        assertTrue("Missing label for appTemplate", html.contains("<label for=\"appTemplate\""))
+        assertTrue("Missing label for appKeybox", html.contains("<label for=\"appKeybox\""))
+
         // Verify aria-labels
         assertTrue("Missing aria-label for fileSelector", html.contains("aria-label=\"Select configuration file\""))
         assertTrue("Missing aria-label for editor", html.contains("aria-label=\"Configuration editor\""))
+        assertTrue("Missing aria-label for templateSelect", html.contains("aria-label=\"Device Identity Selector\""))
 
         // Verify aria-live
         assertTrue("Missing aria-live for keyboxStatus", html.contains("id=\"keyboxStatus\" aria-live=\"polite\""))

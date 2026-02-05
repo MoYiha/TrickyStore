@@ -420,7 +420,7 @@ class WebServer(
         <div class="panel">
             <h3>IDENTITY SELECTOR</h3>
             <p style="color:#888; font-size:0.9em;">Select a verified device identity to spoof globally or save for specific apps.</p>
-            <select id="templateSelect" onchange="previewTemplate()"></select>
+            <select id="templateSelect" onchange="previewTemplate()" aria-label="Device Identity Selector"></select>
 
             <div id="templatePreview" style="margin-top:15px; border:1px solid var(--border); padding:15px; display:none;">
                 <div class="row"><span>Model:</span> <b id="pModel"></b></div>
@@ -448,18 +448,18 @@ class WebServer(
         <div class="panel">
             <h3>ADD NEW RULE</h3>
             <div style="margin-bottom:10px;">
-                <label style="font-size:0.8em; color:#888;">TARGET PACKAGE</label>
+                <label for="appPkg" style="font-size:0.8em; color:#888;">TARGET PACKAGE</label>
                 <input type="text" id="appPkg" list="pkgList" placeholder="com.example.app" aria-label="Target Package">
                 <datalist id="pkgList"></datalist>
             </div>
             <div style="margin-bottom:10px;">
-                <label style="font-size:0.8em; color:#888;">DEVICE IDENTITY</label>
+                <label for="appTemplate" style="font-size:0.8em; color:#888;">DEVICE IDENTITY</label>
                 <select id="appTemplate">
                     <option value="null">Default (No Spoof)</option>
                 </select>
             </div>
             <div style="margin-bottom:15px;">
-                <label style="font-size:0.8em; color:#888;">KEYBOX OVERRIDE</label>
+                <label for="appKeybox" style="font-size:0.8em; color:#888;">KEYBOX OVERRIDE</label>
                 <input type="text" id="appKeybox" placeholder="keybox.xml (optional)">
             </div>
             <button class="primary" onclick="addAppRule()">ADD RULE</button>
