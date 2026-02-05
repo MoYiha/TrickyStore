@@ -221,11 +221,14 @@ class WebServer(
                         if (line.isNotBlank() && !line.startsWith("#")) {
                             val parts = line.trim().split(Regex("\\s+"))
                             if (parts.isNotEmpty()) {
-                                val obj = JSONObject()
-                                obj.put("package", parts[0])
-                                obj.put("template", if (parts.size > 1 && parts[1] != "null") parts[1] else "")
-                                obj.put("keybox", if (parts.size > 2 && parts[2] != "null") parts[2] else "")
-                                array.put(obj)
+                                val pkg = parts[0]
+                                if (pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
+                                    val obj = JSONObject()
+                                    obj.put("package", pkg)
+                                    obj.put("template", if (parts.size > 1 && parts[1] != "null") parts[1] else "")
+                                    obj.put("keybox", if (parts.size > 2 && parts[2] != "null") parts[2] else "")
+                                    array.put(obj)
+                                }
                             }
                         }
                     }
