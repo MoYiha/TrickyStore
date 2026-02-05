@@ -560,16 +560,16 @@ class WebServer(
 
     <h1>${getAppName()} <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
 
-    <div class="tabs" role="tablist">
-        <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')">Dashboard</div>
-        <div class="tab" id="tab_spoof" onclick="switchTab('spoof')">Spoofing</div>
-        <div class="tab" id="tab_apps" onclick="switchTab('apps')">Apps</div>
-        <div class="tab" id="tab_keys" onclick="switchTab('keys')">Keyboxes</div>
-        <div class="tab" id="tab_editor" onclick="switchTab('editor')">Editor</div>
+    <div class="tabs" role="tablist" aria-label="Navigation">
+        <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabKey(event, 'dashboard')">Dashboard</div>
+        <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="0" aria-selected="false" aria-controls="spoof" onkeydown="handleTabKey(event, 'spoof')">Spoofing</div>
+        <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="0" aria-selected="false" aria-controls="apps" onkeydown="handleTabKey(event, 'apps')">Apps</div>
+        <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="0" aria-selected="false" aria-controls="keys" onkeydown="handleTabKey(event, 'keys')">Keyboxes</div>
+        <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="0" aria-selected="false" aria-controls="editor" onkeydown="handleTabKey(event, 'editor')">Editor</div>
     </div>
 
     <!-- DASHBOARD -->
-    <div id="dashboard" class="content active">
+    <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
         <div class="panel">
             <h3>System Control</h3>
             <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" class="toggle" id="global_mode" onchange="toggle('global_mode')"></div>
@@ -617,7 +617,7 @@ class WebServer(
     </div>
 
     <!-- SPOOFING (Replacing Lab) -->
-    <div id="spoof" class="content">
+    <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
         <div class="panel">
             <h3>Identity Manager</h3>
             <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
@@ -701,7 +701,7 @@ class WebServer(
     </div>
 
     <!-- APPS -->
-    <div id="apps" class="content">
+    <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
         <div class="panel">
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
@@ -748,7 +748,7 @@ class WebServer(
     </div>
 
     <!-- KEYS -->
-    <div id="keys" class="content">
+    <div id="keys" class="content" role="tabpanel" aria-labelledby="tab_keys">
         <div class="panel">
             <h3>Upload Keybox</h3>
             <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null">
@@ -768,7 +768,7 @@ class WebServer(
     </div>
 
     <!-- EDITOR -->
-    <div id="editor" class="content">
+    <div id="editor" class="content" role="tabpanel" aria-labelledby="tab_editor">
         <div class="panel">
             <div class="row">
                 <select id="fileSelector" onchange="loadFile()" style="width:70%;">
@@ -835,11 +835,25 @@ class WebServer(
         }
 
         function switchTab(id) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
             document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-            document.getElementById('tab_' + id).classList.add('active');
+
+            const tab = document.getElementById('tab_' + id);
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+
             document.getElementById(id).classList.add('active');
             if (id === 'apps') loadAppConfig();
+        }
+
+        function handleTabKey(e, id) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                switchTab(id);
+            }
         }
 
         async function init() {
