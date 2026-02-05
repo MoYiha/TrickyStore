@@ -112,18 +112,18 @@ class WebServer(
                   try {
                       val len = lenStr.toLong()
                       if (len > MAX_UPLOAD_SIZE) {
-                           return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
+                           return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
                       }
                   } catch (e: Exception) {}
              } else {
-                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
+                 return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
              }
         }
 
         // Simple Token Auth
         val requestToken = params["token"]
         if (!MessageDigest.isEqual(token.toByteArray(), (requestToken ?: "").toByteArray())) {
-             return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
+             return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
         }
 
         if (uri == "/api/config" && method == Method.GET) {
@@ -146,7 +146,7 @@ class WebServer(
                 templates.put(name)
             }
             json.put("templates", templates)
-            return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+            return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
         // NEW: Get Templates List
@@ -162,7 +162,7 @@ class WebServer(
                 obj.put("securityPatch", t.securityPatch)
                 array.put(obj)
             }
-            return newFixedLengthResponse(Response.Status.OK, "application/json", array.toString())
+            return secureResponse(Response.Status.OK, "application/json", array.toString())
         }
 
         // NEW: Get Installed Packages
@@ -175,9 +175,9 @@ class WebServer(
                     .map { it.removePrefix("package:").trim() }
                     .sorted()
                 val array = JSONArray(packages)
-                newFixedLengthResponse(Response.Status.OK, "application/json", array.toString())
+                secureResponse(Response.Status.OK, "application/json", array.toString())
             } catch (e: Exception) {
-                newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to list packages")
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to list packages")
             }
         }
 
@@ -201,7 +201,7 @@ class WebServer(
                     }
                 }
             }
-            return newFixedLengthResponse(Response.Status.OK, "application/json", array.toString())
+            return secureResponse(Response.Status.OK, "application/json", array.toString())
         }
 
         // NEW: Save Structured App Config
@@ -222,7 +222,7 @@ class WebServer(
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
 
                          if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
-                             return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
                          }
 
                          sb.append("$pkg $tmpl $kb\n")
@@ -230,21 +230,21 @@ class WebServer(
                      if (saveFile("app_config", sb.toString())) {
                          // Trigger reload
                          File(configDir, "app_config").setLastModified(System.currentTimeMillis())
-                         return newFixedLengthResponse(Response.Status.OK, "text/plain", "Saved")
+                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
                      }
                  } catch (e: Exception) {
-                     return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
+                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
                  }
              }
-             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
         }
 
         if (uri == "/api/file" && method == Method.GET) {
             val filename = params["filename"]
             if (filename != null && isValidFilename(filename)) {
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", readFile(filename))
+                return secureResponse(Response.Status.OK, "text/plain", readFile(filename))
             }
-            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
         }
 
         if (uri == "/api/save" && method == Method.POST) {
@@ -255,10 +255,10 @@ class WebServer(
 
              if (filename != null && isValidFilename(filename) && content != null) {
                  if (saveFile(filename, content)) {
-                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "Saved")
+                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
                  }
              }
-             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
         }
 
         if (uri == "/api/upload_keybox" && method == Method.POST) {
@@ -278,22 +278,22 @@ class WebServer(
                  try {
                      file.writeText(content)
                      permissionSetter(file, 384) // 0600
-                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "Saved")
+                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
                  } catch (e: Exception) {
                      e.printStackTrace()
-                     return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
+                     return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
                  }
              }
-             return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
         }
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
                 val results = KeyboxVerifier.verify(configDir)
                 val json = createKeyboxVerificationJson(results)
-                return newFixedLengthResponse(Response.Status.OK, "application/json", json)
+                return secureResponse(Response.Status.OK, "application/json", json)
              } catch(e: Exception) {
-                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
 
@@ -305,18 +305,18 @@ class WebServer(
 
              if (setting != null && value != null) {
                  if (toggleFile(setting, value.toBoolean())) {
-                     return newFixedLengthResponse(Response.Status.OK, "text/plain", "Toggled")
+                     return secureResponse(Response.Status.OK, "text/plain", "Toggled")
                  }
              }
-             return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
         }
 
         if (uri == "/api/reload" && method == Method.POST) {
              try {
                 File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
-                return newFixedLengthResponse(Response.Status.OK, "text/plain", "Reloaded")
+                return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
              } catch(e: Exception) {
-                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
              }
         }
 
@@ -324,12 +324,12 @@ class WebServer(
              try {
                 val result = BetaFetcher.fetchAndApply(null)
                 if (result.success) {
-                    return newFixedLengthResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
+                    return secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
                 } else {
-                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
+                    return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
                 }
              } catch(e: Exception) {
-                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
 
@@ -338,14 +338,23 @@ class WebServer(
             val count = fetchTelegramCount()
             val json = JSONObject()
             json.put("members", count)
-            return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString())
+            return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
         if (uri == "/" || uri == "/index.html") {
-            return newFixedLengthResponse(Response.Status.OK, "text/html", getHtml())
+            return secureResponse(Response.Status.OK, "text/html", getHtml())
         }
 
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+        return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+    }
+
+    private fun secureResponse(status: Response.Status, mimeType: String, txt: String): Response {
+        val response = newFixedLengthResponse(status, mimeType, txt)
+        response.addHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
+        response.addHeader("X-Content-Type-Options", "nosniff")
+        response.addHeader("X-Frame-Options", "DENY")
+        response.addHeader("Referrer-Policy", "no-referrer")
+        return response
     }
 
     private fun isValidFilename(name: String): Boolean {
