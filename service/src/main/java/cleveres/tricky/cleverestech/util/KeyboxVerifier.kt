@@ -87,17 +87,13 @@ object KeyboxVerifier {
             var added = false
 
             // Try treating as Decimal first (Spec compliant)
-            // Heuristic: If string is longer than 20 chars, it cannot be a Decimal u64 (max 20 digits).
-            // However, X.509 serials can be larger. We skip Decimal parsing ONLY if it matches known Hex KeyID lengths (32, 40, 64)
-            // to avoid ambiguity with all-digit Hex strings.
-            if (decStr.length <= 20 || (decStr.length != 32 && decStr.length != 40 && decStr.length != 64)) {
-                try {
-                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                    set.add(hexStr)
-                    added = true
-                } catch (e: Exception) {
-                    // Not a valid decimal, fall back to Hex
-                }
+            // Try treating as Decimal first (Spec compliant)
+            try {
+                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                set.add(hexStr)
+                added = true
+            } catch (e: Exception) {
+                // Not a valid decimal, fall back to Hex
             }
 
             if (!added) {
