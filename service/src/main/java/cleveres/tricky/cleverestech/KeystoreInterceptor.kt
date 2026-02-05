@@ -143,7 +143,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                     arrayOf(
                         "./inject",
                         pid.toString(),
-                        "libtricky_store.so",
+                        "libcleverestricky.so",
                         "entry"
                     )
                 )

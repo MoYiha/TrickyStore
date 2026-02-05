@@ -1,38 +1,40 @@
 # Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep entry point
 -keepclasseswithmembers class cleveres.tricky.cleverestech.MainKt {
     public static void main(java.lang.String[]);
 }
 
+# Keep JNI Callbacks (Critical for native binder interception)
+-keep class cleveres.tricky.cleverestech.KeystoreInterceptor { *; }
+-keep class cleveres.tricky.cleverestech.TelephonyInterceptor { *; }
+-keep class cleveres.tricky.cleverestech.PropertyHiderService { *; }
+# BinderInterceptor abstract class might be used
+-keep class cleveres.tricky.cleverestech.binder.BinderInterceptor { *; }
+
+# Remove all logging (d, i, e, w, v)
 -assumenosideeffects class cleveres.tricky.cleverestech.Logger {
-    public static void d(java.lang.String);
+    public static void d(...);
+    public static void i(...);
+    public static void e(...);
+    public static void w(...);
+    public static void v(...);
 }
 
-# keep these or bouncycastle will not work
+# Keep BouncyCastle providers
 -keep class org.bouncycastle.jcajce.provider.** { *; }
 -keep class org.bouncycastle.jce.provider.** { *; }
 -dontwarn javax.naming.**
 
--repackageclasses
+# Aggressive Obfuscation
+-repackageclasses 'x'
 -allowaccessmodification
 -overloadaggressively
--renamesourcefileattribute
+-renamesourcefileattribute 'SourceFile'
+
+# Flatten package hierarchy
+-flattenpackagehierarchy 'x'
+
+# Optimization
+-optimizationpasses 5
+-mergeinterfacesaggressively

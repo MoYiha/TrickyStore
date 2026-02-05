@@ -30,7 +30,7 @@ fun calculateChecksum(variantLowered: String): String {
 
 android {
     namespace = "cleveres.tricky.cleverestech"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "cleveres.tricky.cleverestech"

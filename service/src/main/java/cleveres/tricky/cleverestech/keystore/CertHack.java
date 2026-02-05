@@ -766,6 +766,7 @@ public final class CertHack {
         return new DEROctetString(keyDescriptionHackSeq);
     }
 
+    @SuppressWarnings("deprecation")
     private static DEROctetString createApplicationId(int uid) throws Throwable {
         var pm = Config.INSTANCE.getPm();
         if (pm == null) {
