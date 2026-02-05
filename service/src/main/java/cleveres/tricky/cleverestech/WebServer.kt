@@ -571,6 +571,27 @@ class WebServer(
             <div style="font-size:0.8em; color:#666;">Telegram Members</div>
             <a href="https://t.me/cleverestech" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a>
         </div>
+
+        <div class="panel">
+            <h3>Support Project</h3>
+            <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Your contributions help maintain and develop new features.</div>
+
+            <div class="section-header">Crypto (Click to Copy)</div>
+            <div class="grid-2">
+                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!')">USDT (TRC20)</button>
+                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!')">Monero (XMR)</button>
+            </div>
+            <div class="grid-2" style="margin-top:10px;">
+                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!')">Binance ID</button>
+                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!')">USDT (ERC20)</button>
+            </div>
+
+            <div class="section-header">Platforms</div>
+            <div class="grid-2">
+                 <button class="primary" onclick="window.open('https://www.paypal.me/tryigitx', '_blank')">PayPal</button>
+                 <button class="primary" onclick="window.open('https://buymeacoffee.com/yigitx', '_blank')">BuyMeACoffee</button>
+            </div>
+        </div>
     </div>
 
     <!-- SPOOFING (Replacing Lab) -->
@@ -715,6 +736,26 @@ class WebServer(
         const token = urlParams.get('token');
 
         function getAuthUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + token; }
+
+        // Clipboard Helper
+        function copyToClipboard(text, msg) {
+            navigator.clipboard.writeText(text).then(() => {
+                notify(msg, 'normal');
+            }, (err) => {
+                // Fallback for non-secure contexts (http)
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    notify(msg, 'normal');
+                } catch (err) {
+                    notify('Copy failed', 'error');
+                }
+                document.body.removeChild(textArea);
+            });
+        }
 
         // Dynamic Island Logic
         function notify(msg, type = 'normal') {

@@ -317,3 +317,7 @@ Contributions welcome.
 ## Credits
 
 Cleverestech Telegram Group
+
+## Support
+
+If you find this project useful, you can support its development: [DONATE.md](DONATE.md)
