@@ -101,6 +101,7 @@ class WebServer(
         }
     }
 
+    @Suppress("DEPRECATION")
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
@@ -410,13 +411,17 @@ class WebServer(
         return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json")
     }
 
+    private fun getAppName(): String {
+        return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
+    }
+
     private fun getHtml(): String {
         return """
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>CleveresTricky</title>
+    <title>${getAppName()}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root {
@@ -555,7 +560,7 @@ class WebServer(
         </div>
     </div>
 
-    <h1>CleveresTricky <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
+    <h1>${getAppName()} <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
 
     <div class="tabs" role="tablist">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')">Dashboard</div>

@@ -140,7 +140,7 @@ object TelephonyInterceptor : BinderInterceptor() {
                     arrayOf(
                         "./inject",
                         pid.toString(),
-                        "libtricky_store.so",
+                        "libcleverestricky.so",
                         "entry"
                     )
                 )

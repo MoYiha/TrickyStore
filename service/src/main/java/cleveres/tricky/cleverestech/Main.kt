@@ -8,7 +8,7 @@ import java.security.MessageDigest
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
-    Logger.i("Welcome to CleveresTricky!")
+    Logger.i("Welcome to Service!")
     Verification.check()
 
     // Start Auto Cleaner

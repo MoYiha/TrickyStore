@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.28...3.31)
-project(trick_store)
+project(cleverestricky)
 
 find_package(cxx REQUIRED CONFIG)
 link_libraries(cxx::cxx)
+
+# Obfuscation / Size Optimization flags
+add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -Os -flto)
+add_link_options(-s -Wl,--gc-sections -Wl,--exclude-libs,ALL)
 
 add_library(elf_util STATIC elf_util/elf_util.cpp)
 add_library(my_logging STATIC logging/logging.cpp)
