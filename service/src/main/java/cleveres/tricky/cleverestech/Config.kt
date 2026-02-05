@@ -493,6 +493,8 @@ object Config {
                     sb.append("ATTESTATION_ID_ANDROID_ID=${RandomUtils.generateRandomAndroidId()}\n")
                     sb.append("ATTESTATION_ID_WIFI_MAC=${RandomUtils.generateRandomMac()}\n")
                     sb.append("ATTESTATION_ID_BT_MAC=${RandomUtils.generateRandomMac()}\n")
+                    sb.append("SIM_COUNTRY_ISO=${RandomUtils.generateRandomSimIso()}\n")
+                    sb.append("SIM_OPERATOR_NAME=${RandomUtils.generateRandomCarrier()}\n")
 
                     val f = File(root, SPOOF_BUILD_VARS_FILE)
                     f.writeText(sb.toString())

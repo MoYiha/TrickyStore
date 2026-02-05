@@ -7,6 +7,13 @@ object RandomUtils {
     private const val CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     private const val HEX_POOL = "0123456789abcdef"
 
+    // Simple list for random selection
+    private val COUNTRIES = listOf("us", "uk", "de", "fr", "es", "it", "ca", "au", "jp", "kr", "cn", "in", "br", "ru")
+    private val CARRIERS = listOf(
+        "T-Mobile", "Verizon", "AT&T", "Vodafone", "O2", "Orange", "Telekom",
+        "Movistar", "TIM", "Rogers", "Telstra", "SoftBank", "Docomo", "China Mobile", "Jio", "Vivo"
+    )
+
     fun generateLuhn(length: Int, prefix: String = ""): String {
         val sb = StringBuilder(prefix)
         while (sb.length < length - 1) {
@@ -48,5 +55,13 @@ object RandomUtils {
         return (1..16)
             .map { HEX_POOL[Random.nextInt(HEX_POOL.length)] }
             .joinToString("")
+    }
+
+    fun generateRandomSimIso(): String {
+        return COUNTRIES.random()
+    }
+
+    fun generateRandomCarrier(): String {
+        return CARRIERS.random()
     }
 }

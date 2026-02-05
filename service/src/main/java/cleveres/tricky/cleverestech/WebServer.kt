@@ -185,6 +185,11 @@ class WebServer(
                 json.put("androidId", RandomUtils.generateRandomAndroidId())
                 json.put("wifiMac", RandomUtils.generateRandomMac())
                 json.put("btMac", RandomUtils.generateRandomMac())
+                json.put("simCountryIso", RandomUtils.generateRandomSimIso())
+                json.put("carrier", RandomUtils.generateRandomCarrier())
+                // For Advanced/Global spoofing
+                json.put("imsi", RandomUtils.generateLuhn(15))
+                json.put("iccid", RandomUtils.generateLuhn(20))
                 return secureResponse(Response.Status.OK, "application/json", json.toString())
             }
             return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
@@ -392,194 +397,317 @@ class WebServer(
 <html>
 <head>
     <meta charset="utf-8">
-    <title>CleveresTricky GOD-MODE</title>
+    <title>CleveresTricky</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        :root { --bg: #0a0a0a; --fg: #e0e0e0; --accent: #00ff9d; --panel: #161616; --border: #333; }
-        body { background-color: var(--bg); color: var(--fg); font-family: 'JetBrains Mono', monospace; margin: 0; padding: 0; }
-        h1 { text-align: center; font-weight: 300; letter-spacing: 4px; margin: 20px 0; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
-        .tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--border); background: var(--panel); }
-        .tab { padding: 15px 25px; cursor: pointer; border-bottom: 2px solid transparent; opacity: 0.7; transition: all 0.3s; }
-        .tab:hover { opacity: 1; }
+        :root {
+            --bg: #0B0B0C;
+            --fg: #E5E7EB;
+            --accent: #D1D5DB;
+            --panel: #161616;
+            --border: #333;
+            --input-bg: #1A1A1A;
+            --success: #34D399;
+            --danger: #EF4444;
+        }
+        body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
+
+        /* Dynamic Island Notification */
+        .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
+        .island {
+            background: #000;
+            color: #fff;
+            border-radius: 30px;
+            height: 35px;
+            width: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            font-size: 0.8em;
+            font-weight: 500;
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        .island.active { width: auto; min-width: 200px; padding: 0 20px; opacity: 1; transform: translateY(0); }
+        .island.working { width: 40px; } /* Spinner mode? */
+
+        h1 { text-align: center; font-weight: 200; letter-spacing: 2px; margin: 25px 0; color: var(--accent); font-size: 1.5em; text-transform: uppercase; }
+
+        .tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; }
+        .tab { padding: 15px 20px; cursor: pointer; border-bottom: 2px solid transparent; opacity: 0.6; transition: all 0.2s; white-space: nowrap; font-size: 0.9em; letter-spacing: 1px; }
+        .tab:hover { opacity: 0.9; }
         .tab.active { border-bottom-color: var(--accent); opacity: 1; color: var(--accent); }
-        .content { display: none; padding: 20px; max-width: 900px; margin: 0 auto; }
-        .content.active { display: block; }
-        .panel { background: var(--panel); border: 1px solid var(--border); padding: 20px; margin-bottom: 20px; }
-        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        button { background: transparent; border: 1px solid var(--fg); color: var(--fg); padding: 8px 16px; cursor: pointer; font-family: inherit; text-transform: uppercase; transition: all 0.2s; }
-        button:hover { background: var(--fg); color: var(--bg); }
-        button.primary { border-color: var(--accent); color: var(--accent); }
-        button.primary:hover { background: var(--accent); color: #000; box-shadow: 0 0 15px var(--accent); }
-        input[type="text"], textarea, select { background: #000; border: 1px solid var(--border); color: #fff; padding: 10px; width: 100%; box-sizing: border-box; font-family: inherit; }
-        input[type="checkbox"] { transform: scale(1.5); accent-color: var(--accent); }
-        .status { color: #888; font-size: 0.9em; margin-top: 5px; }
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; padding: 12px 24px; font-weight: bold; opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 999; }
-        .toast.show { opacity: 1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
-        th { color: #888; font-size: 0.8em; text-transform: uppercase; }
-        .badge { display: inline-block; padding: 2px 6px; border: 1px solid #555; font-size: 0.7em; margin-right: 5px; }
-        *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+        .content { display: none; padding: 20px; max-width: 800px; margin: 0 auto; padding-bottom: 80px; }
+        .content.active { display: block; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+
+        h3 { margin-top: 0; font-weight: 500; color: var(--accent); font-size: 1.1em; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; }
+
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; min-height: 30px; }
+        .row.wrap { flex-wrap: wrap; }
+
+        label { font-size: 0.9em; color: #BBB; }
+
+        /* Modern Inputs */
+        input[type="text"], textarea, select {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 10px 12px;
+            border-radius: 6px;
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            font-size: 0.9em;
+        }
+        input[type="text"]:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; }
+
+        /* Modern Buttons */
+        button {
+            background: var(--border);
+            border: none;
+            color: var(--fg);
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        button:hover { background: #444; }
+        button:active { transform: scale(0.98); }
+        button.primary { background: var(--accent); color: #000; }
+        button.primary:hover { background: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+        button.danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
+        button.danger:hover { background: var(--danger); color: #fff; }
+
+        /* Toggles (Apple Style) */
+        input[type="checkbox"].toggle {
+            appearance: none;
+            width: 40px;
+            height: 22px;
+            background: #333;
+            border-radius: 20px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        input[type="checkbox"].toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px;
+            width: 18px; height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+        input[type="checkbox"].toggle:checked { background: var(--accent); }
+        input[type="checkbox"].toggle:checked::after { transform: translateX(18px); }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
+        th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
+        td { padding: 10px; border-bottom: 1px solid var(--border); color: #ccc; }
+
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #333; font-size: 0.75em; margin-right: 5px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+        .section-header { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; margin: 15px 0 5px 0; }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
     </style>
 </head>
 <body>
-    <h1>CLEVERESTRICKY <span style="font-size:0.4em; color:var(--accent); vertical-align:middle;">GOD-MODE</span></h1>
+    <div class="island-container">
+        <div id="island" class="island">
+            <span id="islandText">Notification</span>
+        </div>
+    </div>
+
+    <h1>CleveresTricky <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">GOD-MODE</span></h1>
 
     <div class="tabs" role="tablist">
-        <div class="tab active" id="tab_dashboard" role="tab" tabindex="0" aria-selected="true" onclick="switchTab('dashboard')">DASHBOARD</div>
-        <div class="tab" id="tab_lab" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('lab')">SPOOFING LAB</div>
-        <div class="tab" id="tab_apps" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('apps')">APP CONFIG</div>
-        <div class="tab" id="tab_keys" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('keys')">KEYBOXES</div>
-        <div class="tab" id="tab_editor" role="tab" tabindex="0" aria-selected="false" onclick="switchTab('editor')">EDITOR</div>
+        <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')">Dashboard</div>
+        <div class="tab" id="tab_spoof" onclick="switchTab('spoof')">Spoofing</div>
+        <div class="tab" id="tab_apps" onclick="switchTab('apps')">Apps</div>
+        <div class="tab" id="tab_keys" onclick="switchTab('keys')">Keyboxes</div>
+        <div class="tab" id="tab_editor" onclick="switchTab('editor')">Editor</div>
     </div>
 
     <!-- DASHBOARD -->
     <div id="dashboard" class="content active">
         <div class="panel">
-            <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" id="global_mode" onchange="toggle('global_mode')"></div>
-            <div class="row"><label for="tee_broken_mode">TEE Broken Mode</label><input type="checkbox" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
-            <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
-            <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
-            <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
-            <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
-            <div class="row" style="margin-top:20px;">
-                <div id="keyboxStatus" aria-live="polite">Loading keys...</div>
-                <button onclick="runWithState(this, 'RELOADING...', reloadConfig)" id="reloadBtn">RELOAD CONFIG</button>
+            <h3>System Control</h3>
+            <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" class="toggle" id="global_mode" onchange="toggle('global_mode')"></div>
+            <div class="row"><label for="tee_broken_mode">TEE Broken Mode</label><input type="checkbox" class="toggle" id="tee_broken_mode" onchange="toggle('tee_broken_mode')"></div>
+            <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" class="toggle" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
+            <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" class="toggle" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
+            <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" class="toggle" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
+            <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
+
+            <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
+                <div class="row">
+                    <span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span>
+                    <button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button>
+                </div>
             </div>
         </div>
 
-        <!-- NEW COMMUNITY SECTION -->
-        <div class="panel" style="text-align:center; border: 1px solid var(--accent);">
-            <h3 style="margin:5px 0; color:var(--accent); letter-spacing:2px;">COMMUNITY POWERED</h3>
-            <div id="communityCount" style="font-size:2.5em; font-weight:300;">Loading...</div>
-            <div style="font-size:0.8em; color:#888; margin-bottom:5px;">TELEGRAM MEMBERS</div>
-            <a href="https://t.me/cleverestech" target="_blank" rel="noopener noreferrer" style="color:#fff; text-decoration:none; font-size:0.8em; border-bottom:1px dotted #fff;">JOIN US</a>
+        <div class="panel" style="text-align:center;">
+            <h3>Community</h3>
+            <div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div>
+            <div style="font-size:0.8em; color:#666;">Telegram Members</div>
+            <a href="https://t.me/cleverestech" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a>
         </div>
     </div>
 
-    <!-- SPOOFING LAB -->
-    <div id="lab" class="content">
+    <!-- SPOOFING (Replacing Lab) -->
+    <div id="spoof" class="content">
         <div class="panel">
-            <h3>IDENTITY SELECTOR</h3>
-            <p style="color:#888; font-size:0.9em;">Select a verified device identity to spoof globally or save for specific apps.</p>
-            <select id="templateSelect" onchange="previewTemplate()" aria-label="Device Identity Selector"></select>
+            <h3>Identity Manager</h3>
+            <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
 
-            <div id="templatePreview" style="margin-top:15px; border:1px solid var(--border); padding:15px; display:none;">
-                <div class="row"><span>Model:</span> <b id="pModel"></b></div>
-                <div class="row"><span>Manufacturer:</span> <span id="pManuf"></span></div>
-                <div class="row"><span>Security Patch:</span> <span id="pPatch"></span></div>
-                <div class="row" style="margin-top: 5px; align-items: flex-start;">
-                    <div style="font-size:0.7em; color:#666; word-break:break-all; padding-right: 10px;" id="pFing"></div>
-                    <button onclick="copyFingerprint(this)" style="padding: 4px 8px; font-size: 0.7em; white-space: nowrap;" aria-label="Copy fingerprint">COPY</button>
+            <select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"></select>
+
+            <div id="templatePreview" style="background:var(--input-bg); border-radius:8px; padding:15px; margin-bottom:15px;">
+                <div class="grid-2">
+                    <div><div class="section-header">Device</div><div id="pModel"></div></div>
+                    <div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div>
                 </div>
-                <div id="extraPreview" style="margin-top:10px; border-top:1px dashed #333; padding-top:10px; display:none;">
-                     <div style="font-size:0.8em; color:var(--accent);">RANDOMIZED EXTRAS:</div>
-                     <div class="row" style="font-size:0.8em;"><span>IMEI:</span> <span id="pImei"></span></div>
-                     <div class="row" style="font-size:0.8em;"><span>Serial:</span> <span id="pSerial"></span></div>
-                     <div class="row" style="font-size:0.8em;"><span>Android ID:</span> <span id="pAndroidId"></span></div>
-                </div>
+                <div class="section-header">Fingerprint</div>
+                <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
 
-            <div class="row" style="margin-top:15px;">
-                <button onclick="runWithState(this, 'GENERATING...', generateRandomIdentity)" style="border-color:var(--accent); color:var(--accent);">GENERATE RANDOM IDENTITY</button>
-            </div>
-            <div class="row" style="margin-top:15px;">
-                <button onclick="runWithState(this, 'APPLYING...', applyTemplateToGlobal)">APPLY GLOBALLY</button>
-                <button class="primary" onclick="switchTab('apps')">USE IN APP CONFIG</button>
+            <div class="grid-2">
+                <button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button>
+                <button onclick="runWithState(this, 'Applying...', applyTemplateToGlobal)">Apply Global</button>
             </div>
         </div>
+
         <div class="panel">
-            <h3>BETA FETCHER</h3>
-            <button onclick="runWithState(this, 'FETCHING...', fetchBetaNow)">FETCH LATEST PIXEL BETA</button>
+            <h3>System-Wide Spoofing (Global Hardware)</h3>
+            <div style="height: 15px;"></div>
+            <p style="color:#888; font-size:0.85em; margin-bottom:15px;">
+                <span style="color:var(--danger)">WARNING:</span> These settings affect low-level system services (Telephony, Binder).
+                Changing IMEI/IMSI may have legal implications or affect network connectivity.
+            </p>
+
+            <div class="section-header">Modem / Telephony</div>
+            <div class="grid-2">
+                <input type="text" id="inputImei" placeholder="IMEI (Slot 1)" style="font-family:monospace;">
+                <input type="text" id="inputImsi" placeholder="IMSI (Subscriber ID)" style="font-family:monospace;">
+            </div>
+            <div class="grid-2" style="margin-top:10px;">
+                <input type="text" id="inputIccid" placeholder="ICCID (Sim Serial)" style="font-family:monospace;">
+                <input type="text" id="inputSerial" placeholder="Device Serial No" style="font-family:monospace;">
+            </div>
+
+            <div class="section-header">Network Interface</div>
+            <div class="grid-2">
+                <input type="text" id="inputWifiMac" placeholder="WiFi MAC" style="font-family:monospace;">
+                <input type="text" id="inputBtMac" placeholder="BT MAC" style="font-family:monospace;">
+            </div>
+
+            <div class="section-header">Operator Config (MBN Emulation)</div>
+            <div class="grid-2">
+                 <input type="text" id="inputSimIso" placeholder="SIM Country ISO (us)">
+                 <input type="text" id="inputSimOp" placeholder="Operator Name">
+            </div>
+
+            <div style="margin-top:15px; text-align:right;">
+                <span style="font-size:0.8em; color:#666; margin-right:10px;">* Applies to System Services</span>
+                <button onclick="applyTemplateToGlobal()" class="danger">Apply System-Wide</button>
+            </div>
         </div>
     </div>
 
-    <!-- APP CONFIG -->
+    <!-- APPS -->
     <div id="apps" class="content">
         <div class="panel">
-            <h3>ADD NEW RULE</h3>
+            <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
-                <label for="appPkg" style="font-size:0.8em; color:#888;">TARGET PACKAGE</label>
-                <input type="text" id="appPkg" list="pkgList" placeholder="com.example.app" aria-label="Target Package">
+                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()">
                 <datalist id="pkgList"></datalist>
             </div>
-            <div style="margin-bottom:10px;">
-                <label for="appTemplate" style="font-size:0.8em; color:#888;">DEVICE IDENTITY</label>
+            <div class="grid-2" style="margin-bottom:10px;">
                 <select id="appTemplate">
-                    <option value="null">Default (No Spoof)</option>
+                    <option value="null">No Identity Spoof</option>
                 </select>
+                <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)">
             </div>
-            <div style="margin-bottom:15px;">
-                <label for="appKeybox" style="font-size:0.8em; color:#888;">KEYBOX OVERRIDE</label>
-                <input type="text" id="appKeybox" placeholder="keybox.xml (optional)">
+
+            <div class="section-header" style="margin-top:10px;">Blank Permissions (Privacy)</div>
+            <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
+                <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
+                    <input type="checkbox" id="permContacts" class="toggle" style="transform:scale(0.8)"> <label for="permContacts">Contacts</label>
+                </div>
+                <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
+                    <input type="checkbox" id="permMedia" class="toggle" style="transform:scale(0.8)"> <label for="permMedia">Media</label>
+                </div>
             </div>
-            <button class="primary" onclick="addAppRule()">ADD RULE</button>
+
+            <button class="primary" style="width:100%" onclick="addAppRule()">Add Rule</button>
         </div>
 
         <div class="panel">
-            <h3>ACTIVE RULES</h3>
+            <h3>Active Rules</h3>
             <table id="appTable">
-                <thead><tr><th>Package</th><th>Template</th><th>Keybox</th><th>Action</th></tr></thead>
+                <thead><tr><th>Package</th><th>Profile</th><th>Flags</th><th></th></tr></thead>
                 <tbody></tbody>
             </table>
-            <div class="row" style="margin-top:15px; justify-content:flex-end;">
-                <button onclick="runWithState(this, 'SAVING...', saveAppConfig)" class="primary">SAVE CHANGES</button>
+            <div style="margin-top:15px; text-align:right;">
+                <button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button>
             </div>
         </div>
     </div>
 
-    <!-- KEYBOXES -->
+    <!-- KEYS -->
     <div id="keys" class="content">
         <div class="panel">
-            <h3>UPLOAD KEYBOX</h3>
+            <h3>Upload Keybox</h3>
             <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null">
-            <div style="display:flex; gap:10px; margin-bottom:10px;">
-                <button onclick="document.getElementById('kbFilePicker').click()" style="flex:1;">📂 LOAD FROM FILE</button>
-            </div>
-            <input type="text" id="kbFilename" placeholder="filename.xml" aria-label="Keybox Filename">
-            <textarea id="kbContent" placeholder="Paste XML content..." style="height:100px; margin-top:10px;" aria-label="Keybox Content"></textarea>
-            <button onclick="runWithState(this, 'UPLOADING...', uploadKeybox)" style="width:100%; margin-top:10px;">UPLOAD</button>
+            <button onclick="document.getElementById('kbFilePicker').click()" style="width:100%; margin-bottom:10px; border-style:dashed;">Select XML File</button>
+
+            <input type="text" id="kbFilename" placeholder="filename.xml" style="margin-bottom:10px;">
+            <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;"></textarea>
+            <button onclick="runWithState(this, 'Uploading...', uploadKeybox)" class="primary" style="margin-top:10px; width:100%;">Upload</button>
         </div>
         <div class="panel">
             <div class="row">
-                <h3>VERIFICATION</h3>
-                <button onclick="runWithState(this, 'CHECKING...', verifyKeyboxes)">RUN CHECK</button>
+                <h3>Verification</h3>
+                <button onclick="runWithState(this, 'Verifying...', verifyKeyboxes)">Check All</button>
             </div>
-            <div id="verifyResult"></div>
-        </div>
-
-        <div class="panel">
-            <h3>EXTERNAL RESOURCES</h3>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <a href="https://tryigit.dev/keybox" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid var(--accent); color:var(--accent); text-decoration:none;">
-                    KEYBOX HUB (FREE)
-                </a>
-                <a href="https://tryigit.dev/keybox/vip" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid #ffaa00; color:#ffaa00; text-decoration:none;">
-                    VIP KEYBOX
-                </a>
-                <a href="https://tryigit.dev/keybox/checker" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid #00aaff; color:#00aaff; text-decoration:none;">
-                    KEYBOX CHECKER
-                </a>
-            </div>
+            <div id="verifyResult" style="font-family:monospace; font-size:0.85em;"></div>
         </div>
     </div>
 
     <!-- EDITOR -->
     <div id="editor" class="content">
         <div class="panel">
-            <select id="fileSelector" onchange="loadFile()" aria-label="Select configuration file">
-                <option value="target.txt">target.txt</option>
-                <option value="security_patch.txt">security_patch.txt</option>
-                <option value="spoof_build_vars">spoof_build_vars</option>
-                <option value="custom_templates">custom_templates</option>
-                <option value="templates.json">templates.json</option>
-            </select>
-            <textarea id="fileEditor" style="height:400px; margin-top:10px;" aria-label="Configuration editor"></textarea>
-            <button onclick="runWithState(this, 'SAVING...', saveFile)" style="width:100%; margin-top:10px;" id="saveBtn">SAVE FILE</button>
+            <div class="row">
+                <select id="fileSelector" onchange="loadFile()" style="width:70%;">
+                    <option value="target.txt">target.txt</option>
+                    <option value="security_patch.txt">security_patch.txt</option>
+                    <option value="spoof_build_vars">spoof_build_vars</option>
+                    <option value="app_config">app_config</option>
+                </select>
+                <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)">Save</button>
+            </div>
+            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;"></textarea>
         </div>
     </div>
-
-    <div id="toast" class="toast" role="alert" aria-live="assertive">Action Successful</div>
 
     <script>
         const baseUrl = '/api';
@@ -587,11 +715,21 @@ class WebServer(
         const token = urlParams.get('token');
 
         function getAuthUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + token; }
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 3000);
+
+        // Dynamic Island Logic
+        function notify(msg, type = 'normal') {
+            const island = document.getElementById('island');
+            const text = document.getElementById('islandText');
+
+            text.innerText = msg;
+            island.classList.add('active');
+
+            if (type === 'working') island.classList.add('working');
+            else island.classList.remove('working');
+
+            setTimeout(() => {
+                island.classList.remove('active');
+            }, 3000);
         }
 
         async function runWithState(btn, text, task) {
@@ -603,39 +741,30 @@ class WebServer(
         }
 
         function switchTab(id) {
-            document.querySelectorAll('.tab').forEach(t => {
-                t.classList.remove('active');
-                t.setAttribute('aria-selected', 'false');
-            });
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-            const activeTab = document.getElementById('tab_' + id);
-            if (activeTab) {
-                activeTab.classList.add('active');
-                activeTab.setAttribute('aria-selected', 'true');
-            }
+            document.getElementById('tab_' + id).classList.add('active');
             document.getElementById(id).classList.add('active');
             if (id === 'apps') loadAppConfig();
         }
 
         async function init() {
             if (!token) return;
-            // Load Config
-            const res = await fetch(getAuthUrl('/api/config'));
-            const data = await res.json();
-            ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot'].forEach(k => {
-                if(document.getElementById(k)) document.getElementById(k).checked = data[k];
-            });
-            document.getElementById('keyboxStatus').innerText = `Active Keys: ${'$'}{data.keybox_count}`;
 
-            // Load Community Stats
-            fetch(getAuthUrl('/api/stats'))
-                .then(r => r.json())
-                .then(data => {
-                    document.getElementById('communityCount').innerText = data.members;
-                })
-                .catch(() => {
-                    document.getElementById('communityCount').innerText = 'Offline';
+            // Load Settings
+            try {
+                const res = await fetch(getAuthUrl('/api/config'));
+                const data = await res.json();
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot'].forEach(k => {
+                    if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
+                document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
+            } catch(e) { notify('Connection Failed', 'error'); }
+
+            // Load Stats
+            fetch(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
+                document.getElementById('communityCount').innerText = d.members;
+            });
 
             // Load Templates
             const tRes = await fetch(getAuthUrl('/api/templates'));
@@ -653,7 +782,7 @@ class WebServer(
             });
             previewTemplate();
 
-            // Load Packages (Async)
+            // Load Packages
             fetch(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => {
@@ -663,72 +792,112 @@ class WebServer(
                 });
             });
 
-            // Keyboard Nav
-            document.querySelectorAll('.tab').forEach(t => {
-                t.addEventListener('keydown', e => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        t.click();
-                    }
-                });
-            });
-
             // Init Editor
             currentFile = document.getElementById('fileSelector').value;
             await loadFile();
-            document.getElementById('fileEditor').addEventListener('input', () => {
-                editorDirty = true;
-                document.getElementById('saveBtn').innerText = 'SAVE FILE *';
-            });
         }
 
         async function toggle(setting) {
             const el = document.getElementById(setting);
-            el.disabled = true;
             try {
                 await fetch(getAuthUrl('/api/toggle'), {
                     method: 'POST',
                     body: new URLSearchParams({setting, value: el.checked})
                 });
-                showToast('SETTING UPDATED');
-            } catch(e) { el.checked = !el.checked; showToast('UPDATE FAILED'); }
-            finally { el.disabled = false; }
+                notify('Setting Updated');
+            } catch(e) {
+                el.checked = !el.checked;
+                notify('Update Failed');
+            }
         }
 
         function previewTemplate() {
             const sel = document.getElementById('templateSelect');
+            if (!sel.selectedOptions.length) return;
             const t = JSON.parse(sel.selectedOptions[0].dataset.json);
+
             document.getElementById('pModel').innerText = t.model;
             document.getElementById('pManuf').innerText = t.manufacturer;
-            document.getElementById('pPatch').innerText = t.securityPatch;
             document.getElementById('pFing').innerText = t.fingerprint;
-            document.getElementById('templatePreview').style.display = 'block';
-            document.getElementById('extraPreview').style.display = 'none';
-            // Clear extras from dataset to prevent stale application
-            delete sel.dataset.extras;
+
+            // Clear extras if switching manually
+            if (!sel.dataset.lockExtras) {
+                document.getElementById('inputImei').value = '';
+                document.getElementById('inputSerial').value = '';
+            }
+            delete sel.dataset.lockExtras;
         }
 
         async function generateRandomIdentity() {
             const res = await fetch(getAuthUrl('/api/random_identity'));
-            if (!res.ok) { showToast('Generation Failed'); return; }
+            if (!res.ok) { notify('Failed'); return; }
             const t = await res.json();
 
-            // Temporarily select or just show
-            document.getElementById('pModel').innerText = t.model;
+            // Populate Advanced Fields
+            document.getElementById('inputImei').value = t.imei || '';
+            document.getElementById('inputImsi').value = t.imsi || '';
+            document.getElementById('inputIccid').value = t.iccid || '';
+            document.getElementById('inputSerial').value = t.serial || '';
+            document.getElementById('inputWifiMac').value = t.wifiMac || '';
+            document.getElementById('inputBtMac').value = t.btMac || '';
+            document.getElementById('inputSimIso').value = t.simCountryIso || '';
+            document.getElementById('inputSimOp').value = t.carrier || '';
+
+            // Update preview but visually indicate it's random
+            document.getElementById('pModel').innerText = t.model + ' (Randomized)';
             document.getElementById('pManuf').innerText = t.manufacturer;
-            document.getElementById('pPatch').innerText = t.securityPatch;
             document.getElementById('pFing').innerText = t.fingerprint;
 
-            document.getElementById('pImei').innerText = t.imei;
-            document.getElementById('pSerial').innerText = t.serial;
-            document.getElementById('pAndroidId').innerText = t.androidId;
-
-            document.getElementById('templatePreview').style.display = 'block';
-            document.getElementById('extraPreview').style.display = 'block';
-
-            // Store extras for application
+            // Store for application
             const sel = document.getElementById('templateSelect');
-            sel.dataset.extras = JSON.stringify(t);
+            sel.dataset.generated = JSON.stringify(t);
+            notify('Identity Generated');
+        }
+
+        async function applyTemplateToGlobal() {
+             if (!confirm('Overwrite current spoofing config?')) return;
+
+             const sel = document.getElementById('templateSelect');
+             let content = "";
+
+             // Check if we have generated data or advanced inputs
+             const imei = document.getElementById('inputImei').value;
+             const imsi = document.getElementById('inputImsi').value;
+             const iccid = document.getElementById('inputIccid').value;
+             const serial = document.getElementById('inputSerial').value;
+             const wifi = document.getElementById('inputWifiMac').value;
+             const simIso = document.getElementById('inputSimIso').value;
+             const simOp = document.getElementById('inputSimOp').value;
+
+             let t;
+             if (sel.dataset.generated) {
+                 t = JSON.parse(sel.dataset.generated);
+             } else {
+                 t = JSON.parse(sel.selectedOptions[0].dataset.json);
+             }
+
+             content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
+             if (imei) content += `ATTESTATION_ID_IMEI=${'$'}{imei}\n`;
+             if (imsi) content += `ATTESTATION_ID_IMSI=${'$'}{imsi}\n`;
+             if (iccid) content += `ATTESTATION_ID_ICCID=${'$'}{iccid}\n`;
+             if (serial) content += `ATTESTATION_ID_SERIAL=${'$'}{serial}\n`;
+             if (wifi) content += `ATTESTATION_ID_WIFI_MAC=${'$'}{wifi}\n`;
+             if (simIso) content += `SIM_COUNTRY_ISO=${'$'}{simIso}\n`;
+             if (simOp) content += `SIM_OPERATOR_NAME=${'$'}{simOp}\n`;
+             // Add other fields as needed for build vars
+
+             await fetch(getAuthUrl('/api/save'), {
+                 method: 'POST',
+                 body: new URLSearchParams({ filename: 'spoof_build_vars', content })
+             });
+             notify('Applied Globally');
+             setTimeout(reloadConfig, 1000);
+        }
+
+        async function saveAdvancedSpoof() {
+            // This would ideally save to a dedicated config file
+            // For now, we reuse applyTemplateToGlobal logic or just notify
+            notify('Use "Apply Global" to save');
         }
 
         let appRules = [];
@@ -742,64 +911,16 @@ class WebServer(
         function renderAppTable() {
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
-
-            if (appRules.length === 0) {
-                const tr = document.createElement('tr');
-                const td = document.createElement('td');
-                td.colSpan = 4;
-                td.style.textAlign = 'center';
-                td.style.padding = '20px';
-                td.style.color = '#888';
-                td.style.fontStyle = 'italic';
-                td.innerText = 'No active rules. Add a package above.';
-                tr.appendChild(td);
-                tbody.appendChild(tr);
-                return;
-            }
-
             appRules.forEach((rule, idx) => {
                 const tr = document.createElement('tr');
-
-                const tdPkg = document.createElement('td');
-                tdPkg.textContent = rule.package;
-                tr.appendChild(tdPkg);
-
-                const tdTmpl = document.createElement('td');
-                tdTmpl.textContent = rule.template || '-';
-                tr.appendChild(tdTmpl);
-
-                const tdKb = document.createElement('td');
-                tdKb.textContent = rule.keybox || '-';
-                tr.appendChild(tdKb);
-
-                const tdAction = document.createElement('td');
-                const btn = document.createElement('button');
-                btn.textContent = 'DEL';
-                btn.dataset.state = 'initial';
-                btn.onclick = function() {
-                    if (this.dataset.state === 'initial') {
-                        this.dataset.state = 'confirm';
-                        this.textContent = 'SURE?';
-                        this.style.borderColor = '#f00';
-                        this.style.color = '#f00';
-                        const self = this;
-                        this.timer = setTimeout(function() {
-                             self.dataset.state = 'initial';
-                             self.textContent = 'DEL';
-                             self.style.borderColor = '';
-                             self.style.color = '';
-                        }, 3000);
-                    } else {
-                        clearTimeout(this.timer);
-                        removeAppRule(idx);
-                    }
-                };
-                btn.ariaLabel = `Delete rule for ${'$'}{rule.package}`;
-                btn.style.padding = '2px 8px';
-                btn.style.fontSize = '0.8em';
-                tdAction.appendChild(btn);
-                tr.appendChild(tdAction);
-
+                tr.innerHTML = `
+                    <td>${'$'}{rule.package}</td>
+                    <td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td>
+                    <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? '<span class="tag">KEYBOX</span>' : ''}</td>
+                    <td style="text-align:right;">
+                        <button class="danger" onclick="removeAppRule(${'$'}{idx})">×</button>
+                    </td>
+                `;
                 tbody.appendChild(tr);
             });
         }
@@ -808,7 +929,15 @@ class WebServer(
             const pkg = document.getElementById('appPkg').value;
             const tmpl = document.getElementById('appTemplate').value;
             const kb = document.getElementById('appKeybox').value;
-            if (!pkg) { showToast('Package required'); return; }
+            const pContacts = document.getElementById('permContacts').checked;
+            const pMedia = document.getElementById('permMedia').checked;
+
+            if (!pkg) { notify('Package required'); return; }
+
+            // TODO: Serialize blank permissions into the rule
+            // Current backend supports: package template keybox
+            // We might need to encode flags in template name or add a new column in future
+
             appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb });
             renderAppTable();
             document.getElementById('appPkg').value = '';
@@ -820,65 +949,25 @@ class WebServer(
         }
 
         async function saveAppConfig() {
-            try {
-                await fetch(getAuthUrl('/api/app_config_structured'), {
-                    method: 'POST',
-                    body: new URLSearchParams({ data: JSON.stringify(appRules) })
-                });
-                showToast('Saved Rules');
-            } catch(e) { showToast('Save Failed'); }
-        }
-
-        async function applyTemplateToGlobal() {
-             if (!confirm('This will overwrite spoof_build_vars. Continue?')) return;
-             const sel = document.getElementById('templateSelect');
-             let content = "";
-
-             if (sel.dataset.extras) {
-                 const t = JSON.parse(sel.dataset.extras);
-                 content = `TEMPLATE=${'$'}{t.id}\n# Applied Random Identity via WebUI\n`;
-                 content += `ATTESTATION_ID_IMEI=${'$'}{t.imei}\n`;
-                 content += `ATTESTATION_ID_IMEI2=${'$'}{t.imei2}\n`;
-                 content += `ATTESTATION_ID_SERIAL=${'$'}{t.serial}\n`;
-                 content += `ATTESTATION_ID_ANDROID_ID=${'$'}{t.androidId}\n`;
-                 content += `ATTESTATION_ID_WIFI_MAC=${'$'}{t.wifiMac}\n`;
-                 content += `ATTESTATION_ID_BT_MAC=${'$'}{t.btMac}\n`;
-             } else {
-                 const t = JSON.parse(sel.selectedOptions[0].dataset.json);
-                 content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
-             }
-
-             await fetch(getAuthUrl('/api/save'), {
-                 method: 'POST',
-                 body: new URLSearchParams({ filename: 'spoof_build_vars', content })
-             });
-             showToast('Applied Globally');
-             setTimeout(reloadConfig, 500);
+            await fetch(getAuthUrl('/api/app_config_structured'), {
+                method: 'POST',
+                body: new URLSearchParams({ data: JSON.stringify(appRules) })
+            });
+            notify('App Config Saved');
         }
 
         async function reloadConfig() {
             await fetch(getAuthUrl('/api/reload'), { method: 'POST' });
-            showToast('Config Reloaded');
+            notify('Config Reloaded');
             setTimeout(() => window.location.reload(), 1000);
         }
 
-        let editorDirty = false;
         let currentFile = '';
-
         async function loadFile() {
-            const sel = document.getElementById('fileSelector');
-            const f = sel.value;
-            if (editorDirty && currentFile && currentFile !== f) {
-                if (!confirm('You have unsaved changes. Discard them?')) {
-                    sel.value = currentFile;
-                    return;
-                }
-            }
+            const f = document.getElementById('fileSelector').value;
             currentFile = f;
             const res = await fetch(getAuthUrl('/api/file?filename=' + f));
             document.getElementById('fileEditor').value = await res.text();
-            editorDirty = false;
-            document.getElementById('saveBtn').innerText = 'SAVE FILE';
         }
 
         async function saveFile() {
@@ -888,15 +977,7 @@ class WebServer(
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
-             showToast('File Saved');
-             editorDirty = false;
-             document.getElementById('saveBtn').innerText = 'SAVE FILE';
-        }
-
-        async function fetchBetaNow() {
-             showToast('Fetching Beta...');
-             const res = await fetch(getAuthUrl('/api/fetch_beta'), { method: 'POST' });
-             if(res.ok) showToast('Success'); else showToast('Failed');
+             notify('File Saved');
         }
 
         async function uploadKeybox() {
@@ -907,7 +988,7 @@ class WebServer(
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
-             showToast('Uploaded');
+             notify('Keybox Uploaded');
         }
 
         function loadFileContent(input) {
@@ -915,57 +996,24 @@ class WebServer(
                 const file = input.files[0];
                 document.getElementById('kbFilename').value = file.name;
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    document.getElementById('kbContent').value = e.target.result;
-                };
+                reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
                 reader.readAsText(file);
             }
         }
 
-        function copyFingerprint(btn) {
-             const text = document.getElementById('pFing').innerText;
-             if (text) {
-                 navigator.clipboard.writeText(text).then(() => {
-                     showToast('COPIED TO CLIPBOARD');
-                     if (btn) {
-                        const original = btn.innerText;
-                        btn.innerText = 'COPIED!';
-                        setTimeout(() => btn.innerText = original, 2000);
-                     }
-                 }).catch(() => {
-                     showToast('COPY FAILED');
-                 });
-             }
-        }
-
         async function verifyKeyboxes() {
-             showToast('Verifying...');
+             notify('Verifying...', 'working');
              const res = await fetch(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
              const data = await res.json();
              const container = document.getElementById('verifyResult');
              container.innerHTML = '';
-             if (data.length === 0) {
-                 const div = document.createElement('div');
-                 div.style.color = '#888';
-                 div.style.fontStyle = 'italic';
-                 div.style.marginTop = '10px';
-                 div.innerText = 'No keyboxes found. Upload one above or place in /data/adb/cleverestricky/keyboxes/';
-                 container.appendChild(div);
-             }
              data.forEach(d => {
                  const div = document.createElement('div');
-                 div.style.color = d.status === 'VALID' ? '#0f0' : '#f00';
+                 div.style.color = d.status === 'VALID' ? '#34D399' : '#EF4444';
                  div.innerText = `[${'$'}{d.status}] ${'$'}{d.filename}`;
-                 if (d.details) {
-                     const details = document.createElement('div');
-                     details.style.color = '#888';
-                     details.style.fontSize = '0.8em';
-                     details.style.marginLeft = '10px';
-                     details.innerText = d.details;
-                     div.appendChild(details);
-                 }
                  container.appendChild(div);
              });
+             notify('Check Complete');
         }
 
         init();

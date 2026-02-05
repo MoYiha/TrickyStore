@@ -44,7 +44,7 @@ object DeviceTemplateManager {
     private var templates: MutableMap<String, DeviceTemplate> = mutableMapOf()
     private var cachedList: List<DeviceTemplate>? = null
 
-    // God-Mode Starter Pack: Verified High-Value Fingerprints
+    // Beta Starter Pack: Verified High-Value Fingerprints
     private val builtInTemplates = listOf(
         DeviceTemplate(
             id = "pixel8pro",
