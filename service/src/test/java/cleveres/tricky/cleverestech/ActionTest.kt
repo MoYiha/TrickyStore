@@ -127,8 +127,8 @@ class ActionTest {
         val conn = saveUrl.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         // Even with empty body, we need doOutput for POST usually, or just length 0.
-        // conn.doOutput = true
-        // conn.outputStream.close()
+        conn.doOutput = true
+        conn.outputStream.close()
 
         assertEquals(200, conn.responseCode)
 
