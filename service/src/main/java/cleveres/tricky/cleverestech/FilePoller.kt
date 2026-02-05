@@ -1,7 +1,9 @@
 package cleveres.tricky.cleverestech
 
 import java.io.File
-import kotlin.concurrent.thread
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 class FilePoller(
     private val file: File,
@@ -12,6 +14,15 @@ class FilePoller(
     private var isRunning = false
     @Volatile
     private var lastModified: Long = 0
+    private var scheduledFuture: ScheduledFuture<*>? = null
+
+    companion object {
+        private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
+            val t = Thread(r, "FilePoller-Scheduler")
+            t.isDaemon = true
+            t
+        }
+    }
 
     init {
         if (file.exists()) {
@@ -19,33 +30,33 @@ class FilePoller(
         }
     }
 
+    @Synchronized
     fun start() {
         if (isRunning) return
         isRunning = true
-        thread(start = true, isDaemon = true, name = "FilePoller-${file.name}") {
-            while (isRunning) {
-                try {
-                    Thread.sleep(intervalMs)
-                    if (file.exists()) {
-                        val currentModified = file.lastModified()
-                        if (currentModified > lastModified) {
-                            lastModified = currentModified
-                            onModified(file)
-                        }
-                    } else {
-                        // Reset if file deleted? Or keep lastModified?
-                        // If deleted and recreated, lastModified checks should handle it if new time > old time.
-                        // Usually specific logic needed? For now, keep simple.
+
+        scheduledFuture = scheduler.scheduleWithFixedDelay({
+            if (!isRunning) return@scheduleWithFixedDelay // Double check
+            try {
+                if (file.exists()) {
+                    val currentModified = file.lastModified()
+                    if (currentModified > lastModified) {
+                        lastModified = currentModified
+                        onModified(file)
                     }
-                } catch (e: InterruptedException) {
-                    break
                 }
+            } catch (e: Throwable) {
+                // Prevent thread death
+                e.printStackTrace()
             }
-        }
+        }, intervalMs, intervalMs, TimeUnit.MILLISECONDS)
     }
 
+    @Synchronized
     fun stop() {
         isRunning = false
+        scheduledFuture?.cancel(false)
+        scheduledFuture = null
     }
 
     fun updateLastModified() {
