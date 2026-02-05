@@ -261,6 +261,11 @@ class WebServer(
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
+                         // Validate keybox (alphanumeric, dots, underscores, hyphens)
+                         if (kb != "null" && !kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
+                         }
+
                          if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
                          }
