@@ -699,7 +699,25 @@ class WebServer(
                 const tdAction = document.createElement('td');
                 const btn = document.createElement('button');
                 btn.textContent = 'DEL';
-                btn.onclick = () => removeAppRule(idx);
+                btn.dataset.state = 'initial';
+                btn.onclick = function() {
+                    if (this.dataset.state === 'initial') {
+                        this.dataset.state = 'confirm';
+                        this.textContent = 'SURE?';
+                        this.style.borderColor = '#f00';
+                        this.style.color = '#f00';
+                        const self = this;
+                        this.timer = setTimeout(function() {
+                             self.dataset.state = 'initial';
+                             self.textContent = 'DEL';
+                             self.style.borderColor = '';
+                             self.style.color = '';
+                        }, 3000);
+                    } else {
+                        clearTimeout(this.timer);
+                        removeAppRule(idx);
+                    }
+                };
                 btn.ariaLabel = `Delete rule for ${'$'}{rule.package}`;
                 btn.style.padding = '2px 8px';
                 btn.style.fontSize = '0.8em';
