@@ -41,6 +41,7 @@ android {
 cmaker {
     default {
         arguments += arrayOf(
+            "-Wno-dev",
             "-DANDROID_STL=none",
             "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
             "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
