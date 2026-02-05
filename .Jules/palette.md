@@ -11,3 +11,7 @@
 ## 2026-02-05 - Accessible Notifications
 **Learning:** Custom "Dynamic Island" or toast notifications are often invisible to screen readers if they only animate opacity.
 **Action:** Always use `role="status"` and `aria-live="polite"` on notification containers so updates are announced without shifting focus.
+
+## 2026-05-21 - CSS Grids vs Inputs
+**Learning:** When using `display: grid` (e.g., `grid-2`), direct children become grid items. Adding a sibling `<label>` before an `<input>` breaks the layout if they aren't wrapped in a container `div`.
+**Action:** Always wrap `label + input` pairs in a `div` when retrofitting accessibility into existing grid-based layouts.

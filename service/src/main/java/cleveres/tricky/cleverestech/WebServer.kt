@@ -638,24 +638,48 @@ class WebServer(
 
             <div class="section-header">Modem / Telephony</div>
             <div class="grid-2">
-                <input type="text" id="inputImei" placeholder="IMEI (Slot 1)" style="font-family:monospace;">
-                <input type="text" id="inputImsi" placeholder="IMSI (Subscriber ID)" style="font-family:monospace;">
+                <div>
+                    <label for="inputImei" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">IMEI (Slot 1)</label>
+                    <input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;">
+                </div>
+                <div>
+                    <label for="inputImsi" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">IMSI (Subscriber ID)</label>
+                    <input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;">
+                </div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                <input type="text" id="inputIccid" placeholder="ICCID (Sim Serial)" style="font-family:monospace;">
-                <input type="text" id="inputSerial" placeholder="Device Serial No" style="font-family:monospace;">
+                <div>
+                    <label for="inputIccid" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">ICCID (Sim Serial)</label>
+                    <input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;">
+                </div>
+                <div>
+                    <label for="inputSerial" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Device Serial No</label>
+                    <input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;">
+                </div>
             </div>
 
             <div class="section-header">Network Interface</div>
             <div class="grid-2">
-                <input type="text" id="inputWifiMac" placeholder="WiFi MAC" style="font-family:monospace;">
-                <input type="text" id="inputBtMac" placeholder="BT MAC" style="font-family:monospace;">
+                <div>
+                    <label for="inputWifiMac" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">WiFi MAC</label>
+                    <input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;">
+                </div>
+                <div>
+                    <label for="inputBtMac" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">BT MAC</label>
+                    <input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;">
+                </div>
             </div>
 
             <div class="section-header">Operator Config (MBN Emulation)</div>
             <div class="grid-2">
-                 <input type="text" id="inputSimIso" placeholder="SIM Country ISO (us)">
-                 <input type="text" id="inputSimOp" placeholder="Operator Name">
+                 <div>
+                    <label for="inputSimIso" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">SIM Country ISO</label>
+                    <input type="text" id="inputSimIso" placeholder="us">
+                 </div>
+                 <div>
+                    <label for="inputSimOp" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Operator Name</label>
+                    <input type="text" id="inputSimOp" placeholder="T-Mobile">
+                 </div>
             </div>
 
             <div style="margin-top:15px; text-align:right;">
