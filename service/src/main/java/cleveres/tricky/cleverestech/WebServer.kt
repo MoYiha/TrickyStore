@@ -307,7 +307,8 @@ class WebServer(
              val filename = session.parms["filename"]
              val content = session.parms["content"]
 
-             if (filename != null && content != null && filename.endsWith(".xml") && !filename.contains("/")) {
+             // Security: Strict filename validation to prevent path traversal and weird files
+             if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(Regex("^[a-zA-Z0-9._-]+$"))) {
                  val keyboxDir = File(configDir, "keyboxes")
                  if (!keyboxDir.exists()) {
                      keyboxDir.mkdirs()
