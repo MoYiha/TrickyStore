@@ -251,6 +251,16 @@ class WebServer(
                          val tmpl = obj.optString("template", "null").ifEmpty { "null" }
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
 
+                         // Validate package name (alphanumeric, dots, underscores, wildcards)
+                         if (!pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
+                         }
+
+                         // Validate template (alphanumeric, underscores)
+                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
+                         }
+
                          if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
                          }
