@@ -117,5 +117,19 @@ class WebServerHtmlTest {
         // Verify JS helpers
         assertTrue("Missing handleTabKey JS", html.contains("function handleTabKey(e, id)"))
         assertTrue("Missing aria-selected update in switchTab", html.contains("setAttribute('aria-selected'"))
+
+        // Verify Numeric Inputs
+        assertTrue("IMEI missing inputmode=numeric", html.contains("id=\"inputImei\" placeholder=\"35...\" style=\"font-family:monospace;\" inputmode=\"numeric\""))
+        assertTrue("IMSI missing inputmode=numeric", html.contains("id=\"inputImsi\" placeholder=\"310...\" style=\"font-family:monospace;\" inputmode=\"numeric\""))
+        assertTrue("ICCID missing inputmode=numeric", html.contains("id=\"inputIccid\" placeholder=\"89...\" style=\"font-family:monospace;\" inputmode=\"numeric\""))
+
+        // Verify Autocapitalize Inputs
+        assertTrue("Serial missing autocapitalize=characters", html.contains("id=\"inputSerial\" placeholder=\"Alphanumeric...\" style=\"font-family:monospace;\" autocapitalize=\"characters\""))
+        assertTrue("WiFi MAC missing autocapitalize=characters", html.contains("id=\"inputWifiMac\" placeholder=\"00:11:22:33:44:55\" style=\"font-family:monospace;\" autocapitalize=\"characters\""))
+        assertTrue("BT MAC missing autocapitalize=characters", html.contains("id=\"inputBtMac\" placeholder=\"00:11:22:33:44:55\" style=\"font-family:monospace;\" autocapitalize=\"characters\""))
+
+        // Verify Accessibility Labels for Textareas
+        assertTrue("File Editor missing aria-label", html.contains("id=\"fileEditor\" style=\"height:500px; font-family:monospace; margin-top:10px; line-height:1.4;\" aria-label=\"File Content\""))
+        assertTrue("Keybox Content missing aria-label", html.contains("id=\"kbContent\" placeholder=\"XML Content\" style=\"height:100px; font-family:monospace; font-size:0.8em;\" aria-label=\"Keybox XML Content\""))
     }
 }
