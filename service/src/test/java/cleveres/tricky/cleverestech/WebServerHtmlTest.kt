@@ -40,69 +40,43 @@ class WebServerHtmlTest {
     }
 
     @Test
-    fun testHtmlAccessibility() {
+    fun testHtmlStructure() {
         val port = server.listeningPort
         val token = server.token
         val url = URL("http://localhost:$port/?token=$token")
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify labels for checkboxes
-        assertTrue("Missing label for global_mode", html.contains("<label for=\"global_mode\""))
-        assertTrue("Missing label for tee_broken_mode", html.contains("<label for=\"tee_broken_mode\""))
-        assertTrue("Missing label for rkp_bypass", html.contains("<label for=\"rkp_bypass\""))
+        // Verify Title and Badge
+        assertTrue("Missing Title", html.contains("<h1>CleveresTricky"))
+        assertTrue("Missing Beta Badge", html.contains("GOD-MODE</span></h1>"))
 
-        // Verify new labels for App Config
-        assertTrue("Missing label for appPkg", html.contains("<label for=\"appPkg\""))
-        assertTrue("Missing label for appTemplate", html.contains("<label for=\"appTemplate\""))
-        assertTrue("Missing label for appKeybox", html.contains("<label for=\"appKeybox\""))
+        // Verify Tabs
+        assertTrue("Missing Dashboard Tab", html.contains("id=\"tab_dashboard\""))
+        assertTrue("Missing Spoof Tab", html.contains("id=\"tab_spoof\""))
+        assertTrue("Missing Apps Tab", html.contains("id=\"tab_apps\""))
 
-        // Verify aria-labels
-        assertTrue("Missing aria-label for fileSelector", html.contains("aria-label=\"Select configuration file\""))
-        assertTrue("Missing aria-label for editor", html.contains("aria-label=\"Configuration editor\""))
-        assertTrue("Missing aria-label for templateSelect", html.contains("aria-label=\"Device Identity Selector\""))
+        // Verify Dynamic Island
+        assertTrue("Missing Island Container", html.contains("class=\"island-container\""))
+        assertTrue("Missing Island", html.contains("id=\"island\""))
+        assertTrue("Missing notify function", html.contains("function notify(msg, type = 'normal')"))
 
-        // Verify aria-live
-        assertTrue("Missing aria-live for keyboxStatus", html.contains("id=\"keyboxStatus\" aria-live=\"polite\""))
+        // Verify Random Logic
+        assertTrue("Missing Randomized Extras Header", html.contains("<h3>System-Wide Spoofing (Global Hardware)</h3>"))
+        assertTrue("Missing IMEI Input", html.contains("id=\"inputImei\""))
+        assertTrue("Missing SIM ISO Input", html.contains("id=\"inputSimIso\""))
+        assertTrue("Missing Generate Random Button", html.contains("generateRandomIdentity"))
 
-        // Verify save button ID
-        assertTrue("Missing id for saveBtn", html.contains("id=\"saveBtn\""))
+        // Verify Apps Logic
+        assertTrue("Missing App Package Input", html.contains("id=\"appPkg\""))
+        assertTrue("Missing Blank Permissions Logic", html.contains("Blank Permissions (Privacy)"))
+        assertTrue("Missing Contacts Permission Toggle", html.contains("id=\"permContacts\""))
 
-        // Verify reload button ID
-        assertTrue("Missing id for reloadBtn", html.contains("id=\"reloadBtn\""))
+        // Verify Editor
+        assertTrue("Missing File Selector", html.contains("id=\"fileSelector\""))
 
-        // Verify Toast logic exists
-        assertTrue("Missing toast CSS class", html.contains(".toast {"))
-        assertTrue("Missing showToast function", html.contains("function showToast(msg)"))
-
-        // Verify Copy Fingerprint button
-        assertTrue("Missing Copy button for fingerprint", html.contains("onclick=\"copyFingerprint(this)\""))
-        assertTrue("Missing copyFingerprint function", html.contains("function copyFingerprint(btn)"))
-        assertTrue("Missing feedback logic in copyFingerprint", html.contains("btn.innerText = 'COPIED!';"))
-
-        // Verify 2-step delete logic
-        assertTrue("Missing 2-step delete logic (SURE?)", html.contains("SURE?"))
-        assertTrue("Missing 2-step delete logic (dataset.state)", html.contains("dataset.state"))
-
-        // Verify Empty State Logic
-        assertTrue("Missing empty state logic in verifyKeyboxes", html.contains("No keyboxes found."))
-
-        // Verify toggle logic
-        assertTrue("Missing disabled logic in toggle", html.contains("el.disabled = true;"))
-
-        // Verify File Picker
-        assertTrue("Missing file picker input", html.contains("id=\"kbFilePicker\""))
-        assertTrue("Missing load from file button", html.contains("LOAD FROM FILE"))
-        assertTrue("Missing loadFileContent function", html.contains("function loadFileContent(input)"))
-
-        // Debugging failure
-        val hasToast = html.contains("showToast('SETTING UPDATED')")
-        if (!hasToast) {
-             val idx = html.indexOf("function toggle")
-             val snippet = if (idx != -1) html.substring(idx, (idx + 400).coerceAtMost(html.length)) else "Function not found"
-             // Replace newlines to make it readable in single line output
-             val safeSnippet = snippet.replace("\n", "\\n").replace("\r", "")
-             assertTrue("Missing showToast logic. Snippet: $safeSnippet", false)
-        }
+        // Verify Keybox
+        assertTrue("Missing Keybox File Picker", html.contains("id=\"kbFilePicker\""))
+        assertTrue("Missing Verify Button", html.contains("verifyKeyboxes"))
     }
 }

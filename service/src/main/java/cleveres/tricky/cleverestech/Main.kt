@@ -47,13 +47,28 @@ fun main(args: Array<String>) {
     }
 
     while (true) {
-        if (!KeystoreInterceptor.tryRunKeystoreInterceptor()) {
+        val ksSuccess = KeystoreInterceptor.tryRunKeystoreInterceptor()
+        val telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
+
+        if (!ksSuccess) {
+            // Keystore is critical, so we loop until it's ready
             Thread.sleep(1000)
             continue
         }
+
+        // Telephony is optional/advanced, but we should try to keep it alive
+        // Since injecting into com.android.phone might take time to start up
+        if (!telSuccess) {
+             Logger.d("Telephony interceptor not ready yet")
+        }
+
         Config.initialize()
         while (true) {
-            Thread.sleep(1000000)
+            // Periodically check Telephony status in case com.android.phone crashes/restarts
+            if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
+                 Logger.i("Retrying Telephony Interceptor injection...")
+            }
+            Thread.sleep(10000)
         }
     }
 }
