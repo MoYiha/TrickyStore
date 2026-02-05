@@ -80,6 +80,10 @@ class WebServerHtmlTest {
         assertTrue("Missing copyFingerprint function", html.contains("function copyFingerprint(btn)"))
         assertTrue("Missing feedback logic in copyFingerprint", html.contains("btn.innerText = 'COPIED!';"))
 
+        // Verify 2-step delete logic
+        assertTrue("Missing 2-step delete logic (SURE?)", html.contains("SURE?"))
+        assertTrue("Missing 2-step delete logic (dataset.state)", html.contains("dataset.state"))
+
         // Verify Empty State Logic
         assertTrue("Missing empty state logic in verifyKeyboxes", html.contains("No keyboxes found."))
 
