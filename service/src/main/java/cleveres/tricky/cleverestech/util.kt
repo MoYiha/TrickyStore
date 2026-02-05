@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.SystemProperties
 import java.util.concurrent.ThreadLocalRandom
 
+var systemPropertiesGet: (String, String?) -> String? = { key, def -> SystemProperties.get(key, def) }
+
 fun getTransactCode(clazz: Class<*>, method: String) =
     clazz.getDeclaredField("TRANSACTION_$method").apply { isAccessible = true }
         .getInt(null) // 2
@@ -19,12 +21,24 @@ val bootHash by lazy {
 // TODO: get verified boot keys
 @OptIn(ExperimentalStdlibApi::class)
 val bootKey by lazy {
-    "c34b68e0571933605261e790156658696e4788a88cb5b71d6173cf214c7e87ca".hexToByteArray()
+    getBootKeyFromProp() ?: "c34b68e0571933605261e790156658696e4788a88cb5b71d6173cf214c7e87ca".hexToByteArray()
+}
+
+@OptIn(ExperimentalStdlibApi::class)
+fun getBootKeyFromProp(): ByteArray? {
+    val keys = listOf("ro.boot.vbmeta.public_key_digest", "ro.boot.verifiedbootkey")
+    for (key in keys) {
+        val b = systemPropertiesGet(key, null)
+        if (b != null && b.length == 64) {
+            return b.hexToByteArray()
+        }
+    }
+    return null
 }
 
 @OptIn(ExperimentalStdlibApi::class)
 fun getBootHashFromProp(): ByteArray? {
-    val b = SystemProperties.get("ro.boot.vbmeta.digest", null) ?: return null
+    val b = systemPropertiesGet("ro.boot.vbmeta.digest", null) ?: return null
     if (b.length != 64) return null
     return b.hexToByteArray()
 }
