@@ -214,6 +214,23 @@ If the file is missing, the module falls back to generating fresh random keys fo
 **Verification:**
 Use [Play Integrity API Checker](https://play.google.com/store/apps/details?id=gr.nickas.playintegrity) to confirm all three integrity levels pass.
 
+## Privacy & Randomization
+
+CleveresTricky includes advanced privacy features to protect against device fingerprinting and identification.
+
+**Randomize on Boot:**
+When enabled, the module will automatically generate a completely new device identity every time you restart your phone.
+- Selects a random certified device template (e.g., Pixel 8, Galaxy S24).
+- Generates a valid, random IMEI (Luhn algorithm compliant).
+- Generates random Serial Number, Android ID, Wifi MAC, and Bluetooth MAC.
+- **Privacy Note:** This feature is intended for privacy purposes to avoid legal issues and prevent cross-application tracking.
+
+**Enable via WebUI:** Dashboard -> "Randomize on Boot"
+**Enable via Shell:** `touch /data/adb/cleverestricky/random_on_boot`
+
+**Manual Random Generation:**
+In the WebUI "Spoofing Lab", you can use the "GENERATE RANDOM IDENTITY" button to create a unique identity on demand and apply it globally or to specific apps.
+
 ## AutoPIF (Automatic Fingerprint Updates)
 
 Fetches latest Pixel Beta/Canary fingerprints from Google servers.

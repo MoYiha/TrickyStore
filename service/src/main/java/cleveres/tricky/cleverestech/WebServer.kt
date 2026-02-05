@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech
 import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
+import cleveres.tricky.cleverestech.util.RandomUtils
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.net.URL
@@ -52,7 +53,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -133,6 +134,7 @@ class WebServer(
             json.put("rkp_bypass", fileExists("rkp_bypass"))
             json.put("auto_beta", fileExists("auto_beta_fetch"))
             json.put("auto_keybox_check", fileExists("auto_keybox_check"))
+            json.put("random_on_boot", fileExists("random_on_boot"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
@@ -163,6 +165,29 @@ class WebServer(
                 array.put(obj)
             }
             return secureResponse(Response.Status.OK, "application/json", array.toString())
+        }
+
+        // NEW: Generate Random Identity
+        if (uri == "/api/random_identity" && method == Method.GET) {
+            val templates = DeviceTemplateManager.listTemplates()
+            if (templates.isNotEmpty()) {
+                val t = templates.random()
+                val json = JSONObject()
+                json.put("id", t.id)
+                json.put("model", t.model)
+                json.put("manufacturer", t.manufacturer)
+                json.put("fingerprint", t.fingerprint)
+                json.put("securityPatch", t.securityPatch)
+                // Extras
+                json.put("imei", RandomUtils.generateLuhn(15))
+                json.put("imei2", RandomUtils.generateLuhn(15))
+                json.put("serial", RandomUtils.generateRandomSerial(12))
+                json.put("androidId", RandomUtils.generateRandomAndroidId())
+                json.put("wifiMac", RandomUtils.generateRandomMac())
+                json.put("btMac", RandomUtils.generateRandomMac())
+                return secureResponse(Response.Status.OK, "application/json", json.toString())
+            }
+            return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
         }
 
         // NEW: Get Installed Packages
@@ -416,6 +441,7 @@ class WebServer(
             <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
             <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
             <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
+            <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
             <div class="row" style="margin-top:20px;">
                 <div id="keyboxStatus" aria-live="polite">Loading keys...</div>
                 <button onclick="runWithState(this, 'RELOADING...', reloadConfig)" id="reloadBtn">RELOAD CONFIG</button>
@@ -446,8 +472,17 @@ class WebServer(
                     <div style="font-size:0.7em; color:#666; word-break:break-all; padding-right: 10px;" id="pFing"></div>
                     <button onclick="copyFingerprint(this)" style="padding: 4px 8px; font-size: 0.7em; white-space: nowrap;" aria-label="Copy fingerprint">COPY</button>
                 </div>
+                <div id="extraPreview" style="margin-top:10px; border-top:1px dashed #333; padding-top:10px; display:none;">
+                     <div style="font-size:0.8em; color:var(--accent);">RANDOMIZED EXTRAS:</div>
+                     <div class="row" style="font-size:0.8em;"><span>IMEI:</span> <span id="pImei"></span></div>
+                     <div class="row" style="font-size:0.8em;"><span>Serial:</span> <span id="pSerial"></span></div>
+                     <div class="row" style="font-size:0.8em;"><span>Android ID:</span> <span id="pAndroidId"></span></div>
+                </div>
             </div>
 
+            <div class="row" style="margin-top:15px;">
+                <button onclick="runWithState(this, 'GENERATING...', generateRandomIdentity)" style="border-color:var(--accent); color:var(--accent);">GENERATE RANDOM IDENTITY</button>
+            </div>
             <div class="row" style="margin-top:15px;">
                 <button onclick="runWithState(this, 'APPLYING...', applyTemplateToGlobal)">APPLY GLOBALLY</button>
                 <button class="primary" onclick="switchTab('apps')">USE IN APP CONFIG</button>
@@ -512,6 +547,21 @@ class WebServer(
             </div>
             <div id="verifyResult"></div>
         </div>
+
+        <div class="panel">
+            <h3>EXTERNAL RESOURCES</h3>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="https://tryigit.dev/keybox" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid var(--accent); color:var(--accent); text-decoration:none;">
+                    KEYBOX HUB (FREE)
+                </a>
+                <a href="https://tryigit.dev/keybox/vip" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid #ffaa00; color:#ffaa00; text-decoration:none;">
+                    VIP KEYBOX
+                </a>
+                <a href="https://tryigit.dev/keybox/checker" target="_blank" rel="noopener noreferrer" style="flex:1; text-align:center; padding:10px; border:1px solid #00aaff; color:#00aaff; text-decoration:none;">
+                    KEYBOX CHECKER
+                </a>
+            </div>
+        </div>
     </div>
 
     <!-- EDITOR -->
@@ -572,7 +622,7 @@ class WebServer(
             // Load Config
             const res = await fetch(getAuthUrl('/api/config'));
             const data = await res.json();
-            ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check'].forEach(k => {
+            ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot'].forEach(k => {
                 if(document.getElementById(k)) document.getElementById(k).checked = data[k];
             });
             document.getElementById('keyboxStatus').innerText = `Active Keys: ${'$'}{data.keybox_count}`;
@@ -653,6 +703,32 @@ class WebServer(
             document.getElementById('pPatch').innerText = t.securityPatch;
             document.getElementById('pFing').innerText = t.fingerprint;
             document.getElementById('templatePreview').style.display = 'block';
+            document.getElementById('extraPreview').style.display = 'none';
+            // Clear extras from dataset to prevent stale application
+            delete sel.dataset.extras;
+        }
+
+        async function generateRandomIdentity() {
+            const res = await fetch(getAuthUrl('/api/random_identity'));
+            if (!res.ok) { showToast('Generation Failed'); return; }
+            const t = await res.json();
+
+            // Temporarily select or just show
+            document.getElementById('pModel').innerText = t.model;
+            document.getElementById('pManuf').innerText = t.manufacturer;
+            document.getElementById('pPatch').innerText = t.securityPatch;
+            document.getElementById('pFing').innerText = t.fingerprint;
+
+            document.getElementById('pImei').innerText = t.imei;
+            document.getElementById('pSerial').innerText = t.serial;
+            document.getElementById('pAndroidId').innerText = t.androidId;
+
+            document.getElementById('templatePreview').style.display = 'block';
+            document.getElementById('extraPreview').style.display = 'block';
+
+            // Store extras for application
+            const sel = document.getElementById('templateSelect');
+            sel.dataset.extras = JSON.stringify(t);
         }
 
         let appRules = [];
@@ -756,8 +832,21 @@ class WebServer(
         async function applyTemplateToGlobal() {
              if (!confirm('This will overwrite spoof_build_vars. Continue?')) return;
              const sel = document.getElementById('templateSelect');
-             const t = JSON.parse(sel.selectedOptions[0].dataset.json);
-             const content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
+             let content = "";
+
+             if (sel.dataset.extras) {
+                 const t = JSON.parse(sel.dataset.extras);
+                 content = `TEMPLATE=${'$'}{t.id}\n# Applied Random Identity via WebUI\n`;
+                 content += `ATTESTATION_ID_IMEI=${'$'}{t.imei}\n`;
+                 content += `ATTESTATION_ID_IMEI2=${'$'}{t.imei2}\n`;
+                 content += `ATTESTATION_ID_SERIAL=${'$'}{t.serial}\n`;
+                 content += `ATTESTATION_ID_ANDROID_ID=${'$'}{t.androidId}\n`;
+                 content += `ATTESTATION_ID_WIFI_MAC=${'$'}{t.wifiMac}\n`;
+                 content += `ATTESTATION_ID_BT_MAC=${'$'}{t.btMac}\n`;
+             } else {
+                 const t = JSON.parse(sel.selectedOptions[0].dataset.json);
+                 content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
+             }
 
              await fetch(getAuthUrl('/api/save'), {
                  method: 'POST',
