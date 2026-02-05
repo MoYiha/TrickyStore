@@ -85,6 +85,7 @@ class WebServerHtmlTest {
         assertTrue("Missing Blank Permissions Logic", html.contains("Blank Permissions (Privacy)"))
         assertTrue("Missing Contacts Permission Toggle", html.contains("id=\"permContacts\""))
         assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for \${rule.package}\""))
+        assertTrue("Missing Empty State", html.contains("No active rules"))
 
         // Verify Editor
         assertTrue("Missing File Selector", html.contains("id=\"fileSelector\""))

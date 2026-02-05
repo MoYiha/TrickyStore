@@ -1002,6 +1002,12 @@ class WebServer(
         function renderAppTable() {
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
+            if (appRules.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
+                tbody.appendChild(tr);
+                return;
+            }
             appRules.forEach((rule, idx) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
