@@ -651,21 +651,21 @@ class WebServer(
             <div class="grid-2">
                 <div>
                     <label for="inputImei" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">IMEI (Slot 1)</label>
-                    <input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;">
+                    <input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;" inputmode="numeric">
                 </div>
                 <div>
                     <label for="inputImsi" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">IMSI (Subscriber ID)</label>
-                    <input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;">
+                    <input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;" inputmode="numeric">
                 </div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
                 <div>
                     <label for="inputIccid" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">ICCID (Sim Serial)</label>
-                    <input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;">
+                    <input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;" inputmode="numeric">
                 </div>
                 <div>
                     <label for="inputSerial" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Device Serial No</label>
-                    <input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;">
+                    <input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;" autocapitalize="characters">
                 </div>
             </div>
 
@@ -673,11 +673,11 @@ class WebServer(
             <div class="grid-2">
                 <div>
                     <label for="inputWifiMac" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">WiFi MAC</label>
-                    <input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;">
+                    <input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters">
                 </div>
                 <div>
                     <label for="inputBtMac" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">BT MAC</label>
-                    <input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;">
+                    <input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters">
                 </div>
             </div>
 
@@ -755,7 +755,7 @@ class WebServer(
             <button onclick="document.getElementById('kbFilePicker').click()" style="width:100%; margin-bottom:10px; border-style:dashed;">Select XML File</button>
 
             <input type="text" id="kbFilename" placeholder="filename.xml" style="margin-bottom:10px;">
-            <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;"></textarea>
+            <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
             <button onclick="runWithState(this, 'Uploading...', uploadKeybox)" class="primary" style="margin-top:10px; width:100%;">Upload</button>
         </div>
         <div class="panel">
@@ -779,7 +779,7 @@ class WebServer(
                 </select>
                 <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)">Save</button>
             </div>
-            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;"></textarea>
+            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content"></textarea>
         </div>
     </div>
 
