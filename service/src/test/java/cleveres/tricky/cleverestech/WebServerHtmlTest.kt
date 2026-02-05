@@ -93,4 +93,28 @@ class WebServerHtmlTest {
         assertTrue("Missing Keybox File Picker", html.contains("id=\"kbFilePicker\""))
         assertTrue("Missing Verify Button", html.contains("verifyKeyboxes"))
     }
+
+    @Test
+    fun testAccessibilityAttributes() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // Verify Tabs Accessibility
+        assertTrue("Missing Tab Role", html.contains("role=\"tab\""))
+        assertTrue("Missing Tabindex", html.contains("tabindex=\"0\""))
+        assertTrue("Missing Aria Selected", html.contains("aria-selected=\"true\""))
+        assertTrue("Missing Key Handler", html.contains("onkeydown=\"handleTabKey"))
+        assertTrue("Missing Tab Controls", html.contains("aria-controls=\"dashboard\""))
+
+        // Verify Panels Accessibility
+        assertTrue("Missing Tabpanel Role", html.contains("role=\"tabpanel\""))
+        assertTrue("Missing Aria Labelledby", html.contains("aria-labelledby=\"tab_dashboard\""))
+
+        // Verify JS helpers
+        assertTrue("Missing handleTabKey JS", html.contains("function handleTabKey(e, id)"))
+        assertTrue("Missing aria-selected update in switchTab", html.contains("setAttribute('aria-selected'"))
+    }
 }
