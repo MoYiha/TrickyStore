@@ -87,8 +87,10 @@ object KeyboxVerifier {
             var added = false
 
             // Try treating as Decimal first (Spec compliant)
-            // Try treating as Decimal first (Spec compliant)
             try {
+                if (decStr.length > 1 && decStr.startsWith("0")) {
+                    throw NumberFormatException("Leading zero implies Hex")
+                }
                 val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
                 set.add(hexStr)
                 added = true
