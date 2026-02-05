@@ -86,7 +86,14 @@ public class CborEncoder {
                 }
                 // Compare Strings
                 if (k1 instanceof String && k2 instanceof String) {
-                    return ((String) k1).compareTo((String) k2);
+                    String s1 = (String) k1;
+                    String s2 = (String) k2;
+                    byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
+                    byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
+                    if (b1.length != b2.length) {
+                        return Integer.compare(b1.length, b2.length);
+                    }
+                    return s1.compareTo(s2);
                 }
                 // Mixed keys: Int < String per standard CBOR canonical rules usually? 
                 // RFC 7049: "If two keys have different types, the one with the lower major type sorts earlier."
