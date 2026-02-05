@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import java.io.File
+import kotlin.jvm.Synchronized
 import org.json.JSONArray
 import org.json.JSONObject
 import cleveres.tricky.cleverestech.Logger
@@ -41,6 +42,7 @@ data class DeviceTemplate(
 object DeviceTemplateManager {
     private const val TEMPLATES_FILE = "templates.json"
     private var templates: MutableMap<String, DeviceTemplate> = mutableMapOf()
+    private var cachedList: List<DeviceTemplate>? = null
 
     // God-Mode Starter Pack: Verified High-Value Fingerprints
     private val builtInTemplates = listOf(
@@ -109,6 +111,7 @@ object DeviceTemplateManager {
         )
     )
 
+    @Synchronized
     fun initialize(configDir: File) {
         // 1. Load built-ins
         builtInTemplates.forEach { templates[it.id] = it }
@@ -132,6 +135,7 @@ object DeviceTemplateManager {
             // Save built-ins to file for user editing
             saveTemplates(configDir)
         }
+        cachedList = null
     }
 
     private fun parseJson(obj: JSONObject): DeviceTemplate? {
@@ -165,8 +169,14 @@ object DeviceTemplateManager {
         return templates[id]?.toPropMap()
     }
 
+    @Synchronized
     fun listTemplates(): List<DeviceTemplate> {
-        return templates.values.toList().sortedBy { it.model }
+        val current = cachedList
+        if (current != null) return current
+
+        val sorted = templates.values.toList().sortedBy { it.model }
+        cachedList = sorted
+        return sorted
     }
 
     fun saveTemplates(configDir: File) {
@@ -195,7 +205,9 @@ object DeviceTemplateManager {
         }
     }
 
+    @Synchronized
     fun addTemplate(template: DeviceTemplate) {
         templates[template.id] = template
+        cachedList = null
     }
 }
