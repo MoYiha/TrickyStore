@@ -132,7 +132,7 @@ class WebServer(
             json.put("global_mode", fileExists("global_mode"))
             json.put("tee_broken_mode", fileExists("tee_broken_mode"))
             json.put("rkp_bypass", fileExists("rkp_bypass"))
-            json.put("auto_beta", fileExists("auto_beta_fetch"))
+            json.put("auto_beta_fetch", fileExists("auto_beta_fetch"))
             json.put("auto_keybox_check", fileExists("auto_keybox_check"))
             json.put("random_on_boot", fileExists("random_on_boot"))
             val files = JSONArray()
