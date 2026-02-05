@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.rkp
 
+import android.system.Os
 import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.util.CborEncoder
 import javax.crypto.Mac
@@ -35,8 +36,13 @@ object LocalRkpProxy {
                 val now = System.currentTimeMillis()
                 // 24 hours = 86400000 ms
                 if (now - lastMod > 86400000) {
-                     Logger.i("LocalRkpProxy: Key expired (>24h), rotating...")
-                     rotateKey()
+                     if (file.canWrite()) {
+                         Logger.i("LocalRkpProxy: Key expired (>24h), rotating...")
+                         rotateKey()
+                     } else {
+                         Logger.e("LocalRkpProxy: Key expired but not writable, skipping rotation")
+                         serverHmacKey = file.readBytes()
+                     }
                 } else {
                     serverHmacKey = file.readBytes()
                     Logger.d("LocalRkpProxy: Loaded valid existing root secret")
@@ -47,6 +53,22 @@ object LocalRkpProxy {
         } catch (e: Throwable) {
             Logger.e("LocalRkpProxy: Failed to load key, using random ephemeral", e)
             java.util.Random().nextBytes(serverHmacKey)
+        }
+    }
+
+    /**
+     * Checks if the key is expired and rotates it if possible.
+     * Intended to be called by the maintenance service (root).
+     */
+    fun checkAndRotate() {
+        try {
+            val file = java.io.File(KEY_FILE_PATH)
+            if (file.exists() && System.currentTimeMillis() - file.lastModified() > 86400000) {
+                 Logger.i("LocalRkpProxy: Maintenance rotation triggered")
+                 rotateKey()
+            }
+        } catch (e: Exception) {
+            Logger.e("LocalRkpProxy: Maintenance failed", e)
         }
     }
 
@@ -66,6 +88,12 @@ object LocalRkpProxy {
             val file = java.io.File(KEY_FILE_PATH)
             file.parentFile?.mkdirs()
             file.writeBytes(serverHmacKey)
+            // Secure it immediately (0600)
+            try {
+                Os.chmod(file.absolutePath, 384) // 0600
+            } catch (e: Throwable) {
+                Logger.e("LocalRkpProxy: Failed to chmod new key", e)
+            }
         } catch (e: Throwable) {
             Logger.e("LocalRkpProxy: Failed to persist new key", e)
         }
