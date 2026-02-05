@@ -531,7 +531,7 @@ class WebServer(
 </head>
 <body>
     <div class="island-container">
-        <div id="island" class="island">
+        <div id="island" class="island" role="status" aria-live="polite">
             <span id="islandText">Notification</span>
         </div>
     </div>
@@ -959,7 +959,7 @@ class WebServer(
                     <td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td>
                     <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? '<span class="tag">KEYBOX</span>' : ''}</td>
                     <td style="text-align:right;">
-                        <button class="danger" onclick="removeAppRule(${'$'}{idx})">×</button>
+                        <button class="danger" onclick="removeAppRule(${'$'}{idx})" aria-label="Remove rule for ${'$'}{rule.package}">×</button>
                     </td>
                 `;
                 tbody.appendChild(tr);

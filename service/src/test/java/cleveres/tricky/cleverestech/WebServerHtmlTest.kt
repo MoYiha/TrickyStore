@@ -59,6 +59,7 @@ class WebServerHtmlTest {
         // Verify Dynamic Island
         assertTrue("Missing Island Container", html.contains("class=\"island-container\""))
         assertTrue("Missing Island", html.contains("id=\"island\""))
+        assertTrue("Missing Island Accessibility", html.contains("role=\"status\" aria-live=\"polite\""))
         assertTrue("Missing notify function", html.contains("function notify(msg, type = 'normal')"))
 
         // Verify Random Logic
@@ -71,6 +72,7 @@ class WebServerHtmlTest {
         assertTrue("Missing App Package Input", html.contains("id=\"appPkg\""))
         assertTrue("Missing Blank Permissions Logic", html.contains("Blank Permissions (Privacy)"))
         assertTrue("Missing Contacts Permission Toggle", html.contains("id=\"permContacts\""))
+        assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for \${rule.package}\""))
 
         // Verify Editor
         assertTrue("Missing File Selector", html.contains("id=\"fileSelector\""))
