@@ -98,6 +98,15 @@ object KeyboxVerifier {
                 // Not a valid decimal, fall back to Hex
             }
 
+            // Ambiguity handling:
+            // If it was parsed as Decimal, but it *also* has the length of a standard Hex Key ID (32, 40, 64),
+            // it is possible that it is actually a Hex Key ID that happens to consist only of digits.
+            // In this case, we add BOTH interpretations to be safe.
+            if (added && (decStr.length == 32 || decStr.length == 40 || decStr.length == 64)) {
+                // It is already confirmed to be all digits (since BigInteger parsed it), so it matches Hex regex.
+                set.add(decStr.lowercase())
+            }
+
             if (!added) {
                 // Try treating as Hex (literal) as fallback
                 if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
