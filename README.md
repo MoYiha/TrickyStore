@@ -214,22 +214,33 @@ If the file is missing, the module falls back to generating fresh random keys fo
 **Verification:**
 Use [Play Integrity API Checker](https://play.google.com/store/apps/details?id=gr.nickas.playintegrity) to confirm all three integrity levels pass.
 
-## Privacy & Randomization
+## Privacy & Identity Mutation (IMEI Changing)
 
-CleveresTricky includes advanced privacy features to protect against device fingerprinting and identification.
+CleveresTricky isn't just about passing integrity checks; it's about **reclaiming your digital identity**. In a landscape where apps track your every move via persistent hardware identifiers (IMEI, IMSI, Serial No), this module offers a powerful "Anti-Fingerprinting" cloak.
 
-**Randomize on Boot:**
-When enabled, the module will automatically generate a completely new device identity every time you restart your phone.
+**The Cat & Mouse Game:**
+Google and app developers constantly evolve their detection methods. Static spoofing is dead. **Dynamic Mutation** is the only way forward. By rotating your device identifiers, you effectively "disappear" and reappear as a new device, breaking the chain of tracking.
+
+### IMEI / Serial Changer
+You can change your IMEI, IMSI, Serial Number, and MAC addresses on the fly. This is critical for privacy and for bypassing bans based on hardware IDs.
+
+**Manual Identity Change (WebUI):**
+1. Open the WebUI and navigate to the **Spoofing** tab.
+2. Scroll to **System-Wide Spoofing**.
+3. Enter your desired **IMEI** (Slot 1), **IMSI**, **ICCID**, or **Serial Number**.
+   - *Tip:* Use the "GENERATE RANDOM IDENTITY" button to create a valid, Luhn-compliant identity instantly.
+4. Click **Apply System-Wide**.
+   - *Note:* Changes are applied to the system immediately but may require an app restart (or device reboot) to be fully effective across all layers.
+
+**Randomize on Boot (Set & Forget):**
+When enabled, the module will automatically mutate your device identity every time you restart your phone.
 - Selects a random certified device template (e.g., Pixel 8, Galaxy S24).
 - Generates a valid, random IMEI (Luhn algorithm compliant).
 - Generates random Serial Number, Android ID, Wifi MAC, and Bluetooth MAC.
-- **Privacy Note:** This feature is intended for privacy purposes to avoid legal issues and prevent cross-application tracking.
+- **Psychological Impact:** You are never the same device twice.
 
 **Enable via WebUI:** Dashboard -> "Randomize on Boot"
 **Enable via Shell:** `touch /data/adb/cleverestricky/random_on_boot`
-
-**Manual Random Generation:**
-In the WebUI "Spoofing Lab", you can use the "GENERATE RANDOM IDENTITY" button to create a unique identity on demand and apply it globally or to specific apps.
 
 ## AutoPIF (Automatic Fingerprint Updates)
 
