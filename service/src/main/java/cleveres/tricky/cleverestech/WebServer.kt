@@ -218,6 +218,11 @@ class WebServer(
                          val pkg = obj.getString("package")
                          val tmpl = obj.optString("template", "null").ifEmpty { "null" }
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
+
+                         if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
+                             return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
+                         }
+
                          sb.append("$pkg $tmpl $kb\n")
                      }
                      if (saveFile("app_config", sb.toString())) {
@@ -411,7 +416,7 @@ class WebServer(
             <h3 style="margin:5px 0; color:var(--accent); letter-spacing:2px;">COMMUNITY POWERED</h3>
             <div id="communityCount" style="font-size:2.5em; font-weight:300;">Loading...</div>
             <div style="font-size:0.8em; color:#888; margin-bottom:5px;">TELEGRAM MEMBERS</div>
-            <a href="https://t.me/cleverestech" target="_blank" style="color:#fff; text-decoration:none; font-size:0.8em; border-bottom:1px dotted #fff;">JOIN US</a>
+            <a href="https://t.me/cleverestech" target="_blank" rel="noopener noreferrer" style="color:#fff; text-decoration:none; font-size:0.8em; border-bottom:1px dotted #fff;">JOIN US</a>
         </div>
     </div>
 

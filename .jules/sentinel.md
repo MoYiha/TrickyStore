@@ -17,3 +17,8 @@
 **Vulnerability:** The `web_port` file containing the authentication token was being created in the configuration directory before the directory's permissions were restricted to `0700`. This created a window where the directory and the token file could be world-readable.
 **Learning:** Even if you change file permissions immediately after creation, there is a race condition window. Securing the parent directory *before* creating sensitive files inside it is a more robust way to prevent access.
 **Prevention:** Always ensure the parent directory has restrictive permissions (e.g., `0700`) before writing sensitive files into it. Use `Os.chmod` immediately after directory creation.
+
+## 2024-05-29 - [Configuration Injection in Space-Delimited Files]
+**Vulnerability:** The application stored configuration (`app_config`) as a space-delimited text file but accepted unvalidated user input for fields. This allowed "Configuration Injection" where attackers could insert newlines or spaces to create fake entries or corrupt the file structure.
+**Learning:** Simple text-based file formats are prone to injection if delimiters (spaces, newlines) are not strictly forbidden in the input data.
+**Prevention:** Always validate that user input does not contain the delimiters used by the storage format. For space-delimited files, reject any input matching `\s`.
