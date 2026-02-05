@@ -132,7 +132,7 @@ class WebServer(
             json.put("global_mode", fileExists("global_mode"))
             json.put("tee_broken_mode", fileExists("tee_broken_mode"))
             json.put("rkp_bypass", fileExists("rkp_bypass"))
-            json.put("auto_beta", fileExists("auto_beta_fetch"))
+            json.put("auto_beta_fetch", fileExists("auto_beta_fetch"))
             json.put("auto_keybox_check", fileExists("auto_keybox_check"))
             json.put("random_on_boot", fileExists("random_on_boot"))
             val files = JSONArray()
@@ -250,6 +250,16 @@ class WebServer(
                          val pkg = obj.getString("package")
                          val tmpl = obj.optString("template", "null").ifEmpty { "null" }
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
+
+                         // Validate package name (alphanumeric, dots, underscores, wildcards)
+                         if (!pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
+                         }
+
+                         // Validate template (alphanumeric, underscores)
+                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
+                         }
 
                          if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")

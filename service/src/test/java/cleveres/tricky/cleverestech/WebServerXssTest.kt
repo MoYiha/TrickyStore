@@ -1,0 +1,86 @@
+package cleveres.tricky.cleverestech
+
+import fi.iki.elonen.NanoHTTPD
+import org.junit.Assert.assertEquals
+import org.junit.Before
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.Rule
+import java.io.File
+import java.io.InputStream
+
+class WebServerXssTest {
+
+    @Rule
+    @JvmField
+    val tempFolder = TemporaryFolder()
+
+    private lateinit var webServer: WebServer
+    private lateinit var configDir: File
+
+    @Before
+    fun setUp() {
+        configDir = tempFolder.newFolder("config")
+        webServer = WebServer(8080, configDir)
+    }
+
+    @Test
+    fun testAppConfigXssInjection() {
+        // This payload contains characters < > / = ( ) which are dangerous for XSS
+        val xssPayload = "<svg/onload=alert(1)>"
+        val jsonPayload = "[{\"package\": \"$xssPayload\", \"template\": \"null\", \"keybox\": \"null\"}]"
+
+        val session = object : NanoHTTPD.IHTTPSession {
+            override fun execute() {}
+            override fun getCookies() = null
+            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString())
+            override fun getInputStream(): InputStream? = null
+            override fun getMethod() = NanoHTTPD.Method.POST
+            override fun getParms() = mapOf("token" to webServer.token, "data" to jsonPayload)
+            override fun getParameters() = emptyMap<String, List<String>>()
+            override fun getQueryParameterString() = ""
+            override fun getUri() = "/api/app_config_structured"
+            override fun parseBody(files: MutableMap<String, String>?) {}
+            override fun getRemoteIpAddress() = "127.0.0.1"
+            override fun getRemoteHostName() = "localhost"
+        }
+
+        val response = webServer.serve(session)
+
+        // Assert that the server rejects the request with 400 Bad Request
+        assertEquals("Should return BAD_REQUEST", NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
+
+        // We verify the body message too
+        val responseBody = response.data.bufferedReader().use { it.readText() }
+        assertEquals("Invalid input: invalid characters", responseBody)
+    }
+
+    @Test
+    fun testValidAppConfig() {
+        // Valid package name with dots, underscores, and alphanumeric
+        val validPkg = "com.example.app_123"
+        // Also verify wildcard is allowed as per discussion
+        val wildcardPkg = "com.example.*"
+
+        val jsonPayload = "[{\"package\": \"$validPkg\", \"template\": \"pixel8pro\", \"keybox\": \"null\"}, {\"package\": \"$wildcardPkg\", \"template\": \"null\", \"keybox\": \"null\"}]"
+
+        val session = object : NanoHTTPD.IHTTPSession {
+            override fun execute() {}
+            override fun getCookies() = null
+            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString())
+            override fun getInputStream(): InputStream? = null
+            override fun getMethod() = NanoHTTPD.Method.POST
+            override fun getParms() = mapOf("token" to webServer.token, "data" to jsonPayload)
+            override fun getParameters() = emptyMap<String, List<String>>()
+            override fun getQueryParameterString() = ""
+            override fun getUri() = "/api/app_config_structured"
+            override fun parseBody(files: MutableMap<String, String>?) {}
+            override fun getRemoteIpAddress() = "127.0.0.1"
+            override fun getRemoteHostName() = "localhost"
+        }
+
+        val response = webServer.serve(session)
+
+        assertEquals("Should return OK", NanoHTTPD.Response.Status.OK, response.status)
+    }
+}
