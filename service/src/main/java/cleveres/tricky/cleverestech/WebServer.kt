@@ -223,11 +223,20 @@ class WebServer(
                             if (parts.isNotEmpty()) {
                                 val pkg = parts[0]
                                 if (pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
-                                    val obj = JSONObject()
-                                    obj.put("package", pkg)
-                                    obj.put("template", if (parts.size > 1 && parts[1] != "null") parts[1] else "")
-                                    obj.put("keybox", if (parts.size > 2 && parts[2] != "null") parts[2] else "")
-                                    array.put(obj)
+                                    val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
+                                    val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
+
+                                    // Security: Validate template and keybox to prevent XSS (Stored via manual file edit)
+                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))
+                                    val isKbValid = kb.isEmpty() || kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))
+
+                                    if (isTmplValid && isKbValid) {
+                                        val obj = JSONObject()
+                                        obj.put("package", pkg)
+                                        obj.put("template", tmpl)
+                                        obj.put("keybox", kb)
+                                        array.put(obj)
+                                    }
                                 }
                             }
                         }
