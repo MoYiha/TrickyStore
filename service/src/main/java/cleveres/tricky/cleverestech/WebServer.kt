@@ -186,15 +186,17 @@ class WebServer(
             val file = File(configDir, "app_config")
             val array = JSONArray()
             if (file.exists()) {
-                file.readLines().forEach { line ->
-                    if (line.isNotBlank() && !line.startsWith("#")) {
-                        val parts = line.trim().split(Regex("\\s+"))
-                        if (parts.isNotEmpty()) {
-                            val obj = JSONObject()
-                            obj.put("package", parts[0])
-                            obj.put("template", if (parts.size > 1 && parts[1] != "null") parts[1] else "")
-                            obj.put("keybox", if (parts.size > 2 && parts[2] != "null") parts[2] else "")
-                            array.put(obj)
+                file.useLines { lines ->
+                    lines.forEach { line ->
+                        if (line.isNotBlank() && !line.startsWith("#")) {
+                            val parts = line.trim().split(Regex("\\s+"))
+                            if (parts.isNotEmpty()) {
+                                val obj = JSONObject()
+                                obj.put("package", parts[0])
+                                obj.put("template", if (parts.size > 1 && parts[1] != "null") parts[1] else "")
+                                obj.put("keybox", if (parts.size > 2 && parts[2] != "null") parts[2] else "")
+                                array.put(obj)
+                            }
                         }
                     }
                 }

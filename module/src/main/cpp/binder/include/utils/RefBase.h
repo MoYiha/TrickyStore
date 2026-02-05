@@ -119,10 +119,6 @@ inline bool operator _op_ (const U* o) const {                   \
         // Only called in OBJECT_LIFETIME_WEAK case.  Returns true if OK to promote to
         // strong reference. May have side effects if it returns true.
         virtual bool            onIncStrongAttempted(const void* id);
-        // Invoked in the OBJECT_LIFETIME_WEAK case when the last reference of either
-        // kind goes away.  Unused.
-        // TODO: Remove.
-        virtual void            onLastWeakRef(const void* id);
 
     private:
         friend class weakref_type;
