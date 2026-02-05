@@ -87,6 +87,11 @@ class WebServerHtmlTest {
         assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for \${rule.package}\""))
         assertTrue("Missing Empty State", html.contains("No active rules"))
 
+        // Verify Apps Search Filter
+        assertTrue("Missing App Filter Input", html.contains("id=\"appFilter\""))
+        assertTrue("Missing App Filter ARIA Label", html.contains("aria-label=\"Filter rules\""))
+        assertTrue("Missing App Filter JS Logic", html.contains("rule.package.toLowerCase().includes(filter)"))
+
         // Verify Editor
         assertTrue("Missing File Selector", html.contains("id=\"fileSelector\""))
 
