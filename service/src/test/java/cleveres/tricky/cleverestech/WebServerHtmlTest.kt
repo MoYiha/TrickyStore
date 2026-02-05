@@ -59,7 +59,10 @@ class WebServerHtmlTest {
         // Verify Dynamic Island
         assertTrue("Missing Island Container", html.contains("class=\"island-container\""))
         assertTrue("Missing Island", html.contains("id=\"island\""))
+        assertTrue("Missing Island Role", html.contains("role=\"status\""))
+        assertTrue("Missing Island Live", html.contains("aria-live=\"polite\""))
         assertTrue("Missing notify function", html.contains("function notify(msg, type = 'normal')"))
+        assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for ${'$'}{rule.package}\""))
 
         // Verify Random Logic
         assertTrue("Missing Randomized Extras Header", html.contains("<h3>System-Wide Spoofing (Global Hardware)</h3>"))
