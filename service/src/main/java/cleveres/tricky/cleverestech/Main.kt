@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import android.system.Os
+import cleveres.tricky.cleverestech.rkp.LocalRkpProxy
 import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import java.io.File
 import java.security.MessageDigest
@@ -25,10 +26,19 @@ fun main(args: Array<String>) {
         if (!configDir.exists()) configDir.mkdirs()
         // Secure directory before writing sensitive file
         try {
-            Os.chmod(configDir.absolutePath, 448) // 0700
+            Os.chmod(configDir.absolutePath, 493) // 0755
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }
+
+        // Initialize RKP Proxy and ensure key is accessible by system/interceptor
+        try {
+            LocalRkpProxy.getMacKey()
+            Os.chmod(LocalRkpProxy.KEY_FILE_PATH, 438) // 0666
+        } catch (t: Throwable) {
+            Logger.e("failed to init RKP permissions", t)
+        }
+
         portFile.writeText("$port|$token")
         portFile.setReadable(false, false) // Clear all
         portFile.setReadable(true, true) // Owner only (0600)
