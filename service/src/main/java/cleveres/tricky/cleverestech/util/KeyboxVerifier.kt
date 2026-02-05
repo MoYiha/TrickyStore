@@ -86,24 +86,26 @@ object KeyboxVerifier {
             val decStr = keys.next()
             var added = false
 
-            // Try treating as Hex (literal)
-            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                try {
-                    val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
-                    set.add(hexStr)
-                    added = true
-                } catch (e: Exception) {
-                    // Should not happen due to regex check, but safety first
-                }
-            }
-
-            // Try treating as Decimal
+            // Try treating as Decimal first (Spec compliant)
             try {
                 val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
                 set.add(hexStr)
                 added = true
             } catch (e: Exception) {
-                // Not a valid decimal
+                // Not a valid decimal, fall back to Hex
+            }
+
+            if (!added) {
+                // Try treating as Hex (literal) as fallback
+                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                    try {
+                        val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
+                        set.add(hexStr)
+                        added = true
+                    } catch (e: Exception) {
+                        // Should not happen due to regex check, but safety first
+                    }
+                }
             }
 
             if (!added) {
