@@ -239,7 +239,7 @@ object Config {
         // 1. Get base templates from Manager (JSON)
         val newTemplates = LinkedHashMap<String, Map<String, String>>()
         DeviceTemplateManager.listTemplates().forEach {
-            newTemplates[it.id] = it.toPropMap()
+            newTemplates[it.id.lowercase()] = it.toPropMap()
         }
 
         // 2. Override/Extend with custom_templates file (INI format)
@@ -284,7 +284,7 @@ object Config {
     }
 
     fun getTemplate(name: String): Map<String, String>? {
-        return templates[name]
+        return templates[name.lowercase()]
     }
 
     fun getBuildVar(key: String): String? {
