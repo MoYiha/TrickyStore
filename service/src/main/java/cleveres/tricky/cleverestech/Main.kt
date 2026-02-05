@@ -34,7 +34,7 @@ fun main(args: Array<String>) {
         // Initialize RKP Proxy and ensure key is accessible by system/interceptor
         try {
             LocalRkpProxy.getMacKey()
-            Os.chmod(LocalRkpProxy.KEY_FILE_PATH, 438) // 0666
+            Os.chmod(LocalRkpProxy.KEY_FILE_PATH, 384) // 0600
         } catch (t: Throwable) {
             Logger.e("failed to init RKP permissions", t)
         }
@@ -68,6 +68,8 @@ fun main(args: Array<String>) {
             if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
                  Logger.i("Retrying Telephony Interceptor injection...")
             }
+            // Maintenance: Check RKP key rotation (Anti-Fingerprinting)
+            LocalRkpProxy.checkAndRotate()
             Thread.sleep(10000)
         }
     }
