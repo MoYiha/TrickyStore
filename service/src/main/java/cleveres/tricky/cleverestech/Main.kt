@@ -26,7 +26,7 @@ fun main(args: Array<String>) {
         if (!configDir.exists()) configDir.mkdirs()
         // Secure directory before writing sensitive file
         try {
-            Os.chmod(configDir.absolutePath, 493) // 0755
+            Os.chmod(configDir.absolutePath, 448) // 0700
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }

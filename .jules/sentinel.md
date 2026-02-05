@@ -22,3 +22,8 @@
 **Vulnerability:** The application stored configuration (`app_config`) as a space-delimited text file but accepted unvalidated user input for fields. This allowed "Configuration Injection" where attackers could insert newlines or spaces to create fake entries or corrupt the file structure.
 **Learning:** Simple text-based file formats are prone to injection if delimiters (spaces, newlines) are not strictly forbidden in the input data.
 **Prevention:** Always validate that user input does not contain the delimiters used by the storage format. For space-delimited files, reject any input matching `\s`.
+
+## 2025-05-30 - [Inconsistent Permission Initialization]
+**Vulnerability:** The service initialization logic (`Main.kt`) explicitly set the configuration directory permissions to `0755` (readable by all), overriding the secure `0700` permissions set during installation. This created a vulnerability window on every boot where sensitive files could potentially be read by other applications if their individual file permissions were weak.
+**Learning:** Security configurations distributed across multiple initialization points (installer scripts vs. runtime code) can drift and contradict each other. Runtime initialization code should treat the secure state as the source of truth, not defaults.
+**Prevention:** Centralize security configuration constants and verify that all initialization paths (install, boot, runtime) enforce the same strict permissions (`0700` for config dirs).
