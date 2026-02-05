@@ -5,6 +5,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.io.File
+import cleveres.tricky.cleverestech.util.SecureFile
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledExecutorService
@@ -274,7 +275,7 @@ ro.boot.vbmeta.device_state=locked
 $userOverrides
         """.trimIndent()
         
-        varsFile.writeText(content)
+        SecureFile.writeText(varsFile, content)
         Logger.i("$TAG: Profile applied to ${varsFile.absolutePath}")
     }
     

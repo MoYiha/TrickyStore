@@ -7,6 +7,8 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,6 +26,9 @@ class WebServerSecurityTest {
     data class PermissionCall(val path: String, val mode: Int)
     private val permissionCalls = mutableListOf<PermissionCall>()
 
+    private lateinit var originalSecureFileImpl: SecureFileOperations
+    private val secureFileCalls = mutableListOf<File>()
+
     @Before
     fun setUp() {
         Logger.setImpl(object : Logger.LogImpl {
@@ -34,6 +39,15 @@ class WebServerSecurityTest {
         })
         configDir = tempFolder.newFolder("config")
         permissionCalls.clear()
+        secureFileCalls.clear()
+
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = object : SecureFileOperations {
+            override fun writeText(file: File, content: String) {
+                file.writeText(content)
+                secureFileCalls.add(file)
+            }
+        }
 
         // Inject mock permission setter
         server = WebServer(0, configDir) { file, mode ->
@@ -44,6 +58,7 @@ class WebServerSecurityTest {
 
     @After
     fun tearDown() {
+        SecureFile.impl = originalSecureFileImpl
         server.stop()
     }
 
@@ -86,13 +101,13 @@ class WebServerSecurityTest {
         }
         assertTrue("chmod 0700 should be called on the keyboxes directory", foundDirChmod)
 
-        // 2. File creation -> 0600 (384)
-        var foundFileChmod = false
-        for (call in permissionCalls) {
-            if (call.path == uploadedFile.absolutePath && call.mode == 384) {
-                foundFileChmod = true
+        // 2. File creation -> Handled by SecureFile
+        var foundFileSecureWrite = false
+        for (f in secureFileCalls) {
+            if (f.absolutePath == uploadedFile.absolutePath) {
+                foundFileSecureWrite = true
             }
         }
-        assertTrue("chmod 0600 should be called on the uploaded file", foundFileChmod)
+        assertTrue("SecureFile.writeText should be called on the uploaded file", foundFileSecureWrite)
     }
 }

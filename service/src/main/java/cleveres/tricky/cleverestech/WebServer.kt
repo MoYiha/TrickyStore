@@ -4,6 +4,7 @@ import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.RandomUtils
+import cleveres.tricky.cleverestech.util.SecureFile
 import fi.iki.elonen.NanoHTTPD
 import java.io.File
 import java.net.URL
@@ -38,9 +39,7 @@ class WebServer(
     private fun saveFile(filename: String, content: String): Boolean {
         return try {
             val f = File(configDir, filename)
-            f.writeText(content)
-            // Ensure proper permissions (0600)
-            permissionSetter(f, 384)
+            SecureFile.writeText(f, content)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -325,8 +324,7 @@ class WebServer(
 
                  val file = File(keyboxDir, filename)
                  try {
-                     file.writeText(content)
-                     permissionSetter(file, 384) // 0600
+                     SecureFile.writeText(file, content)
                      return secureResponse(Response.Status.OK, "text/plain", "Saved")
                  } catch (e: Exception) {
                      e.printStackTrace()

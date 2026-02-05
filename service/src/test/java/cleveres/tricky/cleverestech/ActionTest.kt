@@ -8,6 +8,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.Rule
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import java.io.File
 import java.io.StringReader
 import java.net.HttpURLConnection
@@ -21,6 +23,7 @@ class ActionTest {
 
     private lateinit var server: WebServer
     private lateinit var configDir: File
+    private lateinit var originalSecureFileImpl: SecureFileOperations
 
     private val EC_KEY = "-----BEGIN EC PRIVATE KEY-----\n" +
             "MHcCAQEEIAcPs+YkQGT6EDkaEH6Z9StSR7mQuKnh49K0DVqB/ZxYoAoGCCqGSM49\n" +
@@ -63,6 +66,14 @@ class ActionTest {
             override fun i(tag: String, msg: String) { println("I/$tag: $msg") }
         })
         configDir = tempFolder.newFolder("config")
+
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = object : SecureFileOperations {
+            override fun writeText(file: File, content: String) {
+                file.writeText(content)
+            }
+        }
+
         server = WebServer(0, configDir)
         server.start()
         // Reset CertHack
@@ -71,6 +82,7 @@ class ActionTest {
 
     @After
     fun tearDown() {
+        SecureFile.impl = originalSecureFileImpl
         server.stop()
         CertHack.readFromXml(null)
     }
