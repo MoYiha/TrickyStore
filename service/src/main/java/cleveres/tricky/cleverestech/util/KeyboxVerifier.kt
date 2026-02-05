@@ -87,12 +87,14 @@ object KeyboxVerifier {
             var added = false
 
             // Try treating as Decimal first (Spec compliant)
-            try {
-                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                set.add(hexStr)
-                added = true
-            } catch (e: Exception) {
-                // Not a valid decimal, fall back to Hex
+            if (decStr.isNotEmpty() && decStr.all { it.isDigit() }) {
+                try {
+                    val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                    set.add(hexStr)
+                    added = true
+                } catch (e: Exception) {
+                    // Not a valid decimal, fall back to Hex
+                }
             }
 
             if (!added) {
