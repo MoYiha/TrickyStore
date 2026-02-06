@@ -459,9 +459,12 @@ class WebServer(
                 // Value can be anything, but let's restrict potentially dangerous chars if possible.
                 // Actually, allowing '.' in key is important for ro.product...
                 val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
+                val unsafeChars = Regex("[\\$|&;<>`]")
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
                     if (!line.trim().matches(lineRegex)) return false
+                    // Security: Prevent potential command injection chars if file is ever sourced
+                    if (line.contains(unsafeChars)) return false
                 }
             }
             "security_patch.txt" -> {
@@ -474,7 +477,13 @@ class WebServer(
                 }
             }
             "templates.json" -> {
-                 if (content.trim().isNotEmpty() && !content.trim().startsWith("[")) return false
+                 if (content.trim().isNotEmpty()) {
+                     try {
+                         JSONArray(content)
+                     } catch (e: Exception) {
+                         return false
+                     }
+                 }
             }
         }
         return true
