@@ -524,7 +524,19 @@ class WebServer(
             transform: translateY(-20px);
         }
         .island.active { width: auto; min-width: 200px; padding: 0 20px; opacity: 1; transform: translateY(0); }
-        .island.working { width: 40px; } /* Spinner mode? */
+        .island.working { /* Spinner mode active */ }
+
+        .spinner {
+            width: 14px; height: 14px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+            display: none;
+        }
+        .island.working .spinner { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         h1 { text-align: center; font-weight: 200; letter-spacing: 2px; margin: 25px 0; color: var(--accent); font-size: 1.5em; text-transform: uppercase; }
 
@@ -625,6 +637,7 @@ class WebServer(
 <body>
     <div class="island-container">
         <div id="island" class="island" role="status" aria-live="polite">
+            <div class="spinner"></div>
             <span id="islandText">Notification</span>
         </div>
     </div>
@@ -885,6 +898,7 @@ class WebServer(
         }
 
         // Dynamic Island Logic
+        let notifyTimeout;
         function notify(msg, type = 'normal') {
             const island = document.getElementById('island');
             const text = document.getElementById('islandText');
@@ -892,12 +906,16 @@ class WebServer(
             text.innerText = msg;
             island.classList.add('active');
 
-            if (type === 'working') island.classList.add('working');
-            else island.classList.remove('working');
+            if (notifyTimeout) clearTimeout(notifyTimeout);
 
-            setTimeout(() => {
-                island.classList.remove('active');
-            }, 3000);
+            if (type === 'working') {
+                island.classList.add('working');
+            } else {
+                island.classList.remove('working');
+                notifyTimeout = setTimeout(() => {
+                    island.classList.remove('active');
+                }, 3000);
+            }
         }
 
         async function runWithState(btn, text, task) {
