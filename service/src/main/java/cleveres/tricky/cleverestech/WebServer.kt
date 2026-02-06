@@ -779,7 +779,7 @@ class WebServer(
 
             <div style="margin-top:15px; text-align:right;">
                 <span style="font-size:0.8em; color:#666; margin-right:10px;">* Applies to System Services</span>
-                <button onclick="applyTemplateToGlobal()" class="danger">Apply System-Wide</button>
+                <button onclick="applyTemplateToGlobal(this)" class="danger">Apply System-Wide</button>
             </div>
         </div>
     </div>
@@ -822,7 +822,7 @@ class WebServer(
         <div class="panel">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <h3 style="border:none; margin:0; padding:0;">Active Rules</h3>
-                <input type="text" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" aria-label="Filter rules" style="width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;">
+                <input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" aria-label="Filter rules" style="width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;">
             </div>
             <table id="appTable">
                 <thead><tr><th>Package</th><th>Profile</th><th>Flags</th><th></th></tr></thead>
@@ -1055,44 +1055,59 @@ class WebServer(
             notify('Identity Generated');
         }
 
-        async function applyTemplateToGlobal() {
+        async function applyTemplateToGlobal(btn) {
              if (!confirm('Overwrite current spoofing config?')) return;
 
-             const sel = document.getElementById('templateSelect');
-             let content = "";
-
-             // Check if we have generated data or advanced inputs
-             const imei = document.getElementById('inputImei').value;
-             const imsi = document.getElementById('inputImsi').value;
-             const iccid = document.getElementById('inputIccid').value;
-             const serial = document.getElementById('inputSerial').value;
-             const wifi = document.getElementById('inputWifiMac').value;
-             const simIso = document.getElementById('inputSimIso').value;
-             const simOp = document.getElementById('inputSimOp').value;
-
-             let t;
-             if (sel.dataset.generated) {
-                 t = JSON.parse(sel.dataset.generated);
-             } else {
-                 t = JSON.parse(sel.selectedOptions[0].dataset.json);
+             let origText = '';
+             if (btn) {
+                 origText = btn.innerText;
+                 btn.disabled = true;
+                 btn.innerText = 'Applying...';
              }
 
-             content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
-             if (imei) content += `ATTESTATION_ID_IMEI=${'$'}{imei}\n`;
-             if (imsi) content += `ATTESTATION_ID_IMSI=${'$'}{imsi}\n`;
-             if (iccid) content += `ATTESTATION_ID_ICCID=${'$'}{iccid}\n`;
-             if (serial) content += `ATTESTATION_ID_SERIAL=${'$'}{serial}\n`;
-             if (wifi) content += `ATTESTATION_ID_WIFI_MAC=${'$'}{wifi}\n`;
-             if (simIso) content += `SIM_COUNTRY_ISO=${'$'}{simIso}\n`;
-             if (simOp) content += `SIM_OPERATOR_NAME=${'$'}{simOp}\n`;
-             // Add other fields as needed for build vars
+             try {
+                 const sel = document.getElementById('templateSelect');
+                 let content = "";
 
-             await fetch(getAuthUrl('/api/save'), {
-                 method: 'POST',
-                 body: new URLSearchParams({ filename: 'spoof_build_vars', content })
-             });
-             notify('Applied Globally');
-             setTimeout(reloadConfig, 1000);
+                 // Check if we have generated data or advanced inputs
+                 const imei = document.getElementById('inputImei').value;
+                 const imsi = document.getElementById('inputImsi').value;
+                 const iccid = document.getElementById('inputIccid').value;
+                 const serial = document.getElementById('inputSerial').value;
+                 const wifi = document.getElementById('inputWifiMac').value;
+                 const simIso = document.getElementById('inputSimIso').value;
+                 const simOp = document.getElementById('inputSimOp').value;
+
+                 let t;
+                 if (sel.dataset.generated) {
+                     t = JSON.parse(sel.dataset.generated);
+                 } else {
+                     t = JSON.parse(sel.selectedOptions[0].dataset.json);
+                 }
+
+                 content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
+                 if (imei) content += `ATTESTATION_ID_IMEI=${'$'}{imei}\n`;
+                 if (imsi) content += `ATTESTATION_ID_IMSI=${'$'}{imsi}\n`;
+                 if (iccid) content += `ATTESTATION_ID_ICCID=${'$'}{iccid}\n`;
+                 if (serial) content += `ATTESTATION_ID_SERIAL=${'$'}{serial}\n`;
+                 if (wifi) content += `ATTESTATION_ID_WIFI_MAC=${'$'}{wifi}\n`;
+                 if (simIso) content += `SIM_COUNTRY_ISO=${'$'}{simIso}\n`;
+                 if (simOp) content += `SIM_OPERATOR_NAME=${'$'}{simOp}\n`;
+                 // Add other fields as needed for build vars
+
+                 await fetch(getAuthUrl('/api/save'), {
+                     method: 'POST',
+                     body: new URLSearchParams({ filename: 'spoof_build_vars', content })
+                 });
+                 notify('Applied Globally');
+                 setTimeout(reloadConfig, 1000);
+             } catch (e) {
+                 notify('Error applying');
+                 if (btn) {
+                     btn.disabled = false;
+                     btn.innerText = origText || 'Apply System-Wide';
+                 }
+             }
         }
 
         async function saveAdvancedSpoof() {
