@@ -64,43 +64,9 @@ class ReproXssTest {
         }
 
         val saveResponse = webServer.serve(saveSession)
-        if (saveResponse.status != NanoHTTPD.Response.Status.OK) {
-            fail("Failed to save malicious file: ${saveResponse.status}")
+        if (saveResponse.status != NanoHTTPD.Response.Status.BAD_REQUEST) {
+            fail("Should have rejected malicious file, but got: ${saveResponse.status}")
         }
-
-        // 2. Victim: Retrieve the config via /api/app_config_structured
-        val getSession = object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-            override fun getCookies() = null
-            override fun getHeaders() = emptyMap<String, String>()
-            override fun getInputStream(): InputStream? = null
-            override fun getMethod() = NanoHTTPD.Method.GET
-            override fun getParms() = mapOf("token" to webServer.token)
-            override fun getParameters() = emptyMap<String, List<String>>()
-            override fun getQueryParameterString() = ""
-            override fun getUri() = "/api/app_config_structured"
-            override fun parseBody(files: MutableMap<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-        }
-
-        val getResponse = webServer.serve(getSession)
-        val jsonStr = getResponse.data.bufferedReader().use { it.readText() }
-
-        println("JSON Response: $jsonStr")
-
-        val jsonArray = JSONArray(jsonStr)
-
-        // Assert that the malicious package is filtered out
-        if (jsonArray.length() != 0) {
-            val item = jsonArray.getJSONObject(0)
-            val pkg = item.getString("package")
-            if (pkg == maliciousPackage) {
-                fail("Vulnerability still exists: XSS payload was retrieved via API")
-            }
-        }
-
-        // If length is 0, it means it was filtered, which is good.
     }
 
     @org.junit.After

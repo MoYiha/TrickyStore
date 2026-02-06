@@ -105,7 +105,9 @@ object KeyboxVerifier {
             // We MUST add it as a literal Hex string to ensure we catch it if it's a Key ID.
             if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
                 if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                    set.add(decStr.lowercase())
+                    if (!added) {
+                        set.add(decStr.lowercase())
+                    }
                 }
             }
 
