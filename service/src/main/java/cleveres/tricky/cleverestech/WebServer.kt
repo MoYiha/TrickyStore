@@ -311,8 +311,12 @@ class WebServer(
              val content = session.parms["content"]
 
              if (filename != null && isValidFilename(filename) && content != null) {
-                 if (saveFile(filename, content)) {
-                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                 if (validateContent(filename, content)) {
+                     if (saveFile(filename, content)) {
+                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                     }
+                 } else {
+                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid content format")
                  }
              }
              return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
@@ -416,6 +420,64 @@ class WebServer(
 
     private fun isValidFilename(name: String): Boolean {
         return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json")
+    }
+
+    private fun validateContent(filename: String, content: String): Boolean {
+        if (content.isBlank()) return true
+        val lines = content.lines()
+
+        when (filename) {
+            "app_config" -> {
+                val pkgRegex = Regex("^[a-zA-Z0-9_.*]+$")
+                val tmplRegex = Regex("^[a-zA-Z0-9_]+$")
+                val kbRegex = Regex("^[a-zA-Z0-9_.-]+$")
+
+                for (line in lines) {
+                    if (line.isBlank() || line.trim().startsWith("#")) continue
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.isEmpty()) continue
+
+                    // Package is required
+                    if (!parts[0].matches(pkgRegex)) return false
+
+                    // Template (optional)
+                    if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(tmplRegex)) return false
+
+                    // Keybox (optional)
+                    if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(kbRegex)) return false
+                }
+            }
+            "target.txt" -> {
+                val pkgRegex = Regex("^[a-zA-Z0-9_.*!]+$")
+                for (line in lines) {
+                    if (line.isBlank() || line.trim().startsWith("#")) continue
+                    if (!line.trim().matches(pkgRegex)) return false
+                }
+            }
+            "spoof_build_vars" -> {
+                // Key=Value format. Key can be system prop (lower) or config (upper).
+                // Value can be anything, but let's restrict potentially dangerous chars if possible.
+                // Actually, allowing '.' in key is important for ro.product...
+                val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
+                for (line in lines) {
+                    if (line.isBlank() || line.trim().startsWith("#")) continue
+                    if (!line.trim().matches(lineRegex)) return false
+                }
+            }
+            "security_patch.txt" -> {
+                // Accepts YYYYMMDD, YYYY-MM-DD, or key=value
+                // Simple regex: alphanumeric, dash, equal
+                val safeRegex = Regex("^[a-zA-Z0-9_=-]+$")
+                for (line in lines) {
+                    if (line.isBlank() || line.trim().startsWith("#")) continue
+                    if (!line.trim().matches(safeRegex)) return false
+                }
+            }
+            "templates.json" -> {
+                 if (content.trim().isNotEmpty() && !content.trim().startsWith("[")) return false
+            }
+        }
+        return true
     }
 
     private fun getAppName(): String {
