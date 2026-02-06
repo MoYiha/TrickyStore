@@ -807,7 +807,10 @@ class WebServer(
         </div>
 
         <div class="panel">
-            <h3>Active Rules</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h3 style="border:none; margin:0; padding:0;">Active Rules</h3>
+                <input type="text" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" aria-label="Filter rules" style="width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;">
+            </div>
             <table id="appTable">
                 <thead><tr><th>Package</th><th>Profile</th><th>Flags</th><th></th></tr></thead>
                 <tbody></tbody>
@@ -1088,15 +1091,22 @@ class WebServer(
         }
 
         function renderAppTable() {
+            const filter = document.getElementById('appFilter') ? document.getElementById('appFilter').value.toLowerCase() : '';
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
+
             if (appRules.length === 0) {
                 const tr = document.createElement('tr');
                 tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
                 tbody.appendChild(tr);
                 return;
             }
+
+            let visibleCount = 0;
             appRules.forEach((rule, idx) => {
+                if (filter && !rule.package.toLowerCase().includes(filter)) return;
+
+                visibleCount++;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${'$'}{rule.package}</td>
@@ -1108,6 +1118,12 @@ class WebServer(
                 `;
                 tbody.appendChild(tr);
             });
+
+            if (visibleCount === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
+                tbody.appendChild(tr);
+            }
         }
 
         function addAppRule() {
