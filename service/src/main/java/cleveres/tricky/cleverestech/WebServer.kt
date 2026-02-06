@@ -838,9 +838,10 @@ class WebServer(
     <div id="keys" class="content" role="tabpanel" aria-labelledby="tab_keys">
         <div class="panel">
             <h3>Upload Keybox</h3>
-            <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null">
+            <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null" aria-label="Upload Keybox File">
             <button onclick="document.getElementById('kbFilePicker').click()" style="width:100%; margin-bottom:10px; border-style:dashed;">Select XML File</button>
 
+            <label for="kbFilename" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Filename</label>
             <input type="text" id="kbFilename" placeholder="filename.xml" style="margin-bottom:10px;">
             <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
             <button onclick="runWithState(this, 'Uploading...', uploadKeybox)" class="primary" style="margin-top:10px; width:100%;">Upload</button>
@@ -858,7 +859,7 @@ class WebServer(
     <div id="editor" class="content" role="tabpanel" aria-labelledby="tab_editor">
         <div class="panel">
             <div class="row">
-                <select id="fileSelector" onchange="loadFile()" style="width:70%;">
+                <select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit">
                     <option value="target.txt">target.txt</option>
                     <option value="security_patch.txt">security_patch.txt</option>
                     <option value="spoof_build_vars">spoof_build_vars</option>
