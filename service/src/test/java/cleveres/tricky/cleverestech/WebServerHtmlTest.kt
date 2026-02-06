@@ -136,5 +136,10 @@ class WebServerHtmlTest {
         // Verify Accessibility Labels for Textareas
         assertTrue("File Editor missing aria-label", html.contains("id=\"fileEditor\" style=\"height:500px; font-family:monospace; margin-top:10px; line-height:1.4;\" aria-label=\"File Content\""))
         assertTrue("Keybox Content missing aria-label", html.contains("id=\"kbContent\" placeholder=\"XML Content\" style=\"height:100px; font-family:monospace; font-size:0.8em;\" aria-label=\"Keybox XML Content\""))
+
+        // Verify Keybox Filename Label and File Picker Accessibility
+        assertTrue("Keybox Filename missing label", html.contains("<label for=\"kbFilename\""))
+        assertTrue("Keybox File Picker missing aria-label", html.contains("id=\"kbFilePicker\" style=\"display:none\" onchange=\"loadFileContent(this)\" onclick=\"this.value = null\" aria-label=\"Upload Keybox File\""))
+        assertTrue("File Selector missing aria-label", html.contains("id=\"fileSelector\" onchange=\"loadFile()\" style=\"width:70%;\" aria-label=\"Select file to edit\""))
     }
 }
