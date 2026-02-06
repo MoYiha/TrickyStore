@@ -78,6 +78,7 @@ import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.UtilKt;
 import cleveres.tricky.cleverestech.util.CborEncoder;
+import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -1045,7 +1046,7 @@ public final class CertHack {
             // Since we can't change the interface signature easily across the project in one step,
             // we will construct the stream carefully.
             
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            FastByteArrayOutputStream baos = new FastByteArrayOutputStream(1024);
             // Array(4)
             baos.write(0x84);
             

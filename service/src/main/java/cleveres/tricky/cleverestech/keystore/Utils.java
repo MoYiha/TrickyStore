@@ -6,6 +6,7 @@ import android.util.Log;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
@@ -65,7 +66,7 @@ public class Utils {
     public static void putCertificateChain(KeyMetadata metadata, Certificate[] chain) throws Throwable {
         if (chain == null || chain.length == 0) return;
         metadata.certificate = chain[0].getEncoded();
-        var output = new ByteArrayOutputStream();
+        var output = new FastByteArrayOutputStream(2048);
         for (int i = 1; i < chain.length; i++) {
             output.write(chain[i].getEncoded());
         }
