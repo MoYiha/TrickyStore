@@ -113,4 +113,42 @@ class WebServerSaveValidationTest {
         val response = webServer.serve(mockSession("security_patch.txt", content))
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
     }
+
+    @Test
+    fun testSpoofBuildVarsSecurity() {
+        // Valid content
+        val validContent = "MANUFACTURER=Google\nMODEL=Pixel 8"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("spoof_build_vars", validContent)).status)
+
+        // Invalid content with unsafe shell characters
+        val bad1 = "KEY=\$(rm -rf /)"
+        val bad2 = "KEY=value; rm -rf /"
+        val bad3 = "KEY=value & reboot"
+        val bad4 = "KEY=value | reboot"
+        val bad5 = "KEY=val > /tmp/x"
+        val bad6 = "KEY=val < /etc/passwd"
+        val bad7 = "KEY=`reboot`"
+
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad1)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad2)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad3)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad4)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad5)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad6)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad7)).status)
+    }
+
+    @Test
+    fun testTemplatesJsonValidation() {
+        // Valid JSON
+        val valid = "[{\"id\":\"test\",\"model\":\"Test\"}]"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("templates.json", valid)).status)
+
+        // Invalid JSON
+        val invalid1 = "NOT JSON"
+        val invalid3 = "[}" // definitely invalid
+
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalid1)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalid3)).status)
+    }
 }
