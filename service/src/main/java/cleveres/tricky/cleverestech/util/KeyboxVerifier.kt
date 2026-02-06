@@ -98,13 +98,23 @@ object KeyboxVerifier {
                 // Not a valid decimal, fall back to Hex
             }
 
+            // Ambiguity handling:
+            // Google CRLs use Decimal Serial Numbers, BUT they also ban Key IDs (MD5/SHA1/SHA256).
+            // Key IDs are Hex strings (lengths 32, 40, 64).
+            // If a Key ID happens to consist only of digits, it is ambiguous (could be a huge decimal serial).
+            // We MUST add it as a literal Hex string to ensure we catch it if it's a Key ID.
+            if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
+                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                    set.add(decStr.lowercase())
+                }
+            }
+
             if (!added) {
-                // Try treating as Hex (literal) as fallback
+                // Try treating as Hex (literal) as fallback if it failed decimal parsing
                 if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
                     try {
                         val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
                         set.add(hexStr)
-                        added = true
                     } catch (e: Exception) {
                         // Should not happen due to regex check, but safety first
                     }
