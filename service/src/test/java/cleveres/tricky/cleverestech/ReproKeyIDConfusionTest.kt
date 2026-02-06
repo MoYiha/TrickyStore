@@ -28,11 +28,11 @@ class ReproKeyIDConfusionTest {
         println("Ambiguous Key: $ambiguousKey")
         println("Revoked Set: $revoked")
 
-        // We do NOT expect the set to contain the key ITSELF (treated as Hex) if it is a valid decimal.
-        // Treating it as Hex causes false positive revocations (see ReproFalsePositiveRevocationTest).
-        assertFalse("Should NOT contain '$ambiguousKey' (Hex literal) to avoid false positives", revoked.contains(ambiguousKey))
+        // We DO expect the set to contain the key ITSELF (treated as Hex) even if it is a valid decimal.
+        // We prioritize catching revoked Key IDs (security) over avoiding false positives.
+        assertTrue("Should contain '$ambiguousKey' (Hex literal) to catch Key ID revocation", revoked.contains(ambiguousKey))
 
-        // We expect the Decimal interpretation.
+        // We ALSO expect the Decimal interpretation (ambiguity handling).
         val decimalInterpretation = java.math.BigInteger(ambiguousKey).toString(16).lowercase()
         assertTrue("Should contain '$decimalInterpretation' (Decimal interpretation)", revoked.contains(decimalInterpretation))
     }
