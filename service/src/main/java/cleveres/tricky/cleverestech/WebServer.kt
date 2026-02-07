@@ -51,6 +51,17 @@ class WebServer(
         return File(configDir, filename).exists()
     }
 
+    private fun listKeyboxes(): List<String> {
+        val keyboxDir = File(configDir, "keyboxes")
+        if (keyboxDir.exists() && keyboxDir.isDirectory) {
+            return keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                ?.map { it.name }
+                ?.sorted()
+                ?: emptyList()
+        }
+        return emptyList()
+    }
+
     private fun isValidSetting(name: String): Boolean {
         return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot")
     }
@@ -157,6 +168,13 @@ class WebServer(
             }
             json.put("templates", templates)
             return secureResponse(Response.Status.OK, "application/json", json.toString())
+        }
+
+        // NEW: Get Keybox List
+        if (uri == "/api/keyboxes" && method == Method.GET) {
+            val keyboxes = listKeyboxes()
+            val array = JSONArray(keyboxes)
+            return secureResponse(Response.Status.OK, "application/json", array.toString())
         }
 
         // NEW: Get Templates List
@@ -866,7 +884,9 @@ class WebServer(
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)">
+                    <select id="appKeybox">
+                        <option value="null">Default (None)</option>
+                    </select>
                 </div>
             </div>
 
@@ -1058,6 +1078,17 @@ class WebServer(
                 });
             });
 
+            // Load Keyboxes
+            fetch(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
+                const sel = document.getElementById('appKeybox');
+                kbs.forEach(k => {
+                    const opt = document.createElement('option');
+                    opt.value = k;
+                    opt.text = k;
+                    sel.appendChild(opt);
+                });
+            });
+
             // Init Editor
             currentFile = document.getElementById('fileSelector').value;
             await loadFile();
@@ -1226,7 +1257,7 @@ class WebServer(
                 tr.innerHTML = `
                     <td>${'$'}{rule.package}</td>
                     <td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td>
-                    <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? '<span class="tag">KEYBOX</span>' : ''}</td>
+                    <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td>
                     <td style="text-align:right;">
                         <button class="danger" onclick="removeAppRule(${'$'}{idx})" aria-label="Remove rule for ${'$'}{rule.package}">×</button>
                     </td>

@@ -116,6 +116,14 @@ Create/edit `/data/adb/cleverestricky/app_config` (or use the WebUI "App Config"
 packageName [TEMPLATE] [keybox_filename]
 ```
 
+**Using the WebUI:**
+1. Navigate to the **Apps** tab.
+2. Enter the package name (e.g., `com.google.android.gms`).
+3. Select a device template from the dropdown (or keep default).
+4. Select a **Keybox** from the dropdown list.
+   - *Note:* Custom keybox XML files must be placed in `/data/adb/cleverestricky/keyboxes/` to appear in this list.
+5. Click **Add Rule** and then **Save Configuration**.
+
 **Examples:**
 ```
 # Force GMS to use Pixel 8 Pro template and a specific keybox
