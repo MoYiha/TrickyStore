@@ -52,7 +52,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -61,7 +61,12 @@ class WebServer(
         return try {
             if (enable) {
                 if (!f.exists()) {
-                    f.createNewFile()
+                    if (filename == "drm_fix") {
+                        val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
+                        SecureFile.writeText(f, content)
+                    } else {
+                        f.createNewFile()
+                    }
                     permissionSetter(f, 384) // 0600
                 }
             } else {
@@ -135,12 +140,15 @@ class WebServer(
             json.put("auto_beta_fetch", fileExists("auto_beta_fetch"))
             json.put("auto_keybox_check", fileExists("auto_keybox_check"))
             json.put("random_on_boot", fileExists("random_on_boot"))
+            json.put("drm_fix", fileExists("drm_fix"))
+            json.put("random_drm_on_boot", fileExists("random_drm_on_boot"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
             files.put("security_patch.txt")
             files.put("spoof_build_vars")
             files.put("app_config")
+            files.put("drm_fix")
             json.put("files", files)
             json.put("keybox_count", CertHack.getKeyboxCount())
             val templates = JSONArray()
@@ -381,6 +389,26 @@ class WebServer(
              }
         }
 
+        if (uri == "/api/reset_drm" && method == Method.POST) {
+             try {
+                 // Delete DRM provisioning data
+                 val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+                 dirs.forEach { path ->
+                     try {
+                         File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
+                     } catch(e: Exception) { Logger.e("Failed to clear $path", e) }
+                 }
+
+                 // Restart DRM services
+                 val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                 p.waitFor()
+
+                 return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
+             } catch(e: Exception) {
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+             }
+        }
+
         if (uri == "/api/fetch_beta" && method == Method.POST) {
              try {
                 val result = BetaFetcher.fetchAndApply(null)
@@ -419,7 +447,7 @@ class WebServer(
     }
 
     private fun isValidFilename(name: String): Boolean {
-        return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json")
+        return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json", "drm_fix")
     }
 
     private fun validateContent(filename: String, content: String): Boolean {
@@ -427,6 +455,16 @@ class WebServer(
         val lines = content.lines()
 
         when (filename) {
+            "drm_fix" -> {
+                 // Similar to spoof_build_vars, Key=Value
+                 val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
+                 val unsafeChars = Regex("[\\$|&;<>`]")
+                 for (line in lines) {
+                    if (line.isBlank() || line.trim().startsWith("#")) continue
+                    if (!line.trim().matches(lineRegex)) return false
+                    if (line.contains(unsafeChars)) return false
+                }
+            }
             "app_config" -> {
                 val pkgRegex = Regex("^[a-zA-Z0-9_.*]+$")
                 val tmplRegex = Regex("^[a-zA-Z0-9_]+$")
@@ -712,6 +750,23 @@ class WebServer(
     <!-- SPOOFING (Replacing Lab) -->
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
         <div class="panel">
+            <h3>DRM / Streaming</h3>
+            <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Applies specific system properties to fix playback errors (e.g. Netflix 5.7) on unlocked bootloaders.</p>
+            <div class="row">
+                <label for="drm_fix">Netflix / DRM Fix</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button onclick="editDrmConfig()" style="padding:5px 10px; font-size:0.75em;">Edit</button>
+                    <input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')">
+                </div>
+            </div>
+            <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
+            <div class="row" style="margin-top:10px;">
+                <label style="font-size:0.8em; color:#888;">Reset Identity</label>
+                <button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="font-size:0.75em;">Regenerate DRM ID</button>
+            </div>
+        </div>
+
+        <div class="panel">
             <h3>Identity Manager</h3>
             <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
 
@@ -873,6 +928,7 @@ class WebServer(
                     <option value="security_patch.txt">security_patch.txt</option>
                     <option value="spoof_build_vars">spoof_build_vars</option>
                     <option value="app_config">app_config</option>
+                    <option value="drm_fix">drm_fix</option>
                 </select>
                 <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)">Save</button>
             </div>
@@ -965,7 +1021,7 @@ class WebServer(
             try {
                 const res = await fetch(getAuthUrl('/api/config'));
                 const data = await res.json();
-                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot'].forEach(k => {
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
@@ -1018,6 +1074,22 @@ class WebServer(
             } catch(e) {
                 el.checked = !el.checked;
                 notify('Update Failed');
+            }
+        }
+
+        function editDrmConfig() {
+            document.getElementById('fileSelector').value = 'drm_fix';
+            switchTab('editor');
+            loadFile();
+        }
+
+        async function resetDrmId() {
+            if (!confirm('This will delete downloaded DRM licenses and reset the device ID for streaming apps. Continue?')) return;
+            try {
+                await fetch(getAuthUrl('/api/reset_drm'), { method: 'POST' });
+                notify('DRM ID Reset');
+            } catch(e) {
+                notify('Failed', 'error');
             }
         }
 

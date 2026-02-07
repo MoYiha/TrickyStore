@@ -216,6 +216,8 @@ object Config {
     @Volatile
     private var buildVars: Map<String, String> = emptyMap()
     @Volatile
+    private var drmFixVars: Map<String, String> = emptyMap()
+    @Volatile
     private var attestationIds: Map<String, ByteArray> = emptyMap()
 
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
@@ -288,7 +290,7 @@ object Config {
     }
 
     fun getBuildVar(key: String): String? {
-        return buildVars[key] ?: spoofedProperties[key]
+        return drmFixVars[key] ?: buildVars[key] ?: spoofedProperties[key]
     }
 
     fun getBuildVar(key: String, uid: Int): String? {
@@ -305,7 +307,10 @@ object Config {
             if (mapped != null) return mapped
         }
 
-        // 3. Global build vars or default spoofed properties
+        // 3. DRM Fix Properties
+        drmFixVars[key]?.let { return it }
+
+        // 4. Global build vars or default spoofed properties
         return buildVars[key] ?: spoofedProperties[key]
     }
 
@@ -337,6 +342,24 @@ object Config {
             key.endsWith("build.tags") -> template["TAGS"]
             else -> null
         }
+    }
+
+    internal fun updateDrmFix(f: File?) = runCatching {
+        val newVars = mutableMapOf<String, String>()
+        f?.useLines { lines ->
+            lines.forEach { line ->
+                if (line.isNotBlank() && !line.startsWith("#")) {
+                    val parts = line.split("=", limit = 2)
+                    if (parts.size == 2) {
+                        newVars[parts[0].trim()] = parts[1].trim()
+                    }
+                }
+            }
+        }
+        drmFixVars = newVars
+        Logger.i("update drm fix vars: $drmFixVars")
+    }.onFailure {
+        Logger.e("failed to update drm fix vars", it)
     }
 
     internal fun updateBuildVars(f: File?) = runCatching {
@@ -467,6 +490,7 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val RKP_BYPASS_FILE = "rkp_bypass"
+    private const val DRM_FIX_FILE = "drm_fix"
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
     private const val MODULE_HASH_FILE = "module_hash"
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
@@ -475,8 +499,23 @@ object Config {
     private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
+    private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private val root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
+
+    private fun checkRandomDrm() {
+        if (File(root, RANDOM_DRM_ON_BOOT_FILE).exists()) {
+            Logger.i("Random DRM on boot: cleaning provisioning data")
+            val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+            dirs.forEach { path ->
+                try {
+                    File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
+                } catch(e: Exception) {
+                    Logger.e("Failed to clear DRM data on boot: $path", e)
+                }
+            }
+        }
+    }
 
     private fun checkRandomizeOnBoot() {
         try {
@@ -538,6 +577,8 @@ object Config {
 
                 RKP_BYPASS_FILE -> updateRkpBypass(f)
 
+                DRM_FIX_FILE -> updateDrmFix(f)
+
                 MODULE_HASH_FILE -> updateModuleHash(f)
             }
         }
@@ -562,6 +603,7 @@ object Config {
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateRkpBypass(File(root, RKP_BYPASS_FILE))
+        updateDrmFix(File(root, DRM_FIX_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateModuleHash(File(root, MODULE_HASH_FILE))
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
@@ -572,6 +614,7 @@ object Config {
         updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
 
         checkRandomizeOnBoot()
+        checkRandomDrm()
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
