@@ -499,8 +499,23 @@ object Config {
     private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
+    private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private val root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
+
+    private fun checkRandomDrm() {
+        if (File(root, RANDOM_DRM_ON_BOOT_FILE).exists()) {
+            Logger.i("Random DRM on boot: cleaning provisioning data")
+            val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+            dirs.forEach { path ->
+                try {
+                    File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
+                } catch(e: Exception) {
+                    Logger.e("Failed to clear DRM data on boot: $path", e)
+                }
+            }
+        }
+    }
 
     private fun checkRandomizeOnBoot() {
         try {
@@ -599,6 +614,7 @@ object Config {
         updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
 
         checkRandomizeOnBoot()
+        checkRandomDrm()
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)

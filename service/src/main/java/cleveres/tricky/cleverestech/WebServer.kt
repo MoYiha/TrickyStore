@@ -52,7 +52,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -141,6 +141,7 @@ class WebServer(
             json.put("auto_keybox_check", fileExists("auto_keybox_check"))
             json.put("random_on_boot", fileExists("random_on_boot"))
             json.put("drm_fix", fileExists("drm_fix"))
+            json.put("random_drm_on_boot", fileExists("random_drm_on_boot"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
@@ -758,6 +759,7 @@ class WebServer(
                     <input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')">
                 </div>
             </div>
+            <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
             <div class="row" style="margin-top:10px;">
                 <label style="font-size:0.8em; color:#888;">Reset Identity</label>
                 <button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="font-size:0.75em;">Regenerate DRM ID</button>
@@ -1019,7 +1021,7 @@ class WebServer(
             try {
                 const res = await fetch(getAuthUrl('/api/config'));
                 const data = await res.json();
-                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix'].forEach(k => {
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;

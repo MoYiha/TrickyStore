@@ -339,6 +339,15 @@ If you encounter download limits or need a fresh "streaming identity":
 3.  This wipes the DRM provisioning data and forces the system to generate a new, random ID.
     -   *Note:* This will delete downloaded content in streaming apps (Netflix, Spotify, etc).
 
+**Randomize DRM on Boot:**
+Enable this toggle to automatically reset the DRM identity on every system startup. This is "battery optimized" as it runs once during initialization and does not require background polling.
+
+### Advanced Methods (Libc Hooking)
+
+This module achieves its "Identity Mutation" and DRM spoofing capabilities through advanced **Library Hooking**.
+-   **System Properties:** We hook `libc.so` (via `__system_property_get`) to intercept and modify property reads from native code (DRM libs, SafetyNet).
+-   **DRM Bypass:** By feeding falsified properties (`ro.crypto.state`, `ro.secure`) directly to the DRM HALs, we trick them into believing they are running in a secure, locked environment without modifying the actual bootloader state.
+
 ## Roadmap
 
 - [x] DRM L1 Spoof (Property Based)
