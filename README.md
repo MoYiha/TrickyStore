@@ -315,7 +315,7 @@ sh /data/adb/modules/cleverestricky/security_patch.sh --disable
 
 ## Roadmap
 
-Contributions welcome.
+- DRM L1 Spoof
 
 ## Acknowledgements
 
