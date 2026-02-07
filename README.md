@@ -345,12 +345,10 @@ Enable this toggle to automatically reset the DRM identity on every system start
 ### Advanced Methods (Libc Hooking)
 
 This module achieves its "Identity Mutation" and DRM spoofing capabilities through advanced **Library Hooking**.
--   **System Properties:** We hook `libc.so` (via `__system_property_get`) to intercept and modify property reads from native code (DRM libs, SafetyNet).
+-   **System Properties:** We hook `libc.so` (via `__system_property_get`) to intercept and modify property reads from native code (DRM libs).
 -   **DRM Bypass:** By feeding falsified properties (`ro.crypto.state`, `ro.secure`) directly to the DRM HALs, we trick them into believing they are running in a secure, locked environment without modifying the actual bootloader state.
 
 ## Roadmap
-
-- [x] DRM L1 Spoof (Property Based)
 
 ## Acknowledgements
 
