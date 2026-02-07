@@ -313,9 +313,25 @@ sh /data/adb/modules/cleverestricky/security_patch.sh --enable
 sh /data/adb/modules/cleverestricky/security_patch.sh --disable
 ```
 
+## DRM & Streaming Fixes
+
+Fixes playback errors (e.g. Netflix Error 5.7) and Widevine issues on unlocked bootloaders by spoofing system properties.
+
+**Enable via WebUI:** Spoofing -> "Netflix / DRM Fix"
+**Enable via Shell:** `touch /data/adb/cleverestricky/drm_fix`
+
+**What it does:**
+It overrides the following system properties to mimic a secure environment:
+- `ro.netflix.bsp_rev=0`
+- `drm.service.enabled=true`
+- `ro.com.google.widevine.level=1` (L1 spoof)
+- `ro.crypto.state=encrypted`
+
+**Note:** This feature forces specific property overrides globally. You can customize these values by editing the `drm_fix` file in the WebUI Editor.
+
 ## Roadmap
 
-- DRM L1 Spoof
+- [x] DRM L1 Spoof (Property Based)
 
 ## Acknowledgements
 
