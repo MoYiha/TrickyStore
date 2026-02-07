@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech
 import android.system.Os
 import cleveres.tricky.cleverestech.rkp.LocalRkpProxy
 import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
+import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.security.MessageDigest
 import kotlin.system.exitProcess
@@ -39,9 +40,7 @@ fun main(args: Array<String>) {
             Logger.e("failed to init RKP permissions", t)
         }
 
-        portFile.writeText("$port|$token")
-        portFile.setReadable(false, false) // Clear all
-        portFile.setReadable(true, true) // Owner only (0600)
+        SecureFile.writeText(portFile, "$port|$token")
     } catch (e: Exception) {
         Logger.e("Failed to start web server", e)
     }

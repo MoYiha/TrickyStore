@@ -1,561 +1,9 @@
-package cleveres.tricky.cleverestech
 
-import android.system.Os
-import cleveres.tricky.cleverestech.keystore.CertHack
-import cleveres.tricky.cleverestech.util.KeyboxVerifier
-import cleveres.tricky.cleverestech.util.RandomUtils
-import cleveres.tricky.cleverestech.util.SecureFile
-import fi.iki.elonen.NanoHTTPD
-import java.io.File
-import java.net.URL
-import java.security.MessageDigest
-import java.util.UUID
-import org.json.JSONArray
-import org.json.JSONObject
-
-class WebServer(
-    port: Int,
-    private val configDir: File = File("/data/adb/cleverestricky"),
-    private val permissionSetter: (File, Int) -> Unit = { f, m ->
-        try {
-            Os.chmod(f.absolutePath, m)
-        } catch (t: Throwable) {
-            Logger.e("failed to set permissions for ${f.name}", t)
-        }
-    }
-) : NanoHTTPD("127.0.0.1", port) {
-
-    val token = UUID.randomUUID().toString()
-    private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB
-
-    private fun readFile(filename: String): String {
-        return try {
-            File(configDir, filename).readText()
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    private fun saveFile(filename: String, content: String): Boolean {
-        return try {
-            val f = File(configDir, filename)
-            SecureFile.writeText(f, content)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
-
-    private fun fileExists(filename: String): Boolean {
-        return File(configDir, filename).exists()
-    }
-
-    private fun listKeyboxes(): List<String> {
-        val keyboxDir = File(configDir, "keyboxes")
-        if (keyboxDir.exists() && keyboxDir.isDirectory) {
-            return keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
-                ?.map { it.name }
-                ?.sorted()
-                ?: emptyList()
-        }
-        return emptyList()
-    }
-
-    private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot")
-    }
-
-    private fun toggleFile(filename: String, enable: Boolean): Boolean {
-        if (!isValidSetting(filename)) return false
-        val f = File(configDir, filename)
-        return try {
-            if (enable) {
-                if (!f.exists()) {
-                    if (filename == "drm_fix") {
-                        val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
-                        SecureFile.writeText(f, content)
-                    } else {
-                        f.createNewFile()
-                    }
-                    permissionSetter(f, 384) // 0600
-                }
-            } else {
-                if (f.exists()) f.delete()
-            }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-    }
-
-    private fun fetchTelegramCount(): String {
-        return try {
-            val url = URL("https://t.me/cleverestech")
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-
-            if (conn.responseCode == 200) {
-                val html = conn.inputStream.bufferedReader().use { it.readText() }
-                val regex = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
-                val matcher = regex.matcher(html)
-                if (matcher.find()) {
-                    matcher.group(1)?.trim() ?: "Unknown"
-                } else {
-                    "Unknown"
-                }
-            } else {
-                "Error: ${conn.responseCode}"
-            }
-        } catch (e: Exception) {
-            "Error"
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    override fun serve(session: IHTTPSession): Response {
-        val uri = session.uri
-        val method = session.method
-        val params = session.parms
-
-        // Security: Enforce max upload size to prevent DoS
-        if (method == Method.POST || method == Method.PUT) {
-             val lenStr = session.headers["content-length"]
-             if (lenStr != null) {
-                  try {
-                      val len = lenStr.toLong()
-                      if (len > MAX_UPLOAD_SIZE) {
-                           return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
-                      }
-                  } catch (e: Exception) {}
-             } else {
-                 return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
-             }
-        }
-
-        // Simple Token Auth
-        val requestToken = params["token"]
-        if (!MessageDigest.isEqual(token.toByteArray(), (requestToken ?: "").toByteArray())) {
-             return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
-        }
-
-        if (uri == "/api/config" && method == Method.GET) {
-            val json = JSONObject()
-            json.put("global_mode", fileExists("global_mode"))
-            json.put("tee_broken_mode", fileExists("tee_broken_mode"))
-            json.put("rkp_bypass", fileExists("rkp_bypass"))
-            json.put("auto_beta_fetch", fileExists("auto_beta_fetch"))
-            json.put("auto_keybox_check", fileExists("auto_keybox_check"))
-            json.put("random_on_boot", fileExists("random_on_boot"))
-            json.put("drm_fix", fileExists("drm_fix"))
-            json.put("random_drm_on_boot", fileExists("random_drm_on_boot"))
-            val files = JSONArray()
-            files.put("keybox.xml")
-            files.put("target.txt")
-            files.put("security_patch.txt")
-            files.put("spoof_build_vars")
-            files.put("app_config")
-            files.put("drm_fix")
-            json.put("files", files)
-            json.put("keybox_count", CertHack.getKeyboxCount())
-            val templates = JSONArray()
-            Config.getTemplateNames().forEach { name ->
-                templates.put(name)
-            }
-            json.put("templates", templates)
-            return secureResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        // NEW: Get Keybox List
-        if (uri == "/api/keyboxes" && method == Method.GET) {
-            val keyboxes = listKeyboxes()
-            val array = JSONArray(keyboxes)
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        // NEW: Get Templates List
-        if (uri == "/api/templates" && method == Method.GET) {
-            val templates = DeviceTemplateManager.listTemplates()
-            val array = JSONArray()
-            templates.forEach { t ->
-                val obj = JSONObject()
-                obj.put("id", t.id)
-                obj.put("model", t.model)
-                obj.put("manufacturer", t.manufacturer)
-                obj.put("fingerprint", t.fingerprint)
-                obj.put("securityPatch", t.securityPatch)
-                array.put(obj)
-            }
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        // NEW: Generate Random Identity
-        if (uri == "/api/random_identity" && method == Method.GET) {
-            val templates = DeviceTemplateManager.listTemplates()
-            if (templates.isNotEmpty()) {
-                val t = templates.random()
-                val json = JSONObject()
-                json.put("id", t.id)
-                json.put("model", t.model)
-                json.put("manufacturer", t.manufacturer)
-                json.put("fingerprint", t.fingerprint)
-                json.put("securityPatch", t.securityPatch)
-                // Extras
-                json.put("imei", RandomUtils.generateLuhn(15))
-                json.put("imei2", RandomUtils.generateLuhn(15))
-                json.put("serial", RandomUtils.generateRandomSerial(12))
-                json.put("androidId", RandomUtils.generateRandomAndroidId())
-                json.put("wifiMac", RandomUtils.generateRandomMac())
-                json.put("btMac", RandomUtils.generateRandomMac())
-                json.put("simCountryIso", RandomUtils.generateRandomSimIso())
-                json.put("carrier", RandomUtils.generateRandomCarrier())
-                // For Advanced/Global spoofing
-                json.put("imsi", RandomUtils.generateLuhn(15))
-                json.put("iccid", RandomUtils.generateLuhn(20))
-                return secureResponse(Response.Status.OK, "application/json", json.toString())
-            }
-            return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
-        }
-
-        // NEW: Get Installed Packages
-        if (uri == "/api/packages" && method == Method.GET) {
-            return try {
-                val p = Runtime.getRuntime().exec("pm list packages")
-                val output = p.inputStream.bufferedReader().readText()
-                val packages = output.lines()
-                    .filter { it.startsWith("package:") }
-                    .map { it.removePrefix("package:").trim() }
-                    .sorted()
-                val array = JSONArray(packages)
-                secureResponse(Response.Status.OK, "application/json", array.toString())
-            } catch (e: Exception) {
-                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to list packages")
-            }
-        }
-
-        // NEW: Get Structured App Config
-        if (uri == "/api/app_config_structured" && method == Method.GET) {
-            val file = File(configDir, "app_config")
-            val array = JSONArray()
-            if (file.exists()) {
-                file.useLines { lines ->
-                    lines.forEach { line ->
-                        if (line.isNotBlank() && !line.startsWith("#")) {
-                            val parts = line.trim().split(Regex("\\s+"))
-                            if (parts.isNotEmpty()) {
-                                val pkg = parts[0]
-                                if (pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
-                                    val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
-                                    val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
-
-                                    // Security: Validate template and keybox to prevent XSS (Stored via manual file edit)
-                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))
-                                    val isKbValid = kb.isEmpty() || kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))
-
-                                    if (isTmplValid && isKbValid) {
-                                        val obj = JSONObject()
-                                        obj.put("package", pkg)
-                                        obj.put("template", tmpl)
-                                        obj.put("keybox", kb)
-                                        array.put(obj)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        // NEW: Save Structured App Config
-        if (uri == "/api/app_config_structured" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = session.parms["data"]
-
-             if (jsonStr != null) {
-                 try {
-                     val array = JSONArray(jsonStr)
-                     val sb = StringBuilder()
-                     sb.append("# Generated by WebUI\n")
-                     for (i in 0 until array.length()) {
-                         val obj = array.getJSONObject(i)
-                         val pkg = obj.getString("package")
-                         val tmpl = obj.optString("template", "null").ifEmpty { "null" }
-                         val kb = obj.optString("keybox", "null").ifEmpty { "null" }
-
-                         // Validate package name (alphanumeric, dots, underscores, wildcards)
-                         if (!pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
-                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
-                         }
-
-                         // Validate template (alphanumeric, underscores)
-                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))) {
-                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
-                         }
-
-                         // Validate keybox (alphanumeric, dots, underscores, hyphens)
-                         if (kb != "null" && !kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
-                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
-                         }
-
-                         if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
-                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
-                         }
-
-                         sb.append("$pkg $tmpl $kb\n")
-                     }
-                     if (saveFile("app_config", sb.toString())) {
-                         // Trigger reload
-                         File(configDir, "app_config").setLastModified(System.currentTimeMillis())
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                     }
-                 } catch (e: Exception) {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
-                 }
-             }
-             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-        }
-
-        if (uri == "/api/file" && method == Method.GET) {
-            val filename = params["filename"]
-            if (filename != null && isValidFilename(filename)) {
-                return secureResponse(Response.Status.OK, "text/plain", readFile(filename))
-            }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
-        }
-
-        if (uri == "/api/save" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parms["filename"]
-             val content = session.parms["content"]
-
-             if (filename != null && isValidFilename(filename) && content != null) {
-                 if (validateContent(filename, content)) {
-                     if (saveFile(filename, content)) {
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                     }
-                 } else {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid content format")
-                 }
-             }
-             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-        }
-
-        if (uri == "/api/upload_keybox" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parms["filename"]
-             val content = session.parms["content"]
-
-             // Security: Strict filename validation to prevent path traversal and weird files
-             if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(Regex("^[a-zA-Z0-9._-]+$"))) {
-                 val keyboxDir = File(configDir, "keyboxes")
-                 if (!keyboxDir.exists()) {
-                     keyboxDir.mkdirs()
-                     permissionSetter(keyboxDir, 448) // 0700
-                 }
-
-                 val file = File(keyboxDir, filename)
-                 try {
-                     SecureFile.writeText(file, content)
-                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                 } catch (e: Exception) {
-                     e.printStackTrace()
-                     return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
-                 }
-             }
-             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
-        }
-
-        if (uri == "/api/verify_keyboxes" && method == Method.POST) {
-             try {
-                val results = KeyboxVerifier.verify(configDir)
-                val json = createKeyboxVerificationJson(results)
-                return secureResponse(Response.Status.OK, "application/json", json)
-             } catch(e: Exception) {
-                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
-             }
-        }
-
-        if (uri == "/api/toggle" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val setting = session.parms["setting"]
-             val value = session.parms["value"]
-
-             if (setting != null && value != null) {
-                 if (toggleFile(setting, value.toBoolean())) {
-                     return secureResponse(Response.Status.OK, "text/plain", "Toggled")
-                 }
-             }
-             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-        }
-
-        if (uri == "/api/reload" && method == Method.POST) {
-             try {
-                File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
-                return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
-             } catch(e: Exception) {
-                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-             }
-        }
-
-        if (uri == "/api/reset_drm" && method == Method.POST) {
-             try {
-                 // Delete DRM provisioning data
-                 val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
-                 dirs.forEach { path ->
-                     try {
-                         File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
-                     } catch(e: Exception) { Logger.e("Failed to clear $path", e) }
-                 }
-
-                 // Restart DRM services
-                 val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
-                 p.waitFor()
-
-                 return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
-             } catch(e: Exception) {
-                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
-             }
-        }
-
-        if (uri == "/api/fetch_beta" && method == Method.POST) {
-             try {
-                val result = BetaFetcher.fetchAndApply(null)
-                if (result.success) {
-                    return secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
-                } else {
-                    return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
-                }
-             } catch(e: Exception) {
-                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
-             }
-        }
-
-        // NEW: Community Stats
-        if (uri == "/api/stats" && method == Method.GET) {
-            val count = fetchTelegramCount()
-            val json = JSONObject()
-            json.put("members", count)
-            return secureResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/" || uri == "/index.html") {
-            return secureResponse(Response.Status.OK, "text/html", getHtml())
-        }
-
-        return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
-    }
-
-    private fun secureResponse(status: Response.Status, mimeType: String, txt: String): Response {
-        val response = newFixedLengthResponse(status, mimeType, txt)
-        response.addHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
-        response.addHeader("X-Content-Type-Options", "nosniff")
-        response.addHeader("X-Frame-Options", "DENY")
-        response.addHeader("Referrer-Policy", "no-referrer")
-        return response
-    }
-
-    private fun isValidFilename(name: String): Boolean {
-        return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json", "drm_fix")
-    }
-
-    private fun validateContent(filename: String, content: String): Boolean {
-        if (content.isBlank()) return true
-        val lines = content.lines()
-
-        when (filename) {
-            "drm_fix" -> {
-                 // Similar to spoof_build_vars, Key=Value
-                 val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
-                 val unsafeChars = Regex("[\\$|&;<>`]")
-                 for (line in lines) {
-                    if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(lineRegex)) return false
-                    if (line.contains(unsafeChars)) return false
-                }
-            }
-            "app_config" -> {
-                val pkgRegex = Regex("^[a-zA-Z0-9_.*]+$")
-                val tmplRegex = Regex("^[a-zA-Z0-9_]+$")
-                val kbRegex = Regex("^[a-zA-Z0-9_.-]+$")
-
-                for (line in lines) {
-                    if (line.isBlank() || line.trim().startsWith("#")) continue
-                    val parts = line.trim().split(Regex("\\s+"))
-                    if (parts.isEmpty()) continue
-
-                    // Package is required
-                    if (!parts[0].matches(pkgRegex)) return false
-
-                    // Template (optional)
-                    if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(tmplRegex)) return false
-
-                    // Keybox (optional)
-                    if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(kbRegex)) return false
-                }
-            }
-            "target.txt" -> {
-                val pkgRegex = Regex("^[a-zA-Z0-9_.*!]+$")
-                for (line in lines) {
-                    if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(pkgRegex)) return false
-                }
-            }
-            "spoof_build_vars" -> {
-                // Key=Value format. Key can be system prop (lower) or config (upper).
-                // Value can be anything, but let's restrict potentially dangerous chars if possible.
-                // Actually, allowing '.' in key is important for ro.product...
-                val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
-                val unsafeChars = Regex("[\\$|&;<>`]")
-                for (line in lines) {
-                    if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(lineRegex)) return false
-                    // Security: Prevent potential command injection chars if file is ever sourced
-                    if (line.contains(unsafeChars)) return false
-                }
-            }
-            "security_patch.txt" -> {
-                // Accepts YYYYMMDD, YYYY-MM-DD, or key=value
-                // Simple regex: alphanumeric, dash, equal
-                val safeRegex = Regex("^[a-zA-Z0-9_=-]+$")
-                for (line in lines) {
-                    if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(safeRegex)) return false
-                }
-            }
-            "templates.json" -> {
-                 if (content.trim().isNotEmpty()) {
-                     try {
-                         JSONArray(content)
-                     } catch (e: Exception) {
-                         return false
-                     }
-                 }
-            }
-        }
-        return true
-    }
-
-    private fun getAppName(): String {
-        return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
-    }
-
-    private fun getHtml(): String {
-        return """
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>${getAppName()}</title>
+    <title>CleveresTricky</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root {
@@ -684,7 +132,6 @@ class WebServer(
         input[type="checkbox"].toggle:checked { background: var(--accent); }
         input[type="checkbox"].toggle:checked::after { transform: translateX(18px); }
         input[type="checkbox"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-        input[type="checkbox"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
@@ -709,7 +156,7 @@ class WebServer(
         </div>
     </div>
 
-    <h1>${getAppName()} <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
+    <h1>CleveresTricky <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
 
     <div class="tabs" role="tablist" aria-label="Navigation">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabKey(event, 'dashboard')">Dashboard</div>
@@ -874,7 +321,7 @@ class WebServer(
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
                 <label for="appPkg" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Package</label>
-                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()" onkeydown="if(event.key==='Enter') addAppRule()">
+                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()">
                 <datalist id="pkgList"></datalist>
             </div>
             <div class="grid-2" style="margin-bottom:10px;">
@@ -886,7 +333,7 @@ class WebServer(
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
+                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)">
                 </div>
             </div>
 
@@ -1044,7 +491,7 @@ class WebServer(
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
-                document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
+                document.getElementById('keyboxStatus').innerText = `${data.keybox_count} Keys Loaded`;
             } catch(e) { notify('Connection Failed', 'error'); }
 
             // Load Stats
@@ -1061,7 +508,7 @@ class WebServer(
             templates.forEach(t => {
                 const opt = document.createElement('option');
                 opt.value = t.id;
-                opt.text = `${'$'}{t.model} (${'$'}{t.manufacturer})`;
+                opt.text = `${t.model} (${t.manufacturer})`;
                 opt.dataset.json = JSON.stringify(t);
                 sel.appendChild(opt.cloneNode(true));
                 appSel.appendChild(opt);
@@ -1075,17 +522,6 @@ class WebServer(
                     const opt = document.createElement('option');
                     opt.value = p;
                     dl.appendChild(opt);
-                });
-            });
-
-            // Load Keyboxes
-            fetch(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
-                const sel = document.getElementById('appKeybox');
-                kbs.forEach(k => {
-                    const opt = document.createElement('option');
-                    opt.value = k;
-                    opt.text = k;
-                    sel.appendChild(opt);
                 });
             });
 
@@ -1197,14 +633,14 @@ class WebServer(
                      t = JSON.parse(sel.selectedOptions[0].dataset.json);
                  }
 
-                 content = `TEMPLATE=${'$'}{t.id}\n# Applied via WebUI\n`;
-                 if (imei) content += `ATTESTATION_ID_IMEI=${'$'}{imei}\n`;
-                 if (imsi) content += `ATTESTATION_ID_IMSI=${'$'}{imsi}\n`;
-                 if (iccid) content += `ATTESTATION_ID_ICCID=${'$'}{iccid}\n`;
-                 if (serial) content += `ATTESTATION_ID_SERIAL=${'$'}{serial}\n`;
-                 if (wifi) content += `ATTESTATION_ID_WIFI_MAC=${'$'}{wifi}\n`;
-                 if (simIso) content += `SIM_COUNTRY_ISO=${'$'}{simIso}\n`;
-                 if (simOp) content += `SIM_OPERATOR_NAME=${'$'}{simOp}\n`;
+                 content = `TEMPLATE=${t.id}\n# Applied via WebUI\n`;
+                 if (imei) content += `ATTESTATION_ID_IMEI=${imei}\n`;
+                 if (imsi) content += `ATTESTATION_ID_IMSI=${imsi}\n`;
+                 if (iccid) content += `ATTESTATION_ID_ICCID=${iccid}\n`;
+                 if (serial) content += `ATTESTATION_ID_SERIAL=${serial}\n`;
+                 if (wifi) content += `ATTESTATION_ID_WIFI_MAC=${wifi}\n`;
+                 if (simIso) content += `SIM_COUNTRY_ISO=${simIso}\n`;
+                 if (simOp) content += `SIM_OPERATOR_NAME=${simOp}\n`;
                  // Add other fields as needed for build vars
 
                  await fetch(getAuthUrl('/api/save'), {
@@ -1255,11 +691,11 @@ class WebServer(
                 visibleCount++;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${'$'}{rule.package}</td>
-                    <td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td>
-                    <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td>
+                    <td>${rule.package}</td>
+                    <td>${rule.template === 'null' ? 'Default' : rule.template}</td>
+                    <td>${rule.keybox && rule.keybox !== 'null' ? '<span class="tag">KEYBOX</span>' : ''}</td>
                     <td style="text-align:right;">
-                        <button class="danger" onclick="removeAppRule(${'$'}{idx})" aria-label="Remove rule for ${'$'}{rule.package}">×</button>
+                        <button class="danger" onclick="removeAppRule(${idx})" aria-label="Remove rule for ${rule.package}">×</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -1273,18 +709,13 @@ class WebServer(
         }
 
         function addAppRule() {
-            const pkgInput = document.getElementById('appPkg');
-            const pkg = pkgInput.value.trim();
+            const pkg = document.getElementById('appPkg').value;
             const tmpl = document.getElementById('appTemplate').value;
             const kb = document.getElementById('appKeybox').value;
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
 
-            if (!pkg) {
-                notify('Package required');
-                pkgInput.focus();
-                return;
-            }
+            if (!pkg) { notify('Package required'); return; }
 
             // TODO: Serialize blank permissions into the rule
             // Current backend supports: package template keybox
@@ -1292,10 +723,7 @@ class WebServer(
 
             appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb });
             renderAppTable();
-            pkgInput.value = '';
-            document.getElementById('appKeybox').value = '';
-            pkgInput.focus();
-            notify('Rule Added');
+            document.getElementById('appPkg').value = '';
         }
 
         function removeAppRule(idx) {
@@ -1365,7 +793,7 @@ class WebServer(
              data.forEach(d => {
                  const div = document.createElement('div');
                  div.style.color = d.status === 'VALID' ? '#34D399' : '#EF4444';
-                 div.innerText = `[${'$'}{d.status}] ${'$'}{d.filename}`;
+                 div.innerText = `[${d.status}] ${d.filename}`;
                  container.appendChild(div);
              });
              notify('Check Complete');
@@ -1375,20 +803,3 @@ class WebServer(
     </script>
 </body>
 </html>
-        """.trimIndent()
-    }
-
-    companion object {
-        fun createKeyboxVerificationJson(results: List<KeyboxVerifier.Result>): String {
-            val array = JSONArray()
-            results.forEach { res ->
-                val obj = JSONObject()
-                obj.put("filename", res.filename)
-                obj.put("status", res.status.toString())
-                obj.put("details", res.details)
-                array.put(obj)
-            }
-            return array.toString()
-        }
-    }
-}

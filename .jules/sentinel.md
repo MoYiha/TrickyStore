@@ -27,3 +27,8 @@
 **Vulnerability:** The service initialization logic (`Main.kt`) explicitly set the configuration directory permissions to `0755` (readable by all), overriding the secure `0700` permissions set during installation. This created a vulnerability window on every boot where sensitive files could potentially be read by other applications if their individual file permissions were weak.
 **Learning:** Security configurations distributed across multiple initialization points (installer scripts vs. runtime code) can drift and contradict each other. Runtime initialization code should treat the secure state as the source of truth, not defaults.
 **Prevention:** Centralize security configuration constants and verify that all initialization paths (install, boot, runtime) enforce the same strict permissions (`0700` for config dirs).
+
+## 2026-05-30 - [Inconsistent SecureFile Usage (TOCTOU)]
+**Vulnerability:** Found Config.kt and Main.kt using standard File.writeText followed by setReadable or relying on directory permissions, creating TOCTOU race conditions and potential for default permissions.
+**Learning:** Security utilities like SecureFile are only effective if used consistently. Manually setting permissions after creation is always vulnerable to race conditions.
+**Prevention:** Enforce usage of SecureFile.writeText for all sensitive file writes via lint rules or code review checklists. Never use standard File write methods for config files.

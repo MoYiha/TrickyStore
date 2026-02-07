@@ -108,8 +108,6 @@ object TelephonyInterceptor : BinderInterceptor() {
     }
 
     fun tryRunTelephonyInterceptor(): Boolean {
-        if (injected) return true // Assume success if injected once? Or we need to re-check binder?
-
         Logger.i("trying to register telephony interceptor ($triedCount) ...")
 
         // "iphonesubinfo" is the standard service name for IPhoneSubInfo
