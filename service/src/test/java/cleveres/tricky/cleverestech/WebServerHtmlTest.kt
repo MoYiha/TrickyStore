@@ -142,4 +142,24 @@ class WebServerHtmlTest {
         assertTrue("Keybox File Picker missing aria-label", html.contains("id=\"kbFilePicker\" style=\"display:none\" onchange=\"loadFileContent(this)\" onclick=\"this.value = null\" aria-label=\"Upload Keybox File\""))
         assertTrue("File Selector missing aria-label", html.contains("id=\"fileSelector\" onchange=\"loadFile()\" style=\"width:70%;\" aria-label=\"Select file to edit\""))
     }
+
+    @Test
+    fun testAccessibilityImprovements() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // Verify Focus Visible CSS
+        assertTrue("Missing focus-visible CSS", html.contains("input[type=\"checkbox\"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"))
+        assertTrue("Missing disabled toggle CSS", html.contains("input[type=\"checkbox\"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }"))
+
+        // Verify Label Cursor CSS
+        assertTrue("Missing label cursor CSS", html.contains("label { font-size: 0.9em; color: #BBB; cursor: pointer; }"))
+
+        // Verify Disabled Attributes
+        assertTrue("Contacts Checkbox not disabled", html.contains("<input type=\"checkbox\" id=\"permContacts\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled title=\"Coming Soon\">"))
+        assertTrue("Media Checkbox not disabled", html.contains("<input type=\"checkbox\" id=\"permMedia\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled title=\"Coming Soon\">"))
+    }
 }
