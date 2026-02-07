@@ -6,6 +6,7 @@ import android.os.ServiceManager
 import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.RandomUtils
+import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.util.Collections
 import java.util.LinkedHashMap
@@ -536,7 +537,7 @@ object Config {
                     sb.append("SIM_OPERATOR_NAME=${RandomUtils.generateRandomCarrier()}\n")
 
                     val f = File(root, SPOOF_BUILD_VARS_FILE)
-                    f.writeText(sb.toString())
+                    SecureFile.writeText(f, sb.toString())
                     Logger.i("Randomized identity on boot: ${t.id}")
                 }
             }
