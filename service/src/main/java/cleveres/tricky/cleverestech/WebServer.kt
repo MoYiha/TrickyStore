@@ -874,7 +874,7 @@ class WebServer(
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
                 <label for="appPkg" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Package</label>
-                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()">
+                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()" onkeydown="if(event.key==='Enter') addAppRule()">
                 <datalist id="pkgList"></datalist>
             </div>
             <div class="grid-2" style="margin-bottom:10px;">
@@ -886,9 +886,7 @@ class WebServer(
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <select id="appKeybox">
-                        <option value="null">Default (None)</option>
-                    </select>
+                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
                 </div>
             </div>
 
@@ -1275,13 +1273,18 @@ class WebServer(
         }
 
         function addAppRule() {
-            const pkg = document.getElementById('appPkg').value;
+            const pkgInput = document.getElementById('appPkg');
+            const pkg = pkgInput.value.trim();
             const tmpl = document.getElementById('appTemplate').value;
             const kb = document.getElementById('appKeybox').value;
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
 
-            if (!pkg) { notify('Package required'); return; }
+            if (!pkg) {
+                notify('Package required');
+                pkgInput.focus();
+                return;
+            }
 
             // TODO: Serialize blank permissions into the rule
             // Current backend supports: package template keybox
@@ -1289,7 +1292,10 @@ class WebServer(
 
             appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb });
             renderAppTable();
-            document.getElementById('appPkg').value = '';
+            pkgInput.value = '';
+            document.getElementById('appKeybox').value = '';
+            pkgInput.focus();
+            notify('Rule Added');
         }
 
         function removeAppRule(idx) {
