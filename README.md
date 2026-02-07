@@ -329,6 +329,16 @@ It overrides the following system properties to mimic a secure environment:
 
 **Note:** This feature forces specific property overrides globally. You can customize these values by editing the `drm_fix` file in the WebUI Editor.
 
+### DRM ID Generation (Bypass Download Limits)
+
+Some apps track devices using the DRM Device ID (Widevine ID).
+If you encounter download limits or need a fresh "streaming identity":
+
+1.  Go to the **Spoofing** tab in WebUI.
+2.  In the "DRM / Streaming" section, click **"Regenerate DRM ID"**.
+3.  This wipes the DRM provisioning data and forces the system to generate a new, random ID.
+    -   *Note:* This will delete downloaded content in streaming apps (Netflix, Spotify, etc).
+
 ## Roadmap
 
 - [x] DRM L1 Spoof (Property Based)

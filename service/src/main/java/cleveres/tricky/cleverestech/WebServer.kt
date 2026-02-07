@@ -388,6 +388,26 @@ class WebServer(
              }
         }
 
+        if (uri == "/api/reset_drm" && method == Method.POST) {
+             try {
+                 // Delete DRM provisioning data
+                 val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+                 dirs.forEach { path ->
+                     try {
+                         File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
+                     } catch(e: Exception) { Logger.e("Failed to clear $path", e) }
+                 }
+
+                 // Restart DRM services
+                 val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                 p.waitFor()
+
+                 return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
+             } catch(e: Exception) {
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+             }
+        }
+
         if (uri == "/api/fetch_beta" && method == Method.POST) {
              try {
                 val result = BetaFetcher.fetchAndApply(null)
@@ -738,6 +758,10 @@ class WebServer(
                     <input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')">
                 </div>
             </div>
+            <div class="row" style="margin-top:10px;">
+                <label style="font-size:0.8em; color:#888;">Reset Identity</label>
+                <button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="font-size:0.75em;">Regenerate DRM ID</button>
+            </div>
         </div>
 
         <div class="panel">
@@ -1055,6 +1079,16 @@ class WebServer(
             document.getElementById('fileSelector').value = 'drm_fix';
             switchTab('editor');
             loadFile();
+        }
+
+        async function resetDrmId() {
+            if (!confirm('This will delete downloaded DRM licenses and reset the device ID for streaming apps. Continue?')) return;
+            try {
+                await fetch(getAuthUrl('/api/reset_drm'), { method: 'POST' });
+                notify('DRM ID Reset');
+            } catch(e) {
+                notify('Failed', 'error');
+            }
         }
 
         function previewTemplate() {
