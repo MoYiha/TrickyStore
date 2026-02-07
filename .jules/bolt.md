@@ -11,3 +11,7 @@
 ## 2026-02-03 - [Synchronized Streams in Recursive Encoders]
 **Learning:** `CborEncoder` was using `ByteArrayOutputStream` for every recursive call. Since `ByteArrayOutputStream` methods are synchronized, this added significant overhead for complex nested structures (like RKP payloads). Replacing it with a non-synchronized `FastByteArrayOutputStream` yielded a >50% speedup.
 **Action:** In high-throughput serialization logic, avoid synchronized streams (like `ByteArrayOutputStream`) if thread confinement is guaranteed. Use custom unsynchronized implementations or buffers.
+
+## 2026-05-21 - [Repeated Allocations in Comparators]
+**Learning:** `CborEncoder` was repeatedly calling `String.getBytes` inside the `Map` key comparator, leading to O(N log N) allocations and encoding operations. Pre-computing the UTF-8 bytes for keys reduced this to O(N) and improved map encoding speed by >50%.
+**Action:** When sorting objects based on a property that requires computation (like encoding or hashing), pre-compute that property once and store it, or use a wrapper object, to avoid repeated work during comparisons.

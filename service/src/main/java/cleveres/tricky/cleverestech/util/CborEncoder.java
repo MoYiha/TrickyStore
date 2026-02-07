@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.Collections;
 
 /**
  * A simple, standalone CBOR encoder to support RKP structures.
@@ -58,56 +59,18 @@ public class CborEncoder {
         } else if (value instanceof Map) {
             Map<?, ?> map = (Map<?, ?>) value;
             encodeTypeAndLength(os, MT_MAP, map.size());
-            // Canonical CBOR requires sorting keys.
-            // In RKP, keys can be Integers or Strings.
-            // We'll collect entries and sort them.
-            List<Map.Entry<?, ?>> entries = new ArrayList<>(map.entrySet());
-            entries.sort((e1, e2) -> {
-                Object k1 = e1.getKey();
-                Object k2 = e2.getKey();
-                // Compare Integers
-                if (k1 instanceof Integer && k2 instanceof Integer) {
-                    int i1 = (Integer) k1;
-                    int i2 = (Integer) k2;
-                    // Check Major Types: Positive (MT0) < Negative (MT1)
-                    if (i1 >= 0 && i2 < 0) return -1;
-                    if (i1 < 0 && i2 >= 0) return 1;
-
-                    // Same Major Type
-                    if (i1 >= 0) {
-                        // Both positive: 1 < 2
-                        return Integer.compare(i1, i2);
-                    } else {
-                        // Both negative: -1 (0) < -2 (1).
-                        // Java compare(-1, -2) is 1. We want -1.
-                        // So reverse comparison.
-                        return Integer.compare(i2, i1);
-                    }
-                }
-                // Compare Strings
-                if (k1 instanceof String && k2 instanceof String) {
-                    String s1 = (String) k1;
-                    String s2 = (String) k2;
-                    byte[] b1 = s1.getBytes(StandardCharsets.UTF_8);
-                    byte[] b2 = s2.getBytes(StandardCharsets.UTF_8);
-                    if (b1.length != b2.length) {
-                        return Integer.compare(b1.length, b2.length);
-                    }
-                    return s1.compareTo(s2);
-                }
-                // Mixed keys: Int < String per standard CBOR canonical rules usually? 
-                // RFC 7049: "If two keys have different types, the one with the lower major type sorts earlier."
-                // Int is major 0/1, String is major 3. So Int comes first.
-                if (k1 instanceof Integer && k2 instanceof String) return -1;
-                if (k1 instanceof String && k2 instanceof Integer) return 1;
-                
-                // Fallback for negatives (which are Integers in our logic usually)
-                return 0; 
-            });
             
-            for (Map.Entry<?, ?> entry : entries) {
-                encodeItem(os, entry.getKey());
-                encodeItem(os, entry.getValue());
+            // Optimization: Use EncodedEntry to avoid repeated getBytes() calls during sorting.
+            // This reduces allocations from O(N log N) to O(N).
+            List<EncodedEntry> entries = new ArrayList<>(map.size());
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                entries.add(new EncodedEntry(entry.getKey(), entry.getValue()));
+            }
+            Collections.sort(entries);
+
+            for (EncodedEntry entry : entries) {
+                entry.writeKey(os);
+                encodeItem(os, entry.value);
             }
         } else if (value instanceof Boolean) {
             boolean b = (Boolean) value;
@@ -161,4 +124,80 @@ public class CborEncoder {
         }
     }
 
+    private static class EncodedEntry implements Comparable<EncodedEntry> {
+        final Object key;
+        final Object value;
+        final byte[] stringKeyBytes; // Null if key is not a string
+
+        EncodedEntry(Object key, Object value) {
+            this.key = key;
+            this.value = value;
+            if (key instanceof String) {
+                this.stringKeyBytes = ((String) key).getBytes(StandardCharsets.UTF_8);
+            } else {
+                this.stringKeyBytes = null;
+            }
+        }
+
+        @Override
+        public int compareTo(EncodedEntry other) {
+            Object k1 = this.key;
+            Object k2 = other.key;
+
+            // Compare Integers
+            if (k1 instanceof Integer && k2 instanceof Integer) {
+                int i1 = (Integer) k1;
+                int i2 = (Integer) k2;
+                // Check Major Types: Positive (MT0) < Negative (MT1)
+                if (i1 >= 0 && i2 < 0) return -1;
+                if (i1 < 0 && i2 >= 0) return 1;
+
+                // Same Major Type
+                if (i1 >= 0) {
+                    // Both positive: 1 < 2
+                    return Integer.compare(i1, i2);
+                } else {
+                    // Both negative: -1 (0) < -2 (1).
+                    // Java compare(-1, -2) is 1. We want -1.
+                    // So reverse comparison.
+                    return Integer.compare(i2, i1);
+                }
+            }
+
+            // Compare Strings (optimized)
+            if (k1 instanceof String && k2 instanceof String) {
+                byte[] b1 = this.stringKeyBytes;
+                byte[] b2 = other.stringKeyBytes;
+                if (b1.length != b2.length) {
+                    return Integer.compare(b1.length, b2.length);
+                }
+                // Lexicographical comparison of bytes
+                for (int i = 0; i < b1.length; i++) {
+                    int diff = (b1[i] & 0xFF) - (b2[i] & 0xFF);
+                    if (diff != 0) return diff;
+                }
+                return 0;
+            }
+
+            // Mixed keys: Int < String per standard CBOR canonical rules usually?
+            // RFC 7049: "If two keys have different types, the one with the lower major type sorts earlier."
+            // Int is major 0/1, String is major 3. So Int comes first.
+            if (k1 instanceof Integer && k2 instanceof String) return -1;
+            if (k1 instanceof String && k2 instanceof Integer) return 1;
+
+            // Fallback for negatives (which are Integers in our logic usually)
+            return 0;
+        }
+
+        void writeKey(OutputStream os) throws IOException {
+             if (stringKeyBytes != null) {
+                 encodeTypeAndLength(os, MT_TEXT_STRING, stringKeyBytes.length);
+                 os.write(stringKeyBytes);
+             } else {
+                 // For non-string keys, fall back to standard encoding logic.
+                 // Note: We avoid circular dependency by calling static method directly.
+                 encodeItem(os, key);
+             }
+        }
+    }
 }

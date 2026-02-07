@@ -52,4 +52,36 @@ public class CborEncoderTest {
         System.out.println("Encoded: " + bytesToHex(encoded));
         assertArrayEquals("CBOR Map sorting is incorrect!", expected, encoded);
     }
+
+    @Test
+    public void testStringMapSortingOrder() {
+        // Map { "aa": 1, "a": 2, "b": 3 }
+        // Expected sort: "a", "b", "aa" (shorter length first)
+
+        Map<String, Integer> map = new HashMap<>();
+        map.put("aa", 1);
+        map.put("a", 2);
+        map.put("b", 3);
+
+        byte[] encoded = CborEncoder.encode(map);
+
+        // Expected:
+        // A3       (Map 3)
+        // 61 61    ("a")
+        // 02       (2)
+        // 61 62    ("b")
+        // 03       (3)
+        // 62 61 61 ("aa")
+        // 01       (1)
+
+        byte[] expected = new byte[] {
+            (byte)0xA3,
+            (byte)0x61, (byte)0x61, (byte)0x02,
+            (byte)0x61, (byte)0x62, (byte)0x03,
+            (byte)0x62, (byte)0x61, (byte)0x61, (byte)0x01
+        };
+
+        System.out.println("Encoded Strings: " + bytesToHex(encoded));
+        assertArrayEquals("CBOR String Map sorting is incorrect!", expected, encoded);
+    }
 }
