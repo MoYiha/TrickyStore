@@ -24,10 +24,9 @@ fun main(args: Array<String>) {
         val token = server.token
         Logger.i("Web server started on port $port")
         val portFile = File(configDir, "web_port")
-        if (!configDir.exists()) configDir.mkdirs()
         // Secure directory before writing sensitive file
         try {
-            Os.chmod(configDir.absolutePath, 448) // 0700
+            SecureFile.mkdirs(configDir, 448) // 0700
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }
