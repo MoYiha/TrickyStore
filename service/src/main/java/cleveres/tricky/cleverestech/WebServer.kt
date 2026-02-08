@@ -272,7 +272,7 @@ class WebServer(
                                     val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
 
                                     // Security: Validate template and keybox to prevent XSS (Stored via manual file edit)
-                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))
+                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(Regex("^[a-zA-Z0-9_-]+$"))
                                     val isKbValid = kb.isEmpty() || kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))
 
                                     if (isTmplValid && isKbValid) {
@@ -313,8 +313,8 @@ class WebServer(
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
-                         // Validate template (alphanumeric, underscores)
-                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_]+$"))) {
+                         // Validate template (alphanumeric, underscores, hyphens)
+                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
@@ -501,7 +501,7 @@ class WebServer(
             }
             "app_config" -> {
                 val pkgRegex = Regex("^[a-zA-Z0-9_.*]+$")
-                val tmplRegex = Regex("^[a-zA-Z0-9_]+$")
+                val tmplRegex = Regex("^[a-zA-Z0-9_-]+$")
                 val kbRegex = Regex("^[a-zA-Z0-9_.-]+$")
 
                 for (line in lines) {
