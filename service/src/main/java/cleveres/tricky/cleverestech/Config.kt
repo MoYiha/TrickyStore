@@ -593,14 +593,8 @@ object Config {
     }
 
     fun initialize() {
-        root.mkdirs()
-        keyboxDir.mkdirs()
-        try {
-            Os.chmod(root.absolutePath, 448) // 0700
-            Os.chmod(keyboxDir.absolutePath, 448) // 0700
-        } catch (t: Throwable) {
-            Logger.e("failed to set permissions for config dir", t)
-        }
+        SecureFile.mkdirs(root, 448) // 0700
+        SecureFile.mkdirs(keyboxDir, 448) // 0700
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateRkpBypass(File(root, RKP_BYPASS_FILE))

@@ -8,6 +8,8 @@ import cleveres.tricky.cleverestech.Logger
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
+    fun mkdirs(file: File, mode: Int)
+    fun touch(file: File, mode: Int)
 }
 
 object SecureFile {
@@ -15,6 +17,14 @@ object SecureFile {
 
     fun writeText(file: File, content: String) {
         impl.writeText(file, content)
+    }
+
+    fun mkdirs(file: File, mode: Int) {
+        impl.mkdirs(file, mode)
+    }
+
+    fun touch(file: File, mode: Int) {
+        impl.touch(file, mode)
     }
 
     class DefaultSecureFileOperations : SecureFileOperations {
@@ -39,6 +49,51 @@ object SecureFile {
                 }
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to write to $path", e)
+                throw e
+            } finally {
+                if (fd != null) {
+                    try { Os.close(fd) } catch (e: Exception) {}
+                }
+            }
+        }
+
+        override fun mkdirs(file: File, mode: Int) {
+            if (file.exists()) {
+                if (file.isDirectory) {
+                    try { Os.chmod(file.absolutePath, mode) } catch(e: Exception) {}
+                }
+                return
+            }
+            // Ensure parent exists
+            val parent = file.parentFile
+            if (parent != null && !parent.exists()) {
+                mkdirs(parent, mode)
+            }
+            // Create directory
+            try {
+                Os.mkdir(file.absolutePath, mode)
+                // Enforce again just in case umask messed it up
+                Os.chmod(file.absolutePath, mode)
+            } catch (e: Exception) {
+                // Check if it was created by another thread/process in the meantime
+                if (!file.exists()) {
+                    Logger.e("SecureFile: Failed to mkdirs $file", e)
+                    throw e
+                } else {
+                     try { Os.chmod(file.absolutePath, mode) } catch(t: Throwable) {}
+                }
+            }
+        }
+
+        override fun touch(file: File, mode: Int) {
+            val path = file.absolutePath
+            var fd: FileDescriptor? = null
+            try {
+                val flags = OsConstants.O_CREAT or OsConstants.O_WRONLY
+                fd = Os.open(path, flags, mode)
+                Os.fchmod(fd, mode)
+            } catch (e: Exception) {
+                Logger.e("SecureFile: Failed to touch $path", e)
                 throw e
             } finally {
                 if (fd != null) {
