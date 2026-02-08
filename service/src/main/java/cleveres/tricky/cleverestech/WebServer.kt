@@ -89,8 +89,24 @@ class WebServer(
         }
     }
 
+    @Volatile private var cachedTelegramCount: String? = null
+    @Volatile private var lastTelegramFetchTime: Long = 0
+    private val CACHE_DURATION_SUCCESS = 10 * 60 * 1000L // 10 minutes
+    private val CACHE_DURATION_ERROR = 1 * 60 * 1000L // 1 minute
+
     private fun fetchTelegramCount(): String {
-        return try {
+        val now = System.currentTimeMillis()
+        val currentCache = cachedTelegramCount
+        val lastTime = lastTelegramFetchTime
+
+        if (currentCache != null) {
+            val duration = if (currentCache == "Error" || currentCache == "Unknown" || currentCache.startsWith("Error")) CACHE_DURATION_ERROR else CACHE_DURATION_SUCCESS
+            if ((now - lastTime) < duration) {
+                return currentCache
+            }
+        }
+
+        val result = try {
             val url = URL("https://t.me/cleverestech")
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 5000
@@ -113,6 +129,10 @@ class WebServer(
         } catch (e: Exception) {
             "Error"
         }
+
+        cachedTelegramCount = result
+        lastTelegramFetchTime = now
+        return result
     }
 
     @Suppress("DEPRECATION")
