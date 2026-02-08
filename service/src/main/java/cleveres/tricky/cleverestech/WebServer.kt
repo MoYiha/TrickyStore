@@ -686,6 +686,8 @@ class WebServer(
         input[type="checkbox"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         input[type="checkbox"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        textarea:disabled, input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
         td { padding: 10px; border-bottom: 1px solid var(--border); color: #ccc; }
@@ -886,7 +888,9 @@ class WebServer(
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
+                    <select id="appKeybox" onkeydown="if(event.key==='Enter') addAppRule()">
+                        <option value="">Default (None)</option>
+                    </select>
                 </div>
             </div>
 
@@ -1320,9 +1324,26 @@ class WebServer(
         let currentFile = '';
         async function loadFile() {
             const f = document.getElementById('fileSelector').value;
+            const editor = document.getElementById('fileEditor');
             currentFile = f;
-            const res = await fetch(getAuthUrl('/api/file?filename=' + f));
-            document.getElementById('fileEditor').value = await res.text();
+
+            editor.disabled = true;
+            editor.value = 'Loading...';
+
+            try {
+                const res = await fetch(getAuthUrl('/api/file?filename=' + f));
+                if (res.ok) {
+                    editor.value = await res.text();
+                } else {
+                    editor.value = 'Error loading file';
+                    notify('Load Failed', 'error');
+                }
+            } catch (e) {
+                editor.value = 'Error loading file';
+                notify('Connection Error', 'error');
+            } finally {
+                editor.disabled = false;
+            }
         }
 
         async function saveFile() {

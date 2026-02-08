@@ -768,9 +768,26 @@
         let currentFile = '';
         async function loadFile() {
             const f = document.getElementById('fileSelector').value;
+            const editor = document.getElementById('fileEditor');
             currentFile = f;
-            const res = await fetch(getAuthUrl('/api/file?filename=' + f));
-            document.getElementById('fileEditor').value = await res.text();
+
+            editor.disabled = true;
+            editor.value = 'Loading...';
+
+            try {
+                const res = await fetch(getAuthUrl('/api/file?filename=' + f));
+                if (res.ok) {
+                    editor.value = await res.text();
+                } else {
+                    editor.value = 'Error loading file';
+                    notify('Load Failed', 'error');
+                }
+            } catch (e) {
+                editor.value = 'Error loading file';
+                notify('Connection Error', 'error');
+            } finally {
+                editor.disabled = false;
+            }
         }
 
         async function saveFile() {
