@@ -76,9 +76,8 @@ class WebServer(
                         val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
                         SecureFile.writeText(f, content)
                     } else {
-                        f.createNewFile()
+                        SecureFile.touch(f, 384) // 0600
                     }
-                    permissionSetter(f, 384) // 0600
                 }
             } else {
                 if (f.exists()) f.delete()
@@ -357,10 +356,7 @@ class WebServer(
              // Security: Strict filename validation to prevent path traversal and weird files
              if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(Regex("^[a-zA-Z0-9._-]+$"))) {
                  val keyboxDir = File(configDir, "keyboxes")
-                 if (!keyboxDir.exists()) {
-                     keyboxDir.mkdirs()
-                     permissionSetter(keyboxDir, 448) // 0700
-                 }
+                 SecureFile.mkdirs(keyboxDir, 448) // 0700
 
                  val file = File(keyboxDir, filename)
                  try {

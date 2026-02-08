@@ -27,7 +27,15 @@ class WebServerXssTest {
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl = object : SecureFileOperations {
             override fun writeText(file: File, content: String) {
+                file.parentFile?.mkdirs()
                 file.writeText(content)
+            }
+            override fun mkdirs(file: File, mode: Int) {
+                file.mkdirs()
+            }
+            override fun touch(file: File, mode: Int) {
+                file.parentFile?.mkdirs()
+                if (!file.exists()) file.createNewFile()
             }
         }
         webServer = WebServer(8080, configDir)
