@@ -134,6 +134,8 @@
         input[type="checkbox"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         input[type="checkbox"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        textarea:disabled, input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
         td { padding: 10px; border-bottom: 1px solid var(--border); color: #ccc; }
@@ -334,7 +336,8 @@
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
+                    <input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
+                    <datalist id="keyboxList"></datalist>
                 </div>
             </div>
 
@@ -528,12 +531,11 @@
 
             // Load Keyboxes
             fetch(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
-                const sel = document.getElementById('appKeybox');
+                const dl = document.getElementById('keyboxList');
                 kbs.forEach(k => {
                     const opt = document.createElement('option');
                     opt.value = k;
-                    opt.text = k;
-                    sel.appendChild(opt);
+                    dl.appendChild(opt);
                 });
             });
 
