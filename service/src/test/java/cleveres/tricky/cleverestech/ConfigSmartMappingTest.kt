@@ -21,6 +21,7 @@ class ConfigSmartMappingTest {
         Config.updateCustomTemplates(null)
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun setPackageCache(uid: Int, packages: Array<String>) {
         val field = Config::class.java.getDeclaredField("packageCache")
         field.isAccessible = true

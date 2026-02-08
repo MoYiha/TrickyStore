@@ -95,7 +95,7 @@ class WebServerTest {
 
         // Assertions
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
-        // Memory says appKeybox is input type text now
+        // The implementation uses <input type="text" id="appKeybox" list="keyboxList" ...>
         assertTrue("HTML should contain <input type=\"text\" id=\"appKeybox\"", html.contains("<input type=\"text\" id=\"appKeybox\""))
 
         // Cleanup
