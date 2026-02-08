@@ -549,8 +549,8 @@ class WebServer(
         return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
     }
 
-    private fun getHtml(): String {
-        return """
+    private val htmlContent by lazy {
+        """
 <!DOCTYPE html>
 <html>
 <head>
@@ -1376,6 +1376,10 @@ class WebServer(
 </body>
 </html>
         """.trimIndent()
+    }
+
+    private fun getHtml(): String {
+        return htmlContent
     }
 
     companion object {
