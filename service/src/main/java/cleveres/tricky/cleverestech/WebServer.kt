@@ -888,7 +888,9 @@ class WebServer(
                 </div>
                 <div>
                     <label for="appKeybox" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Keybox XML</label>
-                    <input type="text" id="appKeybox" placeholder="Custom Keybox (Optional)" onkeydown="if(event.key==='Enter') addAppRule()">
+                    <select id="appKeybox" onkeydown="if(event.key==='Enter') addAppRule()">
+                        <option value="">Default (None)</option>
+                    </select>
                 </div>
             </div>
 
