@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.PackageTrie
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -67,9 +68,9 @@ class ConfigTest {
         assertTrue(generate.matches("com.example.app2"))
     }
 
-    private fun createTrie(rules: Set<String>): PackageTrie {
-        val trie = PackageTrie()
-        rules.forEach { trie.add(it) }
+    private fun createTrie(rules: Set<String>): PackageTrie<Boolean> {
+        val trie = PackageTrie<Boolean>()
+        rules.forEach { trie.add(it, true) }
         return trie
     }
 

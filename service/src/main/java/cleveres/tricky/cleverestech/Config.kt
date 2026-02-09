@@ -5,58 +5,12 @@ import android.os.FileObserver
 import android.os.ServiceManager
 import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
+import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.util.Collections
 import java.util.LinkedHashMap
-
-class PackageTrie {
-    private class Node {
-        val children = HashMap<Char, Node>()
-        var isLeaf = false
-        var isWildcard = false
-    }
-
-    private val root = Node()
-    var size = 0
-        private set
-
-    fun add(rule: String) {
-        size++
-        var current = root
-        var effectiveRule = rule
-        var isWildcard = false
-        if (rule.endsWith("*")) {
-            effectiveRule = rule.dropLast(1)
-            isWildcard = true
-        }
-
-        for (char in effectiveRule) {
-            current = current.children.computeIfAbsent(char) { Node() }
-        }
-        if (isWildcard) {
-            current.isWildcard = true
-        } else {
-            current.isLeaf = true
-        }
-    }
-
-    fun matches(pkgName: String): Boolean {
-        var current = root
-        if (current.isWildcard) return true
-
-        for (i in pkgName.indices) {
-            val char = pkgName[i]
-            val next = current.children[char] ?: return false
-            current = next
-            if (current.isWildcard) return true
-        }
-        return current.isLeaf
-    }
-
-    fun isEmpty() = size == 0
-}
 
 object Config {
     private val spoofedProperties = mapOf(
@@ -73,9 +27,9 @@ object Config {
     data class AppSpoofConfig(val template: String?, val keyboxFilename: String?)
 
     @Volatile
-    private var hackPackages: PackageTrie = PackageTrie()
+    private var hackPackages: PackageTrie<Boolean> = PackageTrie()
     @Volatile
-    private var generatePackages: PackageTrie = PackageTrie()
+    private var generatePackages: PackageTrie<Boolean> = PackageTrie()
     private var isGlobalMode = false
     private var isTeeBrokenMode = false
     @Volatile
@@ -86,7 +40,7 @@ object Config {
     private var isRkpBypass = false
 
     @Volatile
-    private var appConfigs: Map<String, AppSpoofConfig> = emptyMap()
+    private var appConfigs: PackageTrie<AppSpoofConfig> = PackageTrie()
 
     fun shouldBypassRkp() = isRkpBypass
 
@@ -100,14 +54,14 @@ object Config {
     fun getAppConfig(uid: Int): AppSpoofConfig? {
         val pkgs = getPackages(uid)
         for (pkg in pkgs) {
-            val config = appConfigs[pkg]
+            val config = appConfigs.get(pkg)
             if (config != null) return config
         }
         return null
     }
 
     private fun updateAppConfigs(f: File?) = runCatching {
-        val newConfigs = mutableMapOf<String, AppSpoofConfig>()
+        val newConfigs = PackageTrie<AppSpoofConfig>()
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
@@ -121,7 +75,7 @@ object Config {
                         if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
 
                         if (template != null || keybox != null) {
-                            newConfigs[pkg] = AppSpoofConfig(template, keybox)
+                            newConfigs.add(pkg, AppSpoofConfig(template, keybox))
                         }
                     }
                 }
@@ -133,17 +87,17 @@ object Config {
         Logger.e("failed to update app configs", it)
     }
 
-    fun parsePackages(lines: List<String>, isTeeBrokenMode: Boolean): Pair<PackageTrie, PackageTrie> {
-        val hackPackages = PackageTrie()
-        val generatePackages = PackageTrie()
+    fun parsePackages(lines: List<String>, isTeeBrokenMode: Boolean): Pair<PackageTrie<Boolean>, PackageTrie<Boolean>> {
+        val hackPackages = PackageTrie<Boolean>()
+        val generatePackages = PackageTrie<Boolean>()
         lines.forEach {
             if (it.isNotBlank() && !it.startsWith("#")) {
                 val n = it.trim()
                 if (isTeeBrokenMode || n.endsWith("!"))
                     generatePackages.add(
-                        n.removeSuffix("!").trim()
+                        n.removeSuffix("!").trim(), true
                     )
-                else hackPackages.add(n)
+                else hackPackages.add(n, true)
             }
         }
         return hackPackages to generatePackages
@@ -642,7 +596,7 @@ object Config {
         return iPm
     }
 
-    internal fun matchesPackage(pkgName: String, rules: PackageTrie): Boolean {
+    internal fun matchesPackage(pkgName: String, rules: PackageTrie<Boolean>): Boolean {
         return rules.matches(pkgName)
     }
 
@@ -668,7 +622,7 @@ object Config {
         return ps
     }
 
-    private fun checkPackages(packages: PackageTrie, callingUid: Int) = kotlin.runCatching {
+    private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
         if (packages.isEmpty()) return false
         val ps = getPackages(callingUid)
         if (ps.isEmpty()) return false

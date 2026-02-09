@@ -1,0 +1,62 @@
+package cleveres.tricky.cleverestech.util
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class PackageTrieTest {
+
+    @Test
+    fun testExactMatch() {
+        val trie = PackageTrie<String>()
+        trie.add("com.example.app", "config1")
+
+        assertEquals("config1", trie.get("com.example.app"))
+        assertNull(trie.get("com.example"))
+        assertNull(trie.get("com.example.app.sub"))
+    }
+
+    @Test
+    fun testWildcardMatch() {
+        val trie = PackageTrie<String>()
+        trie.add("com.google.*", "config_google")
+
+        // "com.google.*" means prefix "com.google." so "com.google" (exact) is not matched by wildcard unless explicit
+        assertNull(trie.get("com.google"))
+        assertEquals("config_google", trie.get("com.google.android"))
+        assertEquals("config_google", trie.get("com.google.android.gms"))
+
+        assertNull(trie.get("com.goo"))
+    }
+
+    @Test
+    fun testOverride() {
+        val trie = PackageTrie<String>()
+        trie.add("com.google.*", "generic")
+        trie.add("com.google.maps", "specific")
+
+        assertEquals("generic", trie.get("com.google.android"))
+        assertEquals("specific", trie.get("com.google.maps"))
+
+        // Exact match doesn't imply prefix match unless wildcard is used
+        assertEquals("generic", trie.get("com.google.maps.beta"))
+    }
+
+    @Test
+    fun testDeepWildcard() {
+        val trie = PackageTrie<String>()
+        trie.add("com.*", "root")
+        trie.add("com.google.*", "google")
+
+        assertEquals("root", trie.get("com.example"))
+        assertEquals("google", trie.get("com.google.android"))
+    }
+
+    @Test
+    fun testBooleanHelper() {
+        val trie = PackageTrie<Boolean>()
+        trie.add("com.hack.*", true)
+
+        assertTrue(trie.matches("com.hack.app"))
+        assertFalse(trie.matches("com.safe.app"))
+    }
+}
