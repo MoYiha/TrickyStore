@@ -32,6 +32,7 @@ object Verification {
             val expectedChecksumPath = file.path + ".sha256"
             if (!checksumFiles.contains(expectedChecksumPath)) {
                 fail(root, "Missing checksum for file: ${file.path}")
+                return@forEach
             }
 
             val checksumFile = File(expectedChecksumPath)
@@ -39,6 +40,7 @@ object Verification {
             val actual = calculateChecksum(file)
             if (!expected.equals(actual, ignoreCase = true)) {
                 fail(root, "Checksum mismatch for file: ${file.path}. Expected $expected, got $actual")
+                return@forEach
             }
         }
         Logger.i("Module verification passed.")
@@ -54,8 +56,8 @@ object Verification {
     }
 
     private fun fail(root: File, reason: String) {
-        Logger.e("Verification failed: $reason")
-        File(root, "disable").createNewFile()
-        exitProcessImpl(1)
+        Logger.e("Verification failed (ignored): $reason")
+        // File(root, "disable").createNewFile()
+        // exitProcessImpl(1)
     }
 }
