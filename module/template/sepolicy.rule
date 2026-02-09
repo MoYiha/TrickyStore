@@ -17,8 +17,8 @@ allow keystore_server cleverestricky_daemon:binder { call transfer };
 allow cleverestricky_daemon keystore_server:binder { transfer }; # For replies and C++ calling back to Java interceptors
 
 # Permissions for cleverestricky_daemon to read its config files in /data/adb/cleverestricky
-allow cleverestricky_daemon cleverestricky_data_file:dir { search read open getattr };
-allow cleverestricky_daemon cleverestricky_data_file:file { read open getattr };
+allow cleverestricky_daemon cleverestricky_data_file:dir { search read open getattr write create setattr unlink add_name remove_name };
+allow cleverestricky_daemon cleverestricky_data_file:file { read open getattr write create setattr unlink };
 
 # Allow cleverestricky_daemon (Java service part) to find and call essential system services
 allow cleverestricky_daemon keystore_service:service_manager { find };
