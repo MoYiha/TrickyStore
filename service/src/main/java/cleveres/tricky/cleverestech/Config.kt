@@ -59,12 +59,14 @@ object Config {
         return null
     }
 
+    private val SPLIT_REGEX = Regex("\\s+")
+
     private fun updateAppConfigs(f: File?) = runCatching {
         val newConfigs = PackageTrie<AppSpoofConfig>()
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
-                    val parts = line.trim().split(Regex("\\s+"))
+                    val parts = line.trim().split(SPLIT_REGEX)
                     if (parts.isNotEmpty()) {
                         val pkg = parts[0]
                         var template: String? = null

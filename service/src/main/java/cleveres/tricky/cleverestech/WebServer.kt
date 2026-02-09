@@ -13,6 +13,19 @@ import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
+private val WHITESPACE_REGEX = Regex("\\s+")
+private val WHITESPACE_FIND_REGEX = Regex("\\s")
+private val PKG_NAME_REGEX = Regex("^[a-zA-Z0-9_.*]+$")
+private val TEMPLATE_NAME_REGEX = Regex("^[a-zA-Z0-9_-]+$")
+private val KEYBOX_FILENAME_REGEX = Regex("^[a-zA-Z0-9_.-]+$")
+private val KEY_VALUE_REGEX = Regex("^[a-zA-Z0-9_.]+=.+$")
+private val UNSAFE_CHARS_REGEX = Regex("[\\$|&;<>`]")
+private val SPOOF_UNSAFE_CHARS_REGEX = Regex("[\\$|&;<>`\\\\()]")
+private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
+private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
+private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
+private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
+
 class WebServer(
     port: Int,
     private val configDir: File = File("/data/adb/cleverestricky"),
@@ -116,8 +129,7 @@ class WebServer(
 
             if (conn.responseCode == 200) {
                 val html = conn.inputStream.bufferedReader().use { it.readText() }
-                val regex = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
-                val matcher = regex.matcher(html)
+                val matcher = TELEGRAM_COUNT_PATTERN.matcher(html)
                 if (matcher.find()) {
                     matcher.group(1)?.trim() ?: "Unknown"
                 } else {
@@ -264,16 +276,16 @@ class WebServer(
                 file.useLines { lines ->
                     lines.forEach { line ->
                         if (line.isNotBlank() && !line.startsWith("#")) {
-                            val parts = line.trim().split(Regex("\\s+"))
+                            val parts = line.trim().split(WHITESPACE_REGEX)
                             if (parts.isNotEmpty()) {
                                 val pkg = parts[0]
-                                if (pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
+                                if (pkg.matches(PKG_NAME_REGEX)) {
                                     val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
                                     val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
 
                                     // Security: Validate template and keybox to prevent XSS (Stored via manual file edit)
-                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(Regex("^[a-zA-Z0-9_-]+$"))
-                                    val isKbValid = kb.isEmpty() || kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))
+                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
+                                    val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
 
                                     if (isTmplValid && isKbValid) {
                                         val obj = JSONObject()
@@ -309,21 +321,21 @@ class WebServer(
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
 
                          // Validate package name (alphanumeric, dots, underscores, wildcards)
-                         if (!pkg.matches(Regex("^[a-zA-Z0-9_.*]+$"))) {
+                         if (!pkg.matches(PKG_NAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
                          // Validate template (alphanumeric, underscores, hyphens)
-                         if (tmpl != "null" && !tmpl.matches(Regex("^[a-zA-Z0-9_-]+$"))) {
+                         if (tmpl != "null" && !tmpl.matches(TEMPLATE_NAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
                          // Validate keybox (alphanumeric, dots, underscores, hyphens)
-                         if (kb != "null" && !kb.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+                         if (kb != "null" && !kb.matches(KEYBOX_FILENAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
-                         if (pkg.contains(Regex("\\s")) || tmpl.contains(Regex("\\s")) || kb.contains(Regex("\\s"))) {
+                         if (pkg.contains(WHITESPACE_FIND_REGEX) || tmpl.contains(WHITESPACE_FIND_REGEX) || kb.contains(WHITESPACE_FIND_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
                          }
 
@@ -374,7 +386,7 @@ class WebServer(
              val content = session.parms["content"]
 
              // Security: Strict filename validation to prevent path traversal and weird files
-             if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(Regex("^[a-zA-Z0-9._-]+$"))) {
+             if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(FILENAME_REGEX)) {
                  val keyboxDir = File(configDir, "keyboxes")
                  SecureFile.mkdirs(keyboxDir, 448) // 0700
 
@@ -491,56 +503,47 @@ class WebServer(
         when (filename) {
             "drm_fix" -> {
                  // Similar to spoof_build_vars, Key=Value
-                 val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
-                 val unsafeChars = Regex("[\\$|&;<>`]")
                  for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(lineRegex)) return false
-                    if (line.contains(unsafeChars)) return false
+                    if (!line.trim().matches(KEY_VALUE_REGEX)) return false
+                    if (line.contains(UNSAFE_CHARS_REGEX)) return false
                 }
             }
             "app_config" -> {
-                val pkgRegex = Regex("^[a-zA-Z0-9_.*]+$")
-                val tmplRegex = Regex("^[a-zA-Z0-9_-]+$")
-                val kbRegex = Regex("^[a-zA-Z0-9_.-]+$")
-
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
-                    val parts = line.trim().split(Regex("\\s+"))
+                    val parts = line.trim().split(WHITESPACE_REGEX)
                     if (parts.isEmpty()) continue
 
                     // Package is required
-                    if (!parts[0].matches(pkgRegex)) return false
+                    if (!parts[0].matches(PKG_NAME_REGEX)) return false
 
                     // Template (optional)
-                    if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(tmplRegex)) return false
+                    if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(TEMPLATE_NAME_REGEX)) return false
 
                     // Keybox (optional)
-                    if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(kbRegex)) return false
+                    if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return false
                 }
             }
             "target.txt" -> {
-                val pkgRegex = Regex("^[a-zA-Z0-9_.*!]+$")
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(pkgRegex)) return false
+                    if (!line.trim().matches(TARGET_PKG_REGEX)) return false
                 }
             }
             "spoof_build_vars" -> {
                 // Key=Value format. Key can be system prop (lower) or config (upper).
                 // Value can be anything, but let's restrict potentially dangerous chars if possible.
                 // Actually, allowing '.' in key is important for ro.product...
-                val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
                 // Added backslash, parentheses to unsafe chars
-                val unsafeChars = Regex("[\\$|&;<>`\\\\()]")
                 val dangerousKeys = setOf("IFS", "PATH", "PYTHONPATH", "PERL5LIB")
 
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
                     val trimmed = line.trim()
-                    if (!trimmed.matches(lineRegex)) return false
+                    if (!trimmed.matches(KEY_VALUE_REGEX)) return false
                     // Security: Prevent potential command injection chars if file is ever sourced
-                    if (line.contains(unsafeChars)) return false
+                    if (line.contains(SPOOF_UNSAFE_CHARS_REGEX)) return false
 
                     // Security: Prevent environment variable injection
                     val key = trimmed.substringBefore('=')
@@ -550,10 +553,9 @@ class WebServer(
             "security_patch.txt" -> {
                 // Accepts YYYYMMDD, YYYY-MM-DD, or key=value
                 // Simple regex: alphanumeric, dash, equal
-                val safeRegex = Regex("^[a-zA-Z0-9_=-]+$")
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(safeRegex)) return false
+                    if (!line.trim().matches(SECURITY_PATCH_REGEX)) return false
                 }
             }
             "templates.json" -> {
