@@ -501,7 +501,7 @@ object Config {
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
     private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
-    private val root = File(CONFIG_PATH)
+    private var root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
 
     private fun checkRandomDrm() {
@@ -609,6 +609,7 @@ object Config {
         updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
 
         checkRandomizeOnBoot()
+        updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         checkRandomDrm()
 
         if (!isGlobalMode) {
