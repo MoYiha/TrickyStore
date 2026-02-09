@@ -5,6 +5,7 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Field
+import cleveres.tricky.cleverestech.util.PackageTrie
 
 class ConfigSmartMappingTest {
 
@@ -32,7 +33,10 @@ class ConfigSmartMappingTest {
     private fun setAppConfigs(configs: Map<String, Config.AppSpoofConfig>) {
         val field = Config::class.java.getDeclaredField("appConfigs")
         field.isAccessible = true
-        field.set(Config, configs)
+        // Convert Map to Trie
+        val trie = PackageTrie<Config.AppSpoofConfig>()
+        configs.forEach { (k, v) -> trie.add(k, v) }
+        field.set(Config, trie)
     }
 
     @Test
