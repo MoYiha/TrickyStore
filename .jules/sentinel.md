@@ -32,3 +32,8 @@
 **Vulnerability:** Found Config.kt and Main.kt using standard File.writeText followed by setReadable or relying on directory permissions, creating TOCTOU race conditions and potential for default permissions.
 **Learning:** Security utilities like SecureFile are only effective if used consistently. Manually setting permissions after creation is always vulnerable to race conditions.
 **Prevention:** Enforce usage of SecureFile.writeText for all sensitive file writes via lint rules or code review checklists. Never use standard File write methods for config files.
+
+## 2026-06-05 - [Environment Injection in Sourced Configuration Files]
+**Vulnerability:** The `spoof_build_vars` configuration file, intended for key-value storage, allowed keys that correspond to dangerous environment variables (e.g., `LD_PRELOAD`, `PATH`) and permitted backslashes (`\`) for line continuation. If this file were ever sourced by a shell script (a common pattern for config files), it could lead to arbitrary code execution or privilege escalation.
+**Learning:** Configuration files that follow shell syntax (`KEY=VALUE`) are inherently risky if they are ever processed by a shell. Even if intended only for parsing, defensive programming requires assuming the worst-case usage (sourcing).
+**Prevention:** Strictly validate keys against a whitelist or blacklist (e.g., block `LD_.*`, `PATH`). Disallow shell metacharacters like `\` and `()` that enable command chaining or subshells, even if the primary consumer is not a shell.

@@ -531,12 +531,20 @@ class WebServer(
                 // Value can be anything, but let's restrict potentially dangerous chars if possible.
                 // Actually, allowing '.' in key is important for ro.product...
                 val lineRegex = Regex("^[a-zA-Z0-9_.]+=.+$")
-                val unsafeChars = Regex("[\\$|&;<>`]")
+                // Added backslash, parentheses to unsafe chars
+                val unsafeChars = Regex("[\\$|&;<>`\\\\()]")
+                val dangerousKeys = setOf("IFS", "PATH", "PYTHONPATH", "PERL5LIB")
+
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
-                    if (!line.trim().matches(lineRegex)) return false
+                    val trimmed = line.trim()
+                    if (!trimmed.matches(lineRegex)) return false
                     // Security: Prevent potential command injection chars if file is ever sourced
                     if (line.contains(unsafeChars)) return false
+
+                    // Security: Prevent environment variable injection
+                    val key = trimmed.substringBefore('=')
+                    if (key.startsWith("LD_") || key in dangerousKeys) return false
                 }
             }
             "security_patch.txt" -> {
