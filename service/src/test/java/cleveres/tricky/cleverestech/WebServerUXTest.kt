@@ -72,4 +72,23 @@ class WebServerUXTest {
             html.contains("btn.innerText = 'Applying...'")
         )
     }
+
+    @Test
+    fun testEditorShortcuts() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // Verify Save Button has title
+        assertTrue("Save button should have title hint for Ctrl+S",
+            html.contains("title=\"Ctrl+S\"") && html.contains("id=\"saveBtn\"")
+        )
+
+        // Verify Textarea has onkeydown handler
+        assertTrue("File editor textarea should have onkeydown handler for Ctrl+S",
+            html.contains("onkeydown=\"if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();document.getElementById('saveBtn').click();}\"")
+        )
+    }
 }

@@ -401,9 +401,9 @@
                     <option value="app_config">app_config</option>
                     <option value="drm_fix">drm_fix</option>
                 </select>
-                <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)">Save</button>
+                <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)" title="Ctrl+S">Save</button>
             </div>
-            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content"></textarea>
+            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();document.getElementById('saveBtn').click();}"></textarea>
         </div>
     </div>
 
