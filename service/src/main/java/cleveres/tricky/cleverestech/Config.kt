@@ -9,8 +9,7 @@ import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
-import java.util.Collections
-import java.util.LinkedHashMap
+import java.util.concurrent.ConcurrentHashMap
 
 object Config {
     private val spoofedProperties = mapOf(
@@ -602,24 +601,21 @@ object Config {
 
     // Cache to reduce IPC calls to PackageManager for getPackagesForUid
     // Key: callingUid, Value: Array of package names
-    private val packageCache = Collections.synchronizedMap(
-        object : LinkedHashMap<Int, Array<String>>(200, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, Array<String>>?): Boolean {
-                return size > 200
-            }
-        }
-    )
+    // OPTIMIZATION: Use ConcurrentHashMap to allow lock-free reads and better concurrency.
+    // The map is unbounded but limited by the number of installed apps (~hundreds, max ~50k UIDs),
+    // which fits well within memory limits compared to synchronized access overhead.
+    private val packageCache = ConcurrentHashMap<Int, Array<String>?>()
 
     /**
      * Retrieves the list of packages for a given UID, using a cache to avoid frequent IPC calls.
      * Returns an empty array if the UID has no associated packages or if PackageManager is unavailable.
      */
     fun getPackages(uid: Int): Array<String> {
-        packageCache[uid]?.let { return it }
-        val pm = getPm() ?: return emptyArray()
-        val ps = pm.getPackagesForUid(uid) ?: emptyArray()
-        packageCache[uid] = ps
-        return ps
+        val packages = packageCache.computeIfAbsent(uid) {
+            val pm = getPm() ?: return@computeIfAbsent null
+            pm.getPackagesForUid(uid) ?: emptyArray()
+        }
+        return packages ?: emptyArray()
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
