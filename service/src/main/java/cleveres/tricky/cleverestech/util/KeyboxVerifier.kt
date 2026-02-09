@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
 
@@ -147,8 +148,8 @@ object KeyboxVerifier {
 
                 for (cert in chain) {
                     if (cert is X509Certificate) {
-                        val sn = cert.serialNumber.toString(16).lowercase()
-                        if (revokedSerials.contains(sn)) {
+                        if (isRevoked(cert, revokedSerials)) {
+                            val sn = cert.serialNumber.toString(16).lowercase()
                             return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
                         }
                     }
@@ -158,6 +159,37 @@ object KeyboxVerifier {
             Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
         } catch (e: Exception) {
             Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
+        }
+    }
+
+    fun isRevoked(cert: X509Certificate, revokedSerials: Set<String>): Boolean {
+        // 1. Serial Number (Hex)
+        val sn = cert.serialNumber.toString(16).lowercase()
+        if (revokedSerials.contains(sn)) return true
+
+        // 2. Key ID Checks (Hash of Public Key)
+        val publicKeyEncoded = cert.publicKey.encoded
+
+        // SHA-1 (40 chars)
+        if (checkHash(publicKeyEncoded, "SHA-1", revokedSerials)) return true
+
+        // SHA-256 (64 chars)
+        if (checkHash(publicKeyEncoded, "SHA-256", revokedSerials)) return true
+
+        // MD5 (32 chars)
+        if (checkHash(publicKeyEncoded, "MD5", revokedSerials)) return true
+
+        return false
+    }
+
+    private fun checkHash(data: ByteArray, algorithm: String, set: Set<String>): Boolean {
+        try {
+            val digest = MessageDigest.getInstance(algorithm).digest(data)
+            // Convert to Hex String (Zero Padded)
+            val hex = digest.joinToString("") { "%02x".format(it) }
+            return set.contains(hex)
+        } catch (e: Exception) {
+            return false
         }
     }
 }
