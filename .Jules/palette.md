@@ -10,6 +10,6 @@
 **Learning:** When a project maintains a static file (e.g., `index.html`) as a mirror of an embedded string in code (e.g., `WebServer.kt`), they can easily drift out of sync (e.g., missing CSS rules).
 **Action:** Always diff the static artifact against the source of truth before editing to detect and resolve drift, ensuring consistent behavior across dev and prod.
 
-## 2025-05-15 - Mocking Backend for Embedded UI Verification
-**Learning:** When verifying frontend interactions (like loading states) in an embedded WebView where the backend is unavailable (e.g., Android-specific APIs), use Playwright's `page.route` to mock API responses and introduce delays. This allows testing of transient UI states (spinners, disabled buttons) without a real server.
-**Action:** Use `page.route` with `time.sleep` in Python handlers to verify async UI states.
+## 2026-02-09 - Async Button State Management
+**Learning:** When adding temporary visual feedback to buttons (e.g., "✓ Copied"), rapid clicking can cause race conditions where the temporary text becomes permanent if the "original text" is captured during the temporary state.
+**Action:** Always implement a guard clause (e.g., `if (btn.innerText === '✓ Copied') return;`) or use a dedicated state flag/attribute to prevent re-triggering the action while in the temporary feedback state.

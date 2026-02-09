@@ -779,12 +779,12 @@ class WebServer(
 
             <div class="section-header">Crypto (Click to Copy)</div>
             <div class="grid-2">
-                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!')">USDT (TRC20)</button>
-                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!')">Monero (XMR)</button>
+                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!', this)">USDT (TRC20)</button>
+                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!', this)">Monero (XMR)</button>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!')">Binance ID</button>
-                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!')">USDT (ERC20)</button>
+                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)">Binance ID</button>
+                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!', this)">USDT (ERC20)</button>
             </div>
 
             <div class="section-header">Platforms</div>
@@ -993,23 +993,36 @@ class WebServer(
         function getAuthUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + token; }
 
         // Clipboard Helper
-        function copyToClipboard(text, msg) {
-            navigator.clipboard.writeText(text).then(() => {
+        function copyToClipboard(text, msg, btn) {
+            if (btn && btn.innerText === '✓ Copied') return;
+            const onSuccess = () => {
                 notify(msg, 'normal');
-            }, (err) => {
-                // Fallback for non-secure contexts (http)
+                if (btn) {
+                    const originalText = btn.innerText;
+                    btn.innerText = '✓ Copied';
+                    setTimeout(() => btn.innerText = originalText, 2000);
+                }
+            };
+
+            const fallback = () => {
                 const textArea = document.createElement("textarea");
                 textArea.value = text;
                 document.body.appendChild(textArea);
                 textArea.select();
                 try {
                     document.execCommand('copy');
-                    notify(msg, 'normal');
+                    onSuccess();
                 } catch (err) {
                     notify('Copy failed', 'error');
                 }
                 document.body.removeChild(textArea);
-            });
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(onSuccess, fallback);
+            } else {
+                fallback();
+            }
         }
 
         // Dynamic Island Logic
