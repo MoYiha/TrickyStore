@@ -413,10 +413,19 @@ class WebServer(
 
                          sb.append("$pkg $tmpl $kb\n")
                      }
-                     if (saveFile("app_config", sb.toString())) {
-                         // Trigger reload
-                         File(configDir, "app_config").setLastModified(System.currentTimeMillis())
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                     return runBlocking {
+                         fileMutex.withLock {
+                             try {
+                                 val f = File(configDir, "app_config")
+                                 SecureFile.writeText(f, sb.toString())
+                                 // Trigger reload
+                                 f.setLastModified(System.currentTimeMillis())
+                                 secureResponse(Response.Status.OK, "text/plain", "Saved")
+                             } catch (e: Exception) {
+                                 Logger.e("Failed to save app_config", e)
+                                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                             }
+                         }
                      }
                  } catch (e: Exception) {
                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
@@ -594,6 +603,9 @@ class WebServer(
     }
 
     private fun validateContent(filename: String, content: String): Boolean {
+        // Defense in depth: reject directory traversal patterns in content
+        if (content.contains("..")) return false
+
         if (content.isBlank()) return true
         val lines = content.lines()
 

@@ -70,6 +70,7 @@ object KeyboxVerifier {
                 return null
             }
 
+            // Use streaming parser to prevent OOM on large CRL files
             conn.inputStream.bufferedReader().use { reader ->
                 parseCrl(reader)
             }
