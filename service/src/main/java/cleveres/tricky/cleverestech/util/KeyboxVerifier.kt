@@ -4,6 +4,7 @@ import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.keystore.CertHack
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -85,11 +86,13 @@ object KeyboxVerifier {
     fun parseCrl(reader: java.io.Reader): Set<String> {
         val set = HashSet<String>()
         val jsonReader = android.util.JsonReader(reader)
+        var entriesFound = false
         try {
             jsonReader.beginObject()
             while (jsonReader.hasNext()) {
                 val name = jsonReader.nextName()
                 if (name == "entries") {
+                    entriesFound = true
                     jsonReader.beginObject()
                     while (jsonReader.hasNext()) {
                         val decStr = jsonReader.nextName()
@@ -102,10 +105,12 @@ object KeyboxVerifier {
                 }
             }
             jsonReader.endObject()
-        } catch (e: Exception) {
-            Logger.e("Failed to parse CRL JSON", e)
         } finally {
             try { jsonReader.close() } catch (e: Exception) {}
+        }
+
+        if (!entriesFound) {
+            throw IOException("CRL missing 'entries' field")
         }
         return set
     }
