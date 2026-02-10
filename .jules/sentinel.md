@@ -37,3 +37,8 @@
 **Vulnerability:** The `spoof_build_vars` configuration file, intended for key-value storage, allowed keys that correspond to dangerous environment variables (e.g., `LD_PRELOAD`, `PATH`) and permitted backslashes (`\`) for line continuation. If this file were ever sourced by a shell script (a common pattern for config files), it could lead to arbitrary code execution or privilege escalation.
 **Learning:** Configuration files that follow shell syntax (`KEY=VALUE`) are inherently risky if they are ever processed by a shell. Even if intended only for parsing, defensive programming requires assuming the worst-case usage (sourcing).
 **Prevention:** Strictly validate keys against a whitelist or blacklist (e.g., block `LD_.*`, `PATH`). Disallow shell metacharacters like `\` and `()` that enable command chaining or subshells, even if the primary consumer is not a shell.
+
+## 2026-06-08 - [Partial CRL Parsing Vulnerability (Fail Open)]
+**Vulnerability:** `KeyboxVerifier` swallowed exceptions during streaming JSON parsing of the Certificate Revocation List (CRL). If the connection dropped or the JSON was truncated after valid entries, the verifier would return a partial list of revoked keys, treating the missing ones as valid.
+**Learning:** Streaming parsers (like `JsonReader`) must explicitly handle and propagate errors. Catching `Exception` broadly without re-throwing in a security-critical verification loop leads to "Fail Open" behavior.
+**Prevention:** Always ensure that verification logic defaults to "Fail Closed". If a revocation list cannot be fully parsed, the entire verification process must fail or return an error state, rather than a partial success.
