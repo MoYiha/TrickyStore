@@ -15,15 +15,18 @@ object RandomUtils {
     )
 
     fun generateLuhn(length: Int, prefix: String = ""): String {
-        val sb = StringBuilder(prefix)
+        // Optimization: Use StringBuilder directly to avoid intermediate String and List allocations
+        val sb = StringBuilder(length)
+        sb.append(prefix)
         while (sb.length < length - 1) {
             sb.append(Random.nextInt(10))
         }
-        val digits = sb.toString().map { it.toString().toInt() }.toIntArray()
+
         var sum = 0
         var isSecond = true
-        for (i in digits.indices.reversed()) {
-            var d = digits[i]
+        // Optimization: Iterate over characters in StringBuilder instead of converting to IntArray
+        for (i in sb.length - 1 downTo 0) {
+            var d = sb[i] - '0'
             if (isSecond) {
                 d *= 2
                 if (d > 9) d -= 9
@@ -37,24 +40,35 @@ object RandomUtils {
     }
 
     fun generateRandomSerial(length: Int): String {
-        return (1..length)
-            .map { CHAR_POOL[Random.nextInt(CHAR_POOL.length)] }
-            .joinToString("")
+        // Optimization: Use StringBuilder loop instead of map + joinToString
+        val sb = StringBuilder(length)
+        repeat(length) {
+            sb.append(CHAR_POOL[Random.nextInt(CHAR_POOL.length)])
+        }
+        return sb.toString()
     }
 
     fun generateRandomMac(): String {
-        return (1..6)
-            .map {
-                val b = Random.nextInt(256)
-                String.format("%02x", b)
-            }
-            .joinToString(":")
+        // Optimization: Use StringBuilder and manual hex formatting
+        val sb = StringBuilder(17)
+        for (i in 0 until 6) {
+            if (i > 0) sb.append(':')
+            val b = Random.nextInt(256)
+            val high = (b shr 4) and 0xF
+            val low = b and 0xF
+            sb.append(HEX_POOL[high])
+            sb.append(HEX_POOL[low])
+        }
+        return sb.toString()
     }
 
     fun generateRandomAndroidId(): String {
-        return (1..16)
-            .map { HEX_POOL[Random.nextInt(HEX_POOL.length)] }
-            .joinToString("")
+        // Optimization: Use StringBuilder loop
+        val sb = StringBuilder(16)
+        repeat(16) {
+            sb.append(HEX_POOL[Random.nextInt(HEX_POOL.length)])
+        }
+        return sb.toString()
     }
 
     fun generateRandomSimIso(): String {
