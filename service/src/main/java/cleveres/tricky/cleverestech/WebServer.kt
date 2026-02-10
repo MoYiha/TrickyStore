@@ -413,10 +413,19 @@ class WebServer(
 
                          sb.append("$pkg $tmpl $kb\n")
                      }
-                     if (saveFile("app_config", sb.toString())) {
-                         // Trigger reload
-                         File(configDir, "app_config").setLastModified(System.currentTimeMillis())
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                     return runBlocking {
+                         fileMutex.withLock {
+                             try {
+                                 val f = File(configDir, "app_config")
+                                 SecureFile.writeText(f, sb.toString())
+                                 // Trigger reload
+                                 f.setLastModified(System.currentTimeMillis())
+                                 secureResponse(Response.Status.OK, "text/plain", "Saved")
+                             } catch (e: Exception) {
+                                 Logger.e("Failed to save app_config", e)
+                                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                             }
+                         }
                      }
                  } catch (e: Exception) {
                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
@@ -594,6 +603,9 @@ class WebServer(
     }
 
     private fun validateContent(filename: String, content: String): Boolean {
+        // Defense in depth: reject directory traversal patterns in content
+        if (content.contains("..")) return false
+
         if (content.isBlank()) return true
         val lines = content.lines()
 
@@ -929,7 +941,10 @@ class WebServer(
                     <div><div class="section-header">Device</div><div id="pModel"></div></div>
                     <div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div>
                 </div>
-                <div class="section-header">Fingerprint</div>
+                <div class="section-header">
+                    Fingerprint
+                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding: 2px 8px; font-size: 0.7em; margin-left: 10px; background: transparent; border: 1px solid var(--border);">Copy</button>
+                </div>
                 <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
 

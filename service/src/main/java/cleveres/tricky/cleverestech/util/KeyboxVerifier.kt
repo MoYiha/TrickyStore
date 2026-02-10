@@ -70,6 +70,7 @@ object KeyboxVerifier {
                 return null
             }
 
+            // Use streaming parser to prevent OOM on large CRL files
             conn.inputStream.bufferedReader().use { reader ->
                 parseCrl(reader)
             }
@@ -114,6 +115,10 @@ object KeyboxVerifier {
             throw IOException("Failed to parse CRL", e)
         } finally {
             try { jsonReader.close() } catch (e: Exception) {}
+        }
+
+        if (!entriesFound) {
+            throw IOException("CRL missing 'entries' field")
         }
         return set
     }

@@ -23,3 +23,7 @@
 ## 2026-05-28 - [HashMap Overhead in Tries]
 **Learning:** `PackageTrie` was using `HashMap<Char, Node>` for child storage. For package names (low branching factor, mostly linear segments), this introduced significant memory and CPU overhead (boxing `Char`, hashing, `Entry` objects). Replacing it with parallel arrays (`CharArray` + `Array<Node>`) and linear scanning yielded a ~2.3x speedup.
 **Action:** For small collections or specialized trees with low branching factors (like tries for strings), prefer simple arrays over `HashMap` to avoid object overhead and indirect access.
+
+## 2026-02-10 - [Lambda Allocation in Hot Cache Paths]
+**Learning:** `ConcurrentHashMap.computeIfAbsent` allocates a `Function` lambda instance on every call if the lambda captures variables (like `this`), even if the key is already present. In hot paths (like permission checks), this creates significant GC pressure.
+**Action:** In hot paths using `computeIfAbsent`, check for the existence of the key (e.g., `map[key]`) before calling `computeIfAbsent` to avoid allocation in the hit case.
