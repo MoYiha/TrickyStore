@@ -17,8 +17,7 @@
             --danger: #EF4444;
         }
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-
-        /* Dynamic Island Notification */
+        /* CSS Omitted for brevity, same as before */
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
         .island {
             background: #000;
@@ -237,6 +236,12 @@
         </div>
 
         <div class="panel">
+            <h3>Beta Profile Fetcher</h3>
+            <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Fetches latest Android Beta fingerprints for Strong Integrity.</p>
+            <button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button>
+        </div>
+
+        <div class="panel">
             <h3>Identity Manager</h3>
             <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
 
@@ -247,7 +252,10 @@
                     <div><div class="section-header">Device</div><div id="pModel"></div></div>
                     <div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div>
                 </div>
-                <div class="section-header">Fingerprint</div>
+                <div class="section-header">
+                    Fingerprint
+                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding: 2px 8px; font-size: 0.7em; margin-left: 10px; background: transparent; border: 1px solid var(--border);">Copy</button>
+                </div>
                 <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
 
@@ -412,7 +420,17 @@
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
 
-        function getAuthUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + token; }
+        function getAuthUrl(path) { return path; }
+
+        async function fetchAuth(url, options = {}) {
+            if (!token) throw new Error('No token');
+
+            const headers = options.headers || {};
+            headers['X-Auth-Token'] = token;
+            // Also add param for compatibility if needed, but header preferred
+
+            return fetch(url, { ...options, headers });
+        }
 
         // Clipboard Helper
         function copyToClipboard(text, msg, btn) {
@@ -503,7 +521,7 @@
 
             // Load Settings
             try {
-                const res = await fetch(getAuthUrl('/api/config'));
+                const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
@@ -512,12 +530,12 @@
             } catch(e) { notify('Connection Failed', 'error'); }
 
             // Load Stats
-            fetch(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
+            fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
                 document.getElementById('communityCount').innerText = d.members;
             });
 
             // Load Templates
-            const tRes = await fetch(getAuthUrl('/api/templates'));
+            const tRes = await fetchAuth(getAuthUrl('/api/templates'));
             const templates = await tRes.json();
             const sel = document.getElementById('templateSelect');
             const appSel = document.getElementById('appTemplate');
@@ -533,7 +551,7 @@
             previewTemplate();
 
             // Load Packages
-            fetch(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
+            fetchAuth(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => {
                     const opt = document.createElement('option');
@@ -543,7 +561,7 @@
             });
 
             // Load Keyboxes
-            fetch(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
+            fetchAuth(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
                 const dl = document.getElementById('keyboxList');
                 kbs.forEach(k => {
                     const opt = document.createElement('option');
@@ -560,7 +578,7 @@
         async function toggle(setting) {
             const el = document.getElementById(setting);
             try {
-                await fetch(getAuthUrl('/api/toggle'), {
+                await fetchAuth(getAuthUrl('/api/toggle'), {
                     method: 'POST',
                     body: new URLSearchParams({setting, value: el.checked})
                 });
@@ -580,10 +598,24 @@
         async function resetDrmId() {
             if (!confirm('This will delete downloaded DRM licenses and reset the device ID for streaming apps. Continue?')) return;
             try {
-                await fetch(getAuthUrl('/api/reset_drm'), { method: 'POST' });
+                await fetchAuth(getAuthUrl('/api/reset_drm'), { method: 'POST' });
                 notify('DRM ID Reset');
             } catch(e) {
                 notify('Failed', 'error');
+            }
+        }
+
+        async function fetchBeta() {
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/fetch_beta'), { method: 'POST' });
+                const text = await res.text();
+                if (res.ok) {
+                    notify(text);
+                } else {
+                    notify(text, 'error');
+                }
+            } catch(e) {
+                notify('Fetch Failed', 'error');
             }
         }
 
@@ -605,7 +637,7 @@
         }
 
         async function generateRandomIdentity() {
-            const res = await fetch(getAuthUrl('/api/random_identity'));
+            const res = await fetchAuth(getAuthUrl('/api/random_identity'));
             if (!res.ok) { notify('Failed'); return; }
             const t = await res.json();
 
@@ -670,7 +702,7 @@
                  if (simOp) content += `SIM_OPERATOR_NAME=${simOp}\n`;
                  // Add other fields as needed for build vars
 
-                 await fetch(getAuthUrl('/api/save'), {
+                 await fetchAuth(getAuthUrl('/api/save'), {
                      method: 'POST',
                      body: new URLSearchParams({ filename: 'spoof_build_vars', content })
                  });
@@ -694,7 +726,7 @@
         let appRules = [];
 
         async function loadAppConfig() {
-            const res = await fetch(getAuthUrl('/api/app_config_structured'));
+            const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
             appRules = await res.json();
             renderAppTable();
         }
@@ -767,7 +799,7 @@
         }
 
         async function saveAppConfig() {
-            await fetch(getAuthUrl('/api/app_config_structured'), {
+            await fetchAuth(getAuthUrl('/api/app_config_structured'), {
                 method: 'POST',
                 body: new URLSearchParams({ data: JSON.stringify(appRules) })
             });
@@ -775,7 +807,7 @@
         }
 
         async function reloadConfig() {
-            await fetch(getAuthUrl('/api/reload'), { method: 'POST' });
+            await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' });
             notify('Config Reloaded');
             setTimeout(() => window.location.reload(), 1000);
         }
@@ -790,7 +822,7 @@
             editor.value = 'Loading...';
 
             try {
-                const res = await fetch(getAuthUrl('/api/file?filename=' + f));
+                const res = await fetchAuth(getAuthUrl('/api/file?filename=' + f));
                 if (res.ok) {
                     editor.value = await res.text();
                 } else {
@@ -808,7 +840,7 @@
         async function saveFile() {
             const f = document.getElementById('fileSelector').value;
             const c = document.getElementById('fileEditor').value;
-            await fetch(getAuthUrl('/api/save'), {
+            await fetchAuth(getAuthUrl('/api/save'), {
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
@@ -819,7 +851,7 @@
             const f = document.getElementById('kbFilename').value;
             const c = document.getElementById('kbContent').value;
             if (!f || !c) return;
-            await fetch(getAuthUrl('/api/upload_keybox'), {
+            await fetchAuth(getAuthUrl('/api/upload_keybox'), {
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
@@ -838,7 +870,7 @@
 
         async function verifyKeyboxes() {
              notify('Verifying...', 'working');
-             const res = await fetch(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
+             const res = await fetchAuth(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
              const data = await res.json();
              const container = document.getElementById('verifyResult');
              container.innerHTML = '';
