@@ -19,3 +19,7 @@
 ## 2024-05-27 - [Lazy Initialization of Static Assets]
 **Learning:** `WebServer.getHtml()` was reconstructing a large static HTML string (and allocating char arrays) on every request. This caused unnecessary garbage collection pressure.
 **Action:** Cache static response content (like HTML templates) in lazy properties or static constants to avoid re-allocation.
+
+## 2026-05-28 - [HashMap Overhead in Tries]
+**Learning:** `PackageTrie` was using `HashMap<Char, Node>` for child storage. For package names (low branching factor, mostly linear segments), this introduced significant memory and CPU overhead (boxing `Char`, hashing, `Entry` objects). Replacing it with parallel arrays (`CharArray` + `Array<Node>`) and linear scanning yielded a ~2.3x speedup.
+**Action:** For small collections or specialized trees with low branching factors (like tries for strings), prefer simple arrays over `HashMap` to avoid object overhead and indirect access.
