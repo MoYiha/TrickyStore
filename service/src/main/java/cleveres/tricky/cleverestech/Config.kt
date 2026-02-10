@@ -613,6 +613,9 @@ object Config {
      * Returns an empty array if the UID has no associated packages or if PackageManager is unavailable.
      */
     fun getPackages(uid: Int): Array<String> {
+        // Optimization: fast path for cache hit to avoid lambda allocation
+        packageCache[uid]?.let { return it }
+
         val packages = packageCache.computeIfAbsent(uid) {
             val pm = getPm() ?: return@computeIfAbsent null
             pm.getPackagesForUid(uid) ?: emptyArray()
