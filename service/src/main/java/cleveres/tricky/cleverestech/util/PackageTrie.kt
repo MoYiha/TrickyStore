@@ -2,10 +2,57 @@ package cleveres.tricky.cleverestech.util
 
 class PackageTrie<T> {
     private class Node<T> {
-        val children = HashMap<Char, Node<T>>()
+        // Optimization: Use parallel arrays instead of HashMap to reduce memory overhead and avoid boxing.
+        // For trie nodes, the number of children is usually small (often 1), making linear scan faster than hashing.
+        var keys: CharArray = CharArray(0)
+        var children: Array<Node<T>?> = emptyArray()
+
         var value: T? = null
         var isWildcard = false
         var wildcardValue: T? = null
+
+        fun getChild(char: Char): Node<T>? {
+            val k = keys
+            // Optimized linear scan
+            for (i in k.indices) {
+                if (k[i] == char) {
+                    return children[i]
+                }
+            }
+            return null
+        }
+
+        fun addChild(char: Char): Node<T> {
+            val k = keys
+            // Check if child already exists
+            for (i in k.indices) {
+                if (k[i] == char) {
+                    return children[i]!!
+                }
+            }
+
+            // Add new child
+            val newSize = k.size + 1
+            val newKeys = k.copyOf(newSize)
+            newKeys[k.size] = char
+
+            // Resize children array
+            // If the array is empty, we must create a new one of correct type.
+            // Using arrayOfNulls<Node<T>>(newSize) works as generic array creation workaround
+            val newChildren = if (children.isEmpty()) {
+                arrayOfNulls<Node<T>>(newSize)
+            } else {
+                children.copyOf(newSize)
+            }
+
+            val newNode = Node<T>()
+            newChildren[children.size] = newNode
+
+            keys = newKeys
+            children = newChildren
+
+            return newNode
+        }
     }
 
     private val root = Node<T>()
@@ -23,7 +70,7 @@ class PackageTrie<T> {
         }
 
         for (char in effectiveRule) {
-            current = current.children.computeIfAbsent(char) { Node() }
+            current = current.addChild(char)
         }
 
         if (isWildcardRule) {
@@ -35,7 +82,9 @@ class PackageTrie<T> {
     }
 
     fun clear() {
-        root.children.clear()
+        // Clear root children to release memory
+        root.keys = CharArray(0)
+        root.children = emptyArray()
         root.value = null
         root.isWildcard = false
         root.wildcardValue = null
@@ -49,7 +98,7 @@ class PackageTrie<T> {
 
         for (i in pkgName.indices) {
             val char = pkgName[i]
-            val next = current.children[char] ?: return bestMatch
+            val next = current.getChild(char) ?: return bestMatch
             current = next
             if (current.isWildcard) {
                 bestMatch = current.wildcardValue
