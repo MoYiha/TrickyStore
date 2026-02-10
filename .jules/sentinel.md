@@ -38,7 +38,7 @@
 **Learning:** Configuration files that follow shell syntax (`KEY=VALUE`) are inherently risky if they are ever processed by a shell. Even if intended only for parsing, defensive programming requires assuming the worst-case usage (sourcing).
 **Prevention:** Strictly validate keys against a whitelist or blacklist (e.g., block `LD_.*`, `PATH`). Disallow shell metacharacters like `\` and `()` that enable command chaining or subshells, even if the primary consumer is not a shell.
 
-## 2026-06-25 - [TOCTOU in LocalRkpProxy Key Rotation]
-**Vulnerability:** `LocalRkpProxy.rotateKey` used standard `File.writeBytes` followed by `Os.chmod` to secure the root secret key. This created a Time-of-Check Time-of-Use (TOCTOU) race condition where the file could be world-readable (depending on umask/directory permissions) before being secured.
-**Learning:** Even specialized security components can fall back to insecure defaults if they bypass centralized security utilities. Modifying shared interfaces (`SecureFileOperations`) to support binary data can be high-effort due to test coupling; encoding binary data (Hex/Base64) to fit existing secure text APIs is a valid and safer alternative.
-**Prevention:** Always use atomic secure write utilities (`SecureFile.writeText`) for sensitive files. If binary storage is needed, prefer encoding to text over implementing insecure binary write patterns.
+## 2026-06-08 - [Partial CRL Parsing Vulnerability (Fail Open)]
+**Vulnerability:** `KeyboxVerifier` swallowed exceptions during streaming JSON parsing of the Certificate Revocation List (CRL). If the connection dropped or the JSON was truncated after valid entries, the verifier would return a partial list of revoked keys, treating the missing ones as valid.
+**Learning:** Streaming parsers (like `JsonReader`) must explicitly handle and propagate errors. Catching `Exception` broadly without re-throwing in a security-critical verification loop leads to "Fail Open" behavior.
+**Prevention:** Always ensure that verification logic defaults to "Fail Closed". If a revocation list cannot be fully parsed, the entire verification process must fail or return an error state, rather than a partial success.

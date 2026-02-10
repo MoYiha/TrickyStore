@@ -106,6 +106,13 @@ object KeyboxVerifier {
                 }
             }
             jsonReader.endObject()
+
+            if (!entriesFound) {
+                throw IOException("Invalid CRL: 'entries' object missing")
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to parse CRL JSON", e)
+            throw IOException("Failed to parse CRL", e)
         } finally {
             try { jsonReader.close() } catch (e: Exception) {}
         }
