@@ -31,6 +31,15 @@ allow cleverestricky_daemon exported_default_prop:file { read open getattr }; # 
 # Allow daemon to execute /system/bin/sh (used by KeystoreInterceptor to call inject)
 allow cleverestricky_daemon shell_exec:file { execute read open getattr execute_no_trans };
 
+# Allow cleverestricky_daemon to access network (WebServer, Telegram Stats)
+allow cleverestricky_daemon self:tcp_socket { create bind connect listen accept getattr getopt setopt read write };
+allow cleverestricky_daemon self:udp_socket { create bind connect getattr getopt setopt read write };
+allow cleverestricky_daemon node:tcp_socket node_bind;
+allow cleverestricky_daemon port:tcp_socket name_bind;
+allow cleverestricky_daemon port:udp_socket name_bind;
+allow cleverestricky_daemon fwmarkd_socket:sock_file write;
+allow cleverestricky_daemon netd:unix_stream_socket connectto;
+
 # make lsposed happy
 # TODO: remove those rules
 type magisk_file file_type
