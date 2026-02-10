@@ -13,3 +13,7 @@
 ## 2026-02-09 - Async Button State Management
 **Learning:** When adding temporary visual feedback to buttons (e.g., "✓ Copied"), rapid clicking can cause race conditions where the temporary text becomes permanent if the "original text" is captured during the temporary state.
 **Action:** Always implement a guard clause (e.g., `if (btn.innerText === '✓ Copied') return;`) or use a dedicated state flag/attribute to prevent re-triggering the action while in the temporary feedback state.
+
+## 2026-06-03 - Fingerprint Copy Button
+**Learning:** Users who generate random identities often need to copy the resulting fingerprint string for use in other tools or configs, but selecting long text in a mobile browser (embedded UI) is difficult.
+**Action:** Added a "Copy" button next to the "Fingerprint" header in the Device Identity preview. Also synchronized `index.html` which had drifted from `WebServer.kt`.

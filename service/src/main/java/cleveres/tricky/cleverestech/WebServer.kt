@@ -941,9 +941,9 @@ class WebServer(
                     <div><div class="section-header">Device</div><div id="pModel"></div></div>
                     <div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div>
                 </div>
-                <div class="section-header">
-                    Fingerprint
-                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding: 2px 8px; font-size: 0.7em; margin-left: 10px; background: transparent; border: 1px solid var(--border);">Copy</button>
+                <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>Fingerprint</span>
+                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding:2px 8px; font-size:0.7em;">Copy</button>
                 </div>
                 <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
