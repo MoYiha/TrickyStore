@@ -13,6 +13,7 @@ public class JsonReader implements Closeable {
     private final Stack<JSONObject> objects = new Stack<>();
     private JSONObject currentObject;
     private String pendingName;
+    private IOException deferredException;
 
     public JsonReader(Reader in) {
         try {
@@ -31,11 +32,13 @@ public class JsonReader implements Closeable {
                 throw new IOException("Root must be object");
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            deferredException = new IOException(e);
         }
     }
 
     public void beginObject() throws IOException {
+        if (deferredException != null) throw deferredException;
+
         if (pendingName != null) {
             // Entering nested object
             if (objects.isEmpty()) throw new IOException("No parent object");
@@ -59,6 +62,7 @@ public class JsonReader implements Closeable {
     }
 
     public void endObject() throws IOException {
+        if (deferredException != null) throw deferredException;
         if (objects.isEmpty()) throw new IOException("Stack empty");
         objects.pop();
         keyIterators.pop();
@@ -70,17 +74,20 @@ public class JsonReader implements Closeable {
     }
 
     public boolean hasNext() throws IOException {
+        if (deferredException != null) throw deferredException;
         if (keyIterators.isEmpty()) return false;
         return keyIterators.peek().hasNext();
     }
 
     public String nextName() throws IOException {
+        if (deferredException != null) throw deferredException;
         if (keyIterators.isEmpty()) throw new IOException("No object");
         pendingName = keyIterators.peek().next();
         return pendingName;
     }
 
     public String nextString() throws IOException {
+        if (deferredException != null) throw deferredException;
         if (pendingName == null) throw new IOException("Call nextName() first");
         if (objects.isEmpty()) throw new IOException("No object");
         String val = objects.peek().optString(pendingName);
@@ -89,6 +96,7 @@ public class JsonReader implements Closeable {
     }
 
     public void skipValue() throws IOException {
+        if (deferredException != null) throw deferredException;
         pendingName = null; // Just ignore the value
     }
 
