@@ -6,6 +6,9 @@ import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.net.URL
 import java.security.MessageDigest
@@ -19,8 +22,8 @@ private val PKG_NAME_REGEX = Regex("^[a-zA-Z0-9_.*]+$")
 private val TEMPLATE_NAME_REGEX = Regex("^[a-zA-Z0-9_-]+$")
 private val KEYBOX_FILENAME_REGEX = Regex("^[a-zA-Z0-9_.-]+$")
 private val KEY_VALUE_REGEX = Regex("^[a-zA-Z0-9_.]+=.+$")
-private val UNSAFE_CHARS_REGEX = Regex("[\\$|&;<>`]")
-private val SPOOF_UNSAFE_CHARS_REGEX = Regex("[\\$|&;<>`\\\\]")
+// Whitelist for build vars values: Alphanumeric, space, dot, underscore, dash, slash, colon, comma, plus, equals, parens
+private val SAFE_BUILD_VAR_VALUE_REGEX = Regex("^[a-zA-Z0-9_\\-\\.\\s/:,+=()@]*$")
 private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
 private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
@@ -28,7 +31,7 @@ private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_
 
 class WebServer(
     port: Int,
-    private val configDir: File = File("/data/adb/cleverestricky"),
+    private val configDir: File,
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
             Os.chmod(f.absolutePath, m)
@@ -41,38 +44,58 @@ class WebServer(
     val token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB
 
+    private val fileMutex = Mutex()
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private fun readFile(filename: String): String {
-        return try {
-            File(configDir, filename).readText()
-        } catch (e: Exception) {
-            ""
+        return runBlocking {
+            fileMutex.withLock {
+                try {
+                    File(configDir, filename).readText()
+                } catch (e: Exception) {
+                    ""
+                }
+            }
         }
     }
 
     private fun saveFile(filename: String, content: String): Boolean {
-        return try {
-            val f = File(configDir, filename)
-            SecureFile.writeText(f, content)
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
+        return runBlocking {
+            fileMutex.withLock {
+                try {
+                    val f = File(configDir, filename)
+                    SecureFile.writeText(f, content)
+                    true
+                } catch (e: Exception) {
+                    Logger.e("Failed to save file: $filename", e)
+                    false
+                }
+            }
         }
     }
 
     private fun fileExists(filename: String): Boolean {
-        return File(configDir, filename).exists()
+        return runBlocking {
+            fileMutex.withLock {
+                File(configDir, filename).exists()
+            }
+        }
     }
 
     private fun listKeyboxes(): List<String> {
-        val keyboxDir = File(configDir, "keyboxes")
-        if (keyboxDir.exists() && keyboxDir.isDirectory) {
-            return keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
-                ?.map { it.name }
-                ?.sorted()
-                ?: emptyList()
+        return runBlocking {
+            fileMutex.withLock {
+                val keyboxDir = File(configDir, "keyboxes")
+                if (keyboxDir.exists() && keyboxDir.isDirectory) {
+                    keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                        ?.map { it.name }
+                        ?.sorted()
+                        ?: emptyList()
+                } else {
+                    emptyList()
+                }
+            }
         }
-        return emptyList()
     }
 
     private fun isValidSetting(name: String): Boolean {
@@ -81,29 +104,34 @@ class WebServer(
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
         if (!isValidSetting(filename)) return false
-        val f = File(configDir, filename)
-        return try {
-            if (enable) {
-                if (!f.exists()) {
-                    if (filename == "drm_fix") {
-                        val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
-                        SecureFile.writeText(f, content)
+        return runBlocking {
+            fileMutex.withLock {
+                val f = File(configDir, filename)
+                try {
+                    if (enable) {
+                        if (!f.exists()) {
+                            if (filename == "drm_fix") {
+                                val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
+                                SecureFile.writeText(f, content)
+                            } else {
+                                SecureFile.touch(f, 384) // 0600
+                            }
+                        }
                     } else {
-                        SecureFile.touch(f, 384) // 0600
+                        if (f.exists()) f.delete()
                     }
+                    true
+                } catch (e: Exception) {
+                    Logger.e("Failed to toggle setting: $filename", e)
+                    false
                 }
-            } else {
-                if (f.exists()) f.delete()
             }
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
         }
     }
 
     @Volatile private var cachedTelegramCount: String? = null
     @Volatile private var lastTelegramFetchTime: Long = 0
+    @Volatile private var isFetchingTelegram = false
     private val CACHE_DURATION_SUCCESS = 10 * 60 * 1000L // 10 minutes
     private val CACHE_DURATION_ERROR = 1 * 60 * 1000L // 1 minute
 
@@ -119,7 +147,24 @@ class WebServer(
             }
         }
 
-        val result = try {
+        if (!isFetchingTelegram) {
+            isFetchingTelegram = true
+            scope.launch {
+                try {
+                    val result = doFetchTelegramCount()
+                    cachedTelegramCount = result
+                    lastTelegramFetchTime = System.currentTimeMillis()
+                } finally {
+                    isFetchingTelegram = false
+                }
+            }
+        }
+
+        return currentCache ?: "Loading..."
+    }
+
+    private fun doFetchTelegramCount(): String {
+        return try {
             val url = URL("https://t.me/cleverestech")
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 5000
@@ -141,10 +186,6 @@ class WebServer(
         } catch (e: Exception) {
             "Error"
         }
-
-        cachedTelegramCount = result
-        lastTelegramFetchTime = now
-        return result
     }
 
     @Suppress("DEPRECATION")
@@ -152,10 +193,26 @@ class WebServer(
         val uri = session.uri
         val method = session.method
         val params = session.parms
+        val headers = session.headers
+
+        // Security: CSRF Protection via Origin/Referer Check
+        val origin = headers["origin"]
+        val referer = headers["referer"]
+        val host = headers["host"] // Host: localhost:8080
+
+        // Allow null origin/referer for non-browser clients (e.g. curl) if token is present
+        // But for browser-based (indicated by Origin), enforce matching Host
+        if (origin != null && host != null) {
+             // Simple check: Origin should contain Host
+             // Origin: http://localhost:8080
+             if (!origin.contains(host)) {
+                 return secureResponse(Response.Status.FORBIDDEN, "text/plain", "CSRF Forbidden")
+             }
+        }
 
         // Security: Enforce max upload size to prevent DoS
         if (method == Method.POST || method == Method.PUT) {
-             val lenStr = session.headers["content-length"]
+             val lenStr = headers["content-length"]
              if (lenStr != null) {
                   try {
                       val len = lenStr.toLong()
@@ -168,9 +225,19 @@ class WebServer(
              }
         }
 
-        // Simple Token Auth
-        val requestToken = params["token"]
-        if (!MessageDigest.isEqual(token.toByteArray(), (requestToken ?: "").toByteArray())) {
+        // Security: Token Auth (Header preferred, Query param fallback)
+        var authToken = headers["x-auth-token"]
+        if (authToken == null) {
+            val authHeader = headers["authorization"]
+            if (authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true)) {
+                authToken = authHeader.substring(7)
+            }
+        }
+        if (authToken == null) {
+            authToken = params["token"]
+        }
+
+        if (authToken == null || !MessageDigest.isEqual(token.toByteArray(), authToken.toByteArray())) {
              return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
         }
 
@@ -264,6 +331,7 @@ class WebServer(
                 val array = JSONArray(packages)
                 secureResponse(Response.Status.OK, "application/json", array.toString())
             } catch (e: Exception) {
+                Logger.e("Failed to list packages", e)
                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to list packages")
             }
         }
@@ -272,27 +340,31 @@ class WebServer(
         if (uri == "/api/app_config_structured" && method == Method.GET) {
             val file = File(configDir, "app_config")
             val array = JSONArray()
-            if (file.exists()) {
-                file.useLines { lines ->
-                    lines.forEach { line ->
-                        if (line.isNotBlank() && !line.startsWith("#")) {
-                            val parts = line.trim().split(WHITESPACE_REGEX)
-                            if (parts.isNotEmpty()) {
-                                val pkg = parts[0]
-                                if (pkg.matches(PKG_NAME_REGEX)) {
-                                    val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
-                                    val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
+            runBlocking {
+                fileMutex.withLock {
+                    if (file.exists()) {
+                        file.useLines { lines ->
+                            lines.forEach { line ->
+                                if (line.isNotBlank() && !line.startsWith("#")) {
+                                    val parts = line.trim().split(WHITESPACE_REGEX)
+                                    if (parts.isNotEmpty()) {
+                                        val pkg = parts[0]
+                                        if (pkg.matches(PKG_NAME_REGEX)) {
+                                            val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
+                                            val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
 
-                                    // Security: Validate template and keybox to prevent XSS (Stored via manual file edit)
-                                    val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
-                                    val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
+                                            // Security: Validate template and keybox to prevent XSS
+                                            val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
+                                            val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
 
-                                    if (isTmplValid && isKbValid) {
-                                        val obj = JSONObject()
-                                        obj.put("package", pkg)
-                                        obj.put("template", tmpl)
-                                        obj.put("keybox", kb)
-                                        array.put(obj)
+                                            if (isTmplValid && isKbValid) {
+                                                val obj = JSONObject()
+                                                obj.put("package", pkg)
+                                                obj.put("template", tmpl)
+                                                obj.put("keybox", kb)
+                                                array.put(obj)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -320,17 +392,17 @@ class WebServer(
                          val tmpl = obj.optString("template", "null").ifEmpty { "null" }
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
 
-                         // Validate package name (alphanumeric, dots, underscores, wildcards)
+                         // Validate package name
                          if (!pkg.matches(PKG_NAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
-                         // Validate template (alphanumeric, underscores, hyphens)
+                         // Validate template
                          if (tmpl != "null" && !tmpl.matches(TEMPLATE_NAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
-                         // Validate keybox (alphanumeric, dots, underscores, hyphens)
+                         // Validate keybox
                          if (kb != "null" && !kb.matches(KEYBOX_FILENAME_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
@@ -385,18 +457,22 @@ class WebServer(
              val filename = session.parms["filename"]
              val content = session.parms["content"]
 
-             // Security: Strict filename validation to prevent path traversal and weird files
+             // Security: Strict filename validation
              if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(FILENAME_REGEX)) {
-                 val keyboxDir = File(configDir, "keyboxes")
-                 SecureFile.mkdirs(keyboxDir, 448) // 0700
+                 return runBlocking {
+                     fileMutex.withLock {
+                         val keyboxDir = File(configDir, "keyboxes")
+                         SecureFile.mkdirs(keyboxDir, 448) // 0700
 
-                 val file = File(keyboxDir, filename)
-                 try {
-                     SecureFile.writeText(file, content)
-                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                 } catch (e: Exception) {
-                     e.printStackTrace()
-                     return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
+                         val file = File(keyboxDir, filename)
+                         try {
+                             SecureFile.writeText(file, content)
+                             secureResponse(Response.Status.OK, "text/plain", "Saved")
+                         } catch (e: Exception) {
+                             Logger.e("Failed to save keybox", e)
+                             secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
+                         }
+                     }
                  }
              }
              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
@@ -404,10 +480,15 @@ class WebServer(
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
-                val results = KeyboxVerifier.verify(configDir)
-                val json = createKeyboxVerificationJson(results)
-                return secureResponse(Response.Status.OK, "application/json", json)
+                return runBlocking {
+                    fileMutex.withLock {
+                        val results = KeyboxVerifier.verify(configDir)
+                        val json = createKeyboxVerificationJson(results)
+                        secureResponse(Response.Status.OK, "application/json", json)
+                    }
+                }
              } catch(e: Exception) {
+                 Logger.e("Failed to verify keyboxes", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
@@ -428,42 +509,58 @@ class WebServer(
 
         if (uri == "/api/reload" && method == Method.POST) {
              try {
-                File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
-                return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
+                return runBlocking {
+                    fileMutex.withLock {
+                        File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
+                        secureResponse(Response.Status.OK, "text/plain", "Reloaded")
+                    }
+                }
              } catch(e: Exception) {
+                 Logger.e("Failed to reload", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
              }
         }
 
         if (uri == "/api/reset_drm" && method == Method.POST) {
              try {
-                 // Delete DRM provisioning data
-                 val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
-                 dirs.forEach { path ->
-                     try {
-                         File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
-                     } catch(e: Exception) { Logger.e("Failed to clear $path", e) }
+                 return runBlocking {
+                     fileMutex.withLock {
+                         // Delete DRM provisioning data
+                         val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+                         dirs.forEach { path ->
+                             try {
+                                 File(path).walkBottomUp().forEach { if (it.path != path) it.delete() }
+                             } catch (e: Exception) {
+                                 Logger.e("Failed to clear $path", e)
+                             }
+                         }
+
+                         // Restart DRM services
+                         val p = Runtime.getRuntime()
+                             .exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                         p.waitFor()
+
+                         secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
+                     }
                  }
-
-                 // Restart DRM services
-                 val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
-                 p.waitFor()
-
-                 return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
              } catch(e: Exception) {
+                 Logger.e("Failed to reset DRM", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
 
         if (uri == "/api/fetch_beta" && method == Method.POST) {
              try {
-                val result = BetaFetcher.fetchAndApply(null)
-                if (result.success) {
-                    return secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
-                } else {
-                    return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
-                }
+                 return runBlocking(Dispatchers.IO) {
+                    val result = BetaFetcher.fetchAndApply(null)
+                    if (result.success) {
+                        secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
+                    } else {
+                        secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
+                    }
+                 }
              } catch(e: Exception) {
+                 Logger.e("Failed to fetch beta", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
@@ -506,7 +603,9 @@ class WebServer(
                  for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
                     if (!line.trim().matches(KEY_VALUE_REGEX)) return false
-                    if (line.contains(UNSAFE_CHARS_REGEX)) return false
+
+                    val value = line.split("=", limit=2)[1].trim()
+                    if (!value.matches(SAFE_BUILD_VAR_VALUE_REGEX)) return false
                 }
             }
             "app_config" -> {
@@ -532,22 +631,22 @@ class WebServer(
                 }
             }
             "spoof_build_vars" -> {
-                // Key=Value format. Key can be system prop (lower) or config (upper).
-                // Value can be anything, but let's restrict potentially dangerous chars if possible.
-                // Actually, allowing '.' in key is important for ro.product...
-                // Added backslash, parentheses to unsafe chars
                 val dangerousKeys = setOf("IFS", "PATH", "PYTHONPATH", "PERL5LIB")
 
                 for (line in lines) {
                     if (line.isBlank() || line.trim().startsWith("#")) continue
                     val trimmed = line.trim()
                     if (!trimmed.matches(KEY_VALUE_REGEX)) return false
-                    // Security: Prevent potential command injection chars if file is ever sourced
-                    if (line.contains(SPOOF_UNSAFE_CHARS_REGEX)) return false
 
-                    // Security: Prevent environment variable injection
-                    val key = trimmed.substringBefore('=')
+                    // Security: Whitelist validation for value
+                    val parts = trimmed.split("=", limit=2)
+                    val key = parts[0].trim()
+                    val value = parts[1].trim()
+
                     if (key.startsWith("LD_") || key in dangerousKeys) return false
+
+                    // Strict whitelist for value characters
+                    if (!value.matches(SAFE_BUILD_VAR_VALUE_REGEX)) return false
                 }
             }
             "security_patch.txt" -> {
@@ -595,8 +694,7 @@ class WebServer(
             --danger: #EF4444;
         }
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
-
-        /* Dynamic Island Notification */
+        /* CSS Omitted for brevity, same as before */
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
         .island {
             background: #000;
@@ -815,6 +913,12 @@ class WebServer(
         </div>
 
         <div class="panel">
+            <h3>Beta Profile Fetcher</h3>
+            <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Fetches latest Android Beta fingerprints for Strong Integrity.</p>
+            <button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button>
+        </div>
+
+        <div class="panel">
             <h3>Identity Manager</h3>
             <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
 
@@ -990,7 +1094,17 @@ class WebServer(
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
 
-        function getAuthUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'token=' + token; }
+        function getAuthUrl(path) { return path; }
+
+        async function fetchAuth(url, options = {}) {
+            if (!token) throw new Error('No token');
+
+            const headers = options.headers || {};
+            headers['X-Auth-Token'] = token;
+            // Also add param for compatibility if needed, but header preferred
+
+            return fetch(url, { ...options, headers });
+        }
 
         // Clipboard Helper
         function copyToClipboard(text, msg, btn) {
@@ -1081,7 +1195,7 @@ class WebServer(
 
             // Load Settings
             try {
-                const res = await fetch(getAuthUrl('/api/config'));
+                const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
@@ -1090,12 +1204,12 @@ class WebServer(
             } catch(e) { notify('Connection Failed', 'error'); }
 
             // Load Stats
-            fetch(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
+            fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
                 document.getElementById('communityCount').innerText = d.members;
             });
 
             // Load Templates
-            const tRes = await fetch(getAuthUrl('/api/templates'));
+            const tRes = await fetchAuth(getAuthUrl('/api/templates'));
             const templates = await tRes.json();
             const sel = document.getElementById('templateSelect');
             const appSel = document.getElementById('appTemplate');
@@ -1111,7 +1225,7 @@ class WebServer(
             previewTemplate();
 
             // Load Packages
-            fetch(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
+            fetchAuth(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => {
                     const opt = document.createElement('option');
@@ -1121,7 +1235,7 @@ class WebServer(
             });
 
             // Load Keyboxes
-            fetch(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
+            fetchAuth(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
                 const dl = document.getElementById('keyboxList');
                 kbs.forEach(k => {
                     const opt = document.createElement('option');
@@ -1138,7 +1252,7 @@ class WebServer(
         async function toggle(setting) {
             const el = document.getElementById(setting);
             try {
-                await fetch(getAuthUrl('/api/toggle'), {
+                await fetchAuth(getAuthUrl('/api/toggle'), {
                     method: 'POST',
                     body: new URLSearchParams({setting, value: el.checked})
                 });
@@ -1158,10 +1272,24 @@ class WebServer(
         async function resetDrmId() {
             if (!confirm('This will delete downloaded DRM licenses and reset the device ID for streaming apps. Continue?')) return;
             try {
-                await fetch(getAuthUrl('/api/reset_drm'), { method: 'POST' });
+                await fetchAuth(getAuthUrl('/api/reset_drm'), { method: 'POST' });
                 notify('DRM ID Reset');
             } catch(e) {
                 notify('Failed', 'error');
+            }
+        }
+
+        async function fetchBeta() {
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/fetch_beta'), { method: 'POST' });
+                const text = await res.text();
+                if (res.ok) {
+                    notify(text);
+                } else {
+                    notify(text, 'error');
+                }
+            } catch(e) {
+                notify('Fetch Failed', 'error');
             }
         }
 
@@ -1183,7 +1311,7 @@ class WebServer(
         }
 
         async function generateRandomIdentity() {
-            const res = await fetch(getAuthUrl('/api/random_identity'));
+            const res = await fetchAuth(getAuthUrl('/api/random_identity'));
             if (!res.ok) { notify('Failed'); return; }
             const t = await res.json();
 
@@ -1248,7 +1376,7 @@ class WebServer(
                  if (simOp) content += `SIM_OPERATOR_NAME=${'$'}{simOp}\n`;
                  // Add other fields as needed for build vars
 
-                 await fetch(getAuthUrl('/api/save'), {
+                 await fetchAuth(getAuthUrl('/api/save'), {
                      method: 'POST',
                      body: new URLSearchParams({ filename: 'spoof_build_vars', content })
                  });
@@ -1272,7 +1400,7 @@ class WebServer(
         let appRules = [];
 
         async function loadAppConfig() {
-            const res = await fetch(getAuthUrl('/api/app_config_structured'));
+            const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
             appRules = await res.json();
             renderAppTable();
         }
@@ -1345,7 +1473,7 @@ class WebServer(
         }
 
         async function saveAppConfig() {
-            await fetch(getAuthUrl('/api/app_config_structured'), {
+            await fetchAuth(getAuthUrl('/api/app_config_structured'), {
                 method: 'POST',
                 body: new URLSearchParams({ data: JSON.stringify(appRules) })
             });
@@ -1353,7 +1481,7 @@ class WebServer(
         }
 
         async function reloadConfig() {
-            await fetch(getAuthUrl('/api/reload'), { method: 'POST' });
+            await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' });
             notify('Config Reloaded');
             setTimeout(() => window.location.reload(), 1000);
         }
@@ -1368,7 +1496,7 @@ class WebServer(
             editor.value = 'Loading...';
 
             try {
-                const res = await fetch(getAuthUrl('/api/file?filename=' + f));
+                const res = await fetchAuth(getAuthUrl('/api/file?filename=' + f));
                 if (res.ok) {
                     editor.value = await res.text();
                 } else {
@@ -1386,7 +1514,7 @@ class WebServer(
         async function saveFile() {
             const f = document.getElementById('fileSelector').value;
             const c = document.getElementById('fileEditor').value;
-            await fetch(getAuthUrl('/api/save'), {
+            await fetchAuth(getAuthUrl('/api/save'), {
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
@@ -1397,7 +1525,7 @@ class WebServer(
             const f = document.getElementById('kbFilename').value;
             const c = document.getElementById('kbContent').value;
             if (!f || !c) return;
-            await fetch(getAuthUrl('/api/upload_keybox'), {
+            await fetchAuth(getAuthUrl('/api/upload_keybox'), {
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
@@ -1416,7 +1544,7 @@ class WebServer(
 
         async function verifyKeyboxes() {
              notify('Verifying...', 'working');
-             const res = await fetch(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
+             const res = await fetchAuth(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
              const data = await res.json();
              const container = document.getElementById('verifyResult');
              container.innerHTML = '';

@@ -69,8 +69,9 @@ object KeyboxVerifier {
                 return null
             }
 
-            val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-            parseCrl(jsonStr)
+            conn.inputStream.bufferedReader().use { reader ->
+                parseCrl(reader)
+            }
         } catch (e: Exception) {
             Logger.e("Failed to fetch CRL", e)
             null
@@ -78,55 +79,74 @@ object KeyboxVerifier {
     }
 
     fun parseCrl(jsonStr: String): Set<String> {
-        val json = JSONObject(jsonStr)
-        val entries = json.getJSONObject("entries")
+        return parseCrl(java.io.StringReader(jsonStr))
+    }
 
-        val set = HashSet<String>(entries.length())
-        val keys = entries.keys()
-        while (keys.hasNext()) {
-            val decStr = keys.next()
-            var added = false
-
-            // Try treating as Decimal first (Spec compliant)
-            try {
-                if (decStr.length > 1 && decStr.startsWith("0")) {
-                    throw NumberFormatException("Leading zero implies Hex")
-                }
-                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-                set.add(hexStr)
-                added = true
-            } catch (e: Exception) {
-                // Not a valid decimal, fall back to Hex
-            }
-
-            // Ambiguity handling:
-            // Google CRLs use Decimal Serial Numbers, BUT they also ban Key IDs (MD5/SHA1/SHA256).
-            // Key IDs are Hex strings (lengths 32, 40, 64).
-            // If a Key ID happens to consist only of digits, it is ambiguous (could be a huge decimal serial).
-            // We MUST add it as a literal Hex string to ensure we catch it if it's a Key ID.
-            if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
-                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                    set.add(decStr.lowercase())
-                }
-            }
-
-            if (!added) {
-                // Try treating as Hex (literal) as fallback if it failed decimal parsing
-                if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
-                    try {
-                        val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
-                        set.add(hexStr)
-                    } catch (e: Exception) {
-                        // Should not happen due to regex check, but safety first
+    fun parseCrl(reader: java.io.Reader): Set<String> {
+        val set = HashSet<String>()
+        val jsonReader = android.util.JsonReader(reader)
+        try {
+            jsonReader.beginObject()
+            while (jsonReader.hasNext()) {
+                val name = jsonReader.nextName()
+                if (name == "entries") {
+                    jsonReader.beginObject()
+                    while (jsonReader.hasNext()) {
+                        val decStr = jsonReader.nextName()
+                        jsonReader.skipValue() // Value is "REVOKED"
+                        processEntry(decStr, set)
                     }
+                    jsonReader.endObject()
+                } else {
+                    jsonReader.skipValue()
                 }
             }
-
-            if (!added) {
-                Logger.e("Failed to parse CRL entry key: $decStr")
-            }
+            jsonReader.endObject()
+        } catch (e: Exception) {
+            Logger.e("Failed to parse CRL JSON", e)
+        } finally {
+            try { jsonReader.close() } catch (e: Exception) {}
         }
         return set
+    }
+
+    private fun processEntry(decStr: String, set: HashSet<String>) {
+        var added = false
+
+        // Try treating as Decimal first (Spec compliant)
+        try {
+            if (decStr.length > 1 && decStr.startsWith("0")) {
+                throw NumberFormatException("Leading zero implies Hex")
+            }
+            val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+            set.add(hexStr)
+            added = true
+        } catch (e: Exception) {
+            // Not a valid decimal, fall back to Hex
+        }
+
+        // Ambiguity handling
+        if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
+            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                set.add(decStr.lowercase())
+            }
+        }
+
+        if (!added) {
+            // Try treating as Hex (literal) as fallback
+            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                try {
+                    val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
+                    set.add(hexStr)
+                    added = true
+                } catch (e: Exception) {
+                }
+            }
+        }
+
+        if (!added) {
+            Logger.e("Failed to parse CRL entry key: $decStr")
+        }
     }
 
     private fun checkFile(file: File, revokedSerials: Set<String>): Result {
@@ -138,13 +158,7 @@ object KeyboxVerifier {
 
             for (kb in keyboxes) {
                 val chain = kb.certificates()
-                if (chain.isEmpty()) continue // Should not happen if parseKeyboxXml works
-
-                // Check Leaf (EC) and Root (RSA) usually, but Google bans specific certificates.
-                // The Python script checked indices 0 and 3.
-                // But CertHack returns the full chain.
-                // We should check ALL certificates in the chain just to be safe,
-                // or at least the leaf and intermediate/root.
+                if (chain.isEmpty()) continue
 
                 for (cert in chain) {
                     if (cert is X509Certificate) {

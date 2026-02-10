@@ -83,6 +83,7 @@ dependencies {
     compileOnly(project(":stub"))
     implementation(libs.annotation)
     implementation(libs.bcpkix.jdk18on)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     testImplementation(libs.junit)
     testImplementation(project(":stub"))
     testImplementation("net.sf.kxml:kxml2:2.3.0")
