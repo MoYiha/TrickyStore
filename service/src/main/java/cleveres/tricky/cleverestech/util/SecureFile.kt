@@ -5,6 +5,9 @@ import android.system.OsConstants
 import java.io.File
 import java.io.FileDescriptor
 import cleveres.tricky.cleverestech.Logger
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
@@ -14,30 +17,44 @@ interface SecureFileOperations {
 
 object SecureFile {
     var impl: SecureFileOperations = DefaultSecureFileOperations()
+    private val mutex = Mutex()
 
     fun writeText(file: File, content: String) {
-        impl.writeText(file, content)
+        runBlocking {
+            mutex.withLock {
+                impl.writeText(file, content)
+            }
+        }
     }
 
     fun mkdirs(file: File, mode: Int) {
-        impl.mkdirs(file, mode)
+        runBlocking {
+            mutex.withLock {
+                impl.mkdirs(file, mode)
+            }
+        }
     }
 
     fun touch(file: File, mode: Int) {
-        impl.touch(file, mode)
+        runBlocking {
+            mutex.withLock {
+                impl.touch(file, mode)
+            }
+        }
     }
 
     class DefaultSecureFileOperations : SecureFileOperations {
         override fun writeText(file: File, content: String) {
             val path = file.absolutePath
+            val tmpPath = "$path.tmp"
             var fd: FileDescriptor? = null
             try {
                 // 384 decimal is 0600 octal (rw-------)
                 val mode = 384
                 val flags = OsConstants.O_CREAT or OsConstants.O_TRUNC or OsConstants.O_WRONLY
-                fd = Os.open(path, flags, mode)
+                fd = Os.open(tmpPath, flags, mode)
 
-                // Ensure permissions are set correctly even if file already existed
+                // Ensure permissions are set correctly
                 Os.fchmod(fd, mode)
 
                 val bytes = content.toByteArray(Charsets.UTF_8)
@@ -47,8 +64,19 @@ object SecureFile {
                     if (w <= 0) break // Should not happen unless error
                     bytesWritten += w
                 }
+
+                // Sync to verify write
+                try { Os.fsync(fd) } catch(e: Exception) {}
+
+                // Close before rename
+                try { Os.close(fd); fd = null } catch(e: Exception) {}
+
+                // Atomic rename
+                Os.rename(tmpPath, path)
+
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to write to $path", e)
+                try { Os.remove(tmpPath) } catch(t: Throwable) {}
                 throw e
             } finally {
                 if (fd != null) {
