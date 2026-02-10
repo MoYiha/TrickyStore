@@ -262,8 +262,8 @@ int new_ioctl(int fd, int request, ...) {
         }
 
         auto &bwr = *(struct binder_write_read*) arg;
-        LOGD("read buffer %p size %zu consumed %zu", bwr.read_buffer, bwr.read_size,
-             bwr.read_consumed);
+        LOGD("read buffer %p size %llu consumed %llu", (void*)bwr.read_buffer, (unsigned long long)bwr.read_size,
+             (unsigned long long)bwr.read_consumed);
         if (bwr.read_buffer != 0 && bwr.read_size != 0 && bwr.read_consumed > sizeof(int32_t)) {
             auto ptr = bwr.read_buffer;
             auto consumed = bwr.read_consumed;
