@@ -161,11 +161,11 @@
     <h1>CleveresTricky <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
 
     <div class="tabs" role="tablist" aria-label="Navigation">
-        <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabKey(event, 'dashboard')">Dashboard</div>
-        <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="0" aria-selected="false" aria-controls="spoof" onkeydown="handleTabKey(event, 'spoof')">Spoofing</div>
-        <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="0" aria-selected="false" aria-controls="apps" onkeydown="handleTabKey(event, 'apps')">Apps</div>
-        <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="0" aria-selected="false" aria-controls="keys" onkeydown="handleTabKey(event, 'keys')">Keyboxes</div>
-        <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="0" aria-selected="false" aria-controls="editor" onkeydown="handleTabKey(event, 'editor')">Editor</div>
+        <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabNavigation(event, 'dashboard')">Dashboard</div>
+        <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
+        <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="-1" aria-selected="false" aria-controls="apps" onkeydown="handleTabNavigation(event, 'apps')">Apps</div>
+        <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="-1" aria-selected="false" aria-controls="keys" onkeydown="handleTabNavigation(event, 'keys')">Keyboxes</div>
+        <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
     </div>
 
     <!-- DASHBOARD -->
@@ -498,21 +498,42 @@
             document.querySelectorAll('.tab').forEach(t => {
                 t.classList.remove('active');
                 t.setAttribute('aria-selected', 'false');
+                t.setAttribute('tabindex', '-1');
             });
             document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
 
             const tab = document.getElementById('tab_' + id);
             tab.classList.add('active');
             tab.setAttribute('aria-selected', 'true');
+            tab.setAttribute('tabindex', '0');
+            tab.focus();
 
             document.getElementById(id).classList.add('active');
             if (id === 'apps') loadAppConfig();
         }
 
-        function handleTabKey(e, id) {
-            if (e.key === 'Enter' || e.key === ' ') {
+        function handleTabNavigation(e, id) {
+            const tabs = ['dashboard', 'spoof', 'apps', 'keys', 'editor'];
+            const idx = tabs.indexOf(id);
+            let newId = null;
+
+            if (e.key === 'ArrowRight') {
+                newId = tabs[(idx + 1) % tabs.length];
+            } else if (e.key === 'ArrowLeft') {
+                newId = tabs[(idx - 1 + tabs.length) % tabs.length];
+            } else if (e.key === 'Home') {
+                newId = tabs[0];
+            } else if (e.key === 'End') {
+                newId = tabs[tabs.length - 1];
+            } else if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 switchTab(id);
+                return;
+            }
+
+            if (newId) {
+                e.preventDefault();
+                switchTab(newId);
             }
         }
 

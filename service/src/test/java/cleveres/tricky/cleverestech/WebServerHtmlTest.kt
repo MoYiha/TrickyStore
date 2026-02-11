@@ -110,9 +110,10 @@ class WebServerHtmlTest {
 
         // Verify Tabs Accessibility
         assertTrue("Missing Tab Role", html.contains("role=\"tab\""))
-        assertTrue("Missing Tabindex", html.contains("tabindex=\"0\""))
+        assertTrue("Missing Active Tabindex", html.contains("tabindex=\"0\""))
+        assertTrue("Missing Inactive Tabindex", html.contains("tabindex=\"-1\""))
         assertTrue("Missing Aria Selected", html.contains("aria-selected=\"true\""))
-        assertTrue("Missing Key Handler", html.contains("onkeydown=\"handleTabKey"))
+        assertTrue("Missing Key Handler", html.contains("onkeydown=\"handleTabNavigation"))
         assertTrue("Missing Tab Controls", html.contains("aria-controls=\"dashboard\""))
 
         // Verify Panels Accessibility
@@ -120,8 +121,9 @@ class WebServerHtmlTest {
         assertTrue("Missing Aria Labelledby", html.contains("aria-labelledby=\"tab_dashboard\""))
 
         // Verify JS helpers
-        assertTrue("Missing handleTabKey JS", html.contains("function handleTabKey(e, id)"))
+        assertTrue("Missing handleTabNavigation JS", html.contains("function handleTabNavigation(e, id)"))
         assertTrue("Missing aria-selected update in switchTab", html.contains("setAttribute('aria-selected'"))
+        assertTrue("Missing tabindex update in switchTab", html.contains("setAttribute('tabindex'"))
 
         // Verify Numeric Inputs
         assertTrue("IMEI missing inputmode=numeric", html.contains("id=\"inputImei\" placeholder=\"35...\" style=\"font-family:monospace;\" inputmode=\"numeric\""))
