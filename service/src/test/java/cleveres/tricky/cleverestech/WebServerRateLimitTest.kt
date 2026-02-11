@@ -63,8 +63,8 @@ class WebServerRateLimitTest {
                      fail("Request $i failed. Code: $code. Expected 200.")
                 }
             } else {
-                if (code != 429) {
-                     fail("Request $i passed limit. Code: $code. Expected 429.")
+                if (code != 400) {
+                     fail("Request $i passed limit. Code: $code. Expected 400.")
                 }
             }
         }

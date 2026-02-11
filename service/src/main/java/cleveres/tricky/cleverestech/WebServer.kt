@@ -223,7 +223,7 @@ class WebServer(
         if (ip.startsWith("/")) ip = ip.substring(1)
 
         if (isRateLimited(ip)) {
-             return secureResponse(CustomStatus.TOO_MANY_REQUESTS, "text/plain", "Too Many Requests")
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Too Many Requests")
         }
 
         // Security: CSRF Protection via Origin/Referer Check
