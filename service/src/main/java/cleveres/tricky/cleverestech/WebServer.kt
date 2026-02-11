@@ -822,7 +822,7 @@ class WebServer(
         input[type="checkbox"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         input[type="checkbox"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        textarea:disabled, input:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+        textarea:disabled, input:disabled, select:disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
@@ -1021,7 +1021,7 @@ class WebServer(
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;">
                 <label for="appPkg" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Package</label>
-                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()" onkeydown="if(event.key==='Enter') addAppRule()">
+                <input type="text" id="appPkg" list="pkgList" placeholder="Package Name (com.example...)" onchange="this.value=this.value.trim()" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()">
                 <datalist id="pkgList"></datalist>
             </div>
             <div class="grid-2" style="margin-bottom:10px;">
@@ -1048,7 +1048,7 @@ class WebServer(
                 </div>
             </div>
 
-            <button class="primary" style="width:100%" onclick="addAppRule()">Add Rule</button>
+            <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
 
         <div class="panel">
@@ -1478,6 +1478,7 @@ class WebServer(
             renderAppTable();
             pkgInput.value = '';
             document.getElementById('appKeybox').value = '';
+            toggleAddButton();
             pkgInput.focus();
             notify('Rule Added');
         }
@@ -1493,6 +1494,12 @@ class WebServer(
                 body: new URLSearchParams({ data: JSON.stringify(appRules) })
             });
             notify('App Config Saved');
+        }
+
+        function toggleAddButton() {
+            const btn = document.getElementById('btnAddRule');
+            const input = document.getElementById('appPkg');
+            if (btn && input) btn.disabled = !input.value.trim();
         }
 
         async function reloadConfig() {
