@@ -42,3 +42,14 @@
 **Vulnerability:** `KeyboxVerifier` swallowed exceptions during streaming JSON parsing of the Certificate Revocation List (CRL). If the connection dropped or the JSON was truncated after valid entries, the verifier would return a partial list of revoked keys, treating the missing ones as valid.
 **Learning:** Streaming parsers (like `JsonReader`) must explicitly handle and propagate errors. Catching `Exception` broadly without re-throwing in a security-critical verification loop leads to "Fail Open" behavior.
 **Prevention:** Always ensure that verification logic defaults to "Fail Closed". If a revocation list cannot be fully parsed, the entire verification process must fail or return an error state, rather than a partial success.
+
+## 2026-02-11 - [DoS Vulnerability in WebServer: Missing Rate Limiting & IPv6 Handling]
+**Vulnerability:** The `WebServer` lacked rate limiting, allowing a local attacker (or malicious app on device) to flood the service and cause Denial of Service. Additionally, implementing rate limiting revealed a pitfall in IPv6 handling: stripping the port from `session.remoteIpAddress` (e.g. `::1`) caused IPv6 addresses to be truncated to empty strings, leading to all IPv6 clients sharing a single rate bucket.
+**Learning:**
+1. Embedded web servers on `0.0.0.0` are accessible to the local network and must be rate-limited.
+2. Naive IP parsing (assuming `:` implies port) is dangerous in an IPv6 world. `NanoHTTPD` provides clean IPs, so manual stripping is unnecessary and harmful.
+3. Unbounded maps for rate limiting (storing every IP) lead to memory leaks (OOM DoS).
+**Prevention:**
+1. Implement Token Bucket or Fixed Window rate limiting on all public endpoints.
+2. Use robust IP parsing libraries (like `InetAddress`) or trust the framework's normalized output; avoiding manual string manipulation on IPs.
+3. Always bound the size of security caches (like rate limit maps) to prevent memory exhaustion attacks.

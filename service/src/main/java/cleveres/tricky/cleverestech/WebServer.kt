@@ -44,8 +44,31 @@ class WebServer(
     val token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB
 
+    // Rate Limiting
+    private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
+    private val RATE_LIMIT = 100
+    private val RATE_WINDOW = 60 * 1000L // 1 minute
+
     private val fileMutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private fun isRateLimited(ip: String): Boolean {
+        // Memory protection: Prevent unbounded growth
+        if (requestCounts.size > 1000) {
+            requestCounts.clear()
+        }
+
+        // Use compute to atomically update the count for the IP
+        val current = requestCounts.compute(ip) { _, v ->
+            val now = System.currentTimeMillis()
+            if (v == null || now - v.first > RATE_WINDOW) {
+                now to 1
+            } else {
+                v.first to (v.second + 1)
+            }
+        }
+        return current!!.second > RATE_LIMIT
+    }
 
     private fun readFile(filename: String): String {
         return runBlocking {
@@ -194,6 +217,14 @@ class WebServer(
         val method = session.method
         val params = session.parms
         val headers = session.headers
+
+        // Security: Rate Limiting
+        var ip = session.remoteIpAddress ?: "unknown"
+        if (ip.startsWith("/")) ip = ip.substring(1)
+
+        if (isRateLimited(ip)) {
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Too Many Requests")
+        }
 
         // Security: CSRF Protection via Origin/Referer Check
         val origin = headers["origin"]
@@ -589,7 +620,7 @@ class WebServer(
         return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
     }
 
-    private fun secureResponse(status: Response.Status, mimeType: String, txt: String): Response {
+    private fun secureResponse(status: Response.IStatus, mimeType: String, txt: String): Response {
         val response = newFixedLengthResponse(status, mimeType, txt)
         response.addHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
         response.addHeader("X-Content-Type-Options", "nosniff")
@@ -597,6 +628,7 @@ class WebServer(
         response.addHeader("Referrer-Policy", "no-referrer")
         return response
     }
+
 
     private fun isValidFilename(name: String): Boolean {
         return name in setOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "templates.json", "drm_fix")
