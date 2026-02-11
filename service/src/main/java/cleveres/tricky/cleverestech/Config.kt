@@ -245,7 +245,23 @@ object Config {
         return templates[name.lowercase()]
     }
 
+    private const val NULL_TEMPLATE_KEY = "__NULL__"
+    // OPTIMIZATION: Cache template key lookups to avoid repeated string suffix checks (approx 12 checks per call).
+    // This reduces CPU overhead for high-frequency property access.
+    private val templateKeyCache = ConcurrentHashMap<String, String>()
+
     private fun getTemplateKey(key: String): String? {
+        val cached = templateKeyCache[key]
+        if (cached != null) {
+            return if (cached == NULL_TEMPLATE_KEY) null else cached
+        }
+
+        val computed = computeTemplateKey(key)
+        templateKeyCache[key] = computed ?: NULL_TEMPLATE_KEY
+        return computed
+    }
+
+    private fun computeTemplateKey(key: String): String? {
         return when {
             // Fingerprint
             key.endsWith("fingerprint") -> "FINGERPRINT"
