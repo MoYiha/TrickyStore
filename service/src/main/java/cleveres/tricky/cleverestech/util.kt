@@ -53,7 +53,6 @@ val patchLevelLong by lazy {
     Build.VERSION.SECURITY_PATCH.convertPatchLevel(true)
 }
 
-// FIXME
 val osVersion by lazy {
     when (Build.VERSION.SDK_INT) {
         36 -> 160000
@@ -62,6 +61,14 @@ val osVersion by lazy {
         Build.VERSION_CODES.TIRAMISU -> 130000
         Build.VERSION_CODES.S_V2 -> 120100
         Build.VERSION_CODES.S -> 120000
+        Build.VERSION_CODES.R -> 110000
+        Build.VERSION_CODES.Q -> 100000
+        Build.VERSION_CODES.P -> 90000
+        Build.VERSION_CODES.O_MR1 -> 80100
+        Build.VERSION_CODES.O -> 80000
+        Build.VERSION_CODES.N_MR1 -> 70100
+        Build.VERSION_CODES.N -> 70000
+        Build.VERSION_CODES.M -> 60000
         else -> 0
     }
 }
