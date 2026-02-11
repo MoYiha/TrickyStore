@@ -17,3 +17,7 @@
 ## 2026-06-03 - Fingerprint Copy Button
 **Learning:** Users who generate random identities often need to copy the resulting fingerprint string for use in other tools or configs, but selecting long text in a mobile browser (embedded UI) is difficult.
 **Action:** Added a "Copy" button next to the "Fingerprint" header in the Device Identity preview. Also synchronized `index.html` which had drifted from `WebServer.kt`.
+
+## 2026-06-05 - Accessible Tab Navigation (Roving Tabindex)
+**Learning:** Implementing proper ARIA tab navigation requires managing `tabindex` dynamically (roving tabindex). Only the active tab should be focusable (`tabindex="0"`) via the Tab key, while arrow keys should be used to navigate between tabs. Initializing all tabs with `tabindex="0"` forces users to tab through every single tab, which is inefficient.
+**Action:** Implemented `handleTabNavigation` for Arrow keys and updated `switchTab` to manage `tabindex` (-1/0) and focus, ensuring a standard accessible tab experience.
