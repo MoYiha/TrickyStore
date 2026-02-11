@@ -245,8 +245,46 @@ object Config {
         return templates[name.lowercase()]
     }
 
+    private fun getTemplateKey(key: String): String? {
+        return when {
+            // Fingerprint
+            key.endsWith("fingerprint") -> "FINGERPRINT"
+            // Security Patch
+            key.endsWith("security_patch") -> "SECURITY_PATCH"
+            // Model
+            key.endsWith("model") -> "MODEL"
+            // Brand
+            key.endsWith("brand") -> "BRAND"
+            // Manufacturer
+            key.endsWith("manufacturer") -> "MANUFACTURER"
+            // Device
+            key.endsWith("device") -> "DEVICE"
+            // Product
+            key.endsWith("product") || key.endsWith("name") -> "PRODUCT"
+            // ID
+            key.endsWith("build.id") || key.endsWith("display.id") -> "ID"
+            // Release
+            key.endsWith("version.release") || key.endsWith("version.release_or_codename") -> "RELEASE"
+            // Incremental
+            key.endsWith("version.incremental") -> "INCREMENTAL"
+            // Type
+            key.endsWith("build.type") -> "TYPE"
+            // Tags
+            key.endsWith("build.tags") -> "TAGS"
+            else -> null
+        }
+    }
+
     fun getBuildVar(key: String): String? {
-        return drmFixVars[key] ?: buildVars[key] ?: spoofedProperties[key]
+        drmFixVars[key]?.let { return it }
+        buildVars[key]?.let { return it }
+
+        val templateKey = getTemplateKey(key)
+        if (templateKey != null) {
+            buildVars[templateKey]?.let { return it }
+        }
+
+        return spoofedProperties[key]
     }
 
     fun getBuildVar(key: String, uid: Int): String? {
@@ -259,45 +297,25 @@ object Config {
                 return template[key]
             }
             // 2. Smart mapping to template keys
-            val mapped = mapPropertyToTemplate(key, template)
-            if (mapped != null) return mapped
+            val templateKey = getTemplateKey(key)
+            if (templateKey != null && template.containsKey(templateKey)) {
+                return template[templateKey]
+            }
         }
 
         // 3. DRM Fix Properties
         drmFixVars[key]?.let { return it }
 
-        // 4. Global build vars or default spoofed properties
-        return buildVars[key] ?: spoofedProperties[key]
-    }
+        // 4. Global build vars (including global template mapping)
+        buildVars[key]?.let { return it }
 
-    private fun mapPropertyToTemplate(key: String, template: Map<String, String>): String? {
-        return when {
-            // Fingerprint
-            key.endsWith("fingerprint") -> template["FINGERPRINT"]
-            // Security Patch
-            key.endsWith("security_patch") -> template["SECURITY_PATCH"]
-            // Model
-            key.endsWith("model") -> template["MODEL"]
-            // Brand
-            key.endsWith("brand") -> template["BRAND"]
-            // Manufacturer
-            key.endsWith("manufacturer") -> template["MANUFACTURER"]
-            // Device
-            key.endsWith("device") -> template["DEVICE"]
-            // Product
-            key.endsWith("product") || key.endsWith("name") -> template["PRODUCT"]
-            // ID
-            key.endsWith("build.id") || key.endsWith("display.id") -> template["ID"]
-            // Release
-            key.endsWith("version.release") || key.endsWith("version.release_or_codename") -> template["RELEASE"]
-            // Incremental
-            key.endsWith("version.incremental") -> template["INCREMENTAL"]
-            // Type
-            key.endsWith("build.type") -> template["TYPE"]
-            // Tags
-            key.endsWith("build.tags") -> template["TAGS"]
-            else -> null
+        val templateKey = getTemplateKey(key)
+        if (templateKey != null) {
+            buildVars[templateKey]?.let { return it }
         }
+
+        // 5. Default spoofed properties
+        return spoofedProperties[key]
     }
 
     internal fun updateDrmFix(f: File?) = runCatching {
