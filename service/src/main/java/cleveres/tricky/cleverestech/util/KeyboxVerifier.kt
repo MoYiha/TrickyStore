@@ -209,11 +209,15 @@ object KeyboxVerifier {
         return false
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
+    private val hexFormat = HexFormat { upperCase = false }
+
+    @OptIn(ExperimentalStdlibApi::class)
     private fun checkHash(data: ByteArray, algorithm: String, set: Set<String>): Boolean {
         try {
             val digest = MessageDigest.getInstance(algorithm).digest(data)
             // Convert to Hex String (Zero Padded)
-            val hex = digest.joinToString("") { "%02x".format(it) }
+            val hex = digest.toHexString(hexFormat)
             return set.contains(hex)
         } catch (e: Exception) {
             return false
