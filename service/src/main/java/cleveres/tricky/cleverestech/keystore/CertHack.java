@@ -209,36 +209,46 @@ public final class CertHack {
             if (numPath == null || numPath.get("text") == null) {
                 return Collections.emptyList();
             }
-            int numberOfKeyboxes = Integer.parseInt(Objects.requireNonNull(numPath.get("text")));
+            // Ignore NumberOfKeyboxes text value, use actual element count for robustness
             int actualKeyboxElements = xmlParser.getChildCount("AndroidAttestation", "Keybox");
 
-            for (int i = 0; i < numberOfKeyboxes; i++) {
-                String keyBasePath;
-                if (actualKeyboxElements > 1 && i < actualKeyboxElements) {
-                    keyBasePath = "AndroidAttestation.Keybox[" + i + "].Key";
+            for (int i = 0; i < actualKeyboxElements; i++) {
+                String keyboxPath;
+                if (actualKeyboxElements > 1) {
+                    keyboxPath = "AndroidAttestation.Keybox[" + i + "]";
                 } else {
-                    keyBasePath = "AndroidAttestation.Keybox.Key[" + i + "]";
+                    keyboxPath = "AndroidAttestation.Keybox";
                 }
 
-                String keyboxAlgorithm = xmlParser.obtainPath(keyBasePath).get("algorithm");
-                String privateKey = xmlParser.obtainPath(keyBasePath + ".PrivateKey").get("text");
+                int keyCount = xmlParser.getChildCount(keyboxPath, "Key");
+                for (int k = 0; k < keyCount; k++) {
+                    String keyBasePath;
+                    if (keyCount > 1) {
+                        keyBasePath = keyboxPath + ".Key[" + k + "]";
+                    } else {
+                        keyBasePath = keyboxPath + ".Key";
+                    }
 
-                var numCertsPath = xmlParser.obtainPath(keyBasePath + ".CertificateChain.NumberOfCertificates");
-                if (numCertsPath == null || numCertsPath.get("text") == null) continue;
+                    String keyboxAlgorithm = xmlParser.obtainPath(keyBasePath).get("algorithm");
+                    String privateKey = xmlParser.obtainPath(keyBasePath + ".PrivateKey").get("text");
 
-                int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsPath.get("text")));
+                    var numCertsPath = xmlParser.obtainPath(keyBasePath + ".CertificateChain.NumberOfCertificates");
+                    if (numCertsPath == null || numCertsPath.get("text") == null) continue;
 
-                LinkedList<Certificate> certificateChain = new LinkedList<>();
-                for (int j = 0; j < numberOfCertificates; j++) {
-                    String certPem = xmlParser.obtainPath(
-                            keyBasePath + ".CertificateChain.Certificate[" + j + "]").get("text");
-                    certificateChain.add(parseCert(certPem));
+                    int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsPath.get("text")));
+
+                    LinkedList<Certificate> certificateChain = new LinkedList<>();
+                    for (int j = 0; j < numberOfCertificates; j++) {
+                        String certPem = xmlParser.obtainPath(
+                                keyBasePath + ".CertificateChain.Certificate[" + j + "]").get("text");
+                        certificateChain.add(parseCert(certPem));
+                    }
+
+                    // Verify keys
+                    var pemKp = parseKeyPair(privateKey);
+                    var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
+                    parsedList.add(new KeyBox(kp, certificateChain, filename));
                 }
-
-                // Verify keys
-                var pemKp = parseKeyPair(privateKey);
-                var kp = new JcaPEMKeyConverter().getKeyPair(pemKp);
-                parsedList.add(new KeyBox(kp, certificateChain, filename));
             }
             return parsedList;
         } catch (Throwable t) {
