@@ -357,10 +357,10 @@
             <div class="section-header" style="margin-top:10px;">Blank Permissions (Privacy)</div>
             <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
                 <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
-                    <input type="checkbox" id="permContacts" class="toggle" style="transform:scale(0.8)" disabled title="Coming Soon"> <label for="permContacts">Contacts</label>
+                    <input type="checkbox" id="permContacts" class="toggle" style="transform:scale(0.8)"> <label for="permContacts">Contacts</label>
                 </div>
                 <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
-                    <input type="checkbox" id="permMedia" class="toggle" style="transform:scale(0.8)" disabled title="Coming Soon"> <label for="permMedia">Media</label>
+                    <input type="checkbox" id="permMedia" class="toggle" style="transform:scale(0.8)"> <label for="permMedia">Media</label>
                 </div>
             </div>
 
@@ -373,7 +373,7 @@
                 <input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" aria-label="Filter rules" style="width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;">
             </div>
             <table id="appTable">
-                <thead><tr><th>Package</th><th>Profile</th><th>Flags</th><th></th></tr></thead>
+                <thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead>
                 <tbody></tbody>
             </table>
             <div style="margin-top:15px; text-align:right;">
@@ -770,7 +770,7 @@
 
             if (appRules.length === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
                 tbody.appendChild(tr);
                 return;
             }
@@ -785,6 +785,7 @@
                     <td>${rule.package}</td>
                     <td>${rule.template === 'null' ? 'Default' : rule.template}</td>
                     <td>${rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td>
+                    <td>${rule.permissions ? rule.permissions.map(p => `<span class="tag">${p}</span>`).join(' ') : ''}</td>
                     <td style="text-align:right;">
                         <button class="danger" onclick="removeAppRule(${idx})" aria-label="Remove rule for ${rule.package}">×</button>
                     </td>
@@ -794,7 +795,7 @@
 
             if (visibleCount === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
                 tbody.appendChild(tr);
             }
         }
@@ -813,14 +814,16 @@
                 return;
             }
 
-            // TODO: Serialize blank permissions into the rule
-            // Current backend supports: package template keybox
-            // We might need to encode flags in template name or add a new column in future
+            const permissions = [];
+            if (pContacts) permissions.push('CONTACTS');
+            if (pMedia) permissions.push('MEDIA');
 
-            appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb });
+            appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
             renderAppTable();
             pkgInput.value = '';
             document.getElementById('appKeybox').value = '';
+            document.getElementById('permContacts').checked = false;
+            document.getElementById('permMedia').checked = false;
             toggleAddButton();
             pkgInput.focus();
             notify('Rule Added');

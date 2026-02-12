@@ -23,7 +23,7 @@ object Config {
         "ro.oem_unlock_supported" to "0"
     )
 
-    data class AppSpoofConfig(val template: String?, val keyboxFilename: String?)
+    data class AppSpoofConfig(val template: String?, val keyboxFilename: String?, val permissions: Set<String> = emptySet())
 
     // Optimization: Cache results of needHack/needGenerate to avoid repeated Trie lookups.
     // The cache is bundled with the Trie in a state object to ensure consistency during updates.
@@ -100,12 +100,18 @@ object Config {
                         val pkg = parts[0]
                         var template: String? = null
                         var keybox: String? = null
+                        val permissions = HashSet<String>()
 
                         if (parts.size > 1 && parts[1] != "null") template = parts[1].lowercase()
                         if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
+                        if (parts.size > 3 && parts[3] != "null") {
+                            parts[3].split(",").forEach {
+                                if (it.isNotBlank()) permissions.add(it.trim())
+                            }
+                        }
 
-                        if (template != null || keybox != null) {
-                            newConfigs.add(pkg, AppSpoofConfig(template, keybox))
+                        if (template != null || keybox != null || permissions.isNotEmpty()) {
+                            newConfigs.add(pkg, AppSpoofConfig(template, keybox, permissions))
                         }
                     }
                 }
