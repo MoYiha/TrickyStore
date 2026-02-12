@@ -37,6 +37,8 @@
         }
         .island.active { width: auto; min-width: 200px; padding: 0 20px; opacity: 1; transform: translateY(0); }
         .island.working { /* Spinner mode active */ }
+        .island.error { background: #330000; border: 1px solid var(--danger); }
+        .island.error #islandText { color: #FECACA; }
 
         .spinner {
             width: 14px; height: 14px;
@@ -48,6 +50,8 @@
             display: none;
         }
         .island.working .spinner { display: block; }
+        .error-icon { display: none; margin-right: 10px; color: var(--danger); font-size: 1.2em; }
+        .island.error .error-icon { display: block; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         h1 { text-align: center; font-weight: 200; letter-spacing: 2px; margin: 25px 0; color: var(--accent); font-size: 1.5em; text-transform: uppercase; }
@@ -154,6 +158,7 @@
     <div class="island-container">
         <div id="island" class="island" role="status" aria-live="polite">
             <div class="spinner"></div>
+            <div class="error-icon">⚠️</div>
             <span id="islandText">Notification</span>
         </div>
     </div>
@@ -472,14 +477,20 @@
             const text = document.getElementById('islandText');
 
             text.innerText = msg;
+
+            island.classList.remove('working', 'error');
             island.classList.add('active');
 
             if (notifyTimeout) clearTimeout(notifyTimeout);
 
             if (type === 'working') {
                 island.classList.add('working');
+            } else if (type === 'error') {
+                island.classList.add('error');
+                notifyTimeout = setTimeout(() => {
+                    island.classList.remove('active');
+                }, 3000);
             } else {
-                island.classList.remove('working');
                 notifyTimeout = setTimeout(() => {
                     island.classList.remove('active');
                 }, 3000);
@@ -606,7 +617,7 @@
                 notify('Setting Updated');
             } catch(e) {
                 el.checked = !el.checked;
-                notify('Update Failed');
+                notify('Update Failed', 'error');
             }
         }
 

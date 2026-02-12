@@ -21,3 +21,7 @@
 ## 2026-06-05 - Accessible Tab Navigation (Roving Tabindex)
 **Learning:** Implementing proper ARIA tab navigation requires managing `tabindex` dynamically (roving tabindex). Only the active tab should be focusable (`tabindex="0"`) via the Tab key, while arrow keys should be used to navigate between tabs. Initializing all tabs with `tabindex="0"` forces users to tab through every single tab, which is inefficient.
 **Action:** Implemented `handleTabNavigation` for Arrow keys and updated `switchTab` to manage `tabindex` (-1/0) and focus, ensuring a standard accessible tab experience.
+
+## 2026-06-12 - Notification Severity Handling
+**Learning:** The existing notification system (`notify`) accepted a severity `type` but visually ignored it unless it was 'working'. This led to indistinguishable feedback for errors vs success.
+**Action:** When implementing notification systems, verify that all severity levels (error, warning, success) have distinct visual treatments (color, icon) in addition to accessible attributes.
