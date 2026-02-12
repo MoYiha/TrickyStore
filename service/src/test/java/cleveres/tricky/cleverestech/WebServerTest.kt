@@ -32,7 +32,7 @@ class WebServerTest {
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders() = HashMap<String, String>()
+            override fun getHeaders() = hashMapOf("host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {
@@ -74,7 +74,7 @@ class WebServerTest {
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders() = HashMap<String, String>()
+            override fun getHeaders() = hashMapOf("host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {

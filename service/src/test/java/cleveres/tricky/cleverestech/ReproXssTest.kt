@@ -59,7 +59,7 @@ class ReproXssTest {
         val saveSession = object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("content-length" to "100") // Dummy
+            override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost") // Dummy
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf("token" to webServer.token, "filename" to "app_config", "content" to maliciousContent)

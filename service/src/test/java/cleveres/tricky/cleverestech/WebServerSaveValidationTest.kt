@@ -47,7 +47,7 @@ class WebServerSaveValidationTest {
         return object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("content-length" to "100")
+            override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf(

@@ -55,7 +55,7 @@ class WebServerXssTest {
         val session = object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString())
+            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString(), "host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf("token" to webServer.token, "data" to jsonPayload)
@@ -89,7 +89,7 @@ class WebServerXssTest {
         val session = object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString())
+            override fun getHeaders() = mapOf("content-length" to jsonPayload.length.toString(), "host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf("token" to webServer.token, "data" to jsonPayload)

@@ -27,6 +27,8 @@ private val SAFE_BUILD_VAR_VALUE_REGEX = Regex("^[a-zA-Z0-9_\\-\\.\\s/:,+=()@]*$
 private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
 private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
+private val IPV4_REGEX = Regex("^[0-9.]+$")
+private val IPV6_REGEX = Regex("^[0-9a-fA-F:\\[\\]]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
 
 class WebServer(
@@ -217,6 +219,11 @@ class WebServer(
         val method = session.method
         val params = session.parms
         val headers = session.headers
+
+        // Security: Host Header Validation (DNS Rebinding Protection)
+        if (!isSafeHost(headers["host"])) {
+             return secureResponse(Response.Status.FORBIDDEN, "text/plain", "Invalid Host header")
+        }
 
         // Security: Rate Limiting
         var ip = session.remoteIpAddress ?: "unknown"
@@ -716,6 +723,36 @@ class WebServer(
 
     private fun getAppName(): String {
         return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
+    }
+
+    private fun isSafeHost(hostHeader: String?): Boolean {
+        if (hostHeader.isNullOrBlank()) return false
+
+        // Remove port
+        val hostname = if (hostHeader.startsWith("[")) {
+            val endBracket = hostHeader.lastIndexOf(']')
+            if (endBracket != -1) {
+                if (endBracket + 1 < hostHeader.length && hostHeader[endBracket + 1] == ':') {
+                     hostHeader.substring(0, endBracket + 1)
+                } else {
+                     hostHeader
+                }
+            } else {
+                hostHeader
+            }
+        } else {
+             hostHeader.substringBefore(":")
+        }
+
+        if (hostname.equals("localhost", ignoreCase = true)) return true
+
+        // IPv4: digits and dots
+        if (IPV4_REGEX.matches(hostname)) return true
+
+        // IPv6: hex, colons, brackets (no dots)
+        if (IPV6_REGEX.matches(hostname)) return true
+
+        return false
     }
 
     private val htmlContent by lazy {
