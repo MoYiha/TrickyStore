@@ -25,10 +25,18 @@ object Config {
 
     data class AppSpoofConfig(val template: String?, val keyboxFilename: String?)
 
+    // Optimization: Cache results of needHack/needGenerate to avoid repeated Trie lookups.
+    // The cache is bundled with the Trie in a state object to ensure consistency during updates.
+    private class TargetState(
+        val hackPackages: PackageTrie<Boolean>,
+        val generatePackages: PackageTrie<Boolean>
+    ) {
+        val hackCache = ConcurrentHashMap<Int, Boolean>()
+        val generateCache = ConcurrentHashMap<Int, Boolean>()
+    }
+
     @Volatile
-    private var hackPackages: PackageTrie<Boolean> = PackageTrie()
-    @Volatile
-    private var generatePackages: PackageTrie<Boolean> = PackageTrie()
+    private var targetState = TargetState(PackageTrie(), PackageTrie())
     private var isGlobalMode = false
     private var isTeeBrokenMode = false
     @Volatile
@@ -127,15 +135,13 @@ object Config {
 
     private fun updateTargetPackages(f: File?) = runCatching {
         if (isGlobalMode) {
-            hackPackages = PackageTrie()
-            generatePackages = PackageTrie()
+            targetState = TargetState(PackageTrie(), PackageTrie())
             Logger.i("Global mode is enabled, skipping updateTargetPackages execution.")
             return@runCatching
         }
         val (h, g) = parsePackages(f?.readLines() ?: emptyList(), isTeeBrokenMode)
-        hackPackages = h
-        generatePackages = g
-        Logger.i { "update hack packages: ${hackPackages.size}, generate packages=${generatePackages.size}" }
+        targetState = TargetState(h, g)
+        Logger.i { "update hack packages: ${h.size}, generate packages=${g.size}" }
     }.onFailure {
         Logger.e("failed to update target files", it)
     }
@@ -700,19 +706,43 @@ object Config {
     }.onFailure { Logger.e("failed to get packages", it) }.getOrNull() ?: false
 
     fun needHack(callingUid: Int): Boolean {
-        return when {
-            isTeeBroken -> false
-            isGlobalMode -> true
-            else -> checkPackages(hackPackages, callingUid)
-        }
+        if (isTeeBroken) return false
+        if (isGlobalMode) return true
+
+        val state = targetState
+        val cached = state.hackCache[callingUid]
+        if (cached != null) return cached
+
+        val result = checkPackages(state.hackPackages, callingUid)
+        state.hackCache[callingUid] = result
+        return result
     }
-    
+
     fun needGenerate(callingUid: Int): Boolean {
-        return when {
-            isTeeBroken && isGlobalMode -> true
-            isGlobalMode -> false
-            isTeeBroken -> checkPackages(generatePackages, callingUid) || checkPackages(hackPackages, callingUid)
-            else -> checkPackages(generatePackages, callingUid)
+        if (isTeeBroken && isGlobalMode) return true
+        if (isGlobalMode) return false
+
+        val state = targetState
+
+        val cachedGen = state.generateCache[callingUid]
+        val genResult = if (cachedGen != null) cachedGen else {
+            val r = checkPackages(state.generatePackages, callingUid)
+            state.generateCache[callingUid] = r
+            r
+        }
+
+        return if (isTeeBroken) {
+            if (genResult) return true
+
+            val cachedHack = state.hackCache[callingUid]
+            val hackResult = if (cachedHack != null) cachedHack else {
+                val r = checkPackages(state.hackPackages, callingUid)
+                state.hackCache[callingUid] = r
+                r
+            }
+            hackResult
+        } else {
+            genResult
         }
     }
 }
