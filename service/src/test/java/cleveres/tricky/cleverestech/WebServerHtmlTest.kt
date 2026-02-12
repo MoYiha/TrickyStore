@@ -160,8 +160,10 @@ class WebServerHtmlTest {
         // Verify Label Cursor CSS
         assertTrue("Missing label cursor CSS", html.contains("label { font-size: 0.9em; color: #BBB; cursor: pointer; }"))
 
-        // Verify Disabled Attributes
-        assertTrue("Contacts Checkbox not disabled", html.contains("<input type=\"checkbox\" id=\"permContacts\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled title=\"Coming Soon\">"))
-        assertTrue("Media Checkbox not disabled", html.contains("<input type=\"checkbox\" id=\"permMedia\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled title=\"Coming Soon\">"))
+        // Verify Disabled Attributes Removed (Enabled now)
+        assertTrue("Contacts Checkbox is missing", html.contains("id=\"permContacts\""))
+        assertTrue("Contacts Checkbox is disabled", !html.contains("id=\"permContacts\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled"))
+        assertTrue("Media Checkbox is missing", html.contains("id=\"permMedia\""))
+        assertTrue("Media Checkbox is disabled", !html.contains("id=\"permMedia\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled"))
     }
 }

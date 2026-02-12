@@ -390,16 +390,24 @@ class WebServer(
                                         if (pkg.matches(PKG_NAME_REGEX)) {
                                             val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
                                             val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
+                                            val perms = if (parts.size > 3 && parts[3] != "null") parts[3] else ""
 
                                             // Security: Validate template and keybox to prevent XSS
                                             val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
                                             val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
+                                            // Validate permissions: Comma-separated uppercase alphanumeric
+                                            val isPermsValid = perms.isEmpty() || perms.matches(Regex("^[A-Z0-9,]+$"))
 
-                                            if (isTmplValid && isKbValid) {
+                                            if (isTmplValid && isKbValid && isPermsValid) {
                                                 val obj = JSONObject()
                                                 obj.put("package", pkg)
                                                 obj.put("template", tmpl)
                                                 obj.put("keybox", kb)
+                                                if (perms.isNotEmpty()) {
+                                                    val permArray = JSONArray()
+                                                    perms.split(",").forEach { permArray.put(it) }
+                                                    obj.put("permissions", permArray)
+                                                }
                                                 array.put(obj)
                                             }
                                         }
@@ -429,6 +437,16 @@ class WebServer(
                          val pkg = obj.getString("package")
                          val tmpl = obj.optString("template", "null").ifEmpty { "null" }
                          val kb = obj.optString("keybox", "null").ifEmpty { "null" }
+                         val permsArr = obj.optJSONArray("permissions")
+                         var permsStr = "null"
+
+                         if (permsArr != null && permsArr.length() > 0) {
+                             val list = ArrayList<String>()
+                             for (j in 0 until permsArr.length()) {
+                                 list.add(permsArr.getString(j))
+                             }
+                             permsStr = list.joinToString(",")
+                         }
 
                          // Validate package name
                          if (!pkg.matches(PKG_NAME_REGEX)) {
@@ -445,11 +463,16 @@ class WebServer(
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
                          }
 
-                         if (pkg.contains(WHITESPACE_FIND_REGEX) || tmpl.contains(WHITESPACE_FIND_REGEX) || kb.contains(WHITESPACE_FIND_REGEX)) {
+                         // Validate permissions
+                         if (permsStr != "null" && !permsStr.matches(Regex("^[A-Z0-9,]+$"))) {
+                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid permission format")
+                         }
+
+                         if (pkg.contains(WHITESPACE_FIND_REGEX) || tmpl.contains(WHITESPACE_FIND_REGEX) || kb.contains(WHITESPACE_FIND_REGEX) || permsStr.contains(WHITESPACE_FIND_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: whitespace not allowed")
                          }
 
-                         sb.append("$pkg $tmpl $kb\n")
+                         sb.append("$pkg $tmpl $kb $permsStr\n")
                      }
                      return runBlocking {
                          fileMutex.withLock {
@@ -673,6 +696,9 @@ class WebServer(
 
                     // Keybox (optional)
                     if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return false
+
+                    // Permissions (optional)
+                    if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(Regex("^[A-Z0-9,]+$"))) return false
                 }
             }
             "target.txt" -> {
@@ -1115,10 +1141,10 @@ class WebServer(
             <div class="section-header" style="margin-top:10px;">Blank Permissions (Privacy)</div>
             <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
                 <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
-                    <input type="checkbox" id="permContacts" class="toggle" style="transform:scale(0.8)" disabled title="Coming Soon"> <label for="permContacts">Contacts</label>
+                    <input type="checkbox" id="permContacts" class="toggle" style="transform:scale(0.8)"> <label for="permContacts">Contacts</label>
                 </div>
                 <div class="row" style="flex:1; min-width:120px; justify-content:flex-start; gap:10px;">
-                    <input type="checkbox" id="permMedia" class="toggle" style="transform:scale(0.8)" disabled title="Coming Soon"> <label for="permMedia">Media</label>
+                    <input type="checkbox" id="permMedia" class="toggle" style="transform:scale(0.8)"> <label for="permMedia">Media</label>
                 </div>
             </div>
 
@@ -1131,7 +1157,7 @@ class WebServer(
                 <input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" aria-label="Filter rules" style="width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;">
             </div>
             <table id="appTable">
-                <thead><tr><th>Package</th><th>Profile</th><th>Flags</th><th></th></tr></thead>
+                <thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead>
                 <tbody></tbody>
             </table>
             <div style="margin-top:15px; text-align:right;">
@@ -1528,7 +1554,7 @@ class WebServer(
 
             if (appRules.length === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No active rules. Add a package above to customize spoofing.</td>';
                 tbody.appendChild(tr);
                 return;
             }
@@ -1543,6 +1569,7 @@ class WebServer(
                     <td>${'$'}{rule.package}</td>
                     <td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td>
                     <td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td>
+                    <td>${'$'}{rule.permissions ? rule.permissions.map(p => `<span class="tag">${'$'}{p}</span>`).join(' ') : ''}</td>
                     <td style="text-align:right;">
                         <button class="danger" onclick="removeAppRule(${'$'}{idx})" aria-label="Remove rule for ${'$'}{rule.package}">×</button>
                     </td>
@@ -1552,7 +1579,7 @@ class WebServer(
 
             if (visibleCount === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="4" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
                 tbody.appendChild(tr);
             }
         }
@@ -1571,14 +1598,16 @@ class WebServer(
                 return;
             }
 
-            // TODO: Serialize blank permissions into the rule
-            // Current backend supports: package template keybox
-            // We might need to encode flags in template name or add a new column in future
+            const permissions = [];
+            if (pContacts) permissions.push('CONTACTS');
+            if (pMedia) permissions.push('MEDIA');
 
-            appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb });
+            appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
             renderAppTable();
             pkgInput.value = '';
             document.getElementById('appKeybox').value = '';
+            document.getElementById('permContacts').checked = false;
+            document.getElementById('permMedia').checked = false;
             toggleAddButton();
             pkgInput.focus();
             notify('Rule Added');
