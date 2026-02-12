@@ -1636,8 +1636,28 @@ class WebServer(
              container.innerHTML = '';
              data.forEach(d => {
                  const div = document.createElement('div');
-                 div.style.color = d.status === 'VALID' ? '#34D399' : '#EF4444';
-                 div.innerText = `[${'$'}{d.status}] ${'$'}{d.filename}`;
+                 const color = d.status === 'VALID' ? '#34D399' : '#EF4444';
+                 div.style.borderLeft = `3px solid ${'$'}{color}`;
+                 div.style.background = 'rgba(255,255,255,0.05)';
+                 div.style.padding = '8px 12px';
+                 div.style.marginBottom = '8px';
+                 div.style.borderRadius = '0 4px 4px 0';
+
+                 const header = document.createElement('div');
+                 header.style.display = 'flex';
+                 header.style.justifyContent = 'space-between';
+                 header.style.alignItems = 'center';
+                 header.innerHTML = `<span style="font-weight:500; color:#E5E7EB">${'$'}{d.filename}</span><span style="color:${'$'}{color}; font-size:0.9em; font-weight:bold">${'$'}{d.status}</span>`;
+                 div.appendChild(header);
+
+                 if (d.details) {
+                     const det = document.createElement('div');
+                     det.style.marginTop = '4px';
+                     det.style.fontSize = '0.85em';
+                     det.style.color = '#9CA3AF';
+                     det.innerText = d.details;
+                     div.appendChild(det);
+                 }
                  container.appendChild(div);
              });
              notify('Check Complete');
