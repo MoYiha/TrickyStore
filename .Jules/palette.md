@@ -25,3 +25,7 @@
 ## 2026-06-12 - Notification Severity Handling
 **Learning:** The existing notification system (`notify`) accepted a severity `type` but visually ignored it unless it was 'working'. This led to indistinguishable feedback for errors vs success.
 **Action:** When implementing notification systems, verify that all severity levels (error, warning, success) have distinct visual treatments (color, icon) in addition to accessible attributes.
+
+## 2026-07-20 - Kotlin String Interpolation in Embedded JS
+**Learning:** When embedding JavaScript within Kotlin `"""` strings, using template literals (`${var}`) conflicts with Kotlin's string interpolation. You must escape the dollar sign as `${'$'}` in Kotlin to ensure it is emitted literally for the JS runtime.
+**Action:** Always use `${'$'}` when writing JS template literals inside Kotlin multiline strings.
