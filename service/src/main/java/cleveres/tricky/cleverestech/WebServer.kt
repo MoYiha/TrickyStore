@@ -360,13 +360,23 @@ class WebServer(
         // NEW: Get Installed Packages
         if (uri == "/api/packages" && method == Method.GET) {
             return try {
-                val p = Runtime.getRuntime().exec("pm list packages")
-                val output = p.inputStream.bufferedReader().readText()
-                val packages = output.lines()
-                    .filter { it.startsWith("package:") }
-                    .map { it.removePrefix("package:").trim() }
-                    .sorted()
-                val array = JSONArray(packages)
+                val pm = Config.getPm()
+                val packages = if (pm != null) {
+                    try {
+                        try {
+                            pm.getInstalledPackages(0L, 0).list.map { it.packageName }
+                        } catch (e: NoSuchMethodError) {
+                            pm.getInstalledPackages(0, 0).list.map { it.packageName }
+                        }
+                    } catch (t: Throwable) {
+                        Logger.e("Failed to list packages via IPC", t)
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+                val sortedPackages = packages.sorted()
+                val array = JSONArray(sortedPackages)
                 secureResponse(Response.Status.OK, "application/json", array.toString())
             } catch (e: Exception) {
                 Logger.e("Failed to list packages", e)
