@@ -53,3 +53,8 @@
 1. Implement Token Bucket or Fixed Window rate limiting on all public endpoints.
 2. Use robust IP parsing libraries (like `InetAddress`) or trust the framework's normalized output; avoiding manual string manipulation on IPs.
 3. Always bound the size of security caches (like rate limit maps) to prevent memory exhaustion attacks.
+
+## 2026-06-12 - [DNS Rebinding Vulnerability in Local WebServer]
+**Vulnerability:** The internal `WebServer`, listening on `0.0.0.0` with a random port, lacked validation of the HTTP `Host` header. This allowed a DNS Rebinding attack where a malicious website could resolve to `127.0.0.1` and bypass the Same Origin Policy to interact with the local server (e.g., via `attacker.com` pointing to localhost). While the server implemented a CSRF check (`Origin.contains(Host)`), this check was bypassed because the attacker controlled both the `Origin` (attacker.com) and the `Host` header (attacker.com) via DNS Rebinding.
+**Learning:** Local web servers are prime targets for DNS Rebinding. Relying solely on `Origin` checks is insufficient if the browser can be tricked into treating the attacker's domain as the local server's origin. The `Host` header must be trusted or validated.
+**Prevention:** Strictly validate the `Host` header in local web servers. Reject any request where the `Host` header is not `localhost` or a valid IP address. This ensures that the browser's view of the origin matches the server's expectation of a local connection.

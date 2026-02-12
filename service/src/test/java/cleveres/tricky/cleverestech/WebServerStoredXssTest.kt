@@ -59,7 +59,7 @@ class WebServerStoredXssTest {
         val session = object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = emptyMap<String, String>()
+            override fun getHeaders() = mapOf("host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.GET
             override fun getParms() = mapOf("token" to webServer.token)
