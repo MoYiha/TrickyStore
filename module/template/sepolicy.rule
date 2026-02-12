@@ -40,16 +40,11 @@ allow cleverestricky_daemon port:udp_socket name_bind;
 allow cleverestricky_daemon fwmarkd_socket:sock_file write;
 allow cleverestricky_daemon netd:unix_stream_socket connectto;
 
-# make lsposed happy
-# TODO: remove those rules
-type magisk_file file_type
-typeattribute magisk_file mlstrustedobject
-allow * magisk_file file *
-allow * magisk_file dir *
-allow * magisk_file fifo_file *
-allow * magisk_file chr_file *
-allow * magisk_file lnk_file *
-allow * magisk_file sock_file *
+# Define a type for module files that need to be publicly readable (APKs, libs)
+type cleverestricky_public_file, file_type, data_file_type, mlstrustedobject;
+
+# Allow all domains to read public module files (e.g. for Xposed/LSPosed loading)
+allow * cleverestricky_public_file:file { read open getattr map };
 
 # allow hooking system server
 allow system_server system_server process execmem

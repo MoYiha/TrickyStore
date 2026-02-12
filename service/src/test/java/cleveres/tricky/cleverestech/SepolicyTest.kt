@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -27,5 +28,20 @@ class SepolicyTest {
         assertTrue("sepolicy.rule missing tcp_socket permissions", content.contains("allow cleverestricky_daemon self:tcp_socket"))
         assertTrue("sepolicy.rule missing udp_socket permissions", content.contains("allow cleverestricky_daemon self:udp_socket"))
         assertTrue("sepolicy.rule missing netd permissions", content.contains("allow cleverestricky_daemon netd:unix_stream_socket connectto;"))
+    }
+
+    @Test
+    fun testNoBroadMagiskFilePermissions() {
+        val sepolicyFile = File("../module/template/sepolicy.rule")
+        val content = sepolicyFile.readText()
+        assertFalse("sepolicy.rule should not contain broad magisk_file file permissions", content.contains("allow * magisk_file file *"))
+    }
+
+    @Test
+    fun testPublicFilePermissions() {
+        val sepolicyFile = File("../module/template/sepolicy.rule")
+        val content = sepolicyFile.readText()
+        assertTrue("sepolicy.rule missing public file definition", content.contains("type cleverestricky_public_file, file_type, data_file_type, mlstrustedobject;"))
+        assertTrue("sepolicy.rule missing public file read permissions", content.contains("allow * cleverestricky_public_file:file { read open getattr map };"))
     }
 }
