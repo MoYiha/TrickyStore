@@ -685,17 +685,12 @@ object Config {
             return cached.value
         }
 
-        val result = packageCache.compute(uid) { _, oldVal ->
-            val current = clockSource()
-            if (oldVal != null && (current - oldVal.timestamp) < CACHE_TTL_MS) {
-                oldVal
-            } else {
-                val pm = getPm()
-                val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
-                CachedPackage(pkgs, current)
-            }
-        }
-        return result?.value ?: emptyArray()
+        val pm = getPm()
+        val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
+        val current = clockSource()
+        val newEntry = CachedPackage(pkgs, current)
+        packageCache[uid] = newEntry
+        return pkgs
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
