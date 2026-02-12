@@ -38,8 +38,18 @@ object Config {
     private var moduleHash: ByteArray? = null
     private var isRkpBypass = false
 
+    // Optimization: Cache results of getAppConfig to avoid repeated Trie lookups.
+    // The cache is bundled with the Trie in a state object to ensure consistency during updates.
+    private class AppConfigState(
+        val configs: PackageTrie<AppSpoofConfig>
+    ) {
+        val cache = ConcurrentHashMap<Int, Any>()
+    }
+
+    private val NULL_CONFIG = Any()
+
     @Volatile
-    private var appConfigs: PackageTrie<AppSpoofConfig> = PackageTrie()
+    private var appConfigState = AppConfigState(PackageTrie())
 
     fun shouldBypassRkp() = isRkpBypass
 
@@ -51,12 +61,23 @@ object Config {
     fun getModuleHash(): ByteArray? = moduleHash
 
     fun getAppConfig(uid: Int): AppSpoofConfig? {
-        val pkgs = getPackages(uid)
-        for (pkg in pkgs) {
-            val config = appConfigs.get(pkg)
-            if (config != null) return config
+        val state = appConfigState
+        val cached = state.cache[uid]
+        if (cached != null) {
+            return if (cached === NULL_CONFIG) null else cached as AppSpoofConfig
         }
-        return null
+
+        val pkgs = getPackages(uid)
+        var result: AppSpoofConfig? = null
+        for (pkg in pkgs) {
+            val config = state.configs.get(pkg)
+            if (config != null) {
+                result = config
+                break
+            }
+        }
+        state.cache[uid] = result ?: NULL_CONFIG
+        return result
     }
 
     private val SPLIT_REGEX = Regex("\\s+")
@@ -82,8 +103,8 @@ object Config {
                 }
             }
         }
-        appConfigs = newConfigs
-        Logger.i { "update app configs: ${appConfigs.size}" }
+        appConfigState = AppConfigState(newConfigs)
+        Logger.i { "update app configs: ${newConfigs.size}" }
     }.onFailure {
         Logger.e("failed to update app configs", it)
     }
