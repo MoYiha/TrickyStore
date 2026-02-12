@@ -18,10 +18,11 @@ object Verification {
         }
 
         val allFiles = root.walk().filter { !it.isDirectory }.toList()
-        val checksumFiles = allFiles
+        val checksumMap = allFiles
             .filter { it.name.endsWith(".sha256") }
-            .map { it.path }
-            .toSet()
+            .associate {
+                it.path.removeSuffix(".sha256") to it.readText().trim()
+            }
 
         allFiles.forEach { file ->
             // Skip checksum files themselves
@@ -29,14 +30,12 @@ object Verification {
             // Skip ignored files
             if (file.parentFile?.absolutePath == root.absolutePath && IGNORED_FILES.contains(file.name)) return@forEach
 
-            val expectedChecksumPath = file.path + ".sha256"
-            if (!checksumFiles.contains(expectedChecksumPath)) {
+            val expected = checksumMap[file.path]
+            if (expected == null) {
                 fail(root, "Missing checksum for file: ${file.path}")
                 return@forEach
             }
 
-            val checksumFile = File(expectedChecksumPath)
-            val expected = checksumFile.readText().trim()
             val actual = calculateChecksum(file)
             if (!expected.equals(actual, ignoreCase = true)) {
                 fail(root, "Checksum mismatch for file: ${file.path}. Expected $expected, got $actual")
