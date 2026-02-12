@@ -635,26 +635,40 @@ object Config {
         return rules.matches(pkgName)
     }
 
+    internal data class CachedPackage(val value: Array<String>, val timestamp: Long)
+
     // Cache to reduce IPC calls to PackageManager for getPackagesForUid
-    // Key: callingUid, Value: Array of package names
+    // Key: callingUid, Value: CachedPackage
     // OPTIMIZATION: Use ConcurrentHashMap to allow lock-free reads and better concurrency.
     // The map is unbounded but limited by the number of installed apps (~hundreds, max ~50k UIDs),
     // which fits well within memory limits compared to synchronized access overhead.
-    private val packageCache = ConcurrentHashMap<Int, Array<String>?>()
+    private val packageCache = ConcurrentHashMap<Int, CachedPackage>()
+
+    internal var clockSource: () -> Long = { System.currentTimeMillis() }
+    private const val CACHE_TTL_MS = 60 * 1000L // 1 minute
 
     /**
      * Retrieves the list of packages for a given UID, using a cache to avoid frequent IPC calls.
      * Returns an empty array if the UID has no associated packages or if PackageManager is unavailable.
      */
     fun getPackages(uid: Int): Array<String> {
-        // Optimization: fast path for cache hit to avoid lambda allocation
-        packageCache[uid]?.let { return it }
-
-        val packages = packageCache.computeIfAbsent(uid) {
-            val pm = getPm() ?: return@computeIfAbsent null
-            pm.getPackagesForUid(uid) ?: emptyArray()
+        val now = clockSource()
+        val cached = packageCache[uid]
+        if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+            return cached.value
         }
-        return packages ?: emptyArray()
+
+        val result = packageCache.compute(uid) { _, oldVal ->
+            val current = clockSource()
+            if (oldVal != null && (current - oldVal.timestamp) < CACHE_TTL_MS) {
+                oldVal
+            } else {
+                val pm = getPm()
+                val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
+                CachedPackage(pkgs, current)
+            }
+        }
+        return result?.value ?: emptyArray()
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {

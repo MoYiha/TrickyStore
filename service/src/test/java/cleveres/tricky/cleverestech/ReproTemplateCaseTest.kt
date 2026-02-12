@@ -46,8 +46,8 @@ class ReproTemplateCaseTest {
     private fun setPackageCache(uid: Int, packages: Array<String>) {
         val field = Config::class.java.getDeclaredField("packageCache")
         field.isAccessible = true
-        val cache = field.get(Config) as MutableMap<Int, Array<String>>
-        cache[uid] = packages
+        val cache = field.get(Config) as MutableMap<Int, Any>
+        cache[uid] = Config.CachedPackage(packages, System.currentTimeMillis())
     }
 
     private fun updateAppConfigs(file: File) {

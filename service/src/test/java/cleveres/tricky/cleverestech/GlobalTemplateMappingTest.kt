@@ -51,6 +51,11 @@ class GlobalTemplateMappingTest {
         // Initialize DeviceTemplateManager with built-ins (so pixel8pro exists)
         DeviceTemplateManager.initialize(tempDir)
 
+        // Clear package cache to avoid side effects from other tests
+        val cacheField = Config::class.java.getDeclaredField("packageCache")
+        cacheField.isAccessible = true
+        (cacheField.get(Config) as MutableMap<*, *>).clear()
+
         // Force Config to load templates from Manager
         val updateTemplatesMethod = Config::class.java.declaredMethods.find { it.name.startsWith("updateCustomTemplates") }!!
         updateTemplatesMethod.isAccessible = true
