@@ -127,15 +127,26 @@ object KeyboxVerifier {
         var added = false
 
         // Try treating as Decimal first (Spec compliant)
-        try {
-            if (decStr.length > 1 && decStr.startsWith("0")) {
-                throw NumberFormatException("Leading zero implies Hex")
+        var isDecimal = true
+        if (decStr.length > 1 && decStr.startsWith("0")) {
+            isDecimal = false
+        } else {
+            for (i in 0 until decStr.length) {
+                if (!Character.isDigit(decStr[i])) {
+                    isDecimal = false
+                    break
+                }
             }
-            val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
-            set.add(hexStr)
-            added = true
-        } catch (e: Exception) {
-            // Not a valid decimal, fall back to Hex
+        }
+
+        if (isDecimal && decStr.isNotEmpty()) {
+            try {
+                val hexStr = java.math.BigInteger(decStr).toString(16).lowercase()
+                set.add(hexStr)
+                added = true
+            } catch (e: Exception) {
+                // Should not happen, but safe fallback
+            }
         }
 
         // Ambiguity handling
