@@ -31,12 +31,19 @@ class ConfigSmartMappingTest {
     }
 
     private fun setAppConfigs(configs: Map<String, Config.AppSpoofConfig>) {
-        val field = Config::class.java.getDeclaredField("appConfigs")
-        field.isAccessible = true
-        // Convert Map to Trie
         val trie = PackageTrie<Config.AppSpoofConfig>()
         configs.forEach { (k, v) -> trie.add(k, v) }
-        field.set(Config, trie)
+
+        // Reflection to set appConfigState
+        val stateClass = Config::class.java.declaredClasses.find { it.simpleName == "AppConfigState" }
+            ?: throw RuntimeException("AppConfigState class not found")
+        val constructor = stateClass.getDeclaredConstructor(PackageTrie::class.java)
+        constructor.isAccessible = true
+        val newState = constructor.newInstance(trie)
+
+        val field = Config::class.java.getDeclaredField("appConfigState")
+        field.isAccessible = true
+        field.set(Config, newState)
     }
 
     @Test
