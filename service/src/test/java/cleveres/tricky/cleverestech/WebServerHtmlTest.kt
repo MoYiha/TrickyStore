@@ -141,8 +141,12 @@ class WebServerHtmlTest {
 
         // Verify Keybox Filename Label and File Picker Accessibility
         assertTrue("Keybox Filename missing label", html.contains("<label for=\"kbFilename\""))
-        assertTrue("Keybox File Picker missing aria-label", html.contains("id=\"kbFilePicker\" style=\"display:none\" onchange=\"loadFileContent(this)\" onclick=\"this.value = null\" aria-label=\"Upload Keybox File\""))
+        assertTrue("Keybox File Picker missing aria-label", html.contains("id=\"kbFilePicker\" style=\"display:none\" onchange=\"loadFileContent(this)\" onclick=\"event.stopPropagation(); this.value = null\" aria-label=\"Upload Keybox File\""))
         assertTrue("File Selector missing aria-label", html.contains("id=\"fileSelector\" onchange=\"loadFile()\" style=\"width:70%;\" aria-label=\"Select file to edit\""))
+
+        // Verify Drop Zone Accessibility
+        assertTrue("Drop Zone missing accessibility attributes", html.contains("id=\"dropZone\" role=\"button\" tabindex=\"0\""))
+        assertTrue("Drop Zone missing keyboard handler", html.contains("onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}\""))
     }
 
     @Test
