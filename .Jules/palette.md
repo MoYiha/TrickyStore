@@ -29,3 +29,7 @@
 ## 2026-07-20 - Kotlin String Interpolation in Embedded JS
 **Learning:** When embedding JavaScript within Kotlin `"""` strings, using template literals (`${var}`) conflicts with Kotlin's string interpolation. You must escape the dollar sign as `${'$'}` in Kotlin to ensure it is emitted literally for the JS runtime.
 **Action:** Always use `${'$'}` when writing JS template literals inside Kotlin multiline strings.
+
+## 2026-08-15 - Actionable Empty States
+**Learning:** When a search filter yields no results, a static "No results" message is a dead end. Providing a "Clear Filter" button directly within the empty state message allows users to recover immediately without searching for the filter input's clear control.
+**Action:** Enhance empty states with context-aware recovery actions (e.g., Clear Filter, Reset Search).

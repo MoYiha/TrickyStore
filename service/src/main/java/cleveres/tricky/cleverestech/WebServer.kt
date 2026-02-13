@@ -1589,7 +1589,7 @@ class WebServer(
 
             if (visibleCount === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No matching rules found.</td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No matching rules found. <button class="primary" onclick="document.getElementById(\'appFilter\').value=\'\'; renderAppTable()" style="padding: 2px 8px; font-size: 0.8em; margin-left: 10px;">Clear Filter</button></td>';
                 tbody.appendChild(tr);
             }
         }
