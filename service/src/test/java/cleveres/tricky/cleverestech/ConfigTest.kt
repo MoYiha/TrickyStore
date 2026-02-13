@@ -14,7 +14,7 @@ class ConfigTest {
             "com.example.app1",
             "com.example.app2"
         )
-        val (hack, generate) = Config.parsePackages(lines, false)
+        val (hack, generate) = Config.parsePackages(lines.asSequence(), false)
 
         assertTrue(hack.matches("com.example.app1"))
         assertTrue(hack.matches("com.example.app2"))
@@ -28,7 +28,7 @@ class ConfigTest {
             "com.example.app1",
             "com.example.app2!"
         )
-        val (hack, generate) = Config.parsePackages(lines, false)
+        val (hack, generate) = Config.parsePackages(lines.asSequence(), false)
 
         assertTrue(hack.matches("com.example.app1"))
         assertEquals(1, hack.size)
@@ -45,7 +45,7 @@ class ConfigTest {
             "",
             "com.example.app2!  "
         )
-        val (hack, generate) = Config.parsePackages(lines, false)
+        val (hack, generate) = Config.parsePackages(lines.asSequence(), false)
 
         assertTrue(hack.matches("com.example.app1"))
         assertEquals(1, hack.size)
@@ -61,7 +61,7 @@ class ConfigTest {
             "com.example.app2!"
         )
         // In TEE broken mode, all packages should go to generatePackages
-        val (hack, generate) = Config.parsePackages(lines, true)
+        val (hack, generate) = Config.parsePackages(lines.asSequence(), true)
 
         assertTrue(hack.isEmpty())
         assertTrue(generate.matches("com.example.app1"))
