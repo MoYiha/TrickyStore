@@ -241,9 +241,9 @@ class WebServer(
         // Allow null origin/referer for non-browser clients (e.g. curl) if token is present
         // But for browser-based (indicated by Origin), enforce matching Host
         if (origin != null && host != null) {
-             // Simple check: Origin should contain Host
-             // Origin: http://localhost:8080
-             if (!origin.contains(host)) {
+             val allowedOrigin = "http://$host"
+             val allowedSecureOrigin = "https://$host"
+             if (origin != allowedOrigin && origin != allowedSecureOrigin) {
                  return secureResponse(Response.Status.FORBIDDEN, "text/plain", "CSRF Forbidden")
              }
         }
