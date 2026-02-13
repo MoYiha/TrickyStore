@@ -27,3 +27,7 @@
 ## 2026-02-10 - [Lambda Allocation in Hot Cache Paths]
 **Learning:** `ConcurrentHashMap.computeIfAbsent` allocates a `Function` lambda instance on every call if the lambda captures variables (like `this`), even if the key is already present. In hot paths (like permission checks), this creates significant GC pressure.
 **Action:** In hot paths using `computeIfAbsent`, check for the existence of the key (e.g., `map[key]`) before calling `computeIfAbsent` to avoid allocation in the hit case.
+
+## 2026-06-15 - [Thundering Herd on Cache Miss]
+**Learning:** `Config.getPackages(uid)` used a simple check-then-act pattern for caching. When multiple threads requested the same UID simultaneously (e.g., during app startup), they would all miss the cache and trigger expensive IPC calls (`getPackagesForUid`), causing a "thundering herd" effect.
+**Action:** Use `ConcurrentHashMap.compute` (or `computeIfAbsent`) to atomically handle cache misses. This ensures only one thread performs the expensive operation while others wait for the result. Be careful to check the cache *inside* the compute block (double-check locking) if optimistic reads are used.

@@ -686,17 +686,26 @@ object Config {
      */
     fun getPackages(uid: Int): Array<String> {
         val now = clockSource()
+        // Fast path: optimistic read for valid cache
         val cached = packageCache[uid]
         if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
             return cached.value
         }
 
-        val pm = getPm()
-        val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
-        val current = clockSource()
-        val newEntry = CachedPackage(pkgs, current)
-        packageCache[uid] = newEntry
-        return pkgs
+        // Slow path: update atomically to prevent "thundering herd" on IPC
+        // Use compute to ensure only one thread performs the update for this UID
+        val updatedEntry = packageCache.compute(uid) { _, current ->
+            // Double-check inside the lock: another thread might have updated it
+            if (current != null && (now - current.timestamp) < CACHE_TTL_MS) {
+                current
+            } else {
+                val pm = getPm()
+                val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
+                CachedPackage(pkgs, now)
+            }
+        }
+
+        return updatedEntry!!.value
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
