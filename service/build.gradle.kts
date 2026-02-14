@@ -77,6 +77,13 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests.all {
+            it.testLogging {
+                events = setOf(org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT, org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR)
+            }
+        }
+    }
 }
 
 dependencies {
