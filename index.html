@@ -148,6 +148,9 @@
 
         .section-header { font-size: 0.8em; color: #666; text-transform: uppercase; letter-spacing: 1px; margin: 15px 0 5px 0; }
 
+        .drag-over { border-color: var(--accent) !important; background: rgba(255,255,255,0.05); }
+        #dropZone:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
         ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
@@ -386,8 +389,16 @@
     <div id="keys" class="content" role="tabpanel" aria-labelledby="tab_keys">
         <div class="panel">
             <h3>Upload Keybox</h3>
-            <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="this.value = null" aria-label="Upload Keybox File">
-            <button onclick="document.getElementById('kbFilePicker').click()" style="width:100%; margin-bottom:10px; border-style:dashed;">Select XML File</button>
+            <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; transition: all 0.2s; cursor: pointer;"
+                 onclick="document.getElementById('kbFilePicker').click()"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                 ondragleave="this.classList.remove('drag-over');"
+                 ondrop="handleDrop(event)">
+                <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
+                <div style="font-size: 2em; margin-bottom: 10px;">📂</div>
+                <div style="font-size: 0.9em; color: #888;">Click to select or drag XML file here</div>
+            </div>
 
             <label for="kbFilename" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Filename</label>
             <input type="text" id="kbFilename" placeholder="filename.xml" style="margin-bottom:10px;">
@@ -900,13 +911,24 @@
              notify('Keybox Uploaded');
         }
 
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                processFile(e.dataTransfer.files[0]);
+            }
+        }
+
+        function processFile(file) {
+            document.getElementById('kbFilename').value = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
+            reader.readAsText(file);
+        }
+
         function loadFileContent(input) {
             if (input.files && input.files[0]) {
-                const file = input.files[0];
-                document.getElementById('kbFilename').value = file.name;
-                const reader = new FileReader();
-                reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
-                reader.readAsText(file);
+                processFile(input.files[0]);
             }
         }
 
