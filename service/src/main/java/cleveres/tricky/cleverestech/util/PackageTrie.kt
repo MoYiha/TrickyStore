@@ -1,9 +1,12 @@
 package cleveres.tricky.cleverestech.util
 
+import java.util.Arrays
+
 class PackageTrie<T> {
     private class Node<T> {
         // Optimization: Use parallel arrays instead of HashMap to reduce memory overhead and avoid boxing.
         // For trie nodes, the number of children is usually small (often 1), making linear scan faster than hashing.
+        // UPDATED: Keys are kept sorted to allow binary search, improving lookup time for nodes with many children.
         var keys: CharArray = CharArray(0)
         var children: Array<Node<T>?> = emptyArray()
 
@@ -13,40 +16,44 @@ class PackageTrie<T> {
 
         fun getChild(char: Char): Node<T>? {
             val k = keys
-            // Optimized linear scan
-            for (i in k.indices) {
-                if (k[i] == char) {
-                    return children[i]
-                }
-            }
-            return null
+            // Optimized binary search for O(log N) lookup
+            val idx = Arrays.binarySearch(k, char)
+            return if (idx >= 0) children[idx] else null
         }
 
         fun addChild(char: Char): Node<T> {
             val k = keys
-            // Check if child already exists
-            for (i in k.indices) {
-                if (k[i] == char) {
-                    return children[i]!!
-                }
+            // Check if child already exists using binary search
+            val idx = Arrays.binarySearch(k, char)
+            if (idx >= 0) {
+                return children[idx]!!
             }
 
-            // Add new child
+            // Not found, insert at sorted position
+            val insertAt = -(idx + 1)
+
             val newSize = k.size + 1
-            val newKeys = k.copyOf(newSize)
-            newKeys[k.size] = char
+            val newKeys = CharArray(newSize)
 
-            // Resize children array
-            // If the array is empty, we must create a new one of correct type.
-            // Using arrayOfNulls<Node<T>>(newSize) works as generic array creation workaround
-            val newChildren = if (children.isEmpty()) {
-                arrayOfNulls<Node<T>>(newSize)
-            } else {
-                children.copyOf(newSize)
+            // Generic array creation workaround
+            val newChildren = arrayOfNulls<Node<T>>(newSize)
+
+            // Copy before insertion point
+            if (insertAt > 0) {
+                System.arraycopy(k, 0, newKeys, 0, insertAt)
+                System.arraycopy(children, 0, newChildren, 0, insertAt)
             }
 
+            // Insert new child
+            newKeys[insertAt] = char
             val newNode = Node<T>()
-            newChildren[children.size] = newNode
+            newChildren[insertAt] = newNode
+
+            // Copy after insertion point
+            if (insertAt < k.size) {
+                System.arraycopy(k, insertAt, newKeys, insertAt + 1, k.size - insertAt)
+                System.arraycopy(children, insertAt, newChildren, insertAt + 1, children.size - insertAt)
+            }
 
             keys = newKeys
             children = newChildren
