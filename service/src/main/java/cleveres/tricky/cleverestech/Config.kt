@@ -123,7 +123,7 @@ object Config {
         Logger.e("failed to update app configs", it)
     }
 
-    fun parsePackages(lines: List<String>, isTeeBrokenMode: Boolean): Pair<PackageTrie<Boolean>, PackageTrie<Boolean>> {
+    fun parsePackages(lines: Sequence<String>, isTeeBrokenMode: Boolean): Pair<PackageTrie<Boolean>, PackageTrie<Boolean>> {
         val hackPackages = PackageTrie<Boolean>()
         val generatePackages = PackageTrie<Boolean>()
         lines.forEach {
@@ -145,7 +145,11 @@ object Config {
             Logger.i("Global mode is enabled, skipping updateTargetPackages execution.")
             return@runCatching
         }
-        val (h, g) = parsePackages(f?.readLines() ?: emptyList(), isTeeBrokenMode)
+        val (h, g) = if (f != null && f.exists()) {
+            f.useLines { parsePackages(it, isTeeBrokenMode) }
+        } else {
+            parsePackages(emptySequence(), isTeeBrokenMode)
+        }
         targetState = TargetState(h, g)
         Logger.i { "update hack packages: ${h.size}, generate packages=${g.size}" }
     }.onFailure {
