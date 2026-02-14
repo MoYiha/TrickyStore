@@ -9,6 +9,8 @@ import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 
 object Config {
@@ -443,9 +445,9 @@ object Config {
 
         val patchStr = patchVal as String
         val effectiveDate = if (patchStr.equals("today", ignoreCase = true)) {
-            java.time.LocalDate.now().toString()
+            Instant.ofEpochMilli(clockSource()).atZone(ZoneId.systemDefault()).toLocalDate().toString()
         } else if (patchStr.contains("YYYY") || patchStr.contains("MM") || patchStr.contains("DD")) {
-             val now = java.time.LocalDate.now()
+             val now = Instant.ofEpochMilli(clockSource()).atZone(ZoneId.systemDefault()).toLocalDate()
              patchStr.replace("YYYY", String.format("%04d", now.year))
                      .replace("MM", String.format("%02d", now.monthValue))
                      .replace("DD", String.format("%02d", now.dayOfMonth))
