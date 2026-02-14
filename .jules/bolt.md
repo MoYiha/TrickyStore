@@ -31,3 +31,7 @@
 ## 2026-06-15 - [Thundering Herd on Cache Miss]
 **Learning:** `Config.getPackages(uid)` used a simple check-then-act pattern for caching. When multiple threads requested the same UID simultaneously (e.g., during app startup), they would all miss the cache and trigger expensive IPC calls (`getPackagesForUid`), causing a "thundering herd" effect.
 **Action:** Use `ConcurrentHashMap.compute` (or `computeIfAbsent`) to atomically handle cache misses. This ensures only one thread performs the expensive operation while others wait for the result. Be careful to check the cache *inside* the compute block (double-check locking) if optimistic reads are used.
+
+## 2026-06-16 - [Regex Overhead in Hot Paths]
+**Learning:** `WebServer.isSafeHost` was using `Regex.matches()` for IPv4/IPv6 validation on every request. This caused `Matcher` allocation and regex engine overhead. Replacing it with manual character loop validation yielded an 8.4x speedup (1258ns -> 149ns).
+**Action:** For simple string validation patterns in hot paths, prefer manual loops over `Regex` to avoid allocation and overhead.

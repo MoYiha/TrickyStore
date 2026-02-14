@@ -27,8 +27,6 @@ private val SAFE_BUILD_VAR_VALUE_REGEX = Regex("^[a-zA-Z0-9_\\-\\.\\s/:,+=()@]*$
 private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
 private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
-private val IPV4_REGEX = Regex("^[0-9.]+$")
-private val IPV6_REGEX = Regex("^[0-9a-fA-F:\\[\\]]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
 
 class WebServer(
@@ -783,12 +781,30 @@ class WebServer(
         if (hostname.equals("localhost", ignoreCase = true)) return true
 
         // IPv4: digits and dots
-        if (IPV4_REGEX.matches(hostname)) return true
+        if (isIpv4(hostname)) return true
 
         // IPv6: hex, colons, brackets (no dots)
-        if (IPV6_REGEX.matches(hostname)) return true
+        if (isIpv6(hostname)) return true
 
         return false
+    }
+
+    private fun isIpv4(s: String): Boolean {
+        if (s.isEmpty()) return false
+        for (i in s.indices) {
+            val c = s[i]
+            if ((c < '0' || c > '9') && c != '.') return false
+        }
+        return true
+    }
+
+    private fun isIpv6(s: String): Boolean {
+        if (s.isEmpty()) return false
+        for (i in s.indices) {
+            val c = s[i]
+            if ((c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') && c != ':' && c != '[' && c != ']') return false
+        }
+        return true
     }
 
     private val htmlContent by lazy {
