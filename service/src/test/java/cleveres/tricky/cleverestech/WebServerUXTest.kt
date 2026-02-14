@@ -88,7 +88,7 @@ class WebServerUXTest {
 
         // Verify Textarea has onkeydown handler
         assertTrue("File editor textarea should have onkeydown handler for Ctrl+S",
-            html.contains("onkeydown=\"if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();document.getElementById('saveBtn').click();}\"")
+            html.contains("onkeydown=\"if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}\"")
         )
     }
 }

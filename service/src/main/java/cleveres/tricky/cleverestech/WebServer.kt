@@ -1208,9 +1208,9 @@ class WebServer(
                     <option value="app_config">app_config</option>
                     <option value="drm_fix">drm_fix</option>
                 </select>
-                <button id="saveBtn" onclick="runWithState(this, 'Saving...', saveFile)" title="Ctrl+S">Save</button>
+                <button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button>
             </div>
-            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();document.getElementById('saveBtn').click();}"></textarea>
+            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" oninput="updateSaveButtonState()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}"></textarea>
         </div>
     </div>
 
@@ -1649,9 +1649,21 @@ class WebServer(
         }
 
         let currentFile = '';
+        let originalContent = '';
+
         async function loadFile() {
             const f = document.getElementById('fileSelector').value;
             const editor = document.getElementById('fileEditor');
+
+            // Dirty State Check
+            if (currentFile && editor.value !== originalContent) {
+                if (!confirm('You have unsaved changes. Discard them?')) {
+                    // Revert selection
+                    document.getElementById('fileSelector').value = currentFile;
+                    return;
+                }
+            }
+
             currentFile = f;
 
             editor.disabled = true;
@@ -1660,7 +1672,10 @@ class WebServer(
             try {
                 const res = await fetchAuth(getAuthUrl('/api/file?filename=' + f));
                 if (res.ok) {
-                    editor.value = await res.text();
+                    const text = await res.text();
+                    editor.value = text;
+                    originalContent = text;
+                    updateSaveButtonState();
                 } else {
                     editor.value = 'Error loading file';
                     notify('Load Failed', 'error');
@@ -1680,7 +1695,32 @@ class WebServer(
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
+             originalContent = c;
              notify('File Saved');
+        }
+
+        async function handleSave(btn) {
+             btn.disabled = true;
+             const origText = btn.innerText;
+             btn.innerText = 'Saving...';
+             try {
+                 await saveFile();
+             } finally {
+                 btn.disabled = false;
+                 updateSaveButtonState();
+             }
+        }
+
+        function updateSaveButtonState() {
+            const editor = document.getElementById('fileEditor');
+            const btn = document.getElementById('saveBtn');
+            if (editor.value !== originalContent) {
+                btn.innerText = 'Save *';
+                btn.classList.add('primary');
+            } else {
+                btn.innerText = 'Save';
+                btn.classList.remove('primary');
+            }
         }
 
         async function uploadKeybox() {

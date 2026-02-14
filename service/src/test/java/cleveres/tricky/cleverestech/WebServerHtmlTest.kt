@@ -166,4 +166,25 @@ class WebServerHtmlTest {
         assertTrue("Media Checkbox is missing", html.contains("id=\"permMedia\""))
         assertTrue("Media Checkbox is disabled", !html.contains("id=\"permMedia\" class=\"toggle\" style=\"transform:scale(0.8)\" disabled"))
     }
+
+    @Test
+    fun testEditorDirtyStateProtection() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // Verify HTML Attributes
+        assertTrue("Missing oninput handler", html.contains("oninput=\"updateSaveButtonState()\""))
+        assertTrue("Missing handleSave in onkeydown", html.contains("handleSave(document.getElementById('saveBtn'))"))
+        assertTrue("Missing handleSave in onclick", html.contains("onclick=\"handleSave(this)\""))
+
+        // Verify JavaScript Logic
+        assertTrue("Missing originalContent variable", html.contains("let originalContent = '';"))
+        assertTrue("Missing dirty state check", html.contains("if (currentFile && editor.value !== originalContent)"))
+        assertTrue("Missing confirm dialog", html.contains("if (!confirm('You have unsaved changes. Discard them?'))"))
+        assertTrue("Missing updateSaveButtonState function", html.contains("function updateSaveButtonState()"))
+        assertTrue("Missing visual indicator logic", html.contains("btn.innerText = 'Save *';"))
+    }
 }
