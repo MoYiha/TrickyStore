@@ -1,4 +1,3 @@
-
 import org.json.JSONObject
 import java.math.BigInteger
 import java.util.HashSet
@@ -35,9 +34,12 @@ fun main() {
             println("Not a decimal: ${e.message}")
         }
 
-        if (added && (decStr.length == 32 || decStr.length == 40 || decStr.length == 64)) {
-            println("Ambiguity detected. Adding literal: $decStr")
-            set.add(decStr.lowercase())
+        // Ambiguity handling (mirrors KeyboxVerifier logic)
+        if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
+            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+                println("Ambiguity detected. Adding literal: $decStr")
+                set.add(decStr.lowercase())
+            }
         }
     }
 
