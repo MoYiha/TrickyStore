@@ -9,10 +9,16 @@ import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -653,6 +659,50 @@ class WebServer(
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
+        if (uri == "/api/backup" && method == Method.GET) {
+            return try {
+                val zipBytes = createBackupZip(configDir)
+                val response = newFixedLengthResponse(Response.Status.OK, "application/zip", ByteArrayInputStream(zipBytes), zipBytes.size.toLong())
+                response.addHeader("Content-Disposition", "attachment; filename=\"cleverestricky_backup.zip\"")
+                response
+            } catch (e: Exception) {
+                Logger.e("Failed to create backup", e)
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Backup failed")
+            }
+        }
+
+        if (uri == "/api/restore" && method == Method.POST) {
+             val files = HashMap<String, String>()
+             try {
+                 session.parseBody(files)
+             } catch (e: Exception) {
+                 return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+             }
+
+             val tmpFilePath = files["file"]
+             if (tmpFilePath != null) {
+                 val tmpFile = File(tmpFilePath)
+                 return try {
+                     runBlocking {
+                         fileMutex.withLock {
+                             restoreBackupZip(configDir, tmpFile.inputStream())
+                             // Touch target.txt to trigger reload if it exists
+                             val target = File(configDir, "target.txt")
+                             if (target.exists()) target.setLastModified(System.currentTimeMillis())
+                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
+                         }
+                     }
+                 } catch (e: Exception) {
+                     Logger.e("Failed to restore backup", e)
+                     secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Restore failed: ${e.message}")
+                 } finally {
+                     // Clean up temp file
+                     try { tmpFile.delete() } catch(e: Exception) {}
+                 }
+             }
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "No file uploaded")
+        }
+
         if (uri == "/" || uri == "/index.html") {
             return secureResponse(Response.Status.OK, "text/html", getHtml())
         }
@@ -986,6 +1036,16 @@ class WebServer(
                     <span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span>
                     <button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button>
                 </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>Configuration Management</h3>
+            <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Backup and restore all settings, keyboxes, and spoofing rules.</div>
+            <div class="grid-2">
+                <button onclick="backupConfig()">Backup Config</button>
+                <button onclick="document.getElementById('restoreInput').click()">Restore Config</button>
+                <input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip">
             </div>
         </div>
 
@@ -1659,6 +1719,39 @@ class WebServer(
             setTimeout(() => window.location.reload(), 1000);
         }
 
+        async function backupConfig() {
+            window.location.href = getAuthUrl('/api/backup') + '?token=' + token;
+        }
+
+        async function restoreConfig(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                if (!confirm('This will overwrite your current configuration. Continue?')) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                notify('Restoring...', 'working');
+                try {
+                    const res = await fetchAuth(getAuthUrl('/api/restore'), {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (res.ok) {
+                        notify('Restore Successful');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } else {
+                        const txt = await res.text();
+                        notify('Restore Failed: ' + txt, 'error');
+                    }
+                } catch (e) {
+                    notify('Connection Error', 'error');
+                }
+                // Reset input
+                input.value = '';
+            }
+        }
+
         let currentFile = '';
         let originalContent = '';
 
@@ -1823,6 +1916,82 @@ class WebServer(
                 array.put(obj)
             }
             return array.toString()
+        }
+
+        private val BACKUP_FILES = setOf(
+            "target.txt", "security_patch.txt", "spoof_build_vars", "app_config",
+            "drm_fix", "random_on_boot", "global_mode", "tee_broken_mode",
+            "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_drm_on_boot",
+            "remote_keys.xml", "custom_templates", "keybox.xml"
+        )
+
+        fun createBackupZip(configDir: File): ByteArray {
+             val baos = ByteArrayOutputStream()
+             ZipOutputStream(baos).use { zos ->
+                 // 1. Root files
+                 BACKUP_FILES.forEach { name ->
+                     val f = File(configDir, name)
+                     if (f.exists() && f.isFile) {
+                         try {
+                             val entry = ZipEntry(name)
+                             zos.putNextEntry(entry)
+                             f.inputStream().use { it.copyTo(zos) }
+                             zos.closeEntry()
+                         } catch (e: Exception) {
+                             Logger.e("Failed to backup file: $name", e)
+                         }
+                     }
+                 }
+
+                 // 2. Keyboxes directory
+                 val kbDir = File(configDir, "keyboxes")
+                 if (kbDir.exists() && kbDir.isDirectory) {
+                     kbDir.listFiles()?.forEach { f ->
+                         if (f.isFile && f.name.endsWith(".xml")) {
+                             try {
+                                 val entry = ZipEntry("keyboxes/${f.name}")
+                                 zos.putNextEntry(entry)
+                                 f.inputStream().use { it.copyTo(zos) }
+                                 zos.closeEntry()
+                             } catch (e: Exception) {
+                                 Logger.e("Failed to backup keybox: ${f.name}", e)
+                             }
+                         }
+                     }
+                 }
+             }
+             return baos.toByteArray()
+        }
+
+        fun restoreBackupZip(configDir: File, inputStream: InputStream) {
+            ZipInputStream(inputStream).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    // Security: Validate path (no directory traversal)
+                    if (!name.contains("..") && !name.startsWith("/")) {
+                        if (name.startsWith("keyboxes/") && name.endsWith(".xml")) {
+                             // Restore keybox
+                             val kbName = name.substringAfter("keyboxes/")
+                             // Validate filename strictly
+                             if (kbName.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+                                 val kbDir = File(configDir, "keyboxes")
+                                 if (!kbDir.exists()) SecureFile.mkdirs(kbDir, 448)
+                                 val f = File(kbDir, kbName)
+                                 val content = zis.readBytes().toString(Charsets.UTF_8)
+                                 SecureFile.writeText(f, content)
+                             }
+                        } else if (BACKUP_FILES.contains(name)) {
+                             // Restore config file
+                             val f = File(configDir, name)
+                             val content = zis.readBytes().toString(Charsets.UTF_8)
+                             SecureFile.writeText(f, content)
+                        }
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
         }
     }
 }

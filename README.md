@@ -160,6 +160,17 @@ io.github.vvb2060.keyattestation
 com.google.android.gms!
 ```
 
+### Backup & Restore Configuration
+
+You can backup your entire configuration (including keyboxes, spoofing rules, identity settings, and custom templates) and restore it later. This is useful when moving to a new device or re-installing the module.
+
+**How to use:**
+1.  Navigate to the **Dashboard** in the WebUI.
+2.  Scroll to the **Configuration Management** section.
+3.  Click **Backup Config** to download a ZIP file containing your settings.
+4.  To restore, click **Restore Config** and select your previously backed-up ZIP file.
+    -   *Note:* Restoring will overwrite your current settings and reload the configuration immediately.
+
 ## RKP Spoofing (STRONG Integrity)
 
 Remote Key Provisioning spoofing enables MEETS_STRONG_INTEGRITY.
