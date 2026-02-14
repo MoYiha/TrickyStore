@@ -54,6 +54,12 @@ public class XMLParser {
         int eventType = parser.getEventType();
         while (eventType != XmlPullParser.END_DOCUMENT) {
             switch (eventType) {
+                case XmlPullParser.DOCDECL:
+                    // Security: Explicitly reject DTDs to prevent XXE (XML External Entity) attacks.
+                    // Even if FEATURE_PROCESS_DOCDECL was disabled, checking the event type adds
+                    // a second layer of defense.
+                    throw new SecurityException("DTD is not allowed in this parser to prevent XXE attacks");
+
                 case XmlPullParser.START_TAG:
                     Element element = new Element(parser.getName());
                     for (int i = 0; i < parser.getAttributeCount(); i++) {
