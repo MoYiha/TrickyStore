@@ -192,6 +192,16 @@
             </div>
         </div>
 
+        <div class="panel">
+            <h3>Configuration Management</h3>
+            <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Backup and restore all settings, keyboxes, and spoofing rules.</div>
+            <div class="grid-2">
+                <button onclick="backupConfig()">Backup Config</button>
+                <button onclick="document.getElementById('restoreInput').click()">Restore Config</button>
+                <input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip">
+            </div>
+        </div>
+
         <div class="panel" style="text-align:center;">
             <h3>Community</h3>
             <div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div>
@@ -852,6 +862,39 @@
             await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' });
             notify('Config Reloaded');
             setTimeout(() => window.location.reload(), 1000);
+        }
+
+        async function backupConfig() {
+            window.location.href = getAuthUrl('/api/backup') + '?token=' + token;
+        }
+
+        async function restoreConfig(input) {
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                if (!confirm('This will overwrite your current configuration. Continue?')) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                notify('Restoring...', 'working');
+                try {
+                    const res = await fetchAuth(getAuthUrl('/api/restore'), {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (res.ok) {
+                        notify('Restore Successful');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } else {
+                        const txt = await res.text();
+                        notify('Restore Failed: ' + txt, 'error');
+                    }
+                } catch (e) {
+                    notify('Connection Error', 'error');
+                }
+                // Reset input
+                input.value = '';
+            }
         }
 
         let currentFile = '';
