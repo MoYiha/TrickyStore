@@ -706,12 +706,16 @@ object Config {
                 current
             } else {
                 val pm = getPm()
-                val pkgs = pm?.getPackagesForUid(uid) ?: emptyArray()
-                CachedPackage(pkgs, now)
+                if (pm == null) {
+                    null
+                } else {
+                    val pkgs = pm.getPackagesForUid(uid) ?: emptyArray()
+                    CachedPackage(pkgs, now)
+                }
             }
         }
 
-        return updatedEntry!!.value
+        return updatedEntry?.value ?: emptyArray()
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
