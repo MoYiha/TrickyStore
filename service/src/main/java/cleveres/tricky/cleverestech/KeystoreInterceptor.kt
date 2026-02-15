@@ -141,7 +141,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                 }
                 val p = Runtime.getRuntime().exec(
                     arrayOf(
-                        "./inject",
+                        "/data/adb/modules/cleverestricky/inject",
                         pid.toString(),
                         "libcleverestricky.so",
                         "entry"
