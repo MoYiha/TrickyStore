@@ -126,6 +126,18 @@ afterEvaluate {
                 into("lib")
             }
 
+            from(layout.buildDirectory.dir("intermediates/cxx/$variantCapped")) {
+                include("**/obj/**/inject")
+                eachFile {
+                    val segments = relativePath.segments
+                    if (segments.size >= 3 && segments[segments.size - 3] == "obj") {
+                        val abi = segments[segments.size - 2]
+                        relativePath = RelativePath(true, "lib", abi, "inject")
+                    }
+                }
+                includeEmptyDirs = false
+            }
+
             doLast {
                 val apk = file("${moduleDir.get().asFile}/service.apk")
                 if (!apk.exists() || apk.length() == 0L) {
