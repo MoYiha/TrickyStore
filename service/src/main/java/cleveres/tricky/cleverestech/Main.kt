@@ -61,6 +61,7 @@ fun main(args: Array<String>) {
         }
 
         Config.initialize()
+        BootLogic.run()
         while (true) {
             // Periodically check Telephony status in case com.android.phone crashes/restarts
             if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
