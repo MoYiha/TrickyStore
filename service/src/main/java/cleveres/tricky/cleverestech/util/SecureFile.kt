@@ -4,6 +4,7 @@ import android.system.Os
 import android.system.OsConstants
 import java.io.File
 import java.io.FileDescriptor
+import java.io.InputStream
 import cleveres.tricky.cleverestech.Logger
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -11,6 +12,7 @@ import kotlinx.coroutines.sync.withLock
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
+    fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {}
     fun mkdirs(file: File, mode: Int)
     fun touch(file: File, mode: Int)
 }
@@ -23,6 +25,14 @@ object SecureFile {
         runBlocking {
             mutex.withLock {
                 impl.writeText(file, content)
+            }
+        }
+    }
+
+    fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {
+        runBlocking {
+            mutex.withLock {
+                impl.writeStream(file, inputStream, limit)
             }
         }
     }
@@ -76,6 +86,57 @@ object SecureFile {
 
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to write to $path", e)
+                try { Os.remove(tmpPath) } catch(t: Throwable) {}
+                throw e
+            } finally {
+                if (fd != null) {
+                    try { Os.close(fd) } catch (e: Exception) {}
+                }
+            }
+        }
+
+        override fun writeStream(file: File, inputStream: InputStream, limit: Long) {
+            val path = file.absolutePath
+            val tmpPath = "$path.tmp"
+            var fd: FileDescriptor? = null
+            try {
+                // 384 decimal is 0600 octal (rw-------)
+                val mode = 384
+                val flags = OsConstants.O_CREAT or OsConstants.O_TRUNC or OsConstants.O_WRONLY
+                fd = Os.open(tmpPath, flags, mode)
+
+                // Ensure permissions are set correctly
+                Os.fchmod(fd, mode)
+
+                val buffer = ByteArray(8192) // 8KB buffer
+                var bytesRead: Int
+                var totalBytesWritten: Long = 0
+
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    if (limit > 0 && totalBytesWritten + bytesRead > limit) {
+                        throw java.io.IOException("File size exceeds limit of $limit bytes")
+                    }
+
+                    var chunkWritten = 0
+                    while (chunkWritten < bytesRead) {
+                        val w = Os.write(fd, buffer, chunkWritten, bytesRead - chunkWritten)
+                        if (w <= 0) break // Should not happen unless error
+                        chunkWritten += w
+                    }
+                    totalBytesWritten += bytesRead
+                }
+
+                // Sync to verify write
+                try { Os.fsync(fd) } catch(e: Exception) {}
+
+                // Close before rename
+                try { Os.close(fd); fd = null } catch(e: Exception) {}
+
+                // Atomic rename
+                Os.rename(tmpPath, path)
+
+            } catch (e: Exception) {
+                Logger.e("SecureFile: Failed to write stream to $path", e)
                 try { Os.remove(tmpPath) } catch(t: Throwable) {}
                 throw e
             } finally {
