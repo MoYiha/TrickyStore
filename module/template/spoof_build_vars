@@ -1,0 +1,27 @@
+MANUFACTURER=Google
+MODEL=Pixel 8 Pro
+FINGERPRINT=google/husky_beta/husky:15/AP31.240617.009/12094726:user/release-keys
+BRAND=google
+PRODUCT=husky_beta
+DEVICE=husky
+RELEASE=15
+ID=AP31.240617.009
+INCREMENTAL=12094726
+TYPE=user
+TAGS=release-keys
+SECURITY_PATCH=2024-07-05
+ro.boot.verifiedbootstate=green
+ro.boot.flash.locked=1
+ro.boot.veritymode=enforcing
+ro.boot.vbmeta.device_state=locked
+ro.boot.warranty_bit=0
+ro.secure=1
+ro.debuggable=0
+ro.oem_unlock_supported=0
+
+# RKP / KeyMint Spoofing
+ATTESTATION_ID_BRAND=google
+ATTESTATION_ID_DEVICE=husky
+ATTESTATION_ID_PRODUCT=husky_beta
+ATTESTATION_ID_MANUFACTURER=Google
+ATTESTATION_ID_MODEL=Pixel 8 Pro

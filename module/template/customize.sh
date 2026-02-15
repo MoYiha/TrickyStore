@@ -75,25 +75,35 @@ chmod 755 "$MODPATH/action.sh"
 if [ "$ARCH" = "x64" ]; then
   ui_print "- Extracting x64 libraries"
   extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
-  extract "$ZIPFILE" "lib/x86_64/libinject.so" "$MODPATH" true
+  extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
 else
   ui_print "- Extracting arm64 libraries"
   extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
-  extract "$ZIPFILE" "lib/arm64-v8a/libinject.so" "$MODPATH" true
+  extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
 fi
 
-mv "$MODPATH/libinject.so" "$MODPATH/inject"
-[ -f "$MODPATH/libinject.so.sha256" ] && mv "$MODPATH/libinject.so.sha256" "$MODPATH/inject.sha256"
 chmod 755 "$MODPATH/inject"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ ! -d "$CONFIG_DIR" ]; then
   ui_print "- Creating configuration directory"
   mkdir -p "$CONFIG_DIR"
-  [ ! -f "$CONFIG_DIR/spoof_build_vars" ] && touch "$CONFIG_DIR/spoof_build_vars"
 fi
 chmod 700 "$CONFIG_DIR"
+
+if [ ! -f "$CONFIG_DIR/spoof_build_vars" ]; then
+  ui_print "- Adding default spoof_build_vars"
+  extract "$ZIPFILE" 'spoof_build_vars' "$TMPDIR"
+  mv "$TMPDIR/spoof_build_vars" "$CONFIG_DIR/spoof_build_vars"
+fi
 [ -f "$CONFIG_DIR/spoof_build_vars" ] && chmod 600 "$CONFIG_DIR/spoof_build_vars"
+
+if [ ! -f "$CONFIG_DIR/security_patch.txt" ]; then
+  ui_print "- Adding default security_patch.txt"
+  extract "$ZIPFILE" 'security_patch.txt' "$TMPDIR"
+  mv "$TMPDIR/security_patch.txt" "$CONFIG_DIR/security_patch.txt"
+fi
+[ -f "$CONFIG_DIR/security_patch.txt" ] && chmod 600 "$CONFIG_DIR/security_patch.txt"
 
 if [ ! -f "$CONFIG_DIR/keybox.xml" ]; then
   ui_print "- Adding default software keybox"
