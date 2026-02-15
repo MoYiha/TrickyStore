@@ -128,7 +128,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -293,6 +293,10 @@ class WebServer(
             json.put("random_on_boot", fileExists("random_on_boot"))
             json.put("drm_fix", fileExists("drm_fix"))
             json.put("random_drm_on_boot", fileExists("random_drm_on_boot"))
+            json.put("auto_patch_update", fileExists("auto_patch_update"))
+            json.put("hide_sensitive_props", fileExists("hide_sensitive_props"))
+            json.put("spoof_region_cn", fileExists("spoof_region_cn"))
+            json.put("remove_magisk_32", fileExists("remove_magisk_32"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
@@ -1058,7 +1062,14 @@ class WebServer(
             <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" class="toggle" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
             <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" class="toggle" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
             <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" class="toggle" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
+            <div class="row"><label for="auto_patch_update">Auto Patch Update</label><input type="checkbox" class="toggle" id="auto_patch_update" onchange="toggle('auto_patch_update')"></div>
             <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
+
+            <div class="section-header">Boot Properties</div>
+            <div class="row"><label for="hide_sensitive_props">Hide Sensitive Props</label><input type="checkbox" class="toggle" id="hide_sensitive_props" onchange="toggle('hide_sensitive_props')"></div>
+            <div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" onchange="toggle('spoof_region_cn')"></div>
+            <div class="row"><label for="remove_magisk_32" style="color:var(--danger)">Remove Magisk 32-bit</label><input type="checkbox" class="toggle" id="remove_magisk_32" onchange="toggle('remove_magisk_32')"></div>
+            <div style="font-size:0.75em; color:var(--danger); margin-top:-5px;">Warning: May break older modules.</div>
 
             <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
                 <div class="row">
@@ -1449,7 +1460,7 @@ class WebServer(
             try {
                 const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
-                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
@@ -1947,6 +1958,7 @@ class WebServer(
             "target.txt", "security_patch.txt", "spoof_build_vars", "app_config",
             "drm_fix", "random_on_boot", "global_mode", "tee_broken_mode",
             "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_drm_on_boot",
+            "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32",
             "remote_keys.xml", "custom_templates", "keybox.xml", "templates.json"
         )
 
