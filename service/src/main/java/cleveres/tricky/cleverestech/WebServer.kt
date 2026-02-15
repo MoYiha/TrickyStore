@@ -1994,14 +1994,14 @@ class WebServer(
                                  val kbDir = File(configDir, "keyboxes")
                                  if (!kbDir.exists()) SecureFile.mkdirs(kbDir, 448)
                                  val f = File(kbDir, kbName)
-                                 val content = zis.readBytes().toString(Charsets.UTF_8)
-                                 SecureFile.writeText(f, content)
+                                 // Use streaming with 50MB limit to prevent OOM/ZipBomb
+                                 SecureFile.writeStream(f, zis, 50 * 1024 * 1024)
                              }
                         } else if (BACKUP_FILES.contains(name)) {
                              // Restore config file
                              val f = File(configDir, name)
-                             val content = zis.readBytes().toString(Charsets.UTF_8)
-                             SecureFile.writeText(f, content)
+                             // Use streaming with 50MB limit to prevent OOM/ZipBomb
+                             SecureFile.writeStream(f, zis, 50 * 1024 * 1024)
                         }
                     }
                     zis.closeEntry()
