@@ -26,6 +26,7 @@ object KeyboxVerifier {
 
     private const val CRL_URL = "https://android.googleapis.com/attestation/status"
     private val HASH_LENGTHS = listOf(32, 40, 64)
+    private val HEX_REGEX = Regex("^[0-9a-fA-F]+$")
 
     fun verify(configDir: File, crlFetcher: () -> Set<String>? = { fetchCrl() }): List<Result> {
         val results = ArrayList<Result>()
@@ -161,14 +162,14 @@ object KeyboxVerifier {
 
         // Ambiguity handling
         if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
-            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+            if (decStr.matches(HEX_REGEX)) {
                 set.add(decStr.lowercase())
             }
         }
 
         if (!added) {
             // Try treating as Hex (literal) as fallback
-            if (decStr.matches(Regex("^[0-9a-fA-F]+$"))) {
+            if (decStr.matches(HEX_REGEX)) {
                 try {
                     val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
                     set.add(hexStr)
