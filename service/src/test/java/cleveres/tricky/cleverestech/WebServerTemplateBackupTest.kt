@@ -33,6 +33,22 @@ class WebServerTemplateBackupTest {
                 file.writeText(content)
             }
 
+            override fun writeStream(file: File, inputStream: java.io.InputStream, limit: Long) {
+                file.parentFile?.mkdirs()
+                file.outputStream().use { output ->
+                    var totalBytes = 0L
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        if (limit > 0 && totalBytes + bytesRead > limit) {
+                            throw java.io.IOException("File size exceeds limit of $limit bytes")
+                        }
+                        output.write(buffer, 0, bytesRead)
+                        totalBytes += bytesRead
+                    }
+                }
+            }
+
             override fun mkdirs(file: File, mode: Int) {
                 file.mkdirs()
             }

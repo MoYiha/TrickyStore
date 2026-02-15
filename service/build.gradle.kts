@@ -80,7 +80,12 @@ android {
     testOptions {
         unitTests.all {
             it.testLogging {
-                events = setOf(org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT, org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR)
+                events = setOf(
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT,
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR,
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED
+                )
+                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
             }
         }
     }
