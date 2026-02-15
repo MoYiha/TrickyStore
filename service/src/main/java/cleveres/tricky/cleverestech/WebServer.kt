@@ -702,7 +702,7 @@ class WebServer(
         }
 
         if (uri == "/" || uri == "/index.html") {
-            return secureResponse(Response.Status.OK, "text/html", getHtml())
+            return secureResponse(Response.Status.OK, "text/html", htmlBytes)
         }
 
         return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
@@ -710,6 +710,15 @@ class WebServer(
 
     private fun secureResponse(status: Response.IStatus, mimeType: String, txt: String): Response {
         val response = newFixedLengthResponse(status, mimeType, txt)
+        return addSecureHeaders(response)
+    }
+
+    private fun secureResponse(status: Response.IStatus, mimeType: String, bytes: ByteArray): Response {
+        val response = newFixedLengthResponse(status, mimeType, ByteArrayInputStream(bytes), bytes.size.toLong())
+        return addSecureHeaders(response)
+    }
+
+    private fun addSecureHeaders(response: Response): Response {
         response.addHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
         response.addHeader("X-Content-Type-Options", "nosniff")
         response.addHeader("X-Frame-Options", "DENY")
@@ -855,6 +864,10 @@ class WebServer(
             if ((c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') && c != ':' && c != '[' && c != ']') return false
         }
         return true
+    }
+
+    private val htmlBytes by lazy {
+        htmlContent.toByteArray(Charsets.UTF_8)
     }
 
     private val htmlContent by lazy {
@@ -1915,10 +1928,6 @@ class WebServer(
 </body>
 </html>
         """.trimIndent()
-    }
-
-    private fun getHtml(): String {
-        return htmlContent
     }
 
     companion object {
