@@ -1947,7 +1947,7 @@ class WebServer(
             "target.txt", "security_patch.txt", "spoof_build_vars", "app_config",
             "drm_fix", "random_on_boot", "global_mode", "tee_broken_mode",
             "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_drm_on_boot",
-            "remote_keys.xml", "custom_templates", "keybox.xml"
+            "remote_keys.xml", "custom_templates", "keybox.xml", "templates.json"
         )
 
         fun createBackupZip(configDir: File): ByteArray {
