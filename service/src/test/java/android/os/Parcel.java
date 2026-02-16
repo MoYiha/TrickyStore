@@ -47,6 +47,11 @@ public class Parcel {
         Object o = queue.poll();
         return (o instanceof Long) ? (Long) o : 0L;
     }
+    public String readString() {
+        Object o = queue.poll();
+        return (o instanceof String) ? (String) o : null;
+    }
+    public void writeString(String val) { queue.add(val); }
 
     // Other stubs
     public void writeNoException() {}

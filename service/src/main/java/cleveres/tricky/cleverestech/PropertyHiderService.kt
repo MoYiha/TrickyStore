@@ -19,6 +19,15 @@ class PropertyHiderService : Binder() {
             reply?.writeNoException() // Important: write no exception before writing result
 
             if (propertyName != null) {
+                // Security: Prevent exposure of internal configuration variables
+                if (propertyName.startsWith("ATTESTATION_ID_")) {
+                    if (BuildConfig.DEBUG) {
+                        Logger.d("PropertyHiderService: Blocked access to sensitive config '$propertyName' from ${Binder.getCallingUid()}")
+                    }
+                    reply?.writeString(null)
+                    return true
+                }
+
                 // Use getBuildVar as it holds the loaded properties from spoof_build_vars
                 val callingUid = Binder.getCallingUid()
                 val spoofedValue = Config.getBuildVar(propertyName, callingUid)

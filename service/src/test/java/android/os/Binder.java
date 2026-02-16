@@ -1,6 +1,9 @@
 package android.os;
 
 public class Binder implements IBinder {
+    public static int callingUid = 0;
+    public static int getCallingUid() { return callingUid; }
+
     public boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
         return false;
     }
