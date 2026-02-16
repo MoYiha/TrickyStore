@@ -413,8 +413,8 @@ class WebServer(
                                             // Security: Validate template and keybox to prevent XSS
                                             val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
                                             val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
-                                            // Validate permissions: Comma-separated uppercase alphanumeric
-                                            val isPermsValid = perms.isEmpty() || perms.matches(Regex("^[A-Z0-9,]+$"))
+                                            // Validate permissions: Comma-separated alphanumeric, dots, underscores (standard permission format)
+                                            val isPermsValid = perms.isEmpty() || perms.matches(Regex("^[a-zA-Z0-9_.,]+$"))
 
                                             if (isTmplValid && isKbValid && isPermsValid) {
                                                 val obj = JSONObject()
@@ -482,7 +482,7 @@ class WebServer(
                          }
 
                          // Validate permissions
-                         if (permsStr != "null" && !permsStr.matches(Regex("^[A-Z0-9,]+$"))) {
+                         if (permsStr != "null" && !permsStr.matches(Regex("^[a-zA-Z0-9_.,]+$"))) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid permission format")
                          }
 
@@ -769,7 +769,7 @@ class WebServer(
                     if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return false
 
                     // Permissions (optional)
-                    if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(Regex("^[A-Z0-9,]+$"))) return false
+                    if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(Regex("^[A-zA-Z0-9_.,]+$"))) return false
                 }
             }
             "target.txt" -> {
