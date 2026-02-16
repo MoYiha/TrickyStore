@@ -1100,14 +1100,14 @@ class WebServer(
             <h3>Support Project</h3>
             <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Your contributions help maintain and develop new features.</div>
 
-            <div class="section-header">Crypto (Click to Copy)</div>
+            <div class="section-header">Crypto</div>
             <div class="grid-2">
-                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!', this)">USDT (TRC20)</button>
-                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!', this)">Monero (XMR)</button>
+                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!', this)" title="Click to copy address" aria-label="Copy USDT TRC20 Address"><span aria-hidden="true">📋</span> USDT (TRC20)</button>
+                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!', this)" title="Click to copy address" aria-label="Copy Monero Address"><span aria-hidden="true">📋</span> Monero (XMR)</button>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)">Binance ID</button>
-                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!', this)">USDT (ERC20)</button>
+                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span> Binance ID</button>
+                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!', this)" title="Click to copy address" aria-label="Copy USDT ERC20 Address"><span aria-hidden="true">📋</span> USDT (ERC20)</button>
             </div>
 
             <div class="section-header">Platforms</div>
@@ -1156,7 +1156,7 @@ class WebServer(
                 </div>
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <span>Fingerprint</span>
-                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding:2px 8px; font-size:0.7em;">Copy</button>
+                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding:2px 8px; font-size:0.7em;" title="Click to copy fingerprint" aria-label="Copy Fingerprint"><span aria-hidden="true">📋</span> Copy</button>
                 </div>
                 <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
@@ -1348,9 +1348,9 @@ class WebServer(
             const onSuccess = () => {
                 notify(msg, 'normal');
                 if (btn) {
-                    const originalText = btn.innerText;
+                    const originalHtml = btn.innerHTML;
                     btn.innerText = '✓ Copied';
-                    setTimeout(() => btn.innerText = originalText, 2000);
+                    setTimeout(() => btn.innerHTML = originalHtml, 2000);
                 }
             };
 

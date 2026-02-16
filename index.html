@@ -185,7 +185,14 @@
             <div class="row"><label for="rkp_bypass">RKP Bypass (Strong)</label><input type="checkbox" class="toggle" id="rkp_bypass" onchange="toggle('rkp_bypass')"></div>
             <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" class="toggle" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
             <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" class="toggle" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
+            <div class="row"><label for="auto_patch_update">Auto Patch Update</label><input type="checkbox" class="toggle" id="auto_patch_update" onchange="toggle('auto_patch_update')"></div>
             <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
+
+            <div class="section-header">Boot Properties</div>
+            <div class="row"><label for="hide_sensitive_props">Hide Sensitive Props</label><input type="checkbox" class="toggle" id="hide_sensitive_props" onchange="toggle('hide_sensitive_props')"></div>
+            <div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" onchange="toggle('spoof_region_cn')"></div>
+            <div class="row"><label for="remove_magisk_32" style="color:var(--danger)">Remove Magisk 32-bit</label><input type="checkbox" class="toggle" id="remove_magisk_32" onchange="toggle('remove_magisk_32')"></div>
+            <div style="font-size:0.75em; color:var(--danger); margin-top:-5px;">Warning: May break older modules.</div>
 
             <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
                 <div class="row">
@@ -216,14 +223,14 @@
             <h3>Support Project</h3>
             <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Your contributions help maintain and develop new features.</div>
 
-            <div class="section-header">Crypto (Click to Copy)</div>
+            <div class="section-header">Crypto</div>
             <div class="grid-2">
-                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!', this)">USDT (TRC20)</button>
-                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!', this)">Monero (XMR)</button>
+                 <button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk', 'Copied TRC20!', this)" title="Click to copy address" aria-label="Copy USDT TRC20 Address"><span aria-hidden="true">📋</span> USDT (TRC20)</button>
+                 <button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv', 'Copied XMR!', this)" title="Click to copy address" aria-label="Copy Monero Address"><span aria-hidden="true">📋</span> Monero (XMR)</button>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)">Binance ID</button>
-                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!', this)">USDT (ERC20)</button>
+                 <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span> Binance ID</button>
+                 <button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b', 'Copied ERC20!', this)" title="Click to copy address" aria-label="Copy USDT ERC20 Address"><span aria-hidden="true">📋</span> USDT (ERC20)</button>
             </div>
 
             <div class="section-header">Platforms</div>
@@ -272,7 +279,7 @@
                 </div>
                 <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <span>Fingerprint</span>
-                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding:2px 8px; font-size:0.7em;">Copy</button>
+                    <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="padding:2px 8px; font-size:0.7em;" title="Click to copy fingerprint" aria-label="Copy Fingerprint"><span aria-hidden="true">📋</span> Copy</button>
                 </div>
                 <div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
@@ -464,9 +471,9 @@
             const onSuccess = () => {
                 notify(msg, 'normal');
                 if (btn) {
-                    const originalText = btn.innerText;
+                    const originalHtml = btn.innerHTML;
                     btn.innerText = '✓ Copied';
-                    setTimeout(() => btn.innerText = originalText, 2000);
+                    setTimeout(() => btn.innerHTML = originalHtml, 2000);
                 }
             };
 
@@ -576,7 +583,7 @@
             try {
                 const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
-                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot'].forEach(k => {
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 document.getElementById('keyboxStatus').innerText = `${data.keybox_count} Keys Loaded`;
