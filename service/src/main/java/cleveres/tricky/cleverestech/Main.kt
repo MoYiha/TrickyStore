@@ -15,6 +15,9 @@ fun main(args: Array<String>) {
     // Start Auto Cleaner
     KeyboxAutoCleaner.start()
 
+    // Start Keybox Fetcher
+    cleveres.tricky.cleverestech.util.KeyboxFetcher.schedule()
+
     // Start Web Server
     try {
         val configDir = File("/data/adb/cleverestricky")

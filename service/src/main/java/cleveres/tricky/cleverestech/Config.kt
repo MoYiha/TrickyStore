@@ -528,9 +528,29 @@ object Config {
     private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
+    private const val KEYBOX_SOURCE_FILE = "keybox_source.txt"
     private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private var root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)
+
+    val keyboxDirectory: File get() = keyboxDir
+
+    @Volatile
+    var keyboxSourceUrl: String? = null
+
+    private fun updateKeyboxSource(f: File?) = runCatching {
+        val url = f?.readText()?.trim()
+        if (!url.isNullOrBlank()) {
+            keyboxSourceUrl = url
+            Logger.i("update keybox source: $url")
+        } else {
+            keyboxSourceUrl = null
+            Logger.i("update keybox source: default")
+        }
+    }.onFailure {
+        keyboxSourceUrl = null
+        Logger.e("failed to update keybox source", it)
+    }
 
     private fun checkRandomDrm() {
         if (File(root, RANDOM_DRM_ON_BOOT_FILE).exists()) {
@@ -609,6 +629,8 @@ object Config {
                 DRM_FIX_FILE -> updateDrmFix(f)
 
                 MODULE_HASH_FILE -> updateModuleHash(f)
+
+                KEYBOX_SOURCE_FILE -> updateKeyboxSource(f)
             }
         }
     }
@@ -632,6 +654,7 @@ object Config {
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         RemoteKeyManager.update(File(root, REMOTE_KEYS_FILE))
         updateAppConfigs(File(root, APP_CONFIG_FILE))
+        updateKeyboxSource(File(root, KEYBOX_SOURCE_FILE))
 
         DeviceTemplateManager.initialize(root)
         updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
