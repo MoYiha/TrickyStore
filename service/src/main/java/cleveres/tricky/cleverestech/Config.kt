@@ -516,7 +516,6 @@ object Config {
     private const val KEYBOX_DIR = "keyboxes"
     private const val TARGET_FILE = "target.txt"
     private const val KEYBOX_FILE = "keybox.xml"
-    private const val KEYBOX_SOURCE_FILE = "keybox_source.txt"
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val RKP_BYPASS_FILE = "rkp_bypass"
@@ -529,6 +528,7 @@ object Config {
     private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
+    private const val KEYBOX_SOURCE_FILE = "keybox_source.txt"
     private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private var root = File(CONFIG_PATH)
     private val keyboxDir = File(root, KEYBOX_DIR)

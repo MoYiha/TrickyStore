@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech
 import android.system.Os
 import cleveres.tricky.cleverestech.rkp.LocalRkpProxy
 import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
-import cleveres.tricky.cleverestech.util.KeyboxHarvester
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.security.MessageDigest
@@ -16,8 +15,8 @@ fun main(args: Array<String>) {
     // Start Auto Cleaner
     KeyboxAutoCleaner.start()
 
-    // Start Keybox Harvester (God-Mode)
-    KeyboxHarvester.scheduleHarvest()
+    // Start Keybox Fetcher
+    cleveres.tricky.cleverestech.util.KeyboxFetcher.schedule()
 
     // Start Web Server
     try {

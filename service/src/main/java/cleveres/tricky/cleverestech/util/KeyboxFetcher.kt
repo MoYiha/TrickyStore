@@ -13,23 +13,67 @@ import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-object KeyboxHarvester {
-    private val executor = Executors.newSingleThreadScheduledExecutor()
-    private const val DEFAULT_SOURCE = "https://raw.githubusercontent.com/TrickyStore/Public-Keyboxes/main/pool.xml"
-    private const val MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkClient()) {
 
-    fun scheduleHarvest() {
-        executor.scheduleAtFixedRate({
-            harvest()
-        }, 5, 360, TimeUnit.MINUTES)
+    interface NetworkClient {
+        fun fetch(url: String): String?
     }
 
-    private fun harvest() {
-        val sourceUrl = Config.keyboxSourceUrl ?: DEFAULT_SOURCE
-        Logger.i("Harvester: Starting harvest from $sourceUrl")
+    class DefaultNetworkClient : NetworkClient {
+
+        override fun fetch(urlStr: String): String? {
+            return try {
+                val url = URL(urlStr)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
+                conn.requestMethod = "GET"
+                if (conn.responseCode == 200) {
+                    val length = conn.contentLength
+                    if (length > MAX_FILE_SIZE) {
+                        Logger.e("Fetcher: File too large ($length bytes)")
+                        return null
+                    }
+
+                    val sb = StringBuilder()
+                    val buffer = CharArray(8192)
+                    var read: Int
+                    var total = 0
+                    conn.inputStream.bufferedReader().use { reader ->
+                        while (reader.read(buffer).also { read = it } != -1) {
+                            total += read
+                            if (total > MAX_FILE_SIZE) {
+                                Logger.e("Fetcher: File exceeds size limit")
+                                return null
+                            }
+                            sb.append(buffer, 0, read)
+                        }
+                    }
+                    sb.toString()
+                } else {
+                    Logger.e("Fetcher: Failed to fetch $urlStr: ${conn.responseCode}")
+                    null
+                }
+            } catch (e: Exception) {
+                Logger.e("Fetcher: Exception fetching $urlStr", e)
+                null
+            }
+        }
+    }
+
+    fun harvest(
+        sourceUrl: String? = Config.keyboxSourceUrl,
+        outputDir: File = Config.keyboxDirectory
+    ) {
+        if (sourceUrl.isNullOrBlank()) {
+            Logger.i("Fetcher: No source URL configured.")
+            return
+        }
+
+        Logger.i("Fetcher: Starting harvest from $sourceUrl")
 
         try {
-            val content = fetchUrl(sourceUrl) ?: return
+            val content = networkClient.fetch(sourceUrl) ?: return
             val keyboxes = ArrayList<CertHack.KeyBox>()
 
             if (content.trimStart().startsWith("<")) {
@@ -38,7 +82,7 @@ object KeyboxHarvester {
                 content.lines().forEach { line ->
                     if (line.isNotBlank() && !line.startsWith("#")) {
                         val url = line.trim()
-                        val xml = fetchUrl(url)
+                        val xml = networkClient.fetch(url)
                         if (xml != null) {
                             keyboxes.addAll(CertHack.parseKeyboxXml(xml.reader(), "harvested_${url.hashCode()}.xml"))
                         }
@@ -47,66 +91,27 @@ object KeyboxHarvester {
             }
 
             if (keyboxes.isEmpty()) {
-                Logger.i("Harvester: No keyboxes found.")
+                Logger.i("Fetcher: No keyboxes found.")
                 return
             }
 
             val crl = KeyboxVerifier.fetchCrl()
             if (crl == null) {
-                Logger.e("Harvester: Failed to fetch CRL, aborting verification.")
+                Logger.e("Fetcher: Failed to fetch CRL, aborting verification.")
                 return
             }
 
             var added = 0
             for (kb in keyboxes) {
                 if (KeyboxVerifier.verifyKeybox(kb, crl) == KeyboxVerifier.Status.VALID) {
-                    saveKeybox(kb)
+                    saveKeybox(kb, outputDir)
                     added++
                 }
             }
-            Logger.i("Harvester: Finished. Added/Updated $added valid keyboxes.")
+            Logger.i("Fetcher: Finished. Added/Updated $added valid keyboxes.")
 
         } catch (e: Exception) {
-            Logger.e("Harvester: Error during harvest", e)
-        }
-    }
-
-    private fun fetchUrl(urlStr: String): String? {
-        return try {
-            val url = URL(urlStr)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 15000
-            conn.readTimeout = 15000
-            conn.requestMethod = "GET"
-            if (conn.responseCode == 200) {
-                val length = conn.contentLength
-                if (length > MAX_FILE_SIZE) {
-                     Logger.e("Harvester: File too large ($length bytes)")
-                     return null
-                }
-
-                val sb = StringBuilder()
-                val buffer = CharArray(8192)
-                var read: Int
-                var total = 0
-                conn.inputStream.bufferedReader().use { reader ->
-                    while (reader.read(buffer).also { read = it } != -1) {
-                        total += read
-                        if (total > MAX_FILE_SIZE) {
-                             Logger.e("Harvester: File exceeds size limit")
-                             return null
-                        }
-                        sb.append(buffer, 0, read)
-                    }
-                }
-                sb.toString()
-            } else {
-                Logger.e("Harvester: Failed to fetch $urlStr: ${conn.responseCode}")
-                null
-            }
-        } catch (e: Exception) {
-            Logger.e("Harvester: Exception fetching $urlStr", e)
-            null
+            Logger.e("Fetcher: Error during harvest", e)
         }
     }
 
@@ -114,13 +119,13 @@ object KeyboxHarvester {
     private val hexFormat = HexFormat { upperCase = false }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private fun saveKeybox(kb: CertHack.KeyBox) {
+    private fun saveKeybox(kb: CertHack.KeyBox, dir: File) {
         try {
             val pubEncoded = kb.keyPair.public.encoded
             val hash = MessageDigest.getInstance("SHA-256").digest(pubEncoded)
             val hashStr = hash.toHexString(hexFormat).substring(0, 16)
             val fileName = "harvested_$hashStr.xml"
-            val file = File(Config.keyboxDirectory, fileName)
+            val file = File(dir, fileName)
 
             if (file.exists()) return
 
@@ -151,9 +156,9 @@ object KeyboxHarvester {
             sb.append("</AndroidAttestation>\n")
 
             SecureFile.writeText(file, sb.toString())
-            Logger.i("Harvester: Saved new keybox $fileName")
+            Logger.i("Fetcher: Saved new keybox $fileName")
         } catch (e: Exception) {
-            Logger.e("Harvester: Failed to save keybox", e)
+            Logger.e("Fetcher: Failed to save keybox", e)
         }
     }
 
@@ -165,5 +170,16 @@ object KeyboxHarvester {
     private fun getPem(cert: Certificate): String {
         val encoded = Base64.getMimeEncoder(64, byteArrayOf(10)).encodeToString(cert.encoded)
         return "-----BEGIN CERTIFICATE-----\n$encoded\n-----END CERTIFICATE-----"
+    }
+
+    companion object {
+        private const val MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
+        private val executor = Executors.newSingleThreadScheduledExecutor()
+
+        fun schedule() {
+            executor.scheduleAtFixedRate({
+                KeyboxFetcher().harvest()
+            }, 5, 360, TimeUnit.MINUTES)
+        }
     }
 }

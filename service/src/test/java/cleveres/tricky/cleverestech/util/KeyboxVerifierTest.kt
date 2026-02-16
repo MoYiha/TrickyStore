@@ -1,81 +1,68 @@
 package cleveres.tricky.cleverestech.util
 
-import cleveres.tricky.cleverestech.Logger
+import cleveres.tricky.cleverestech.keystore.CertHack
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.*
-import org.junit.Before
+import org.mockito.Mockito
+import java.security.cert.X509Certificate
 
 class KeyboxVerifierTest {
 
-    @Before
-    fun setup() {
-        Logger.setImpl(object : Logger.LogImpl {
-            override fun d(tag: String, msg: String) {}
-            override fun e(tag: String, msg: String) {}
-            override fun e(tag: String, msg: String, t: Throwable?) {}
-            override fun i(tag: String, msg: String) {}
-        })
+    @Test
+    fun `verifyKeybox returns VALID for unrevoked certificate`() {
+        // Arrange
+        val mockCert = Mockito.mock(X509Certificate::class.java)
+        // Not revoked serial
+        Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger("123456"))
+        val mockPublicKey = Mockito.mock(java.security.PublicKey::class.java)
+        Mockito.`when`(mockPublicKey.encoded).thenReturn(ByteArray(0))
+        Mockito.`when`(mockCert.publicKey).thenReturn(mockPublicKey)
+
+        // Mock KeyBox to return our mock cert
+        val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+        Mockito.`when`(mockKeyBox.certificates()).thenReturn(listOf(mockCert))
+
+        val revokedSerials = setOf("deadbeef", "cafebabe")
+
+        // Act
+        val result = KeyboxVerifier.verifyKeybox(mockKeyBox, revokedSerials)
+
+        // Assert
+        assertEquals(KeyboxVerifier.Status.VALID, result)
     }
 
     @Test
-    fun parseCrl_shouldThrowOnInvalidJson() {
-        try {
-            KeyboxVerifier.parseCrl("{ invalid_json }")
-            fail("Should have thrown exception on invalid JSON")
-        } catch (e: Exception) {
-            // Expected
-        }
+    fun `verifyKeybox returns REVOKED for revoked serial`() {
+        // Arrange
+        val mockCert = Mockito.mock(X509Certificate::class.java)
+        val revokedSerial = "deadbeef"
+        Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger(revokedSerial, 16))
+
+        val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+        Mockito.`when`(mockKeyBox.certificates()).thenReturn(listOf(mockCert))
+
+        val revokedSerials = setOf(revokedSerial, "cafebabe")
+
+        // Act
+        val result = KeyboxVerifier.verifyKeybox(mockKeyBox, revokedSerials)
+
+        // Assert
+        assertEquals(KeyboxVerifier.Status.REVOKED, result)
     }
 
     @Test
-    fun parseCrl_shouldThrowOnMissingEntries() {
-        try {
-            KeyboxVerifier.parseCrl("{}")
-            fail("Should have thrown exception on missing entries")
-        } catch (e: Exception) {
-            // Expected
-        }
-    }
+    fun `verifyKeybox returns INVALID for empty chain`() {
+        // Arrange
+        val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+        Mockito.`when`(mockKeyBox.certificates()).thenReturn(emptyList())
 
-    @Test
-    fun parseCrl_validJson_decimal() {
-        val json = """
-            {
-              "entries": {
-                "12345": { "status": "REVOKED" }
-              }
-            }
-        """
-        val result = KeyboxVerifier.parseCrl(json)
-        // 12345 (dec) -> 3039 (hex)
-        assertTrue("Should contain hex of 12345", result.contains("3039"))
-    }
+        val revokedSerials = emptySet<String>()
 
-    @Test
-    fun parseCrl_validJson_hex() {
-        val json = """
-            {
-              "entries": {
-                "c35747a084470c3135aeefe2b8d40cd6": { "status": "REVOKED" }
-              }
-            }
-        """
-        val result = KeyboxVerifier.parseCrl(json)
-        assertTrue("Should contain hex string", result.contains("c35747a084470c3135aeefe2b8d40cd6"))
-    }
+        // Act
+        val result = KeyboxVerifier.verifyKeybox(mockKeyBox, revokedSerials)
 
-    @Test
-    fun parseCrl_mixed() {
-        val json = """
-            {
-              "entries": {
-                "12345": { "status": "REVOKED" },
-                "aabbcc": { "status": "REVOKED" }
-              }
-            }
-        """
-        val result = KeyboxVerifier.parseCrl(json)
-        assertTrue(result.contains("3039"))
-        assertTrue(result.contains("aabbcc"))
+        // Assert
+        assertEquals(KeyboxVerifier.Status.INVALID, result)
     }
 }

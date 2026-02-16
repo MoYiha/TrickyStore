@@ -28,6 +28,7 @@ object KeyboxVerifier {
     private val HASH_LENGTHS = listOf(32, 40, 64)
     private val HEX_REGEX = Regex("^[0-9a-fA-F]+$")
 
+    @JvmStatic
     fun verify(configDir: File, crlFetcher: () -> Set<String>? = { fetchCrl() }): List<Result> {
         val results = ArrayList<Result>()
         val revokedSerials = crlFetcher()
@@ -58,6 +59,7 @@ object KeyboxVerifier {
         return results
     }
 
+    @JvmStatic
     fun fetchCrl(): Set<String>? {
         return try {
             val url = URL(CRL_URL)
@@ -82,10 +84,12 @@ object KeyboxVerifier {
         }
     }
 
+    @JvmStatic
     fun parseCrl(jsonStr: String): Set<String> {
         return parseCrl(java.io.StringReader(jsonStr))
     }
 
+    @JvmStatic
     fun parseCrl(reader: java.io.Reader): Set<String> {
         val set = HashSet<String>()
         val jsonReader = android.util.JsonReader(reader)
@@ -196,11 +200,11 @@ object KeyboxVerifier {
                 if (status == Status.REVOKED) {
                     val chain = kb.certificates()
                     val sn = if (chain.isNotEmpty() && chain[0] is X509Certificate) {
-                        (chain[0] as X509Certificate).serialNumber.toString(16).lowercase()
+                         (chain[0] as X509Certificate).serialNumber.toString(16).lowercase()
                     } else "unknown"
                     return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
                 } else if (status == Status.INVALID) {
-                     return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
+                    return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
                 }
             }
 
@@ -210,6 +214,7 @@ object KeyboxVerifier {
         }
     }
 
+    @JvmStatic
     fun verifyKeybox(kb: CertHack.KeyBox, revokedSerials: Set<String>): Status {
         val chain = kb.certificates()
         if (chain.isEmpty()) return Status.INVALID
@@ -224,6 +229,7 @@ object KeyboxVerifier {
         return Status.VALID
     }
 
+    @JvmStatic
     fun isRevoked(cert: X509Certificate, revokedSerials: Set<String>): Boolean {
         // 1. Serial Number (Hex)
         val sn = cert.serialNumber.toString(16).lowercase()
