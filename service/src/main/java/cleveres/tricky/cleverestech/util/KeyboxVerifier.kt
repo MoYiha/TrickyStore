@@ -58,7 +58,7 @@ object KeyboxVerifier {
         return results
     }
 
-    private fun fetchCrl(): Set<String>? {
+    fun fetchCrl(): Set<String>? {
         return try {
             val url = URL(CRL_URL)
             val conn = url.openConnection() as HttpURLConnection
@@ -192,16 +192,15 @@ object KeyboxVerifier {
             }
 
             for (kb in keyboxes) {
-                val chain = kb.certificates()
-                if (chain.isEmpty()) continue
-
-                for (cert in chain) {
-                    if (cert is X509Certificate) {
-                        if (isRevoked(cert, revokedSerials)) {
-                            val sn = cert.serialNumber.toString(16).lowercase()
-                            return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
-                        }
-                    }
+                val status = verifyKeybox(kb, revokedSerials)
+                if (status == Status.REVOKED) {
+                    val chain = kb.certificates()
+                    val sn = if (chain.isNotEmpty() && chain[0] is X509Certificate) {
+                        (chain[0] as X509Certificate).serialNumber.toString(16).lowercase()
+                    } else "unknown"
+                    return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
+                } else if (status == Status.INVALID) {
+                     return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
                 }
             }
 
@@ -209,6 +208,20 @@ object KeyboxVerifier {
         } catch (e: Exception) {
             Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
         }
+    }
+
+    fun verifyKeybox(kb: CertHack.KeyBox, revokedSerials: Set<String>): Status {
+        val chain = kb.certificates()
+        if (chain.isEmpty()) return Status.INVALID
+
+        for (cert in chain) {
+            if (cert is X509Certificate) {
+                if (isRevoked(cert, revokedSerials)) {
+                    return Status.REVOKED
+                }
+            }
+        }
+        return Status.VALID
     }
 
     fun isRevoked(cert: X509Certificate, revokedSerials: Set<String>): Boolean {
