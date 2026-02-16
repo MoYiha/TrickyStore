@@ -51,13 +51,15 @@ class WebServer(
     private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB
 
     // Rate Limiting
-    private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Int>>()
+    private class RateLimitEntry(var timestamp: Long, var count: Int)
+    private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
     private val RATE_LIMIT = 100
     private val RATE_WINDOW = 60 * 1000L // 1 minute
 
     private val fileMutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Optimization: Use mutable RateLimitEntry to avoid creating new Pair objects on every request (GC pressure reduction)
     private fun isRateLimited(ip: String): Boolean {
         // Memory protection: Prevent unbounded growth
         if (requestCounts.size > 1000) {
@@ -67,13 +69,14 @@ class WebServer(
         // Use compute to atomically update the count for the IP
         val current = requestCounts.compute(ip) { _, v ->
             val now = System.currentTimeMillis()
-            if (v == null || now - v.first > RATE_WINDOW) {
-                now to 1
+            if (v == null || now - v.timestamp > RATE_WINDOW) {
+                RateLimitEntry(now, 1)
             } else {
-                v.first to (v.second + 1)
+                v.count++
+                v
             }
         }
-        return current!!.second > RATE_LIMIT
+        return current!!.count > RATE_LIMIT
     }
 
     private fun readFile(filename: String): String {
