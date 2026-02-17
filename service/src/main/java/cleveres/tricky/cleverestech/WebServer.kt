@@ -1304,8 +1304,10 @@ class WebServer(
                  ondragleave="this.classList.remove('drag-over');"
                  ondrop="handleDrop(event)">
                 <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
-                <div style="font-size: 2em; margin-bottom: 10px;">📂</div>
-                <div style="font-size: 0.9em; color: #888;">Click to select or drag XML file here</div>
+                <div id="dropZoneContent">
+                    <div style="font-size: 2em; margin-bottom: 10px;">📂</div>
+                    <div style="font-size: 0.9em; color: #888;">Click to select or drag XML file here</div>
+                </div>
             </div>
 
             <label for="kbFilename" style="display:block; font-size:0.8em; margin-bottom:5px; color:#888;">Target Filename</label>
@@ -1890,6 +1892,15 @@ class WebServer(
                  body: new URLSearchParams({ filename: f, content: c })
              });
              notify('Keybox Uploaded');
+             document.getElementById('kbFilename').value = '';
+             document.getElementById('kbContent').value = '';
+             resetDropZone();
+        }
+
+        function resetDropZone() {
+            const dz = document.getElementById('dropZoneContent');
+            dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Click to select or drag XML file here</div>';
+            document.getElementById('dropZone').style.borderColor = 'var(--border)';
         }
 
         function handleDrop(e) {
@@ -1905,6 +1916,9 @@ class WebServer(
             const reader = new FileReader();
             reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
             reader.readAsText(file);
+            const dz = document.getElementById('dropZoneContent');
+            dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px; color:var(--success);">📄</div><div style="font-size: 0.9em; color:#fff;">' + file.name + '</div>';
+            document.getElementById('dropZone').style.borderColor = 'var(--success)';
         }
 
         function loadFileContent(input) {
