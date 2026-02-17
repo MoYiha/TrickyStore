@@ -35,3 +35,7 @@
 ## 2026-06-16 - [Regex Overhead in Hot Paths]
 **Learning:** `WebServer.isSafeHost` was using `Regex.matches()` for IPv4/IPv6 validation on every request. This caused `Matcher` allocation and regex engine overhead. Replacing it with manual character loop validation yielded an 8.4x speedup (1258ns -> 149ns).
 **Action:** For simple string validation patterns in hot paths, prefer manual loops over `Regex` to avoid allocation and overhead.
+
+## 2026-06-17 - [Redundant Regex Compilation]
+**Learning:** WebServer's `serve` method and `validateContent` were compiling `Regex` objects inside loops (for permission and filename validation). This is a classic "compilation in loop" anti-pattern that wastes CPU cycles.
+**Action:** Move regex patterns to `private val` constants at the class or file level to compile them once and reuse.

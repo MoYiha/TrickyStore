@@ -70,6 +70,12 @@ class WebServerSaveValidationTest {
         val response = webServer.serve(mockSession("app_config", content))
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
         assertTrue(File(configDir, "app_config").exists())
+
+        // Test with permissions (added in recent optimization check)
+        val contentWithPerms = "com.example.app template1 keybox1.xml CONTACTS,MEDIA\n" +
+                               "com.test.pkg null null null\n" +
+                               "com.another.one template-2 keybox-2.xml null"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("app_config", contentWithPerms)).status)
     }
 
     @Test
@@ -77,6 +83,17 @@ class WebServerSaveValidationTest {
         val content = "com.example.app pixel8pro keybox.xml\nINJECTED LINE!!!!\n"
         val response = webServer.serve(mockSession("app_config", content))
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
+
+        // Invalid cases from optimization verification
+        val invalidPackage = "com.ex@mple.app template1 keybox1.xml null" // @ not allowed in pkg
+        val invalidTemplate = "com.example.app template*1 keybox1.xml null" // * not allowed in template
+        val invalidKeybox = "com.example.app template1 keybox/1.xml null" // / not allowed in keybox
+        val invalidPermissions = "com.example.app template1 keybox1.xml CONTACTS;MEDIA" // ; not allowed
+
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidPackage)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidTemplate)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidKeybox)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidPermissions)).status)
     }
 
     @Test
