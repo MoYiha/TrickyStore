@@ -429,12 +429,13 @@ object Config {
         val defaultLevel = patchLevel
         val patchVal = if (securityPatch.isNotEmpty()) {
             // Use cached getPackages to avoid expensive IPC call
-            val pkgName = getPackages(callingUid).firstOrNull()
-            if (pkgName != null) {
-                securityPatch[pkgName] ?: defaultSecurityPatch
-            } else {
-                defaultSecurityPatch
+            val pkgs = getPackages(callingUid)
+            var found: Any? = null
+            for (pkg in pkgs) {
+                found = securityPatch[pkg]
+                if (found != null) break
             }
+            found ?: defaultSecurityPatch
         } else {
             defaultSecurityPatch
         }

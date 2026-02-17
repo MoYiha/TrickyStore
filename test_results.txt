@@ -1,0 +1,1034 @@
+
+> Configure project :module
+Use ccache: /usr/bin/ccache
+
+> Task :service:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :service:preBuild UP-TO-DATE
+> Task :service:preDebugBuild UP-TO-DATE
+> Task :service:generateDebugBuildConfig UP-TO-DATE
+> Task :service:checkDebugAarMetadata UP-TO-DATE
+> Task :service:generateDebugResValues UP-TO-DATE
+> Task :service:mapDebugSourceSetPaths UP-TO-DATE
+> Task :service:generateDebugResources UP-TO-DATE
+> Task :service:mergeDebugResources UP-TO-DATE
+> Task :service:packageDebugResources UP-TO-DATE
+> Task :service:parseDebugLocalResources UP-TO-DATE
+> Task :service:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :service:extractDeepLinksDebug UP-TO-DATE
+> Task :service:processDebugMainManifest UP-TO-DATE
+> Task :service:processDebugManifest UP-TO-DATE
+> Task :service:processDebugManifestForPackage UP-TO-DATE
+> Task :service:processDebugResources UP-TO-DATE
+> Task :stub:preBuild UP-TO-DATE
+> Task :stub:preDebugBuild UP-TO-DATE
+> Task :stub:generateDebugResValues UP-TO-DATE
+> Task :stub:generateDebugResources UP-TO-DATE
+> Task :stub:packageDebugResources UP-TO-DATE
+> Task :stub:parseDebugLocalResources UP-TO-DATE
+> Task :stub:generateDebugRFile UP-TO-DATE
+> Task :stub:javaPreCompileDebug UP-TO-DATE
+> Task :stub:compileDebugJavaWithJavac UP-TO-DATE
+> Task :stub:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :service:compileDebugKotlin UP-TO-DATE
+> Task :service:javaPreCompileDebug UP-TO-DATE
+> Task :service:compileDebugJavaWithJavac UP-TO-DATE
+> Task :service:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :service:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :service:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :service:preDebugUnitTestBuild UP-TO-DATE
+> Task :service:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :service:compileDebugUnitTestJavaWithJavac UP-TO-DATE
+> Task :service:processDebugJavaRes UP-TO-DATE
+> Task :service:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :stub:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :stub:processDebugJavaRes NO-SOURCE
+
+> Task :service:testDebugUnitTest
+
+cleveres.tricky.cleverestech.ActionTest > testSaveFile STANDARD_OUT
+    I/SysService: clear all keyboxes
+    I/SysService: clear all keyboxes
+
+cleveres.tricky.cleverestech.ActionTest > testCertHackStatus STANDARD_OUT
+    I/SysService: clear all keyboxes
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: clear all keyboxes
+    I/SysService: clear all keyboxes
+
+cleveres.tricky.cleverestech.ActionTest > testWebServerStartsAndServesConfig STANDARD_OUT
+    I/SysService: clear all keyboxes
+    Config response: {"random_on_boot":false,"templates":[],"keybox_count":0,"rkp_bypass":false,"auto_keybox_check":false,"global_mode":false,"tee_broken_mode":false,"random_drm_on_boot":false,"drm_fix":false,"auto_beta_fetch":false,"auto_patch_update":false,"remove_magisk_32":false,"files":["keybox.xml","target.txt","security_patch.txt","spoof_build_vars","app_config","drm_fix"],"hide_sensitive_props":false,"spoof_region_cn":false}
+    I/SysService: clear all keyboxes
+
+cleveres.tricky.cleverestech.AppConfigKeyboxValidationTest > testKeyboxWithSpecialCharactersShouldBeRejected STANDARD_OUT
+    Response: 400 - Rejected
+
+cleveres.tricky.cleverestech.CborEncoderTest > testCanonicalMapSorting STANDARD_OUT
+    Encoded: a261620262616101
+
+cleveres.tricky.cleverestech.CborEncoderTest > testCanonicalMapSortingLongerKeys STANDARD_OUT
+    Encoded: a26876625f7374617465026c6d616e75666163747572657201
+
+cleveres.tricky.cleverestech.ConfigEnhancementTest > testCustomTemplates STANDARD_OUT
+    I/SysService: Updated templates: [mytemplate, another]
+
+cleveres.tricky.cleverestech.ConfigEnhancementTest > testAttestationIdFallback STANDARD_OUT
+    I/SysService: update build vars: {}, attestation ids: []
+    I/SysService: update build vars: {MANUFACTURER=FallbackMan, MODEL=FallbackModel, ATTESTATION_ID_BRAND=ExplicitBrand}, attestation ids: [BRAND]
+
+cleveres.tricky.cleverestech.ConfigPackageCachePerformanceTest > testConcurrentAccessPerformance STANDARD_OUT
+    PERF_RESULT: 115
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testSmartPropertyMapping STANDARD_OUT
+    E/SysService: SecureFile: Failed to write to /tmp/test_config_smart241462529086127540/templates.json
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testSmartPropertyMapping STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigSmartMappingTest.setUp(ConfigSmartMappingTest.kt:19)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testSmartPropertyMapping STANDARD_OUT
+    E/SysService: Failed to save templates.json
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testSmartPropertyMapping STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigSmartMappingTest.setUp(ConfigSmartMappingTest.kt:19)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testSmartPropertyMapping STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testFallbackToSpoofedProperties STANDARD_OUT
+    E/SysService: SecureFile: Failed to write to /tmp/test_config_smart15463400425000620172/templates.json
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testFallbackToSpoofedProperties STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigSmartMappingTest.setUp(ConfigSmartMappingTest.kt:19)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testFallbackToSpoofedProperties STANDARD_OUT
+    E/SysService: Failed to save templates.json
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testFallbackToSpoofedProperties STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigSmartMappingTest.setUp(ConfigSmartMappingTest.kt:19)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigSmartMappingTest > testFallbackToSpoofedProperties STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+
+cleveres.tricky.cleverestech.ConfigTargetStateTest > testNeedGenerate_withTeeBroken STANDARD_OUT
+    I/SysService: Auto TEE broken mode is enabled
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withOverride STANDARD_OUT
+    E/SysService: SecureFile: Failed to write to /tmp/test_config_template18148863095397922237/templates.json
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withOverride STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigTemplateTest.setUp(ConfigTemplateTest.kt:16)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withOverride STANDARD_OUT
+    E/SysService: Failed to save templates.json
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withOverride STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigTemplateTest.setUp(ConfigTemplateTest.kt:16)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withOverride STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+    I/SysService: update build vars: {MANUFACTURER=Google, MODEL=My Custom Pixel, FINGERPRINT=google/cheetah/cheetah:14/AP1A.240305.019.A1/11445699:user/release-keys, BRAND=google, PRODUCT=cheetah, DEVICE=cheetah, RELEASE=14, ID=AP1A.240305.019.A1, INCREMENTAL=11445699, TYPE=user, TAGS=release-keys, SECURITY_PATCH=2024-03-05}, attestation ids: []
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withTemplate STANDARD_OUT
+    E/SysService: SecureFile: Failed to write to /tmp/test_config_template3902674101829401184/templates.json
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withTemplate STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigTemplateTest.setUp(ConfigTemplateTest.kt:16)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withTemplate STANDARD_OUT
+    E/SysService: Failed to save templates.json
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withTemplate STANDARD_ERROR
+    java.lang.RuntimeException: Method open in android.system.Os not mocked. See https://developer.android.com/r/studio-ui/build/not-mocked for details.
+	at android.system.Os.open(Os.java)
+	at cleveres.tricky.cleverestech.util.SecureFile$DefaultSecureFileOperations.writeText(SecureFile.kt:65)
+	at cleveres.tricky.cleverestech.util.SecureFile$writeText$1.invokeSuspend(SecureFile.kt:27)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at cleveres.tricky.cleverestech.util.SecureFile.writeText(SecureFile.kt:25)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.saveTemplates(DeviceTemplateManager.kt:203)
+	at cleveres.tricky.cleverestech.DeviceTemplateManager.initialize(DeviceTemplateManager.kt:137)
+	at cleveres.tricky.cleverestech.ConfigTemplateTest.setUp(ConfigTemplateTest.kt:16)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.RunBefores.invokeMethod(RunBefores.java:33)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:24)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.ConfigTemplateTest > testUpdateBuildVars_withTemplate STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+    I/SysService: update build vars: {MANUFACTURER=Google, MODEL=Pixel 7 Pro, FINGERPRINT=google/cheetah/cheetah:14/AP1A.240305.019.A1/11445699:user/release-keys, BRAND=google, PRODUCT=cheetah, DEVICE=cheetah, RELEASE=14, ID=AP1A.240305.019.A1, INCREMENTAL=11445699, TYPE=user, TAGS=release-keys, SECURITY_PATCH=2024-03-05}, attestation ids: []
+
+cleveres.tricky.cleverestech.ConfigThunderingHerdTest > testThunderingHerd STANDARD_OUT
+    Call count: 1
+
+cleveres.tricky.cleverestech.GlobalTemplateMappingTest > testGlobalTemplateMapping STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+    I/SysService: update build vars: {MANUFACTURER=Google, MODEL=Pixel 8 Pro, FINGERPRINT=google/husky/husky:14/AP1A.240405.002/11480754:user/release-keys, BRAND=google, PRODUCT=husky, DEVICE=husky, RELEASE=14, ID=AP1A.240405.002, INCREMENTAL=11480754, TYPE=user, TAGS=release-keys, SECURITY_PATCH=2024-04-05}, attestation ids: []
+
+cleveres.tricky.cleverestech.KeyboxVerifierAmbiguityTest > testParseCrlAmbiguity STANDARD_OUT
+    Revoked: [a, 000000000000000000000000000000000000000a, 000000000000000000000000000000000000000000000000000000000000000a, 0000000000000000000000000000000a]
+
+cleveres.tricky.cleverestech.KeyboxVerifierBugTest > testParseCrlWithLongAllDigitHex STANDARD_OUT
+    Revoked Set: [7e37be2022c0914b2680000001, 000000000000000000000000000000000000007e37be2022c0914b2680000001, 0000007e37be2022c0914b2680000001, 000000000000007e37be2022c0914b2680000001, 10000000000000000000000000000001]
+
+cleveres.tricky.cleverestech.KeyboxVerifierLargeSerialTest > testParseCrlLargeSerialNumber STANDARD_OUT
+    Decimal Input: 1234567890123456789012345
+    Expected Hex: 1056e0f36a6443de2df79
+    Wrong Hex:   1234567890123456789012345
+    Revoked Set: [000000000001056e0f36a6443de2df79, 00000000000000000000000000000000000000000001056e0f36a6443de2df79, 1056e0f36a6443de2df79, 00000000000000000001056e0f36a6443de2df79]
+
+cleveres.tricky.cleverestech.KeyboxVerifierLeadingZeroTest > testParseCrlWithLeadingZeroDigits STANDARD_OUT
+    Revoked Set: [123]
+
+cleveres.tricky.cleverestech.KeyboxVerifierNegativeTest > testParseCrlWithNegativeDecimal STANDARD_OUT
+    Revoked Set: [-a, 00000000000000000000000000000000000000-a, 000000000000000000000000000000-a, 00000000000000000000000000000000000000000000000000000000000000-a]
+
+cleveres.tricky.cleverestech.KeyboxVerifierPaddingBugTest > testParseCrlWithDecimalRepresentingHashWithLeadingZero STANDARD_OUT
+    Testing with Decimal String: 4553400927463334784497573885564273467568010521786737900924354799671537692415
+    Which corresponds to Hex: 0a112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+    Revoked Set contains: [a112233445566778899aabbccddeeff00112233445566778899aabbccddeeff, 0a112233445566778899aabbccddeeff00112233445566778899aabbccddeeff]
+
+cleveres.tricky.cleverestech.KeyboxVerifierReproTest > testParseCrlWithLeadingZeroHex STANDARD_OUT
+    Revoked Set: [a]
+
+cleveres.tricky.cleverestech.PathTraversalTest > testPathTraversalInToggle STANDARD_OUT
+    Response Code: 500
+    File not created.
+
+cleveres.tricky.cleverestech.RemoteKeyManagerTest > testParseAndRotation STANDARD_OUT
+    I/SysService: RemoteKeyManager: Loaded 2 remote keys
+    I/SysService: RemoteKeyManager: Loaded HardwareInfo override
+
+cleveres.tricky.cleverestech.ReproFalsePositiveRevocationTest > testAmbiguousKeyIsIncludedToAvoidSecurityBypass STANDARD_OUT
+    Revoked: [7e37be2022c0914b2680000001, 000000000000000000000000000000000000007e37be2022c0914b2680000001, 0000007e37be2022c0914b2680000001, 000000000000007e37be2022c0914b2680000001, 10000000000000000000000000000001]
+
+cleveres.tricky.cleverestech.ReproKeyIDConfusionTest > testAmbiguousKeyID STANDARD_OUT
+    Ambiguous Key: 11112222333344445555666677778888
+    Revoked Set: [0000008c4186e063b30f84180a7dc9c8, 8c4186e063b30f84180a7dc9c8, 11112222333344445555666677778888, 000000000000008c4186e063b30f84180a7dc9c8, 000000000000000000000000000000000000008c4186e063b30f84180a7dc9c8]
+
+cleveres.tricky.cleverestech.ReproPatchLevelFormatTest > testPatchLevelWithoutDashes STANDARD_OUT
+    I/SysService: update security patch: default=202312, per-app=0
+
+cleveres.tricky.cleverestech.ReproPatchLevelTimeTest > testGetPatchLevelRespectsClockSource STANDARD_OUT
+    I/SysService: update security patch: default=today, per-app=0
+
+cleveres.tricky.cleverestech.ReproTemplateCaseTest > testMixedCaseTemplateLookup STANDARD_OUT
+    I/SysService: Updated templates: [xiaomi14, nothing2, oneplus11, mytemplate, pixel6pro, pixel7pro, pixel8, pixel8pro, s23ultra, s24ultra]
+    I/SysService: update app configs: 1
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testDeviceInfoWithNullValues STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    test passed: null values handled with defaults
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testDeviceInfoGenerationPerformance STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    test passed: generated 100 deviceInfo in 13ms
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testDeviceInfoCborGeneration STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    test passed: deviceInfo size=210
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testCertificateRequestResponseGeneration STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    test passed: response size=368
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testEmptyKeysList STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    test passed: empty keys list handled
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testLargeChallenge STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    test passed: large challenge handled, response size=1380
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testMacedPublicKeyGeneration STANDARD_OUT
+    test passed: macedKey size=119
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testDeviceInfoWithVariousDevices STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=206
+    D/SysService: Created Proper DeviceInfo CBOR, size=214
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    D/SysService: Created Proper DeviceInfo CBOR, size=209
+    D/SysService: Created Proper DeviceInfo CBOR, size=201
+    test passed: tested 5 device configs
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testCertificateRequestWithMultipleKeys STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=210
+    test passed: multi-key response size=608
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testMacedPublicKeyMultipleGenerations STANDARD_OUT
+    test passed: generated 5 unique keys
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testCertificateRequestWithEmptyChallenge STANDARD_OUT
+    D/SysService: Created Proper DeviceInfo CBOR, size=208
+    test passed: empty challenge handled
+
+cleveres.tricky.cleverestech.RkpInterceptorTest > testKeyGenerationPerformance STANDARD_OUT
+    test passed: generated 10 keys in 7ms
+
+cleveres.tricky.cleverestech.VbMetaParserTest > testExtractPublicKey_FileNotFound STANDARD_OUT
+    ERROR: SysService: VbMetaParser: Error reading /path/to/non/existent/file
+
+cleveres.tricky.cleverestech.VbMetaParserTest > testExtractPublicKey_FileNotFound STANDARD_ERROR
+    java.io.FileNotFoundException: /path/to/non/existent/file (No such file or directory)
+	at java.base/java.io.RandomAccessFile.open0(Native Method)
+	at java.base/java.io.RandomAccessFile.open(RandomAccessFile.java:356)
+	at java.base/java.io.RandomAccessFile.<init>(RandomAccessFile.java:273)
+	at java.base/java.io.RandomAccessFile.<init>(RandomAccessFile.java:223)
+	at java.base/java.io.RandomAccessFile.<init>(RandomAccessFile.java:137)
+	at cleveres.tricky.cleverestech.VbMetaParser.extractPublicKey(VbMetaParser.kt:21)
+	at cleveres.tricky.cleverestech.VbMetaParserTest.testExtractPublicKey_FileNotFound(VbMetaParserTest.kt:90)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.runTestClass(JUnitTestClassExecutor.java:112)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:58)
+	at org.gradle.api.internal.tasks.testing.junit.JUnitTestClassExecutor.execute(JUnitTestClassExecutor.java:40)
+	at org.gradle.api.internal.tasks.testing.junit.AbstractJUnitTestClassProcessor.processTestClass(AbstractJUnitTestClassProcessor.java:60)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.processTestClass(SuiteTestClassProcessor.java:52)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+	at jdk.proxy1/jdk.proxy1.$Proxy2.processTestClass(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$2.run(TestWorker.java:176)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+
+cleveres.tricky.cleverestech.VbMetaParserTest > testExtractPublicKey STANDARD_OUT
+    DEBUG: SysService: VbMetaParser: Successfully extracted public key from /tmp/vbmeta7514288811368336561.img
+
+cleveres.tricky.cleverestech.VbMetaParserTest > testExtractPublicKey_InvalidMagic STANDARD_OUT
+    ERROR: SysService: VbMetaParser: Invalid magic in /tmp/vbmeta_invalid13096951815125942048.img
+
+cleveres.tricky.cleverestech.VerificationTest > testVerificationFailsOnModifiedFile STANDARD_OUT
+    ERROR: SysService: Verification failed (ignored): Checksum mismatch for file: temp_verification_test/test.sh. Expected bf573149b23303cac63c2a359b53760d919770c5d070047e76de42e2184f1046, got 4ccfac83d4aadc93c5d62a50cd894c4b213e3ab1d5654800a61356a70e0b1f37
+    INFO: SysService: Module verification passed.
+
+cleveres.tricky.cleverestech.VerificationTest > testVerificationFailsOnMissingChecksum STANDARD_OUT
+    ERROR: SysService: Verification failed (ignored): Missing checksum for file: temp_verification_test/test.sh
+    INFO: SysService: Module verification passed.
+
+cleveres.tricky.cleverestech.VerificationTest > testVerificationPasses STANDARD_OUT
+    INFO: SysService: Module verification passed.
+
+cleveres.tricky.cleverestech.WebServerConfigInjectionTest > testApiConfigJsonInjection STANDARD_OUT
+    JSON Response: {"random_on_boot":false,"templates":["xiaomi14","nothing2","oneplus11","mytemplate","pixel6pro","pixel7pro","pixel8","pixel8pro","s23ultra","s24ultra","hack\", \"injected\": true, \"dummy\": \""],"keybox_count":0,"rkp_bypass":false,"auto_keybox_check":false,"global_mode":false,"tee_broken_mode":false,"random_drm_on_boot":false,"drm_fix":false,"auto_beta_fetch":false,"auto_patch_update":false,"remove_magisk_32":false,"files":["keybox.xml","target.txt","security_patch.txt","spoof_build_vars","app_config","drm_fix"],"hide_sensitive_props":false,"spoof_region_cn":false}
+
+cleveres.tricky.cleverestech.WebServerFingerprintTest > testFingerprintCopyButton STANDARD_ERROR
+    Feb 17, 2026 11:23:12 PM fi.iki.elonen.NanoHTTPD$ClientHandler run
+    SEVERE: Communication with the client broken, or an bug in the handler code
+    java.net.SocketException: Socket closed
+	at java.base/sun.nio.ch.NioSocketImpl.endRead(NioSocketImpl.java:243)
+	at java.base/sun.nio.ch.NioSocketImpl.implRead(NioSocketImpl.java:323)
+	at java.base/sun.nio.ch.NioSocketImpl.read(NioSocketImpl.java:346)
+	at java.base/sun.nio.ch.NioSocketImpl$1.read(NioSocketImpl.java:796)
+	at java.base/java.net.Socket$SocketInputStream.read(Socket.java:1099)
+	at java.base/java.io.BufferedInputStream.fill(BufferedInputStream.java:291)
+	at java.base/java.io.BufferedInputStream.read1(BufferedInputStream.java:347)
+	at java.base/java.io.BufferedInputStream.implRead(BufferedInputStream.java:420)
+	at java.base/java.io.BufferedInputStream.read(BufferedInputStream.java:399)
+	at fi.iki.elonen.NanoHTTPD$HTTPSession.execute(NanoHTTPD.java:901)
+	at fi.iki.elonen.NanoHTTPD$ClientHandler.run(NanoHTTPD.java:192)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+
+cleveres.tricky.cleverestech.WebServerPostTest > testSaveFileWithBodyParams STANDARD_OUT
+    Response Code: 200
+    Response: Saved
+
+cleveres.tricky.cleverestech.util.KeyboxFetcherTest > harvest skips invalid keybox STANDARD_ERROR
+    WARNING: A Java agent has been loaded dynamically (/home/jules/.gradle/caches/transforms-4/8e4a75a2c52763cd5f298cb2c7b1dfd7/transformed/jetified-byte-buddy-agent-1.14.12.jar)
+    WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+    WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+    WARNING: Dynamic loading of agents will be disallowed by default in a future release
+
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :service:testDebugUnitTest
+
+cleveres.tricky.cleverestech.util.KeyboxVerifierBugTest > testParseCrlDecimalAmbiguity STANDARD_OUT
+    Revoked Set: [a, 000000000000000000000000000000000000000a, 000000000000000000000000000000000000000000000000000000000000000a, 0000000000000000000000000000000a]
+
+cleveres.tricky.cleverestech.util.KeyboxVerifierFailOpenTest > testParseCrlFailOpenOnMalformedJson STANDARD_OUT
+    E/SysService: Failed to parse CRL JSON
+    Caught expected exception: java.io.IOException: Failed to parse CRL
+
+cleveres.tricky.cleverestech.util.KeyboxVerifierLegacyTest > testVerify_FindsLegacyAndJukebox STANDARD_OUT
+    E/SysService: Error parsing xml: java.lang.RuntimeException
+    E/SysService: Error parsing xml: java.lang.RuntimeException
+
+cleveres.tricky.cleverestech.util.KeyboxVerifierRevocationTest > testKeyIdRevocation STANDARD_OUT
+    Serial Number (Hex): 3039
+    Key ID (Hex): 12dada1fff4d4787ade3333147202c3b443e376f
+
+cleveres.tricky.cleverestech.keystore.CertHackOrderTest > testAttestationIdOrdering STANDARD_OUT
+    E/SysService: VbMetaParser: Error reading /dev/block/by-name/vbmeta
+    Found tag: 710
+    Found tag: 718
+
+cleveres.tricky.cleverestech.keystore.CertHackTest > testReadFromXml STANDARD_OUT
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+
+cleveres.tricky.cleverestech.keystore.ConcurrencyTest > testKeyboxesConcurrency STANDARD_OUT
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+    I/SysService: update keyboxes: total=1 (EC=1, RSA=0)
+
+cleveres.tricky.cleverestech.keystore.MultiKeyboxTest > testMultipleKeyboxElements STANDARD_OUT
+    I/SysService: update keyboxes: total=2 (EC=2, RSA=0)
+
+cleveres.tricky.cleverestech.util.CborEncoderTest > testMapSortingOrder STANDARD_OUT
+    Encoded: A2016161206162
+
+cleveres.tricky.cleverestech.util.CborEncoderTest > testStringMapSortingOrder STANDARD_OUT
+    Encoded Strings: A361610261620362616101
+
+BUILD SUCCESSFUL in 8s
+34 actionable tasks: 1 executed, 33 up-to-date
