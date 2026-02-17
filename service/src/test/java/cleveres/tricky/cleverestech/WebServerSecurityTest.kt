@@ -12,12 +12,31 @@ import cleveres.tricky.cleverestech.util.SecureFileOperations
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 class WebServerSecurityTest {
 
     @get:Rule
     val tempFolder = TemporaryFolder()
+
+    private val EC_KEY = """-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIAcPs+YkQGT6EDkaEH6Z9StSR7mQuKnh49K0DVqB/ZxYoAoGCCqGSM49
+AwEHoUQDQgAEzi23gXvUATkDmPcNPgsqe24eWmSIfuteSk8S5wJxs4ABt+O6QGAO
+XHqvCjNpJSbUxgz3SZefi8TWWQ1t32G/1w==
+-----END EC PRIVATE KEY-----"""
+
+    private val TEST_CERT = """-----BEGIN CERTIFICATE-----
+MIIBfTCCASOgAwIBAgIUBZ47iWGUbx00hmWBPTYkakbXnigwCgYIKoZIzj0EAwIw
+FDESMBAGA1UEAwwJVGVzdCBDZXJ0MB4XDTI2MDEyOTIxNTI0M1oXDTI3MDEyNDIx
+NTI0M1owFDESMBAGA1UEAwwJVGVzdCBDZXJ0MFkwEwYHKoZIzj0CAQYIKoZIzj0D
+AQcDQgAEzi23gXvUATkDmPcNPgsqe24eWmSIfuteSk8S5wJxs4ABt+O6QGAOXHqv
+CjNpJSbUxgz3SZefi8TWWQ1t32G/16NTMFEwHQYDVR0OBBYEFCwifKyDaNaHtKvx
+m+0eLn/LZoTaMB8GA1UdIwQYMBaAFCwifKyDaNaHtKvxm+0eLn/LZoTaMA8GA1Ud
+EwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIgT+CWCLXuIN5XY0c3mFN1p1FM
+1KAiK9pMwjbHYxNxDmYCIQDXriCpaafMnkJIqGb8UsI5XlkQD0soXYP7hd9ymW/t
+qg==
+-----END CERTIFICATE-----"""
 
     private lateinit var server: WebServer
     private lateinit var configDir: File
@@ -79,13 +98,29 @@ class WebServerSecurityTest {
         val url = URL("http://localhost:$port/api/upload_keybox?token=$token")
 
         val filename = "test_keybox.xml"
-        val content = "<xml>test</xml>"
+        val content = """<?xml version="1.0"?>
+<AndroidAttestation>
+<NumberOfKeyboxes>1</NumberOfKeyboxes>
+<Keybox>
+<Key algorithm="ecdsa">
+<PrivateKey>
+$EC_KEY
+</PrivateKey>
+<CertificateChain>
+<NumberOfCertificates>1</NumberOfCertificates>
+<Certificate>
+$TEST_CERT
+</Certificate>
+</CertificateChain>
+</Key>
+</Keybox>
+</AndroidAttestation>"""
 
         // Ensure keyboxes dir does not exist to test mkdirs permission setting
         val keyboxDir = File(configDir, "keyboxes")
         if (keyboxDir.exists()) keyboxDir.deleteRecursively()
 
-        val postData = "filename=$filename&content=$content"
+        val postData = "filename=$filename&content=" + URLEncoder.encode(content, StandardCharsets.UTF_8.name())
         val postDataBytes = postData.toByteArray(StandardCharsets.UTF_8)
 
         val conn = url.openConnection() as HttpURLConnection
