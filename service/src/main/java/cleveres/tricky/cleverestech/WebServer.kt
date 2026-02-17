@@ -13,6 +13,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
+import java.io.StringReader
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
@@ -552,6 +553,16 @@ class WebServer(
              if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(FILENAME_REGEX)) {
                  return runBlocking {
                      fileMutex.withLock {
+                         // Security: Validate XML content before saving
+                         try {
+                             val keyboxes = CertHack.parseKeyboxXml(StringReader(content), filename)
+                             if (keyboxes.isEmpty()) {
+                                  return@runBlocking secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
+                             }
+                         } catch (e: Exception) {
+                             return@runBlocking secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
+                         }
+
                          val keyboxDir = File(configDir, "keyboxes")
                          SecureFile.mkdirs(keyboxDir, 448) // 0700
 
