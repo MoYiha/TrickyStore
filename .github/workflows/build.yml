@@ -12,9 +12,15 @@ permissions:
 
 jobs:
   instrumentation-test:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Check out
         uses: actions/checkout@v4
         with:
@@ -42,7 +48,9 @@ jobs:
         with:
           api-level: 34
           target: google_apis
-          arch: arm64-v8a
+          # Use x86_64 for hardware acceleration on CI (Intel-based runners).
+          # ARM emulation is too slow (software-only) and causes timeouts.
+          arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
