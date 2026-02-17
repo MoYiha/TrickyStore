@@ -34,6 +34,7 @@ private val SAFE_BUILD_VAR_VALUE_REGEX = Regex("^[a-zA-Z0-9_\\-\\.\\s/:,+=()@]*$
 private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
 private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
+private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
 
 class WebServer(
@@ -418,7 +419,7 @@ class WebServer(
                                             val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
                                             val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
                                             // Validate permissions: Comma-separated alphanumeric, dots, underscores (standard permission format)
-                                            val isPermsValid = perms.isEmpty() || perms.matches(Regex("^[a-zA-Z0-9_.,]+$"))
+                                            val isPermsValid = perms.isEmpty() || perms.matches(PERMISSIONS_REGEX)
 
                                             if (isTmplValid && isKbValid && isPermsValid) {
                                                 val obj = JSONObject()
@@ -486,7 +487,7 @@ class WebServer(
                          }
 
                          // Validate permissions
-                         if (permsStr != "null" && !permsStr.matches(Regex("^[a-zA-Z0-9_.,]+$"))) {
+                         if (permsStr != "null" && !permsStr.matches(PERMISSIONS_REGEX)) {
                              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid permission format")
                          }
 
@@ -783,7 +784,7 @@ class WebServer(
                     if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return false
 
                     // Permissions (optional)
-                    if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(Regex("^[A-zA-Z0-9_.,]+$"))) return false
+                    if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(PERMISSIONS_REGEX)) return false
                 }
             }
             "target.txt" -> {
@@ -2039,7 +2040,7 @@ class WebServer(
                              // Restore keybox
                              val kbName = name.substringAfter("keyboxes/")
                              // Validate filename strictly
-                             if (kbName.matches(Regex("^[a-zA-Z0-9_.-]+$"))) {
+                             if (kbName.matches(KEYBOX_FILENAME_REGEX)) {
                                  val kbDir = File(configDir, "keyboxes")
                                  if (!kbDir.exists()) SecureFile.mkdirs(kbDir, 448)
                                  val f = File(kbDir, kbName)
