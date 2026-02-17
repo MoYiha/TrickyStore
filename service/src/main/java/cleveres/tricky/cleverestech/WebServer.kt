@@ -257,6 +257,10 @@ class WebServer(
              }
         }
 
+        if (uri == "/" || uri == "/index.html") {
+            return secureResponse(Response.Status.OK, "text/html", htmlBytes)
+        }
+
         // Security: Enforce max upload size to prevent DoS
         if (method == Method.POST || method == Method.PUT) {
              val lenStr = headers["content-length"]
@@ -718,10 +722,6 @@ class WebServer(
                  }
              }
              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "No file uploaded")
-        }
-
-        if (uri == "/" || uri == "/index.html") {
-            return secureResponse(Response.Status.OK, "text/html", htmlBytes)
         }
 
         return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
