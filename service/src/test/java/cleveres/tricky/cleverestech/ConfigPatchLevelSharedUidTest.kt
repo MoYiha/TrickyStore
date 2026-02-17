@@ -35,11 +35,16 @@ class ConfigPatchLevelSharedUidTest {
         val packageCache = packageCacheField.get(Config) as ConcurrentHashMap<Int, Any>
         packageCache[1001] = cachedPkg
 
-        // Execute
-        val level = Config.getPatchLevel(1001)
+        try {
+            // Execute
+            val level = Config.getPatchLevel(1001)
 
-        // Expected: 202301 (from pkgB)
-        // Actual (Bug): 202401 (default, because it only checks pkgA)
-        assertEquals("Should use specific patch level if ANY package in UID matches", 202301, level)
+            // Expected: 202301 (from pkgB)
+            // Actual (Bug): 202401 (default, because it only checks pkgA)
+            assertEquals("Should use specific patch level if ANY package in UID matches", 202301, level)
+        } finally {
+            // Cleanup cache
+            packageCache.clear()
+        }
     }
 }

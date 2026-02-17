@@ -3,12 +3,17 @@ package cleveres.tricky.cleverestech
 import android.content.pm.IPackageManager
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.lang.reflect.Field
+import java.util.concurrent.ConcurrentHashMap
 
 class ConfigPatchLevelTest {
 
     @Test
     fun testGetPatchLevel_usesPackageName() {
+        // 0. Ensure Package Cache is cleared
+        val packageCacheField = Config::class.java.getDeclaredField("packageCache")
+        packageCacheField.isAccessible = true
+        (packageCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
+
         // 1. Mock IPackageManager
         val mockPm = object : IPackageManager {
              override fun getPackagesForUid(uid: Int): Array<String> {
@@ -41,6 +46,8 @@ class ConfigPatchLevelTest {
             // Restore
             iPmField.set(Config, originalPm)
             securityPatchField.set(Config, originalSecurityPatch)
+            // Cleanup cache again to be safe
+            (packageCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
         }
     }
 }
