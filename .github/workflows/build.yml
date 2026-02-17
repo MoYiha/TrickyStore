@@ -55,6 +55,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew connectedCheck
+        env:
+          ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: 60
 
   build:
     runs-on: ubuntu-latest
