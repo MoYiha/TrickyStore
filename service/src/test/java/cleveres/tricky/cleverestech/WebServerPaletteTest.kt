@@ -74,4 +74,44 @@ class WebServerPaletteTest {
             html.contains("toggleAddButton();")
         )
     }
+
+    @Test
+    fun testDropZoneUX() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // 1. Verify dropZoneContent div exists
+        assertTrue("HTML should contain dropZoneContent div",
+            html.contains("<div id=\"dropZoneContent\">")
+        )
+
+        // 2. Verify processFile updates content
+        assertTrue("processFile should update dropZoneContent",
+            html.contains("const dz = document.getElementById('dropZoneContent');") &&
+            html.contains("dz.innerHTML = '<div style=\"font-size: 2em; margin-bottom: 10px; color:var(--success);\">📄</div>")
+        )
+
+        // 3. Verify processFile updates border color
+        assertTrue("processFile should update border color",
+            html.contains("document.getElementById('dropZone').style.borderColor = 'var(--success)';")
+        )
+
+        // 4. Verify resetDropZone function exists
+        assertTrue("resetDropZone function should exist",
+            html.contains("function resetDropZone()")
+        )
+
+        // 5. Verify resetDropZone restores default state
+        assertTrue("resetDropZone should restore default content",
+            html.contains("dz.innerHTML = '<div style=\"font-size: 2em; margin-bottom: 10px;\">📂</div>")
+        )
+
+        // 6. Verify uploadKeybox calls resetDropZone
+        assertTrue("uploadKeybox should call resetDropZone",
+            html.contains("resetDropZone();")
+        )
+    }
 }
