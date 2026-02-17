@@ -138,6 +138,9 @@ object KeyboxVerifier {
             isDecimal = false
         } else {
             for (i in 0 until decStr.length) {
+                if (i == 0 && decStr[i] == '-' && decStr.length > 1) {
+                    continue
+                }
                 if (!Character.isDigit(decStr[i])) {
                     isDecimal = false
                     break
