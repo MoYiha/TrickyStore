@@ -59,4 +59,28 @@ class PackageTrieTest {
         assertTrue(trie.matches("com.hack.app"))
         assertFalse(trie.matches("com.safe.app"))
     }
+
+    @Test
+    fun testBranchingOptimization() {
+        val trie = PackageTrie<String>()
+        // Small branching (<= 4)
+        trie.add("a", "1")
+        trie.add("b", "2")
+        trie.add("c", "3")
+        trie.add("d", "4")
+
+        assertEquals("1", trie.get("a"))
+        assertEquals("2", trie.get("b"))
+        assertEquals("3", trie.get("c"))
+        assertEquals("4", trie.get("d"))
+        assertNull(trie.get("e"))
+
+        // Large branching (> 4) to trigger binary search path
+        trie.add("e", "5")
+        trie.add("f", "6")
+
+        assertEquals("1", trie.get("a"))
+        assertEquals("5", trie.get("e"))
+        assertEquals("6", trie.get("f"))
+    }
 }

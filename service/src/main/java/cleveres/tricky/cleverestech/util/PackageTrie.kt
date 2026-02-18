@@ -16,6 +16,15 @@ class PackageTrie<T> {
 
         fun getChild(char: Char): Node<T>? {
             val k = keys
+            val len = k.size
+            // Optimization: Linear scan for small arrays (<= 4 elements) is faster than binary search overhead.
+            // Most trie nodes for package names are linear chains (1 child) or small branches.
+            if (len <= 4) {
+                for (i in 0 until len) {
+                    if (k[i] == char) return children[i]
+                }
+                return null
+            }
             // Optimized binary search for O(log N) lookup
             val idx = Arrays.binarySearch(k, char)
             return if (idx >= 0) children[idx] else null
