@@ -1532,11 +1532,15 @@ class WebServer(
         async function toggle(setting) {
             const el = document.getElementById(setting);
             try {
-                await fetchAuth(getAuthUrl('/api/toggle'), {
+                const res = await fetchAuth(getAuthUrl('/api/toggle'), {
                     method: 'POST',
                     body: new URLSearchParams({setting, value: el.checked})
                 });
-                notify('Setting Updated');
+                if (res.ok) {
+                    notify('Setting Updated');
+                } else {
+                    throw new Error('Server returned ' + res.status);
+                }
             } catch(e) {
                 el.checked = !el.checked;
                 notify('Update Failed', 'error');
@@ -1736,6 +1740,14 @@ class WebServer(
                 return;
             }
 
+            // Regex must match server-side PKG_NAME_REGEX
+            const pkgRegex = /^[a-zA-Z0-9_.*]+$/;
+            if (!pkgRegex.test(pkg)) {
+                notify('Invalid package name', 'error');
+                pkgInput.focus();
+                return;
+            }
+
             const permissions = [];
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');
@@ -1752,16 +1764,23 @@ class WebServer(
         }
 
         function removeAppRule(idx) {
-            appRules.splice(idx, 1);
-            renderAppTable();
+            if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?')) {
+                appRules.splice(idx, 1);
+                renderAppTable();
+            }
         }
 
         async function saveAppConfig() {
-            await fetchAuth(getAuthUrl('/api/app_config_structured'), {
+            const res = await fetchAuth(getAuthUrl('/api/app_config_structured'), {
                 method: 'POST',
                 body: new URLSearchParams({ data: JSON.stringify(appRules) })
             });
-            notify('App Config Saved');
+            if (res.ok) {
+                notify('App Config Saved');
+            } else {
+                const txt = await res.text();
+                notify('Save Failed: ' + txt, 'error');
+            }
         }
 
         function toggleAddButton() {
@@ -1852,12 +1871,18 @@ class WebServer(
         async function saveFile() {
             const f = document.getElementById('fileSelector').value;
             const c = document.getElementById('fileEditor').value;
-            await fetchAuth(getAuthUrl('/api/save'), {
+            const res = await fetchAuth(getAuthUrl('/api/save'), {
                  method: 'POST',
                  body: new URLSearchParams({ filename: f, content: c })
              });
-             originalContent = c;
-             notify('File Saved');
+
+             if (res.ok) {
+                 originalContent = c;
+                 notify('File Saved');
+             } else {
+                 const txt = await res.text();
+                 notify('Save Failed: ' + txt, 'error');
+             }
         }
 
         async function handleSave(btn) {

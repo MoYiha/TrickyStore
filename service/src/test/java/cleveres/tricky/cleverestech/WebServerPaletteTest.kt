@@ -76,6 +76,40 @@ class WebServerPaletteTest {
     }
 
     @Test
+    fun testSafetyAndReliability() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // 1. Verify removeAppRule has confirmation
+        assertTrue("removeAppRule should contain confirm dialog",
+            html.contains("if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?'))")
+        )
+
+        // 2. Verify saveAppConfig checks response status
+        assertTrue("saveAppConfig should check res.ok",
+            html.contains("if (res.ok) {") && html.contains("notify('App Config Saved');") && html.contains("notify('Save Failed: ' + txt, 'error');")
+        )
+
+        // 3. Verify saveFile checks response status
+        assertTrue("saveFile should check res.ok",
+            html.contains("if (res.ok) {") && html.contains("notify('File Saved');") && html.contains("notify('Save Failed: ' + txt, 'error');")
+        )
+
+        // 4. Verify toggle checks response status
+        assertTrue("toggle should check res.ok",
+            html.contains("if (res.ok) {") && html.contains("notify('Setting Updated');") && html.contains("throw new Error('Server returned ' + res.status);")
+        )
+
+        // 5. Verify addAppRule has regex validation
+        assertTrue("addAppRule should contain regex validation",
+            html.contains("const pkgRegex = /^[a-zA-Z0-9_.*]+$/;") && html.contains("if (!pkgRegex.test(pkg))")
+        )
+    }
+
+    @Test
     fun testDropZoneUX() {
         val port = server.listeningPort
         val token = server.token
@@ -114,4 +148,5 @@ class WebServerPaletteTest {
             html.contains("resetDropZone();")
         )
     }
+
 }
