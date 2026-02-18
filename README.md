@@ -72,6 +72,8 @@ CleveresTricky supports **automatic rotation** of multiple keyboxes to evade det
 
 > Requires Zygisk or Zygisk Next
 
+**Strings extracted from:** [https://dl.google.com/developers/android/CANARY/images/factory/comet_beta-zp11.260123.011-factory-9f28f269.zip](https://dl.google.com/developers/android/CANARY/images/factory/comet_beta-zp11.260123.011-factory-9f28f269.zip)
+
 Create/edit `/data/adb/cleverestricky/spoof_build_vars`:
 
 ```
@@ -83,10 +85,20 @@ PRODUCT=husky_beta
 DEVICE=husky
 RELEASE=15
 ID=AP31.240617.009
+DISPLAY=AP31.240617.009
 INCREMENTAL=12094726
 TYPE=user
 TAGS=release-keys
 SECURITY_PATCH=2024-07-05
+BOOTLOADER=...
+BOARD=...
+HARDWARE=...
+HOST=...
+USER=...
+TIMESTAMP=...
+SDK_INT=...
+PREVIEW_SDK=...
+CODENAME=...
 ro.boot.verifiedbootstate=green
 ro.boot.flash.locked=1
 ```

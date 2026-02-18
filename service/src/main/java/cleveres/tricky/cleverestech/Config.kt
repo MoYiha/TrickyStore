@@ -302,6 +302,8 @@ object Config {
 
     private fun computeTemplateKey(key: String): String? {
         return when {
+            // Codename (must be before 'name' check)
+            key.endsWith("version.codename") -> "CODENAME"
             // Fingerprint
             key.endsWith("fingerprint") -> "FINGERPRINT"
             // Security Patch
@@ -317,7 +319,8 @@ object Config {
             // Product
             key.endsWith("product") || key.endsWith("name") -> "PRODUCT"
             // ID
-            key.endsWith("build.id") || key.endsWith("display.id") -> "ID"
+            key.endsWith("build.id") -> "ID"
+            key.endsWith("display.id") -> "DISPLAY"
             // Release
             key.endsWith("version.release") || key.endsWith("version.release_or_codename") -> "RELEASE"
             // Incremental
@@ -326,6 +329,21 @@ object Config {
             key.endsWith("build.type") -> "TYPE"
             // Tags
             key.endsWith("build.tags") -> "TAGS"
+            // Bootloader
+            key.endsWith("bootloader") -> "BOOTLOADER"
+            // Board
+            key.endsWith("board") || key.endsWith("platform") -> "BOARD"
+            // Hardware
+            key.endsWith("hardware") -> "HARDWARE"
+            // Host
+            key.endsWith("host") -> "HOST"
+            // User
+            key.endsWith("user") -> "USER"
+            // Timestamp
+            key.endsWith("date.utc") -> "TIMESTAMP"
+            // SDK
+            key.endsWith("version.sdk") -> "SDK_INT"
+            key.endsWith("preview_sdk") -> "PREVIEW_SDK"
             else -> null
         }
     }
@@ -337,6 +355,9 @@ object Config {
         val templateKey = getTemplateKey(key)
         if (templateKey != null) {
             buildVars[templateKey]?.let { return it }
+            if (templateKey == "DISPLAY") {
+                buildVars["ID"]?.let { return it }
+            }
         }
 
         return spoofedProperties[key]
@@ -356,6 +377,9 @@ object Config {
             if (templateKey != null && template.containsKey(templateKey)) {
                 return template[templateKey]
             }
+            if (templateKey == "DISPLAY" && template.containsKey("ID")) {
+                return template["ID"]
+            }
         }
 
         // 3. DRM Fix Properties
@@ -367,6 +391,9 @@ object Config {
         val templateKey = getTemplateKey(key)
         if (templateKey != null) {
             buildVars[templateKey]?.let { return it }
+            if (templateKey == "DISPLAY") {
+                buildVars["ID"]?.let { return it }
+            }
         }
 
         // 5. Default spoofed properties
