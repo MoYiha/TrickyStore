@@ -47,7 +47,7 @@ class WebServer(
             Logger.e("failed to set permissions for ${f.name}", t)
         }
     }
-) : NanoHTTPD("0.0.0.0", port) {
+) : NanoHTTPD("127.0.0.1", port) {
 
     val token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 5 * 1024 * 1024L // 5MB

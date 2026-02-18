@@ -40,4 +40,67 @@ class WebServerInstrumentationTest {
             server.stop()
         }
     }
+
+    private fun getDeviceIp(): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (iface.isLoopback || !iface.isUp) continue
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (addr is java.net.Inet4Address) return addr.hostAddress
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        return null
+    }
+
+    @Test
+    fun testWebServerBindsToLocalhostOnly() {
+        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
+        val configDir = File(appContext.filesDir, "config_bind")
+        configDir.mkdirs()
+
+        // Start on a random port
+        val server = WebServer(0, configDir)
+        server.start()
+
+        try {
+            val port = server.listeningPort
+            assertTrue("Port should be greater than 0", port > 0)
+
+            // 1. Should connect via localhost
+            val localUrl = URL("http://localhost:$port/")
+            val localConn = localUrl.openConnection() as HttpURLConnection
+            localConn.connectTimeout = 1000
+            localConn.connect()
+            assertEquals("Should connect via localhost", 200, localConn.responseCode)
+            localConn.inputStream.close()
+
+            // 2. Should NOT connect via external IP
+            val deviceIp = getDeviceIp()
+            if (deviceIp != null) {
+                try {
+                    val remoteUrl = URL("http://$deviceIp:$port/")
+                    val remoteConn = remoteUrl.openConnection() as HttpURLConnection
+                    remoteConn.connectTimeout = 1000
+                    remoteConn.connect()
+                    fail("Should not be able to connect via external IP: $deviceIp")
+                } catch (e: Exception) {
+                    // Expecting ConnectException or SocketTimeoutException
+                    assertTrue("Expected connection failure", true)
+                }
+            } else {
+                // If no external IP, we can't test this part, but that's fine for emulator
+                println("No external IP found, skipping external access test")
+            }
+
+        } finally {
+            server.stop()
+        }
+    }
 }
