@@ -45,6 +45,7 @@ class ConfigPatchLevelSharedUidTest {
         } finally {
             // Cleanup cache
             packageCache.clear()
+            defaultPatchField.set(Config, null)
         }
     }
 }
