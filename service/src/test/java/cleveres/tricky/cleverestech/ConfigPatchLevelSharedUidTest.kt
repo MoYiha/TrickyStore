@@ -8,10 +8,7 @@ class ConfigPatchLevelSharedUidTest {
 
     @Test
     fun testPatchLevelSharedUid() {
-        // Reset Config state
-        val packageCacheField = Config::class.java.getDeclaredField("packageCache")
-        packageCacheField.isAccessible = true
-        (packageCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
+        Config.reset()
 
         val securityPatchField = Config::class.java.getDeclaredField("securityPatch")
         securityPatchField.isAccessible = true
@@ -32,6 +29,9 @@ class ConfigPatchLevelSharedUidTest {
         constructor.isAccessible = true
         val cachedPkg = constructor.newInstance(packages, System.currentTimeMillis())
 
+        val packageCacheField = Config::class.java.getDeclaredField("packageCache")
+        packageCacheField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
         val packageCache = packageCacheField.get(Config) as ConcurrentHashMap<Int, Any>
         packageCache[1001] = cachedPkg
 
@@ -43,9 +43,7 @@ class ConfigPatchLevelSharedUidTest {
             // Actual (Bug): 202401 (default, because it only checks pkgA)
             assertEquals("Should use specific patch level if ANY package in UID matches", 202301, level)
         } finally {
-            // Cleanup cache
-            packageCache.clear()
-            defaultPatchField.set(Config, null)
+            Config.reset()
         }
     }
 }

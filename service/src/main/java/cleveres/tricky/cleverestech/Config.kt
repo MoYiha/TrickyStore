@@ -816,4 +816,26 @@ object Config {
             genResult
         }
     }
+
+    @androidx.annotation.VisibleForTesting
+    fun reset() {
+        packageCache.clear()
+        securityPatch = emptyMap()
+        defaultSecurityPatch = null
+        iPm = null
+        appConfigState = AppConfigState(PackageTrie())
+        targetState = TargetState(PackageTrie(), PackageTrie())
+        buildVars = emptyMap()
+        attestationIds = emptyMap()
+        templates = emptyMap()
+        templateKeyCache.clear()
+        moduleHash = null
+        keyboxSourceUrl = null
+        isGlobalMode = false
+        isTeeBrokenMode = false
+        isAutoTeeBroken = false
+        isRkpBypass = false
+        drmFixVars = emptyMap()
+        clockSource = { System.currentTimeMillis() }
+    }
 }
