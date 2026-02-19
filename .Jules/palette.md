@@ -33,3 +33,7 @@
 ## 2026-08-15 - Actionable Empty States
 **Learning:** When a search filter yields no results, a static "No results" message is a dead end. Providing a "Clear Filter" button directly within the empty state message allows users to recover immediately without searching for the filter input's clear control.
 **Action:** Enhance empty states with context-aware recovery actions (e.g., Clear Filter, Reset Search).
+
+## 2026-08-16 - Implicit Labels via Paragraphs
+**Learning:** Descriptions for form controls (e.g., `<select>`) are often implemented as `<p>` tags instead of `<label>`, breaking screen reader accessibility by decoupling the description from the control.
+**Action:** When auditing embedded HTML, verify all form controls have an associated `<label>` (via `for` attribute or nesting) rather than relying on proximity or visual layout.
