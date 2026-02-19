@@ -39,3 +39,7 @@
 ## 2026-06-17 - [Redundant Regex Compilation]
 **Learning:** WebServer's `serve` method and `validateContent` were compiling `Regex` objects inside loops (for permission and filename validation). This is a classic "compilation in loop" anti-pattern that wastes CPU cycles.
 **Action:** Move regex patterns to `private val` constants at the class or file level to compile them once and reuse.
+
+## 2026-06-18 - [Expensive Date Formatting in Hot Paths]
+**Learning:** `Config.getPatchLevel` was re-calculating dynamic patch dates (e.g., "today") on every call, involving `Instant`, `ZoneId`, `LocalDate`, `String.format` (3x), and regex replacement. This is heavy for a method called during key attestation. Caching the calculated `Int` result for 1 hour yielded a ~3x-7x speedup.
+**Action:** Cache the result of expensive date/time dependent calculations (like dynamic configuration templates) for a reasonable TTL to avoid redundant object allocation and formatting overhead in hot paths.

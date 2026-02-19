@@ -452,6 +452,11 @@ object Config {
     private var securityPatch: Map<String, Any> = emptyMap()
     private var defaultSecurityPatch: Any? = null
 
+    // Cache for dynamic patch levels (e.g. "today", "YYYY-MM-DD")
+    // Key: Template String, Value: Pair(Timestamp, CalculatedLevel)
+    private val dynamicPatchCache = ConcurrentHashMap<String, Pair<Long, Int>>()
+    private const val DYNAMIC_PATCH_TTL = 3600 * 1000L // 1 hour
+
     fun getPatchLevel(callingUid: Int): Int {
         val defaultLevel = patchLevel
         val patchVal = if (securityPatch.isNotEmpty()) {
@@ -472,10 +477,18 @@ object Config {
         if (patchVal is Int) return patchVal
 
         val patchStr = patchVal as String
+
+        // Optimization: Check cache for dynamic strings to avoid expensive date/string operations
+        val nowMs = clockSource()
+        val cached = dynamicPatchCache[patchStr]
+        if (cached != null && (nowMs - cached.first) < DYNAMIC_PATCH_TTL) {
+            return cached.second
+        }
+
         val effectiveDate = if (patchStr.equals("today", ignoreCase = true)) {
-            Instant.ofEpochMilli(clockSource()).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+            Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).toLocalDate().toString()
         } else if (patchStr.contains("YYYY") || patchStr.contains("MM") || patchStr.contains("DD")) {
-             val now = Instant.ofEpochMilli(clockSource()).atZone(ZoneId.systemDefault()).toLocalDate()
+             val now = Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).toLocalDate()
              patchStr.replace("YYYY", String.format("%04d", now.year))
                      .replace("MM", String.format("%02d", now.monthValue))
                      .replace("DD", String.format("%02d", now.dayOfMonth))
@@ -483,7 +496,9 @@ object Config {
             patchStr
         }
 
-        return effectiveDate.convertPatchLevel(false)
+        val result = effectiveDate.convertPatchLevel(false)
+        dynamicPatchCache[patchStr] = nowMs to result
+        return result
     }
 
     private fun updateSecurityPatch(f: File?) = runCatching {
