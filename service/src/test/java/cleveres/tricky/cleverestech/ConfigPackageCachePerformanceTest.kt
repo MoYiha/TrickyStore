@@ -13,11 +13,12 @@ import java.util.concurrent.TimeUnit
 class ConfigPackageCachePerformanceTest {
 
     private lateinit var mockPm: IPackageManager
-    private var originalPm: IPackageManager? = null
     private val callLatencyMs = 50L
 
     @Before
     fun setup() {
+        Config.reset()
+
         // Create dynamic proxy for IPackageManager
         mockPm = Proxy.newProxyInstance(
             IPackageManager::class.java.classLoader,
@@ -34,26 +35,12 @@ class ConfigPackageCachePerformanceTest {
         // Reflection to set Config.iPm
         val field = Config::class.java.getDeclaredField("iPm")
         field.isAccessible = true
-        originalPm = field.get(Config) as IPackageManager?
         field.set(Config, mockPm)
-
-        // Clear cache
-        clearPackageCache()
     }
 
     @After
     fun tearDown() {
-        val field = Config::class.java.getDeclaredField("iPm")
-        field.isAccessible = true
-        field.set(Config, originalPm)
-        clearPackageCache()
-    }
-
-    private fun clearPackageCache() {
-        val field = Config::class.java.getDeclaredField("packageCache")
-        field.isAccessible = true
-        val cache = field.get(Config) as MutableMap<*, *>
-        cache.clear()
+        Config.reset()
     }
 
     @Test

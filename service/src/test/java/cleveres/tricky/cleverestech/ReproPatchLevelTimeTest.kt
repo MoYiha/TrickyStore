@@ -6,11 +6,17 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.util.TimeZone
+import java.util.concurrent.ConcurrentHashMap
 
 class ReproPatchLevelTimeTest {
 
     @Test
     fun testGetPatchLevelRespectsClockSource() {
+        // Clear cache to prevent pollution
+        val dynamicPatchCacheField = Config::class.java.getDeclaredField("dynamicPatchCache")
+        dynamicPatchCacheField.isAccessible = true
+        (dynamicPatchCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
+
         // 1. Set a fixed time: 2023-05-20
         val fixedTime = Instant.parse("2023-05-20T12:00:00Z").toEpochMilli()
         val originalClock = Config.clockSource
@@ -38,6 +44,7 @@ class ReproPatchLevelTimeTest {
         } finally {
             Config.clockSource = originalClock
             file.delete()
+            (dynamicPatchCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
         }
     }
 }
