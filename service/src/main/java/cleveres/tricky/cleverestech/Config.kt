@@ -709,6 +709,8 @@ object Config {
     fun initialize() {
         SecureFile.mkdirs(root, 448) // 0700
         SecureFile.mkdirs(keyboxDir, 448) // 0700
+        DeviceTemplateManager.initialize(root)
+
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateRkpBypass(File(root, RKP_BYPASS_FILE))
@@ -720,7 +722,6 @@ object Config {
         updateAppConfigs(File(root, APP_CONFIG_FILE))
         updateKeyboxSource(File(root, KEYBOX_SOURCE_FILE))
 
-        DeviceTemplateManager.initialize(root)
         updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
 
         checkRandomizeOnBoot()

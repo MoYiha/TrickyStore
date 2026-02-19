@@ -6,6 +6,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.util.SecureFile
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 data class DeviceTemplate(
     val id: String, // unique ID, e.g. "pixel8pro"
@@ -44,6 +46,9 @@ object DeviceTemplateManager {
     private const val TEMPLATES_FILE = "templates.json"
     private var templates: MutableMap<String, DeviceTemplate> = mutableMapOf()
     private var cachedList: List<DeviceTemplate>? = null
+
+    private val executor = Executors.newSingleThreadExecutor()
+    private var initFuture: Future<*>? = null
 
     // Beta Starter Pack: Verified High-Value Fingerprints
     private val builtInTemplates = listOf(
@@ -112,21 +117,34 @@ object DeviceTemplateManager {
         )
     )
 
-    @Synchronized
     fun initialize(configDir: File) {
-        // 1. Load built-ins
-        builtInTemplates.forEach { templates[it.id] = it }
+        synchronized(this) {
+            // 1. Load built-ins
+            builtInTemplates.forEach { templates[it.id] = it }
+            cachedList = null
+        }
 
-        // 2. Load custom from JSON
+        // 2. Load custom from JSON asynchronously
+        initFuture = executor.submit {
+            loadCustomTemplates(configDir)
+        }
+    }
+
+    private fun loadCustomTemplates(configDir: File) {
         val file = File(configDir, TEMPLATES_FILE)
         if (file.exists()) {
             try {
                 val json = file.readText()
                 val array = JSONArray(json)
+                val list = ArrayList<DeviceTemplate>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
                     val t = parseJson(obj)
-                    if (t != null) templates[t.id] = t
+                    if (t != null) list.add(t)
+                }
+                synchronized(this) {
+                    list.forEach { templates[it.id] = it }
+                    cachedList = null
                 }
                 Logger.i("Loaded ${array.length()} templates from $TEMPLATES_FILE")
             } catch (e: Exception) {
@@ -134,9 +152,18 @@ object DeviceTemplateManager {
             }
         } else {
             // Save built-ins to file for user editing
-            saveTemplates(configDir)
+            synchronized(this) {
+                saveTemplatesInternal(configDir)
+            }
         }
-        cachedList = null
+    }
+
+    private fun waitForInit() {
+        try {
+            initFuture?.get()
+        } catch (e: Exception) {
+            Logger.e("Error waiting for template initialization", e)
+        }
     }
 
     private fun parseJson(obj: JSONObject): DeviceTemplate? {
@@ -163,24 +190,39 @@ object DeviceTemplateManager {
     }
 
     fun getTemplate(id: String): DeviceTemplate? {
-        return templates[id]
+        waitForInit()
+        synchronized(this) {
+            return templates[id]
+        }
     }
 
     fun getTemplateAsMap(id: String): Map<String, String>? {
-        return templates[id]?.toPropMap()
+        waitForInit()
+        synchronized(this) {
+            return templates[id]?.toPropMap()
+        }
     }
 
-    @Synchronized
     fun listTemplates(): List<DeviceTemplate> {
-        val current = cachedList
-        if (current != null) return current
+        waitForInit()
+        synchronized(this) {
+            val current = cachedList
+            if (current != null) return current
 
-        val sorted = templates.values.toList().sortedBy { it.model }
-        cachedList = sorted
-        return sorted
+            val sorted = templates.values.toList().sortedBy { it.model }
+            cachedList = sorted
+            return sorted
+        }
     }
 
     fun saveTemplates(configDir: File) {
+        waitForInit()
+        synchronized(this) {
+            saveTemplatesInternal(configDir)
+        }
+    }
+
+    private fun saveTemplatesInternal(configDir: File) {
         try {
             val array = JSONArray()
             templates.values.forEach { t ->
@@ -206,9 +248,11 @@ object DeviceTemplateManager {
         }
     }
 
-    @Synchronized
     fun addTemplate(template: DeviceTemplate) {
-        templates[template.id] = template
-        cachedList = null
+        waitForInit()
+        synchronized(this) {
+            templates[template.id] = template
+            cachedList = null
+        }
     }
 }
