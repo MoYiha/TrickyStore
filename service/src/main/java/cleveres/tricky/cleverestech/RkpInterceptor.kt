@@ -181,7 +181,7 @@ class RkpInterceptor(
                 challenge = data.createByteArray()
             }
             
-            val deviceInfoBytes = resolveDeviceInfo(keysToSign)
+            val deviceInfoBytes = resolveDeviceInfo(keysToSign, uid)
             val response = createCertificateRequestResponse(keysToSign, challenge, isV2, deviceInfoBytes)
             
             Logger.i("generated RKP certificate request response for uid=$uid isV2=$isV2")
@@ -226,7 +226,7 @@ class RkpInterceptor(
         return macedKey
     }
 
-    private fun resolveDeviceInfo(keysToSign: Array<MacedPublicKey>?): ByteArray {
+    private fun resolveDeviceInfo(keysToSign: Array<MacedPublicKey>?, uid: Int): ByteArray {
         if (keysToSign != null) {
             for (k in keysToSign) {
                 if (k.macedKey == null) continue
@@ -237,7 +237,7 @@ class RkpInterceptor(
                 if (cached?.deviceInfo != null) return cached.deviceInfo
             }
         }
-        return createDeviceInfo()
+        return createDeviceInfo(uid)
     }
 
     private fun createCertificateRequestResponse(
@@ -253,12 +253,12 @@ class RkpInterceptor(
         ) ?: ByteArray(0)
     }
 
-    private fun createDeviceInfo(): ByteArray {
-        val brand = Config.getBuildVar("BRAND") ?: "google"
-        val manufacturer = Config.getBuildVar("MANUFACTURER") ?: "Google"
-        val product = Config.getBuildVar("PRODUCT") ?: "generic"
-        val model = Config.getBuildVar("MODEL") ?: "Pixel"
-        val device = Config.getBuildVar("DEVICE") ?: "generic"
+    private fun createDeviceInfo(uid: Int): ByteArray {
+        val brand = Config.getBuildVar("BRAND", uid) ?: "google"
+        val manufacturer = Config.getBuildVar("MANUFACTURER", uid) ?: "Google"
+        val product = Config.getBuildVar("PRODUCT", uid) ?: "generic"
+        val model = Config.getBuildVar("MODEL", uid) ?: "Pixel"
+        val device = Config.getBuildVar("DEVICE", uid) ?: "generic"
         
         return CertHack.createDeviceInfoCbor(brand, manufacturer, product, model, device)
             ?: ByteArray(0)
