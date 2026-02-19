@@ -76,4 +76,27 @@ class PropertyHiderServiceTest {
         val result = reply.readString()
         assertEquals("Pixel 8", result)
     }
+
+    @Test
+    fun testInternalConfigExposure() {
+        val buildVarsFile = tempFolder.newFile("spoof_build_vars")
+        buildVarsFile.writeText("CODENAME=SecretInternalValue\nFINGERPRINT=SecretFingerprint")
+        Config.updateBuildVars(buildVarsFile)
+
+        val service = PropertyHiderService()
+
+        var data = Parcel.obtain()
+        data.writeString("CODENAME")
+        var reply = Parcel.obtain()
+
+        Binder.callingUid = 10000
+        service.transact(PropertyHiderService.GET_SPOOFED_PROPERTY_TRANSACTION_CODE, data, reply, 0)
+        assertNull("Internal CODENAME should be blocked", reply.readString())
+
+        data = Parcel.obtain()
+        data.writeString("FINGERPRINT")
+        reply = Parcel.obtain()
+        service.transact(PropertyHiderService.GET_SPOOFED_PROPERTY_TRANSACTION_CODE, data, reply, 0)
+        assertNull("Internal FINGERPRINT should be blocked", reply.readString())
+    }
 }
