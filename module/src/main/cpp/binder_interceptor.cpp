@@ -8,6 +8,10 @@
 #include <binder/IServiceManager.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <signal.h>
+#include <dirent.h>
+#include <cstring>
+#include <sys/syscall.h>
 #include "kernel/binder.h"
 
 #include <utility>
@@ -269,8 +273,8 @@ static bool is_binder_fd(int fd) {
 }
 
 // FIXME: when use ioctl hooking, some already blocked ioctl calls will not be hooked
-int (*old_ioctl)(int fd, int request, ...) = nullptr;
-int new_ioctl(int fd, int request, ...) {
+int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
+int new_ioctl(int fd, unsigned long request, ...) {
     va_list list;
     va_start(list, request);
     auto arg = va_arg(list, void*);
@@ -515,6 +519,53 @@ BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code, const Parc
     return true;
 }
 
+static void kick_handler(int) {}
+
+void kick_already_blocked_ioctls() {
+    struct sigaction sa;
+    struct sigaction old_sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = kick_handler;
+    sa.sa_flags = 0; // No SA_RESTART
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGWINCH, &sa, &old_sa) == 0) {
+        // If the old handler was not default or ignore, restore it and skip kicking
+        if (old_sa.sa_handler != SIG_DFL && old_sa.sa_handler != SIG_IGN) {
+            sigaction(SIGWINCH, &old_sa, NULL);
+            LOGW("SIGWINCH handler already set, skipping kick");
+            return;
+        }
+    } else {
+        LOGE("Failed to set SIGWINCH handler");
+        return;
+    }
+
+    DIR* task = opendir("/proc/self/task");
+    if (task) {
+        struct dirent* de;
+        while ((de = readdir(task))) {
+            if (de->d_name[0] == '.') continue;
+            int tid = atoi(de->d_name);
+            if (tid == gettid()) continue;
+
+            char path[64];
+            snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
+            FILE* fp = fopen(path, "r");
+            if (fp) {
+                long syscall_nr;
+                if (fscanf(fp, "%ld", &syscall_nr) == 1) {
+                    if (syscall_nr == SYS_ioctl) {
+                        syscall(SYS_tgkill, getpid(), tid, SIGWINCH);
+                    }
+                }
+                fclose(fp);
+            }
+        }
+        closedir(task);
+    }
+}
+
 bool hookBinder() {
     auto maps = lsplt::MapInfo::Scan();
     dev_t dev;
@@ -539,6 +590,7 @@ bool hookBinder() {
         LOGE("hook failed!");
         return false;
     }
+    kick_already_blocked_ioctls();
     LOGI("hook success!");
     return true;
 }
@@ -597,6 +649,7 @@ bool initialize_hooks() {
         LOGE("hook failed!");
         return false;
     }
+    kick_already_blocked_ioctls();
     LOGI("hook success!");
     return true;
 }
