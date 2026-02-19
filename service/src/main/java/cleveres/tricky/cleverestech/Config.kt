@@ -12,8 +12,11 @@ import java.io.File
 import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.*
 
 object Config {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private val spoofedProperties = mapOf(
         "ro.boot.verifiedbootstate" to "green",
         "ro.boot.flash.locked" to "1",
@@ -171,37 +174,39 @@ object Config {
 
     private var keyboxPoller: FilePoller? = null
 
-    private fun updateKeyBoxes() = runCatching {
-        val allKeyboxes = ArrayList<CertHack.KeyBox>()
+    private fun updateKeyBoxes() = scope.launch {
+        runCatching {
+            val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
-        // 1. Legacy keybox.xml
-        val legacyFile = File(root, KEYBOX_FILE)
-        if (legacyFile.exists()) {
-             legacyFile.bufferedReader().use { reader ->
-                 allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, KEYBOX_FILE))
-             }
-        }
-
-        // 2. Directory files
-        if (keyboxDir.exists() && keyboxDir.isDirectory) {
-            val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
-            files?.forEach { file ->
-                try {
-                    file.bufferedReader().use { reader ->
-                        allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, file.name))
-                    }
-                } catch (e: Exception) {
-                    Logger.e("Failed to parse keybox file: ${file.name}", e)
+            // 1. Legacy keybox.xml
+            val legacyFile = File(root, KEYBOX_FILE)
+            if (legacyFile.exists()) {
+                legacyFile.bufferedReader().use { reader ->
+                    allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, KEYBOX_FILE))
                 }
             }
+
+            // 2. Directory files
+            if (keyboxDir.exists() && keyboxDir.isDirectory) {
+                val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                files?.forEach { file ->
+                    try {
+                        file.bufferedReader().use { reader ->
+                            allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, file.name))
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Failed to parse keybox file: ${file.name}", e)
+                    }
+                }
+            }
+
+            CertHack.setKeyboxes(allKeyboxes)
+
+            // Update poller for legacy file consistency
+            keyboxPoller?.updateLastModified()
+        }.onFailure {
+            Logger.e("failed to update keyboxes", it)
         }
-
-        CertHack.setKeyboxes(allKeyboxes)
-
-        // Update poller for legacy file consistency
-        keyboxPoller?.updateLastModified()
-    }.onFailure {
-        Logger.e("failed to update keyboxes", it)
     }
 
     private fun updateGlobalMode(f: File?) {
@@ -585,9 +590,14 @@ object Config {
     private const val KEYBOX_SOURCE_FILE = "keybox_source.txt"
     private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private var root = File(CONFIG_PATH)
-    private val keyboxDir = File(root, KEYBOX_DIR)
+    private val keyboxDir get() = File(root, KEYBOX_DIR)
 
     val keyboxDirectory: File get() = keyboxDir
+
+    @androidx.annotation.VisibleForTesting
+    fun setRootForTesting(newRoot: File) {
+        root = newRoot
+    }
 
     @Volatile
     var keyboxSourceUrl: String? = null
@@ -845,6 +855,7 @@ object Config {
 
     @androidx.annotation.VisibleForTesting
     fun reset() {
+        root = File(CONFIG_PATH)
         packageCache.clear()
         securityPatch = emptyMap()
         defaultSecurityPatch = null
