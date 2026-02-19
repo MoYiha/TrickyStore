@@ -1160,7 +1160,7 @@ class WebServer(
 
         <div class="panel">
             <h3>Identity Manager</h3>
-            <p style="color:#888; font-size:0.9em; margin-bottom:15px;">Select a verified device identity to spoof globally.</p>
+            <label for="templateSelect" style="color:#888; font-size:0.9em; margin-bottom:15px; display:block;">Select a verified device identity to spoof globally.</label>
 
             <select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"></select>
 
