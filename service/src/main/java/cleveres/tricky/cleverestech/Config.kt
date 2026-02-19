@@ -107,8 +107,19 @@ object Config {
                         if (parts.size > 1 && parts[1] != "null") template = parts[1].lowercase()
                         if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
                         if (parts.size > 3 && parts[3] != "null") {
-                            parts[3].split(",").forEach {
-                                if (it.isNotBlank()) permissions.add(it.trim())
+                            val permStr = parts[3]
+                            var start = 0
+                            val len = permStr.length
+                            while (start < len) {
+                                var end = permStr.indexOf(',', start)
+                                if (end == -1) {
+                                    end = len
+                                }
+                                val part = permStr.substring(start, end)
+                                if (part.isNotBlank()) {
+                                    permissions.add(part.trim())
+                                }
+                                start = end + 1
                             }
                         }
 
