@@ -17,7 +17,7 @@ class ConfigPatchLevelTest {
         // 1. Mock IPackageManager
         val mockPm = object : IPackageManager {
              override fun getPackagesForUid(uid: Int): Array<String> {
-                 if (uid == 1001) return arrayOf("com.example.patched")
+                 if (uid == 1002) return arrayOf("com.example.patched")
                  return emptyArray()
              }
         }
@@ -36,16 +36,23 @@ class ConfigPatchLevelTest {
         val testPatchMap = mapOf("com.example.patched" to "2023-12-05")
         securityPatchField.set(Config, testPatchMap)
 
+        // 4. Inject Default Security Patch (prevent pollution)
+        val defaultPatchField = Config::class.java.getDeclaredField("defaultSecurityPatch")
+        defaultPatchField.isAccessible = true
+        val originalDefaultPatch = defaultPatchField.get(Config)
+        defaultPatchField.set(Config, null)
+
         try {
-            // 4. Verify Patch Level
+            // 5. Verify Patch Level
             // 2023-12-05 -> 202312
-            val level = Config.getPatchLevel(1001)
+            val level = Config.getPatchLevel(1002)
             assertEquals(202312, level)
 
         } finally {
             // Restore
             iPmField.set(Config, originalPm)
             securityPatchField.set(Config, originalSecurityPatch)
+            defaultPatchField.set(Config, originalDefaultPatch)
             // Cleanup cache again to be safe
             (packageCacheField.get(Config) as ConcurrentHashMap<*, *>).clear()
         }
