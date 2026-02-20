@@ -1,14 +1,23 @@
 package cleveres.tricky.cleverestech
 
 import org.junit.Assert.assertEquals
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 
 class ConfigTemplateTest {
 
+    private lateinit var originalImpl: SecureFileOperations
+
     @Before
     fun setUp() {
+        // Mock SecureFile
+        originalImpl = SecureFile.impl
+        SecureFile.impl = MockSecureFileOperations()
+
         val tempDir = java.nio.file.Files.createTempDirectory("test_config_template").toFile()
         tempDir.deleteOnExit()
 
@@ -17,6 +26,11 @@ class ConfigTemplateTest {
 
         // Force Config to reload templates from Manager
         Config.updateCustomTemplates(null)
+    }
+
+    @After
+    fun tearDown() {
+        SecureFile.impl = originalImpl
     }
 
     @Test

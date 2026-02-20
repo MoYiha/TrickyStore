@@ -1,16 +1,25 @@
 package cleveres.tricky.cleverestech
 
 import org.junit.Assert.assertEquals
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Field
 import cleveres.tricky.cleverestech.util.PackageTrie
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 
 class ConfigSmartMappingTest {
 
+    private lateinit var originalImpl: SecureFileOperations
+
     @Before
     fun setUp() {
+        // Mock SecureFile
+        originalImpl = SecureFile.impl
+        SecureFile.impl = MockSecureFileOperations()
+
         // Reset Config state
         val tempDir = java.nio.file.Files.createTempDirectory("test_config_smart").toFile()
         tempDir.deleteOnExit()
@@ -20,6 +29,11 @@ class ConfigSmartMappingTest {
 
         // Force Config to reload templates from Manager
         Config.updateCustomTemplates(null)
+    }
+
+    @After
+    fun tearDown() {
+        SecureFile.impl = originalImpl
     }
 
     @Suppress("UNCHECKED_CAST")
