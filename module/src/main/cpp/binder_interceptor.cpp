@@ -297,21 +297,19 @@ int new_ioctl(int fd, unsigned long request, ...) {
         if (bwr.read_buffer != 0 && bwr.read_size != 0 && bwr.read_consumed > sizeof(int32_t)) {
             auto ptr = bwr.read_buffer;
             auto consumed = bwr.read_consumed;
-            while (consumed > 0) {
+            while (consumed >= sizeof(uint32_t)) {
                 consumed -= sizeof(uint32_t);
-                if (consumed < 0) {
-                    LOGE("consumed < 0");
-                    break;
-                }
                 auto cmd = *(uint32_t *) ptr;
                 ptr += sizeof(uint32_t);
                 auto sz = _IOC_SIZE(cmd);
                 LOGD("ioctl cmd %d sz %d", cmd, sz);
-                consumed -= sz;
-                if (consumed < 0) {
-                    LOGE("consumed < 0");
+
+                if (consumed < sz) {
+                    LOGE("consumed < sz");
                     break;
                 }
+                consumed -= sz;
+
                 if (cmd == BR_TRANSACTION_SEC_CTX || cmd == BR_TRANSACTION) {
                     binder_transaction_data_secctx *tr_secctx = nullptr;
                     binder_transaction_data *tr = nullptr;
