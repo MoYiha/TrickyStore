@@ -293,6 +293,24 @@ public final class CertHack {
         setKeyboxes(parseKeyboxXml(reader));
     }
 
+    /**
+     * Optimization: Checks if the certificate chain for the given leaf and UID is already cached.
+     * This allows avoiding expensive certificate parsing if we have a cache hit.
+     */
+    public static Certificate[] getCachedCertificateChain(byte[] leafEncoded, int uid) {
+        if (leafEncoded == null) return null;
+        try {
+            State currentState = state;
+            int patchLevel = Config.INSTANCE.getPatchLevel(uid);
+            CacheKey cacheKey = new CacheKey(leafEncoded, patchLevel);
+            // Thread-safe map, no synchronization needed for get
+            return currentState.certificateCache.get(cacheKey);
+        } catch (Throwable t) {
+            Logger.e("Exception in getCachedCertificateChain", t);
+        }
+        return null;
+    }
+
     public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
         if (caList == null) throw new UnsupportedOperationException("caList is null!");
         try {
