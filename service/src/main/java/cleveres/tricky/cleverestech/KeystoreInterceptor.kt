@@ -73,9 +73,18 @@ object KeystoreInterceptor : BinderInterceptor() {
         Logger.d { "intercept post $target uid=$callingUid pid=$callingPid dataSz=${data.dataSize()} replySz=${reply.dataSize()}" }
         try {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
-            val chain = Utils.getCertificateChain(response)
-            if (chain != null) {
-                val newChain = CertHack.hackCertificateChain(chain, callingUid)
+            // Optimization: Check cache first using raw bytes to avoid expensive certificate parsing
+            val leafEncoded = response?.metadata?.certificate
+            var newChain = CertHack.getCachedCertificateChain(leafEncoded, callingUid)
+
+            if (newChain == null) {
+                val chain = Utils.getCertificateChain(response)
+                if (chain != null) {
+                    newChain = CertHack.hackCertificateChain(chain, callingUid)
+                }
+            }
+
+            if (newChain != null) {
                 Utils.putCertificateChain(response, newChain)
                 Logger.i("hacked cert of uid=$callingUid")
                 p.writeNoException()
