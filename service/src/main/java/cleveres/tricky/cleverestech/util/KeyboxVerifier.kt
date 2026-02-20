@@ -168,7 +168,7 @@ object KeyboxVerifier {
         }
 
         // Ambiguity handling
-        if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
+        if (!added && (decStr.length == 32 || decStr.length == 40 || decStr.length == 64)) {
             if (decStr.matches(HEX_REGEX)) {
                 set.add(decStr.lowercase())
             }
