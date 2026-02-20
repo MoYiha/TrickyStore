@@ -28,7 +28,8 @@ class ReproFalsePositiveRevocationTest {
         val revoked = KeyboxVerifier.parseCrl(json)
         println("Revoked: $revoked")
 
-        // We expect it to be included as literal hex as well.
-        assertTrue("Should contain literal string '$decimalSerial' to ensure Key ID coverage", revoked.contains(decimalSerial.lowercase()))
+        // We expect it to NOT be included as literal hex.
+        // We prioritize avoiding False Positives (revoking a cert with serial 'decimalSerial' treated as hex).
+        org.junit.Assert.assertFalse("Should NOT contain literal string '$decimalSerial' (False Positive Fix)", revoked.contains(decimalSerial.lowercase()))
     }
 }
