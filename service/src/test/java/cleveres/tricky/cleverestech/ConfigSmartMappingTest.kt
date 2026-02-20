@@ -6,19 +6,43 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.lang.reflect.Field
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
+import org.mockito.Mockito
+import org.mockito.invocation.InvocationOnMock
 
 class ConfigSmartMappingTest {
 
     private lateinit var originalImpl: SecureFileOperations
+    private lateinit var originalExecutor: ExecutorService
 
     @Before
     fun setUp() {
         // Mock SecureFile
         originalImpl = SecureFile.impl
         SecureFile.impl = MockSecureFileOperations()
+
+        // Mock ExecutorService in DeviceTemplateManager to run synchronously
+        val mockExecutor = Mockito.mock(ExecutorService::class.java)
+        Mockito.`when`(mockExecutor.submit(Mockito.any(Runnable::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as Runnable).run()
+            Mockito.mock(Future::class.java)
+        }
+        Mockito.`when`(mockExecutor.submit(Mockito.any(java.util.concurrent.Callable::class.java))).thenAnswer { invocation ->
+            (invocation.arguments[0] as java.util.concurrent.Callable<*>).call()
+            val f = Mockito.mock(Future::class.java)
+            Mockito.`when`(f.get()).thenReturn(null)
+            f
+        }
+
+        val executorField = DeviceTemplateManager::class.java.getDeclaredField("executor")
+        executorField.isAccessible = true
+        originalExecutor = executorField.get(DeviceTemplateManager) as ExecutorService
+        DeviceTemplateManager.setExecutorForTesting(mockExecutor)
 
         // Reset Config state
         val tempDir = java.nio.file.Files.createTempDirectory("test_config_smart").toFile()
@@ -34,6 +58,8 @@ class ConfigSmartMappingTest {
     @After
     fun tearDown() {
         SecureFile.impl = originalImpl
+        // Restore executor
+        DeviceTemplateManager.setExecutorForTesting(originalExecutor)
     }
 
     @Suppress("UNCHECKED_CAST")

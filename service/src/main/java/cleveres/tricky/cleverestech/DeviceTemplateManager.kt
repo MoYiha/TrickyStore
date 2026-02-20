@@ -47,8 +47,13 @@ object DeviceTemplateManager {
     private var templates: MutableMap<String, DeviceTemplate> = mutableMapOf()
     private var cachedList: List<DeviceTemplate>? = null
 
-    private val executor = Executors.newSingleThreadExecutor()
+    private var executor = Executors.newSingleThreadExecutor()
     private var initFuture: Future<*>? = null
+
+    @androidx.annotation.VisibleForTesting
+    fun setExecutorForTesting(newExecutor: java.util.concurrent.ExecutorService) {
+        executor = newExecutor
+    }
 
     // Beta Starter Pack: Verified High-Value Fingerprints
     private val builtInTemplates = listOf(
