@@ -126,12 +126,23 @@ afterEvaluate {
                 into("lib")
             }
 
-            from(layout.buildDirectory.dir("intermediates/cxx/$variantCapped")) {
-                include("**/obj/**/inject")
+            from(layout.buildDirectory.dir("intermediates/cxx")) {
+                include("**/inject")
                 eachFile {
                     val segments = relativePath.segments
-                    if (segments.size >= 3 && segments[segments.size - 3] == "obj") {
-                        val abi = segments[segments.size - 2]
+                    // For release builds, we might have RelWithDebInfo, Release, or MinSizeRel directories
+                    // For debug builds, we expect Debug directory
+                    if (buildTypeLowered == "release" && segments.contains("Debug")) {
+                        exclude()
+                        return@eachFile
+                    }
+                    if (buildTypeLowered == "debug" && !segments.contains("Debug")) {
+                        exclude()
+                        return@eachFile
+                    }
+
+                    val abi = segments.find { it in abiList }
+                    if (abi != null) {
                         relativePath = RelativePath(true, "lib", abi, "inject")
                     }
                 }
