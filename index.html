@@ -729,7 +729,50 @@
             notify('Identity Generated');
         }
 
+        function luhnCheck(value) {
+            if (/[^0-9-\s]+/.test(value)) return false;
+            let nCheck = 0, nDigit = 0, bEven = false;
+            value = value.replace(/\D/g, "");
+            for (let n = value.length - 1; n >= 0; n--) {
+                let cDigit = value.charAt(n),
+                    nDigit = parseInt(cDigit, 10);
+                if (bEven) {
+                    if ((nDigit *= 2) > 9) nDigit -= 9;
+                }
+                nCheck += nDigit;
+                bEven = !bEven;
+            }
+            return (nCheck % 10) == 0;
+        }
+
+        function validateSpoofInputs() {
+             const imei = document.getElementById('inputImei').value.trim();
+             const imsi = document.getElementById('inputImsi').value.trim();
+             const iccid = document.getElementById('inputIccid').value.trim();
+             const wifi = document.getElementById('inputWifiMac').value.trim();
+             const bt = document.getElementById('inputBtMac').value.trim();
+             const simIso = document.getElementById('inputSimIso').value.trim();
+
+             if (imei && (!/^\d{15}$/.test(imei) || !luhnCheck(imei))) return 'Invalid IMEI (15 digits required)';
+             if (imsi && !/^\d{14,15}$/.test(imsi)) return 'Invalid IMSI (14-15 digits required)';
+             if (iccid && (!/^\d{19,20}$/.test(iccid) || !luhnCheck(iccid))) return 'Invalid ICCID (19-20 digits required)';
+
+             const macRegex = /^([0-9A-Fa-f]{2}[:]){5}([0-9A-Fa-f]{2})$/;
+             if (wifi && !macRegex.test(wifi)) return 'Invalid WiFi MAC (XX:XX:XX:XX:XX:XX)';
+             if (bt && !macRegex.test(bt)) return 'Invalid BT MAC (XX:XX:XX:XX:XX:XX)';
+
+             if (simIso && !/^[a-z]{2}$/.test(simIso)) return 'Invalid SIM ISO (2 lowercase letters)';
+
+             return null;
+        }
+
         async function applyTemplateToGlobal(btn) {
+             const error = validateSpoofInputs();
+             if (error) {
+                 notify(error, 'error');
+                 return;
+             }
+
              if (!confirm('Overwrite current spoofing config?')) return;
 
              let origText = '';
