@@ -182,9 +182,13 @@ int new_system_property_get(const char* name, char* value) {
             std::string spoofed_value;
             if (readString16_manual(reply_parcel, spoofed_value)) {
                 LOGI("Received spoofed value for %s: '%s'", name, spoofed_value.c_str());
-                strncpy(value, spoofed_value.c_str(), PROP_VALUE_MAX - 1);
-                value[PROP_VALUE_MAX - 1] = '\0';
-                return strlen(value);
+                if (value) {
+                    strncpy(value, spoofed_value.c_str(), PROP_VALUE_MAX - 1);
+                    value[PROP_VALUE_MAX - 1] = '\0';
+                    return strlen(value);
+                } else {
+                    return spoofed_value.length();
+                }
             } else {
                 // LOGD("Property service returned null or failed to read for %s", name);
             }
@@ -299,7 +303,8 @@ int new_ioctl(int fd, unsigned long request, ...) {
             auto consumed = bwr.read_consumed;
             while (consumed >= sizeof(uint32_t)) {
                 consumed -= sizeof(uint32_t);
-                auto cmd = *(uint32_t *) ptr;
+                uint32_t cmd;
+                memcpy(&cmd, (void*)ptr, sizeof(uint32_t));
                 ptr += sizeof(uint32_t);
                 auto sz = _IOC_SIZE(cmd);
                 LOGD("ioctl cmd %d sz %d", cmd, sz);
@@ -311,15 +316,19 @@ int new_ioctl(int fd, unsigned long request, ...) {
                 consumed -= sz;
 
                 if (cmd == BR_TRANSACTION_SEC_CTX || cmd == BR_TRANSACTION) {
-                    binder_transaction_data_secctx *tr_secctx = nullptr;
+                    binder_transaction_data_secctx tr_secctx;
+                    binder_transaction_data tr_local;
                     binder_transaction_data *tr = nullptr;
+
                     if (cmd == BR_TRANSACTION_SEC_CTX) {
                         LOGD("cmd is BR_TRANSACTION_SEC_CTX");
-                        tr_secctx = (binder_transaction_data_secctx *) ptr;
-                        tr = &tr_secctx->transaction_data;
+                        memcpy(&tr_secctx, (void*)ptr, sizeof(tr_secctx));
+                        tr_local = tr_secctx.transaction_data;
+                        tr = &tr_local;
                     } else {
                         LOGD("cmd is BR_TRANSACTION");
-                        tr = (binder_transaction_data *) ptr;
+                        memcpy(&tr_local, (void*)ptr, sizeof(tr_local));
+                        tr = &tr_local;
                     }
 
                     if (tr != nullptr) {
@@ -349,6 +358,13 @@ int new_ioctl(int fd, unsigned long request, ...) {
                                 tr->cookie = (uintptr_t) gBinderStub.get();
                                 tr->code = 0xdeadbeef;
                                 ttis.push(tti);
+
+                                if (cmd == BR_TRANSACTION_SEC_CTX) {
+                                    tr_secctx.transaction_data = *tr;
+                                    memcpy((void*)ptr, &tr_secctx, sizeof(tr_secctx));
+                                } else {
+                                    memcpy((void*)ptr, tr, sizeof(binder_transaction_data));
+                                }
                             }
                         }
                     } else {
