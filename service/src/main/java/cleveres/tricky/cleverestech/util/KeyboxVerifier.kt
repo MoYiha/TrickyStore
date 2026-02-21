@@ -168,7 +168,11 @@ object KeyboxVerifier {
         }
 
         // Ambiguity handling
-        if (!added && (decStr.length == 32 || decStr.length == 40 || decStr.length == 64)) {
+        // If the string matches a hash length and format, we include it as a raw hex string
+        // regardless of whether it was also parsed as a decimal serial number.
+        // This prevents "Fail Open" scenarios where a hash composed entirely of digits
+        // would otherwise be ignored as a hash.
+        if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
             if (decStr.matches(HEX_REGEX)) {
                 set.add(decStr.lowercase())
             }
