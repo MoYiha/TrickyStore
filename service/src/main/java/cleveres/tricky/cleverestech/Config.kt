@@ -174,6 +174,11 @@ object Config {
 
     private var keyboxPoller: FilePoller? = null
 
+    @Volatile
+    private var cachedLegacyKeyboxes: List<CertHack.KeyBox> = emptyList()
+    @Volatile
+    private var lastKeyboxModified: Long = 0
+
     private fun updateKeyBoxes() = scope.launch {
         runCatching {
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
@@ -181,9 +186,19 @@ object Config {
             // 1. Legacy keybox.xml
             val legacyFile = File(root, KEYBOX_FILE)
             if (legacyFile.exists()) {
-                legacyFile.bufferedReader().use { reader ->
-                    allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, KEYBOX_FILE))
+                val currentModified = legacyFile.lastModified()
+                // Optimization: Cache parsed keybox.xml data in memory to avoid disk I/O
+                if (currentModified > lastKeyboxModified || cachedLegacyKeyboxes.isEmpty()) {
+                    legacyFile.bufferedReader().use { reader ->
+                        cachedLegacyKeyboxes = CertHack.parseKeyboxXml(reader, KEYBOX_FILE)
+                    }
+                    lastKeyboxModified = currentModified
+                    Logger.i("Reloaded keybox.xml (modified: $currentModified)")
                 }
+                allKeyboxes.addAll(cachedLegacyKeyboxes)
+            } else {
+                cachedLegacyKeyboxes = emptyList()
+                lastKeyboxModified = 0
             }
 
             // 2. Directory files
@@ -876,5 +891,7 @@ object Config {
         isRkpBypass = false
         drmFixVars = emptyMap()
         clockSource = { System.currentTimeMillis() }
+        cachedLegacyKeyboxes = emptyList()
+        lastKeyboxModified = 0
     }
 }
