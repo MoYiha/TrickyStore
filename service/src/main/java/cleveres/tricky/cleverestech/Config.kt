@@ -858,6 +858,7 @@ object Config {
     fun reset() {
         root = File(CONFIG_PATH)
         packageCache.clear()
+        dynamicPatchCache.clear()
         securityPatch = emptyMap()
         defaultSecurityPatch = null
         iPm = null
