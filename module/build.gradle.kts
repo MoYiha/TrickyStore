@@ -144,6 +144,13 @@ afterEvaluate {
                     throw GradleException("service.apk is missing or empty!")
                 }
 
+                abiList.forEach { abi ->
+                    val injectPath = file("${moduleDir.get().asFile}/lib/$abi/inject")
+                    if (!injectPath.exists()) {
+                        throw GradleException("inject binary for $abi is missing at $injectPath")
+                    }
+                }
+
                 fileTree(moduleDir).visit {
                     if (isDirectory) return@visit
                     val md = MessageDigest.getInstance("SHA-256")
