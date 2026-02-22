@@ -1318,6 +1318,10 @@ class WebServer(
             <button onclick="runWithState(this, 'Uploading...', uploadKeybox)" class="primary" style="margin-top:10px; width:100%;">Upload</button>
         </div>
         <div class="panel">
+            <h3>Stored Keyboxes</h3>
+            <div id="storedKeyboxesList" style="max-height: 200px; overflow-y: auto;"></div>
+        </div>
+        <div class="panel">
             <div class="row">
                 <h3>Verification</h3>
                 <button onclick="runWithState(this, 'Verifying...', verifyKeyboxes)">Check All</button>
@@ -1516,14 +1520,7 @@ class WebServer(
             });
 
             // Load Keyboxes
-            fetchAuth(getAuthUrl('/api/keyboxes')).then(r => r.json()).then(kbs => {
-                const dl = document.getElementById('keyboxList');
-                kbs.forEach(k => {
-                    const opt = document.createElement('option');
-                    opt.value = k;
-                    dl.appendChild(opt);
-                });
-            });
+            loadKeyboxes();
 
             // Init Editor
             currentFile = document.getElementById('fileSelector').value;
@@ -1957,14 +1954,24 @@ class WebServer(
             const f = document.getElementById('kbFilename').value;
             const c = document.getElementById('kbContent').value;
             if (!f || !c) return;
-            await fetchAuth(getAuthUrl('/api/upload_keybox'), {
-                 method: 'POST',
-                 body: new URLSearchParams({ filename: f, content: c })
-             });
-             notify('Keybox Uploaded');
-             document.getElementById('kbFilename').value = '';
-             document.getElementById('kbContent').value = '';
-             resetDropZone();
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/upload_keybox'), {
+                     method: 'POST',
+                     body: new URLSearchParams({ filename: f, content: c })
+                 });
+                 if (!res.ok) {
+                     const msg = await res.text();
+                     notify('Error: ' + msg, 'error');
+                     return;
+                 }
+                 notify('Keybox Uploaded');
+                 document.getElementById('kbFilename').value = '';
+                 document.getElementById('kbContent').value = '';
+                 resetDropZone();
+                 loadKeyboxes();
+            } catch (e) {
+                notify('Upload Failed', 'error');
+            }
         }
 
         function resetDropZone() {
@@ -1997,39 +2004,94 @@ class WebServer(
             }
         }
 
+        async function loadKeyboxes() {
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/keyboxes'));
+                if (res.ok) {
+                    const keys = await res.json();
+                    renderKeyboxList(keys);
+
+                    // Update datalist for Apps tab
+                    const dl = document.getElementById('keyboxList');
+                    if (dl) {
+                        dl.innerHTML = '';
+                        keys.forEach(k => {
+                            const opt = document.createElement('option');
+                            opt.value = k;
+                            dl.appendChild(opt);
+                        });
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function renderKeyboxList(keys) {
+            const list = document.getElementById('storedKeyboxesList');
+            if (!list) return;
+            list.innerHTML = '';
+            if (keys.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:20px; color:#666;">No keyboxes stored. Upload one above.</div>';
+                return;
+            }
+            keys.forEach(k => {
+                const div = document.createElement('div');
+                div.className = 'row';
+                div.style.padding = '10px';
+                div.style.borderBottom = '1px solid var(--border)';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = k;
+                div.appendChild(nameSpan);
+
+                const statusSpan = document.createElement('span');
+                statusSpan.textContent = ' Stored';
+                statusSpan.style.fontSize = '0.8em';
+                statusSpan.style.color = '#666';
+                statusSpan.style.marginLeft = '10px';
+                div.appendChild(statusSpan);
+
+                list.appendChild(div);
+            });
+        }
+
         async function verifyKeyboxes() {
              notify('Verifying...', 'working');
-             const res = await fetchAuth(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
-             const data = await res.json();
-             const container = document.getElementById('verifyResult');
-             container.innerHTML = '';
-             data.forEach(d => {
-                 const div = document.createElement('div');
-                 const color = d.status === 'VALID' ? '#34D399' : '#EF4444';
-                 div.style.borderLeft = `3px solid ${'$'}{color}`;
-                 div.style.background = 'rgba(255,255,255,0.05)';
-                 div.style.padding = '8px 12px';
-                 div.style.marginBottom = '8px';
-                 div.style.borderRadius = '0 4px 4px 0';
+             try {
+                 const res = await fetchAuth(getAuthUrl('/api/verify_keyboxes'), { method: 'POST' });
+                 if (!res.ok) throw new Error(await res.text());
+                 const data = await res.json();
+                 const container = document.getElementById('verifyResult');
+                 container.innerHTML = '';
+                 data.forEach(d => {
+                     const div = document.createElement('div');
+                     const color = d.status === 'VALID' ? '#34D399' : '#EF4444';
+                     div.style.borderLeft = `3px solid ${'$'}{color}`;
+                     div.style.background = 'rgba(255,255,255,0.05)';
+                     div.style.padding = '8px 12px';
+                     div.style.marginBottom = '8px';
+                     div.style.borderRadius = '0 4px 4px 0';
 
-                 const header = document.createElement('div');
-                 header.style.display = 'flex';
-                 header.style.justifyContent = 'space-between';
-                 header.style.alignItems = 'center';
-                 header.innerHTML = `<span style="font-weight:500; color:#E5E7EB">${'$'}{d.filename}</span><span style="color:${'$'}{color}; font-size:0.9em; font-weight:bold">${'$'}{d.status}</span>`;
-                 div.appendChild(header);
+                     const header = document.createElement('div');
+                     header.style.display = 'flex';
+                     header.style.justifyContent = 'space-between';
+                     header.style.alignItems = 'center';
+                     header.innerHTML = `<span style="font-weight:500; color:#E5E7EB">${'$'}{d.filename}</span><span style="color:${'$'}{color}; font-size:0.9em; font-weight:bold">${'$'}{d.status}</span>`;
+                     div.appendChild(header);
 
-                 if (d.details) {
-                     const det = document.createElement('div');
-                     det.style.marginTop = '4px';
-                     det.style.fontSize = '0.85em';
-                     det.style.color = '#9CA3AF';
-                     det.innerText = d.details;
-                     div.appendChild(det);
-                 }
-                 container.appendChild(div);
-             });
-             notify('Check Complete');
+                     if (d.details) {
+                         const det = document.createElement('div');
+                         det.style.marginTop = '4px';
+                         det.style.fontSize = '0.85em';
+                         det.style.color = '#9CA3AF';
+                         det.innerText = d.details;
+                         div.appendChild(det);
+                     }
+                     container.appendChild(div);
+                 });
+                 notify('Check Complete');
+             } catch(e) {
+                 notify('Error: ' + e.message, 'error');
+             }
         }
 
         init();
