@@ -91,6 +91,11 @@ static const char* PROPERTY_SERVICE_INTERFACE_TOKEN = "android.os.IPropertyServi
 // Helper functions for manual Parcel manipulation to avoid ABI issues with String16
 void writeString16_manual(Parcel& p, const char* str) {
     size_t len = str ? strlen(str) : 0;
+    if (len > INT32_MAX) {
+        LOGE("String length too large: %zu", len);
+        len = 0;
+        str = nullptr;
+    }
     std::vector<char16_t> u16;
     u16.reserve(len + 1);
     for (size_t i = 0; i < len; ++i) {
