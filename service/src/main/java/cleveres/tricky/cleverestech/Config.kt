@@ -179,6 +179,10 @@ object Config {
     @Volatile
     private var lastKeyboxModified: Long = 0
 
+    // Cache parsed keyboxes from directory to avoid re-parsing on every update
+    // Key: filename, Value: Pair(lastModified, List<KeyBox>)
+    private val directoryKeyboxCache = ConcurrentHashMap<String, Pair<Long, List<CertHack.KeyBox>>>()
+
     private fun updateKeyBoxes() = scope.launch {
         runCatching {
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
@@ -204,15 +208,39 @@ object Config {
             // 2. Directory files
             if (keyboxDir.exists() && keyboxDir.isDirectory) {
                 val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                val currentFiles = HashSet<String>()
+
                 files?.forEach { file ->
-                    try {
-                        file.bufferedReader().use { reader ->
-                            allKeyboxes.addAll(CertHack.parseKeyboxXml(reader, file.name))
+                    val filename = file.name
+                    currentFiles.add(filename)
+                    val lastMod = file.lastModified()
+
+                    val cached = directoryKeyboxCache[filename]
+                    if (cached != null && cached.first == lastMod) {
+                        allKeyboxes.addAll(cached.second)
+                    } else {
+                        try {
+                            file.bufferedReader().use { reader ->
+                                val parsed = CertHack.parseKeyboxXml(reader, filename)
+                                directoryKeyboxCache[filename] = lastMod to parsed
+                                allKeyboxes.addAll(parsed)
+                                Logger.i("Reloaded keybox file: $filename")
+                            }
+                        } catch (e: Exception) {
+                            Logger.e("Failed to parse keybox file: $filename", e)
                         }
-                    } catch (e: Exception) {
-                        Logger.e("Failed to parse keybox file: ${file.name}", e)
                     }
                 }
+
+                // Cleanup removed files from cache
+                val iterator = directoryKeyboxCache.keys.iterator()
+                while (iterator.hasNext()) {
+                    if (!currentFiles.contains(iterator.next())) {
+                        iterator.remove()
+                    }
+                }
+            } else {
+                directoryKeyboxCache.clear()
             }
 
             CertHack.setKeyboxes(allKeyboxes)
@@ -893,5 +921,6 @@ object Config {
         clockSource = { System.currentTimeMillis() }
         cachedLegacyKeyboxes = emptyList()
         lastKeyboxModified = 0
+        directoryKeyboxCache.clear()
     }
 }
