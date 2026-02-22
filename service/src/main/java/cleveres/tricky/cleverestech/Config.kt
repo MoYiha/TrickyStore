@@ -899,6 +899,11 @@ object Config {
 
     @androidx.annotation.VisibleForTesting
     fun reset() {
+        ConfigObserver.stopWatching()
+        KeyboxDirObserver.stopWatching()
+        keyboxPoller?.stop()
+        scope.coroutineContext.cancelChildren()
+
         root = File(CONFIG_PATH)
         packageCache.clear()
         dynamicPatchCache.clear()
