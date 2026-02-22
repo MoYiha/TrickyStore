@@ -281,7 +281,7 @@ bool remote_pre_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr
     if (args.size() > 6) {
         auto remain = (args.size() - 6) * sizeof(uintptr_t);
         align_stack(regs, remain);
-        if (!write_proc(pid, (uintptr_t) regs.REG_SP, args.data(), remain)) {
+        if (!write_proc(pid, (uintptr_t) regs.REG_SP, args.data() + 6, remain)) {
             LOGE("failed to push arguments");
         }
     }
@@ -310,7 +310,7 @@ bool remote_pre_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr
     if (args.size() > 8) {
         auto remain = (args.size() - 8) * sizeof(uintptr_t);
         align_stack(regs, remain);
-        write_proc(pid, (uintptr_t)regs.REG_SP, args.data(), remain);
+        write_proc(pid, (uintptr_t)regs.REG_SP, args.data() + 8, remain);
     }
     regs.regs[30] = return_addr;
     regs.REG_IP = func_addr;
@@ -321,7 +321,7 @@ bool remote_pre_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr
     if (args.size() > 4) {
         auto remain = (args.size() - 4) * sizeof(uintptr_t);
         align_stack(regs, remain);
-        write_proc(pid, (uintptr_t)regs.REG_SP, args.data(), remain);
+        write_proc(pid, (uintptr_t)regs.REG_SP, args.data() + 4, remain);
     }
     regs.uregs[14] = return_addr;
     regs.REG_IP = func_addr;
