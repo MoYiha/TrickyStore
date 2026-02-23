@@ -13,6 +13,7 @@
 //! the entry point. It calls into this Rust library through the C FFI functions
 //! exposed in the [`ffi`] module for all CBOR encoding and COSE operations.
 
+pub mod bcc;
 pub mod cbor;
 pub mod cose;
 pub mod ffi;

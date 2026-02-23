@@ -17,9 +17,13 @@ fingerprint = ["dep:minreq"]
 hmac = "0.12"
 sha2 = "0.10"
 minreq = { version = "2.12", features = ["https-rustls"], optional = true }
+coset = "0.3"
+p256 = { version = "0.13", features = ["arithmetic", "ecdsa", "std"] }
+rand_core = { version = "0.6", features = ["std"] }
 
 [dev-dependencies]
 hex = "0.4"
+rand = "0.8"
 
 [profile.release]
 panic = "abort"

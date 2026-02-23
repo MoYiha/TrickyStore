@@ -267,6 +267,19 @@ pub unsafe extern "C" fn rust_create_certificate_request(
     .unwrap_or_else(|_| RustBuffer::empty())
 }
 
+/// Generate a spoofed Boot Certificate Chain (BCC).
+///
+/// Returns a RustBuffer containing the CBOR-encoded BCC array.
+/// The caller must free the buffer with `rust_free_buffer`.
+#[no_mangle]
+pub extern "C" fn rust_generate_spoofed_bcc() -> RustBuffer {
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let bcc = crate::bcc::generate_spoofed_bcc();
+        RustBuffer::from_vec(bcc)
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
+}
+
 // ---- Fingerprint Cache FFI ----
 
 /// Inject fingerprint data into the in-memory cache.
@@ -516,6 +529,17 @@ mod tests {
         assert_eq!(bytes[0], 0xAB);
         let content = String::from_utf8_lossy(bytes);
         assert!(content.contains("google"));
+        unsafe { rust_free_buffer(buf) };
+    }
+
+    #[test]
+    fn test_ffi_generate_spoofed_bcc() {
+        let buf = rust_generate_spoofed_bcc();
+        assert!(!buf.data.is_null());
+        assert!(buf.len > 0);
+        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        // Should be a CBOR array (0x80..0x9F)
+        assert_eq!(bytes[0] & 0xE0, 0x80);
         unsafe { rust_free_buffer(buf) };
     }
 
