@@ -23,6 +23,7 @@ hex = "0.4"
 
 [profile.release]
 panic = "abort"
-lto = true
+lto = "fat"
 codegen-units = 1
-strip = "symbols"
+strip = true
+opt-level = "z"

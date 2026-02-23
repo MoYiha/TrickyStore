@@ -46,13 +46,17 @@ pub fn parse_fingerprints(data: &str) -> HashMap<String, String> {
             continue;
         }
         // Extract device codename: split by '/' to get segments
-        let parts: Vec<&str> = line.splitn(4, '/').collect();
-        if parts.len() >= 3 {
-            // Third segment is "device:version", take before ':'
-            let device_segment = parts[2];
-            let device = device_segment.split(':').next().unwrap_or(device_segment);
-            if !device.is_empty() {
-                map.insert(device.to_string(), line.to_string());
+        // Optimization: Use iterator directly to avoid Vec allocation
+        let mut parts = line.splitn(4, '/');
+        // Skip first two segments (brand, product)
+        if parts.next().is_some() && parts.next().is_some() {
+            // Third segment is "device:version"
+            if let Some(device_segment) = parts.next() {
+                // Take before ':'
+                let device = device_segment.split(':').next().unwrap_or(device_segment);
+                if !device.is_empty() {
+                    map.insert(device.to_string(), line.to_string());
+                }
             }
         }
     }
