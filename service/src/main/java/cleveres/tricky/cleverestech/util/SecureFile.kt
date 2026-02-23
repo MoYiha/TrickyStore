@@ -12,7 +12,9 @@ import kotlinx.coroutines.sync.withLock
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
-    fun writeBytes(file: File, content: ByteArray)
+    fun writeBytes(file: File, content: ByteArray) {
+        throw UnsupportedOperationException("writeBytes not implemented in mock")
+    }
     fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {}
     fun mkdirs(file: File, mode: Int)
     fun touch(file: File, mode: Int)

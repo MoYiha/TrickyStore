@@ -62,20 +62,23 @@ object CboxManager {
         }
 
         // Cleanup removed files
-        val iter = unlockedCache.keys().iterator()
-        while (iter.hasNext()) {
-            val name = iter.next()
+        val removedKeys = ArrayList<String>()
+        for (name in unlockedCache.keys) {
             if (!currentFiles.contains(name)) {
-                iter.remove()
-                File(dir, "$name.cache").delete()
+                removedKeys.add(name)
             }
         }
-        val lockedIter = lockedFiles.iterator()
-        while (lockedIter.hasNext()) {
-            if (!currentFiles.contains(lockedIter.next())) {
-                lockedIter.remove()
+        for (name in removedKeys) {
+            unlockedCache.remove(name)
+            File(dir, "$name.cache").delete()
+        }
+        val toRemove = ArrayList<String>()
+        for (f in lockedFiles) {
+            if (!currentFiles.contains(f)) {
+                toRemove.add(f)
             }
         }
+        lockedFiles.removeAll(toRemove)
     }
 
     fun unlock(filename: String, password: String, publicKey: String?): Boolean {

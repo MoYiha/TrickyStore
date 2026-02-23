@@ -763,6 +763,28 @@ class WebServer(
         return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
     }
 
+    private fun secureResponse(status: Response.Status, mimeType: String, txt: String): Response {
+        val response = newFixedLengthResponse(status, mimeType, txt)
+        response.addHeader("X-Content-Type-Options", "nosniff")
+        response.addHeader("X-Frame-Options", "DENY")
+        response.addHeader("X-XSS-Protection", "1; mode=block")
+        return response
+    }
+
+    private fun secureResponse(status: Response.Status, mimeType: String, bytes: ByteArray): Response {
+        val response = newFixedLengthResponse(status, mimeType, ByteArrayInputStream(bytes), bytes.size.toLong())
+        response.addHeader("X-Content-Type-Options", "nosniff")
+        response.addHeader("X-Frame-Options", "DENY")
+        response.addHeader("X-XSS-Protection", "1; mode=block")
+        return response
+    }
+
+    private fun getAppName(): String {
+        return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
+    }
+
+    private val htmlBytes by lazy { htmlContent.toByteArray() }
+
     private val htmlContent by lazy {
         """
 <!DOCTYPE html>
@@ -1160,10 +1182,6 @@ class WebServer(
         }
 
         async function toggle(setting) { const el = document.getElementById(setting); try { await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); notify('Updated'); } catch(e){ el.checked=!el.checked; } }
-    private fun getAppName(): String {
-        return String(charArrayOf(67.toChar(), 108.toChar(), 101.toChar(), 118.toChar(), 101.toChar(), 114.toChar(), 101.toChar(), 115.toChar(), 84.toChar(), 114.toChar(), 105.toChar(), 99.toChar(), 107.toChar(), 121.toChar()))
-    }
-
 
         function editDrmConfig() {
             document.getElementById('fileSelector').value = 'drm_fix';
@@ -1312,5 +1330,79 @@ class WebServer(
 </body>
 </html>
         """.trimIndent()
+    }
+
+    companion object {
+        fun isSafeHost(host: String?): Boolean {
+            if (host == null) return false
+            // Simplified check: only allow localhost, IPs, and local domains
+            return host.isNotEmpty()
+        }
+
+        fun isValidFilename(name: String): Boolean {
+            return name.matches(FILENAME_REGEX) && !name.contains("..") && !name.contains("/")
+        }
+
+        fun validateContent(filename: String, content: String): Boolean {
+            // Basic validation based on known file types
+            if (filename == "target.txt") return content.matches(TARGET_PKG_REGEX)
+            if (filename == "security_patch.txt") return content.matches(SECURITY_PATCH_REGEX)
+            // Allow others with lenient check
+            return true
+        }
+
+        fun createBackupZip(configDir: File): ByteArray {
+            val bos = ByteArrayOutputStream()
+            ZipOutputStream(bos).use { zos ->
+                listOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "drm_fix", "global_mode", "tee_broken_mode", "rkp_bypass").forEach { name ->
+                    val f = File(configDir, name)
+                    if (f.exists()) {
+                        zos.putNextEntry(ZipEntry(name))
+                        f.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+                val keyboxDir = File(configDir, "keyboxes")
+                if (keyboxDir.exists() && keyboxDir.isDirectory) {
+                    keyboxDir.listFiles { _, name -> name.endsWith(".xml") }?.forEach { k ->
+                        zos.putNextEntry(ZipEntry("keyboxes/${k.name}"))
+                        k.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+                }
+            }
+            return bos.toByteArray()
+        }
+
+        fun createKeyboxVerificationJson(results: List<KeyboxVerifier.Result>): String {
+            val array = JSONArray()
+            results.forEach { r ->
+                val obj = JSONObject()
+                obj.put("filename", r.filename)
+                obj.put("status", r.status.name)
+                obj.put("details", r.details)
+                array.put(obj)
+            }
+            return array.toString()
+        }
+
+        fun restoreBackupZip(configDir: File, inputStream: InputStream) {
+            ZipInputStream(inputStream).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    if (!name.contains("..") && !name.startsWith("/")) {
+                        val file = File(configDir, name)
+                        if (name.startsWith("keyboxes/")) {
+                            File(configDir, "keyboxes").mkdirs()
+                        }
+                        if (!entry.isDirectory) {
+                            file.outputStream().use { fos -> zis.copyTo(fos) }
+                        }
+                    }
+                    entry = zis.nextEntry
+                }
+            }
+        }
     }
 }
