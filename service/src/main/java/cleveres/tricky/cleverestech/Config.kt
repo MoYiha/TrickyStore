@@ -50,6 +50,8 @@ object Config {
     @Volatile
     private var moduleHash: ByteArray? = null
     private var isRkpBypass = false
+    @Volatile
+    private var moduleHashFromVars: ByteArray? = null
 
     // Optimization: Cache results of getAppConfig to avoid repeated Trie lookups.
     // The cache is bundled with the Trie in a state object to ensure consistency during updates.
@@ -71,7 +73,7 @@ object Config {
         Logger.i("Auto TEE broken mode is ${if (isAutoTeeBroken) "enabled" else "disabled"}")
     }
 
-    fun getModuleHash(): ByteArray? = moduleHash
+    fun getModuleHash(): ByteArray? = moduleHash ?: moduleHashFromVars
 
     fun getAppConfig(uid: Int): AppSpoofConfig? {
         val state = appConfigState
@@ -477,6 +479,7 @@ object Config {
         Logger.e("failed to update drm fix vars", it)
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     internal fun updateBuildVars(f: File?) = runCatching {
         val newVars = mutableMapOf<String, String>()
         val newIds = mutableMapOf<String, ByteArray>()
@@ -502,14 +505,36 @@ object Config {
         }
         buildVars = newVars
         attestationIds = newIds
+
+        // Optimize: Cache MODULE_HASH directly to avoid repeated parsing
+        val mh = newVars["MODULE_HASH"]
+        if (mh != null) {
+             try {
+                 moduleHashFromVars = mh.hexToByteArray()
+             } catch (e: Exception) {
+                 Logger.e("Failed to parse MODULE_HASH from vars", e)
+                 moduleHashFromVars = null
+             }
+        } else {
+            moduleHashFromVars = null
+        }
+
         Logger.i { "update build vars: $buildVars, attestation ids: ${attestationIds.keys}" }
     }.onFailure {
         Logger.e("failed to update build vars", it)
     }
 
+    private class SecurityPatchState(
+        val patches: Map<String, Any>,
+        val defaultPatch: Any?
+    ) {
+        val cache = ConcurrentHashMap<Int, Any>()
+    }
+
+    private val NULL_PATCH = Any()
+
     @Volatile
-    private var securityPatch: Map<String, Any> = emptyMap()
-    private var defaultSecurityPatch: Any? = null
+    private var securityPatchState = SecurityPatchState(emptyMap(), null)
 
     // Cache for dynamic patch levels (e.g. "today", "YYYY-MM-DD")
     // Key: Template String, Value: Pair(Timestamp, CalculatedLevel)
@@ -518,17 +543,27 @@ object Config {
 
     fun getPatchLevel(callingUid: Int): Int {
         val defaultLevel = patchLevel
-        val patchVal = if (securityPatch.isNotEmpty()) {
-            // Use cached getPackages to avoid expensive IPC call
-            val pkgs = getPackages(callingUid)
-            var found: Any? = null
-            for (pkg in pkgs) {
-                found = securityPatch[pkg]
-                if (found != null) break
-            }
-            found ?: defaultSecurityPatch
+        val state = securityPatchState
+        val cached = state.cache[callingUid]
+
+        val patchVal = if (cached != null) {
+            if (cached === NULL_PATCH) null else cached
         } else {
-            defaultSecurityPatch
+            val patches = state.patches
+            val found = if (patches.isNotEmpty()) {
+                // Use cached getPackages to avoid expensive IPC call
+                val pkgs = getPackages(callingUid)
+                var f: Any? = null
+                for (pkg in pkgs) {
+                    f = patches[pkg]
+                    if (f != null) break
+                }
+                f ?: state.defaultPatch
+            } else {
+                state.defaultPatch
+            }
+            state.cache[callingUid] = found ?: NULL_PATCH
+            found
         }
 
         if (patchVal == null) return defaultLevel
@@ -539,9 +574,9 @@ object Config {
 
         // Optimization: Check cache for dynamic strings to avoid expensive date/string operations
         val nowMs = clockSource()
-        val cached = dynamicPatchCache[patchStr]
-        if (cached != null && (nowMs - cached.first) < DYNAMIC_PATCH_TTL) {
-            return cached.second
+        val cachedDyn = dynamicPatchCache[patchStr]
+        if (cachedDyn != null && (nowMs - cachedDyn.first) < DYNAMIC_PATCH_TTL) {
+            return cachedDyn.second
         }
 
         val effectiveDate = if (patchStr.equals("today", ignoreCase = true)) {
@@ -595,9 +630,8 @@ object Config {
                 }
             }
         }
-        securityPatch = newPatch
-        defaultSecurityPatch = newDefault
-        Logger.i { "update security patch: default=$defaultSecurityPatch, per-app=${securityPatch.size}" }
+        securityPatchState = SecurityPatchState(newPatch, newDefault)
+        Logger.i { "update security patch: default=$newDefault, per-app=${newPatch.size}" }
     }.onFailure {
         Logger.e("failed to update security patch", it)
     }
@@ -907,8 +941,7 @@ object Config {
         root = File(CONFIG_PATH)
         packageCache.clear()
         dynamicPatchCache.clear()
-        securityPatch = emptyMap()
-        defaultSecurityPatch = null
+        securityPatchState = SecurityPatchState(emptyMap(), null)
         iPm = null
         appConfigState = AppConfigState(PackageTrie())
         targetState = TargetState(PackageTrie(), PackageTrie())
@@ -917,6 +950,7 @@ object Config {
         templates = emptyMap()
         templateKeyCache.clear()
         moduleHash = null
+        moduleHashFromVars = null
         keyboxSourceUrl = null
         isGlobalMode = false
         isTeeBrokenMode = false

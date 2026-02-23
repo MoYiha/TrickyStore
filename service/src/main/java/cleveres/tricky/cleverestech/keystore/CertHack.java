@@ -156,16 +156,6 @@ public final class CertHack {
         return derOctectString.getOctets();
     }
 
-    private static byte[] hexToByteArray(String s) {
-        int len = s.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                    + Character.digit(s.charAt(i + 1), 16));
-        }
-        return data;
-    }
-
     /**
      * Optimization: Use a custom key object to avoid expensive Base64 encoding
      * and large String allocations for cache lookups.
@@ -390,17 +380,6 @@ public final class CertHack {
             if (hasIdAttestation) {
                 for (Map.Entry<Integer, byte[]> entry : idAttestationTags.entrySet()) {
                     allTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
-                }
-            }
-
-            if (moduleHash == null) {
-                String moduleHashStr = Config.INSTANCE.getBuildVar("MODULE_HASH");
-                if (moduleHashStr != null && !moduleHashStr.isEmpty()) {
-                    try {
-                        moduleHash = hexToByteArray(moduleHashStr);
-                    } catch (Exception e) {
-                        Logger.e("Failed to parse MODULE_HASH build var", e);
-                    }
                 }
             }
 
@@ -731,16 +710,6 @@ public final class CertHack {
             }
 
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
-            if (moduleHash == null) {
-                String moduleHashStr = Config.INSTANCE.getBuildVar("MODULE_HASH");
-                if (moduleHashStr != null && !moduleHashStr.isEmpty()) {
-                    try {
-                        moduleHash = hexToByteArray(moduleHashStr);
-                    } catch (Exception e) {
-                        Logger.e("Failed to parse MODULE_HASH build var", e);
-                    }
-                }
-            }
             if (moduleHash != null) {
                 teeEnforcedList.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
             }
