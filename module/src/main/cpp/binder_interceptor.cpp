@@ -541,48 +541,62 @@ BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code, const Parc
 static void kick_handler(int) {}
 
 void kick_already_blocked_ioctls() {
-    struct sigaction sa;
-    struct sigaction old_sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = kick_handler;
-    sa.sa_flags = 0; // No SA_RESTART
-    sigemptyset(&sa.sa_mask);
+    // Iterate through candidate signals to find one that is safe to use
+    // (i.e., not already handled by the application).
+    static const int signals[] = {SIGWINCH, SIGURG, SIGIO, SIGPWR};
 
-    if (sigaction(SIGWINCH, &sa, &old_sa) == 0) {
-        // If the old handler was not default or ignore, restore it and skip kicking
-        if (old_sa.sa_handler != SIG_DFL && old_sa.sa_handler != SIG_IGN) {
-            sigaction(SIGWINCH, &old_sa, NULL);
-            LOGW("SIGWINCH handler already set, skipping kick");
-            return;
-        }
-    } else {
-        LOGE("Failed to set SIGWINCH handler");
-        return;
-    }
+    for (int sig : signals) {
+        struct sigaction sa;
+        struct sigaction old_sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = kick_handler;
+        sa.sa_flags = 0; // No SA_RESTART: essential to interrupt blocking syscalls like ioctl
+        sigemptyset(&sa.sa_mask);
 
-    DIR* task = opendir("/proc/self/task");
-    if (task) {
-        struct dirent* de;
-        while ((de = readdir(task))) {
-            if (de->d_name[0] == '.') continue;
-            int tid = atoi(de->d_name);
-            if (tid == gettid()) continue;
+        if (sigaction(sig, &sa, &old_sa) == 0) {
+            // If the old handler was not default or ignore, restore it and try the next signal
+            if (old_sa.sa_handler != SIG_DFL && old_sa.sa_handler != SIG_IGN) {
+                sigaction(sig, &old_sa, NULL);
+                LOGW("Signal %d handler already set, skipping kick", sig);
+                continue;
+            }
 
-            char path[64];
-            snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
-            FILE* fp = fopen(path, "r");
-            if (fp) {
-                long syscall_nr;
-                if (fscanf(fp, "%ld", &syscall_nr) == 1) {
-                    if (syscall_nr == SYS_ioctl) {
-                        syscall(SYS_tgkill, getpid(), tid, SIGWINCH);
+            // Found a safe signal. Proceed to kick threads.
+            LOGI("Using signal %d to interrupt blocked ioctls", sig);
+
+            DIR* task = opendir("/proc/self/task");
+            if (task) {
+                struct dirent* de;
+                while ((de = readdir(task))) {
+                    if (de->d_name[0] == '.') continue;
+                    int tid = atoi(de->d_name);
+                    if (tid == gettid()) continue;
+
+                    char path[64];
+                    snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
+                    FILE* fp = fopen(path, "r");
+                    if (fp) {
+                        long syscall_nr;
+                        if (fscanf(fp, "%ld", &syscall_nr) == 1) {
+                            if (syscall_nr == SYS_ioctl) {
+                                syscall(SYS_tgkill, getpid(), tid, sig);
+                            }
+                        }
+                        fclose(fp);
                     }
                 }
-                fclose(fp);
+                closedir(task);
             }
+
+            // Restore the original handler (which was DFL or IGN)
+            sigaction(sig, &old_sa, NULL);
+            return; // Success
+        } else {
+            LOGE("Failed to set handler for signal %d", sig);
         }
-        closedir(task);
     }
+
+    LOGE("Failed to find a suitable signal to interrupt threads");
 }
 
 bool hookBinder() {
