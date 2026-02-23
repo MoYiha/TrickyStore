@@ -957,6 +957,7 @@ class WebServer(
         <div class="panel">
             <h3>Upload Keybox / CBOX</h3>
             <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()">
+                <label for="kbContent" style="display:none;">Keybox Content (XML)</label>
                 <input type="file" id="kbFilePicker" style="display:none" onchange="handleUpload(this)">
                 <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
             </div>
@@ -1137,6 +1138,10 @@ class WebServer(
         async function handleUpload(input) {
             if (input.files && input.files[0]) {
                 const file = input.files[0];
+                const dz = document.getElementById('dropZoneContent');
+                dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px; color:var(--success);">📄</div>';
+                document.getElementById('dropZone').style.borderColor = 'var(--success)';
+
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('filename', file.name);
@@ -1146,7 +1151,14 @@ class WebServer(
                     const res = await fetchAuth('/api/upload_keybox', { method: 'POST', body: formData });
                     if (res.ok) { notify('Uploaded'); loadKeyInfo(); } else { notify('Failed', 'error'); }
                 } catch(e) { notify('Error', 'error'); }
+                resetDropZone();
             }
+        }
+
+        function resetDropZone() {
+            const dz = document.getElementById('dropZoneContent');
+            dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
+            document.getElementById('dropZone').style.borderColor = 'var(--border)';
         }
 
         // Rest of existing JS (simplified/merged)
@@ -1181,7 +1193,7 @@ class WebServer(
             await loadFile();
         }
 
-        async function toggle(setting) { const el = document.getElementById(setting); try { await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); notify('Updated'); } catch(e){ el.checked=!el.checked; } }
+        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
 
         function editDrmConfig() {
             document.getElementById('fileSelector').value = 'drm_fix';
@@ -1267,7 +1279,7 @@ class WebServer(
             appRules.forEach((rule, idx) => {
                 if (filter && !rule.package.toLowerCase().includes(filter)) return;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${'$'}{rule.package}</td><td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})">×</button></td>`;
+                tr.innerHTML = `<td>${'$'}{rule.package}</td><td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">×</button></td>`;
                 tbody.appendChild(tr);
             });
         }
@@ -1279,7 +1291,8 @@ class WebServer(
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
             if (!pkg) { notify('Package required'); return; }
-            if (!/^[a-zA-Z0-9_.*]+${'$'}/.test(pkg)) { notify('Invalid package'); return; }
+            const pkgRegex = /^[a-zA-Z0-9_.*]+$/;
+            if (!pkgRegex.test(pkg)) { notify('Invalid package'); return; }
             const permissions = [];
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');
@@ -1287,11 +1300,12 @@ class WebServer(
             renderAppTable(); pkgInput.value = ''; toggleAddButton(); notify('Rule Added');
         }
         function removeAppRule(idx) {
-            if (confirm('Remove rule?')) { appRules.splice(idx, 1); renderAppTable(); }
+            if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?')) { appRules.splice(idx, 1); renderAppTable(); }
         }
         async function saveAppConfig() {
             const res = await fetchAuth(getAuthUrl('/api/app_config_structured'), { method: 'POST', body: new URLSearchParams({ data: JSON.stringify(appRules) }) });
-            if (res.ok) notify('Saved'); else notify('Failed', 'error');
+            const txt = await res.text();
+            if (res.ok) { notify('App Config Saved'); } else { notify('Save Failed: ' + txt, 'error'); }
         }
         function toggleAddButton() {
             const btn = document.getElementById('btnAddRule'); const input = document.getElementById('appPkg');
@@ -1321,7 +1335,11 @@ class WebServer(
         }
         async function handleSave(btn) {
              btn.disabled = true; btn.innerText = 'Saving...';
-             try { await fetchAuth('/api/save', { method: 'POST', body: new URLSearchParams({ filename: currentFile, content: document.getElementById('fileEditor').value }) }); notify('Saved'); } finally { btn.disabled = false; btn.innerText = 'Save'; }
+             try {
+                 const res = await fetchAuth('/api/save', { method: 'POST', body: new URLSearchParams({ filename: currentFile, content: document.getElementById('fileEditor').value }) });
+                 const txt = await res.text();
+                 if (res.ok) { notify('File Saved'); } else { notify('Save Failed: ' + txt, 'error'); }
+             } finally { btn.disabled = false; btn.innerText = 'Save'; }
         }
         function updateSaveButtonState() {} // placeholder
 
@@ -1345,8 +1363,50 @@ class WebServer(
 
         fun validateContent(filename: String, content: String): Boolean {
             // Basic validation based on known file types
-            if (filename == "target.txt") return content.matches(TARGET_PKG_REGEX)
-            if (filename == "security_patch.txt") return content.matches(SECURITY_PATCH_REGEX)
+            if (filename == "target.txt") {
+                val lines = content.split('\n')
+                return lines.all { it.isEmpty() || it.startsWith("#") || it.matches(TARGET_PKG_REGEX) }
+            }
+            if (filename == "security_patch.txt") {
+                 val lines = content.split('\n')
+                 return lines.all { it.isEmpty() || it.matches(SECURITY_PATCH_REGEX) }
+            }
+            if (filename == "spoof_build_vars") {
+                val lines = content.split('\n')
+                return lines.all { line ->
+                    if (line.isEmpty() || line.startsWith("#")) return@all true
+                    // Must be KEY=VALUE format
+                    if (!line.matches(KEY_VALUE_REGEX)) return@all false
+                    // Value part security check
+                    val parts = line.split("=", limit=2)
+                    if (parts.size < 2) return@all false
+                    val value = parts[1]
+                    // Check for unsafe shell chars
+                    value.matches(SAFE_BUILD_VAR_VALUE_REGEX)
+                }
+            }
+            if (filename == "app_config") {
+                val lines = content.split('\n')
+                return lines.all { line ->
+                     if (line.isBlank() || line.startsWith("#")) return@all true
+                     val parts = line.trim().split(WHITESPACE_REGEX)
+                     if (parts.isEmpty()) return@all true
+                     val pkg = parts[0]
+                     if (!pkg.matches(PKG_NAME_REGEX)) return@all false
+                     if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(TEMPLATE_NAME_REGEX)) return@all false
+                     if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return@all false
+                     if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(PERMISSIONS_REGEX)) return@all false
+                     true
+                }
+            }
+            if (filename == "templates.json") {
+                try {
+                    val json = org.json.JSONTokener(content).nextValue()
+                    return json is org.json.JSONObject || json is org.json.JSONArray
+                } catch(e: Exception) {
+                    return false
+                }
+            }
             // Allow others with lenient check
             return true
         }
