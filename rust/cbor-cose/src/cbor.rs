@@ -228,10 +228,7 @@ mod tests {
     #[test]
     fn test_string_map_sorting_order() {
         let value = CborValue::Map(vec![
-            (
-                CborValue::TextString("aa".into()),
-                CborValue::from_int(1),
-            ),
+            (CborValue::TextString("aa".into()), CborValue::from_int(1)),
             (CborValue::TextString("a".into()), CborValue::from_int(2)),
             (CborValue::TextString("b".into()), CborValue::from_int(3)),
         ]);
@@ -253,10 +250,7 @@ mod tests {
     #[test]
     fn test_canonical_map_sorting() {
         let value = CborValue::Map(vec![
-            (
-                CborValue::TextString("aa".into()),
-                CborValue::from_int(1),
-            ),
+            (CborValue::TextString("aa".into()), CborValue::from_int(1)),
             (CborValue::TextString("b".into()), CborValue::from_int(2)),
         ]);
         let encoded = encode(&value);
@@ -306,10 +300,7 @@ mod tests {
         // 255 => 0x18 0xff
         assert_eq!(encode(&CborValue::UnsignedInt(255)), vec![0x18, 0xff]);
         // 256 => 0x19 0x01 0x00
-        assert_eq!(
-            encode(&CborValue::UnsignedInt(256)),
-            vec![0x19, 0x01, 0x00]
-        );
+        assert_eq!(encode(&CborValue::UnsignedInt(256)), vec![0x19, 0x01, 0x00]);
     }
 
     #[test]

@@ -10,3 +10,6 @@
 local.properties
 *.nogit
 .env
+
+# Rust build artifacts
+**/target/

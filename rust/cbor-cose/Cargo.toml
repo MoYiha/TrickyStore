@@ -7,7 +7,7 @@ license = "GPL-3.0"
 
 [lib]
 name = "cleverestricky_cbor_cose"
-crate-type = ["lib"]
+crate-type = ["lib", "staticlib"]
 
 [dependencies]
 hmac = "0.12"

@@ -51,8 +51,7 @@ fn build_mac_structure(protected_headers: &[u8], payload: &[u8]) -> Vec<u8> {
 
 /// Compute HMAC-SHA256 over the given data.
 fn compute_hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CoseError> {
-    let mut mac =
-        HmacSha256::new_from_slice(key).map_err(|_| CoseError::InvalidKeyLength)?;
+    let mut mac = HmacSha256::new_from_slice(key).map_err(|_| CoseError::InvalidKeyLength)?;
     mac.update(data);
     Ok(mac.finalize().into_bytes().to_vec())
 }
@@ -351,8 +350,7 @@ mod tests {
         );
         let challenge = b"test_challenge";
 
-        let response =
-            create_certificate_request_response(&[maced_key], challenge, &device_info);
+        let response = create_certificate_request_response(&[maced_key], challenge, &device_info);
 
         assert!(!response.is_empty(), "response should not be empty");
         assert_eq!(
