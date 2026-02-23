@@ -2,8 +2,8 @@
 
 ## Summary
 
-[`frida-gum-rs`](https://github.com/nicholaschum/ArtFingerprints) provides Rust
-bindings for Frida's Gum instrumentation engine. This document evaluates whether
+[`frida-gum-rs`](https://crates.io/crates/frida-gum) provides Rust
+bindings for [Frida's Gum](https://frida.re/docs/frida-gum/) instrumentation engine. This document evaluates whether
 adopting it could further reduce CleveresTricky's C++ dependency.
 
 ## What frida-gum offers
