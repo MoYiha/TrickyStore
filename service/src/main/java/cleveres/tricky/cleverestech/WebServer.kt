@@ -52,6 +52,7 @@ class WebServer(
 
     val token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 10 * 1024 * 1024L // 10MB for ZIPs
+    private val MAX_BODY_SIZE = 5 * 1024 * 1024L // 5MB for non-multipart requests
 
     private class RateLimitEntry(var timestamp: Long, var count: Int)
     private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
@@ -229,7 +230,11 @@ class WebServer(
              val lenStr = headers["content-length"]
              if (lenStr != null) {
                   try {
-                      if (lenStr.toLong() > MAX_UPLOAD_SIZE) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
+                      val contentLen = lenStr.toLong()
+                      val contentType = headers["content-type"] ?: ""
+                      val isMultipart = contentType.contains("multipart/form-data", ignoreCase = true)
+                      val maxSize = if (isMultipart) MAX_UPLOAD_SIZE else MAX_BODY_SIZE
+                      if (contentLen > maxSize) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
                   } catch (e: Exception) {}
              } else {
                  return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
@@ -570,6 +575,9 @@ class WebServer(
         if (uri == "/api/file" && method == Method.GET) {
             val filename = params["filename"]
             if (filename != null && isValidFilename(filename)) {
+                if (filename == "keybox.xml") {
+                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Access denied")
+                }
                 return secureResponse(Response.Status.OK, "text/plain", readFile(filename))
             }
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
@@ -768,6 +776,8 @@ class WebServer(
         response.addHeader("X-Content-Type-Options", "nosniff")
         response.addHeader("X-Frame-Options", "DENY")
         response.addHeader("X-XSS-Protection", "1; mode=block")
+        response.addHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline'")
+        response.addHeader("Referrer-Policy", "no-referrer")
         return response
     }
 
@@ -776,6 +786,8 @@ class WebServer(
         response.addHeader("X-Content-Type-Options", "nosniff")
         response.addHeader("X-Frame-Options", "DENY")
         response.addHeader("X-XSS-Protection", "1; mode=block")
+        response.addHeader("Content-Security-Policy", "default-src 'self' 'unsafe-inline'")
+        response.addHeader("Referrer-Policy", "no-referrer")
         return response
     }
 
@@ -885,7 +897,7 @@ class WebServer(
             </div>
         </div>
         <div class="panel"><h3>Configuration Management</h3><div class="grid-2"><button onclick="backupConfig()">Backup Config</button><button onclick="document.getElementById('restoreInput').click()">Restore Config</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip"></div></div>
-        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a></div>
+        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a><div style="margin-top:15px;"><div class="section-header">Donate</div><div style="margin-top:5px;"><span style="color:#888; font-size:0.85em;">Binance ID: 114574830</span> <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" style="padding:2px 8px; font-size:0.8em;" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span></button></div></div></div>
     </div>
 
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
@@ -898,10 +910,11 @@ class WebServer(
         <div class="panel"><h3>Beta Profile Fetcher</h3><button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button></div>
         <div class="panel">
             <h3>Identity Manager</h3>
+            <label for="templateSelect" style="display:block; font-size:0.85em; color:#888; margin-bottom:8px;">Select a verified device identity to spoof globally.</label>
             <select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"></select>
             <div id="templatePreview" style="background:var(--input-bg); border-radius:8px; padding:15px; margin-bottom:15px;">
                 <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
-                <div class="section-header">Fingerprint</div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
+                <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint"><span aria-hidden="true">📋</span></button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
             <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="applyTemplateToGlobal(this)">Apply Global</button></div>
         </div>
@@ -929,8 +942,8 @@ class WebServer(
     <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
         <div class="panel">
             <h3>New Rule</h3>
-            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()"><datalist id="pkgList"></datalist></div>
-            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox"><datalist id="keyboxList"></datalist></div></div>
+            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="pkgList"></datalist></div>
+            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="keyboxList"></datalist></div></div>
             <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div></div>
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
@@ -973,7 +986,8 @@ class WebServer(
             <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}">
                 <label for="kbFilename" style="display:none">Keybox File</label>
                 <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
-                <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content" style="display:none;"></textarea>
+                <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Keybox Content (XML)</label>
+                <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
                 <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
             </div>
         </div>
@@ -1026,6 +1040,14 @@ class WebServer(
             const headers = options.headers || {};
             headers['X-Auth-Token'] = token;
             return fetch(url, { ...options, headers });
+        }
+        function copyToClipboard(text, msg, btn) {
+            const originalHtml = btn.innerHTML;
+            navigator.clipboard.writeText(text).then(() => {
+                btn.innerText = '✓ Copied';
+                notify(msg);
+                setTimeout(() => btn.innerHTML = originalHtml, 2000);
+            }).catch(() => { notify('Copy failed', 'error'); });
         }
         let notifyTimeout;
         function notify(msg, type = 'normal') {
@@ -1388,14 +1410,14 @@ class WebServer(
             const kb = document.getElementById('appKeybox').value;
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
-            if (!pkg) { notify('Package required'); return; }
+            if (!pkg) { notify('Package required'); pkgInput.focus(); return; }
             const pkgRegex = /^[a-zA-Z0-9_.*]+$/;
-            if (!pkgRegex.test(pkg)) { notify('Invalid package'); return; }
+            if (!pkgRegex.test(pkg)) { notify('Invalid package'); pkgInput.focus(); return; }
             const permissions = [];
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');
             appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
-            renderAppTable(); pkgInput.value = ''; toggleAddButton(); notify('Rule Added');
+            renderAppTable(); pkgInput.value = ''; document.getElementById('appKeybox').value = ''; toggleAddButton(); pkgInput.focus(); notify('Rule Added');
         }
         function removeAppRule(idx) {
             if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?')) { appRules.splice(idx, 1); renderAppTable(); }
@@ -1480,8 +1502,8 @@ class WebServer(
     companion object {
         fun isSafeHost(host: String?): Boolean {
             if (host == null) return false
-            // Simplified check: only allow localhost, IPs, and local domains
-            return host.isNotEmpty()
+            val h = host.split(":")[0].lowercase()
+            return h == "localhost" || h == "127.0.0.1" || h == "[::1]"
         }
 
         fun isValidFilename(name: String): Boolean {
