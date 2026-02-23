@@ -864,6 +864,9 @@ class WebServer(
         .status-ERROR { background: rgba(239, 68, 68, 0.2); color: #EF4444; }
         input[type="checkbox"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         input[type="checkbox"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+        input.valid { border-color: var(--success); }
+        input.invalid { border-color: var(--danger); }
+        .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
     </style>
 </head>
 <body>
@@ -920,19 +923,19 @@ class WebServer(
         </div>
         <div class="panel"><h3>System-Wide Spoofing (Global Hardware)</h3>
             <div class="section-header">Modem</div><div class="grid-2">
-                <div><label for="inputImei">IMEI</label><input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;" inputmode="numeric"></div>
-                <div><label for="inputImsi">IMSI</label><input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;" inputmode="numeric"></div>
+                <div><label for="inputImei">IMEI</label><input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')"></div>
+                <div><label for="inputImsi">IMSI</label><input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'imsi')"></div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                <div><label for="inputIccid">ICCID</label><input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;" inputmode="numeric"></div>
-                <div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;" autocapitalize="characters"></div>
+                <div><label for="inputIccid">ICCID</label><input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')"></div>
+                <div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'alphanum')"></div>
             </div>
             <div class="section-header">Network</div><div class="grid-2">
-                <div><label for="inputWifiMac">WiFi MAC</label><input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters"></div>
-                <div><label for="inputBtMac">BT MAC</label><input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters"></div>
+                <div><label for="inputWifiMac">WiFi MAC</label><input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')"></div>
+                <div><label for="inputBtMac">BT MAC</label><input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')"></div>
             </div>
             <div class="section-header">Operator</div><div class="grid-2">
-                <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO"></div>
+                <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')"></div>
                 <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator"></div>
             </div>
             <div style="margin-top:15px; text-align:right;"><button onclick="applyTemplateToGlobal(this)" class="danger">Apply System-Wide</button></div>
@@ -1059,6 +1062,80 @@ class WebServer(
                 // Keep active until cleared manually or by another notify
             } else {
                 notifyTimeout = setTimeout(() => island.classList.remove('active'), 3000);
+            }
+        }
+        function validateRealtime(input, type) {
+            const val = input.value.trim();
+            if (!val) {
+                input.classList.remove('valid', 'invalid');
+                const next = input.nextElementSibling;
+                if (next && next.classList.contains('error-msg')) next.remove();
+                return;
+            }
+
+            let isValid = false;
+            let msg = "";
+
+            if (type === 'luhn') {
+                if (!/^\d+${'$'}/.test(val)) {
+                    msg = "Must be numeric";
+                } else {
+                     const len = val.length;
+                     if (input.id.includes('Imei') && len !== 15) msg = "Must be 15 digits";
+                     else if (input.id.includes('Iccid') && (len < 19 || len > 20)) msg = "Must be 19-20 digits";
+
+                     if (!msg) {
+                         let sum = 0;
+                         let shouldDouble = false;
+                         for (let i = val.length - 1; i >= 0; i--) {
+                             let digit = parseInt(val.charAt(i));
+                             if (shouldDouble) {
+                                 digit *= 2;
+                                 if (digit > 9) digit -= 9;
+                             }
+                             sum += digit;
+                             shouldDouble = !shouldDouble;
+                         }
+                         if (sum % 10 === 0) isValid = true;
+                         else msg = "Invalid Checksum";
+                     }
+                }
+            } else if (type === 'imsi') {
+                if (!/^\d+${'$'}/.test(val)) {
+                    msg = "Must be numeric";
+                } else if (val.length !== 15) {
+                    msg = "Must be 15 digits";
+                } else {
+                    isValid = true;
+                }
+            } else if (type === 'mac') {
+                if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})${'$'}/.test(val)) isValid = true;
+                else msg = "Invalid MAC (XX:XX:XX:XX:XX:XX)";
+            } else if (type === 'iso') {
+                if (/^[a-zA-Z]{2}${'$'}/.test(val)) isValid = true;
+                else msg = "Must be 2 letters";
+            } else if (type === 'alphanum') {
+                if (/^[a-zA-Z0-9]*${'$'}/.test(val)) isValid = true;
+                else msg = "Alphanumeric only";
+            }
+
+            if (isValid) {
+                input.classList.add('valid');
+                input.classList.remove('invalid');
+                const next = input.nextElementSibling;
+                if (next && next.classList.contains('error-msg')) next.remove();
+            } else {
+                input.classList.add('invalid');
+                input.classList.remove('valid');
+                let next = input.nextElementSibling;
+                if (!next || !next.classList.contains('error-msg')) {
+                    const span = document.createElement('div');
+                    span.className = 'error-msg';
+                    input.parentNode.insertBefore(span, input.nextSibling);
+                    next = span;
+                }
+                next.innerText = msg;
+                next.style.display = 'block';
             }
         }
         async function runWithState(btn, text, task) {
