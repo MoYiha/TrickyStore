@@ -12,6 +12,7 @@
 
 use std::ptr;
 use std::slice;
+use std::panic;
 
 use crate::cbor::{self, CborValue};
 use crate::cose;
@@ -49,7 +50,11 @@ impl RustBuffer {
 #[no_mangle]
 pub unsafe extern "C" fn rust_free_buffer(buf: RustBuffer) {
     if !buf.data.is_null() && buf.len > 0 {
-        let _ = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(buf.data, buf.len)) };
+        let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            unsafe {
+                let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(buf.data, buf.len));
+            }
+        }));
     }
 }
 
@@ -59,7 +64,9 @@ pub unsafe extern "C" fn rust_free_buffer(buf: RustBuffer) {
 /// No pointer arguments; always safe.
 #[no_mangle]
 pub extern "C" fn rust_cbor_encode_unsigned(value: u64) -> RustBuffer {
-    RustBuffer::from_vec(cbor::encode(&CborValue::UnsignedInt(value)))
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        RustBuffer::from_vec(cbor::encode(&CborValue::UnsignedInt(value)))
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR signed integer (handles both positive and negative).
@@ -68,7 +75,9 @@ pub extern "C" fn rust_cbor_encode_unsigned(value: u64) -> RustBuffer {
 /// No pointer arguments; always safe.
 #[no_mangle]
 pub extern "C" fn rust_cbor_encode_int(value: i64) -> RustBuffer {
-    RustBuffer::from_vec(cbor::encode(&CborValue::from_int(value)))
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        RustBuffer::from_vec(cbor::encode(&CborValue::from_int(value)))
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR byte string.
@@ -77,12 +86,14 @@ pub extern "C" fn rust_cbor_encode_int(value: i64) -> RustBuffer {
 /// `data` must point to `len` valid bytes, or be null if `len` is 0.
 #[no_mangle]
 pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> RustBuffer {
-    let bytes = if data.is_null() || len == 0 {
-        vec![]
-    } else {
-        unsafe { slice::from_raw_parts(data, len) }.to_vec()
-    };
-    RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(bytes)))
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let bytes = if data.is_null() || len == 0 {
+            vec![]
+        } else {
+            unsafe { slice::from_raw_parts(data, len) }.to_vec()
+        };
+        RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(bytes)))
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR text string.
@@ -91,13 +102,15 @@ pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> 
 /// `data` must point to `len` valid UTF-8 bytes, or be null if `len` is 0.
 #[no_mangle]
 pub unsafe extern "C" fn rust_cbor_encode_text(data: *const u8, len: usize) -> RustBuffer {
-    let s = if data.is_null() || len == 0 {
-        String::new()
-    } else {
-        let bytes = unsafe { slice::from_raw_parts(data, len) };
-        String::from_utf8_lossy(bytes).into_owned()
-    };
-    RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let s = if data.is_null() || len == 0 {
+            String::new()
+        } else {
+            let bytes = unsafe { slice::from_raw_parts(data, len) };
+            String::from_utf8_lossy(bytes).into_owned()
+        };
+        RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Generate a COSE_Mac0 MACed public key for RKP.
@@ -118,26 +131,28 @@ pub unsafe extern "C" fn rust_generate_maced_public_key(
     hmac_key_ptr: *const u8,
     hmac_key_len: usize,
 ) -> RustBuffer {
-    let x = if x_ptr.is_null() || x_len == 0 {
-        return RustBuffer::empty();
-    } else {
-        unsafe { slice::from_raw_parts(x_ptr, x_len) }
-    };
-    let y = if y_ptr.is_null() || y_len == 0 {
-        return RustBuffer::empty();
-    } else {
-        unsafe { slice::from_raw_parts(y_ptr, y_len) }
-    };
-    let hmac_key = if hmac_key_ptr.is_null() || hmac_key_len == 0 {
-        return RustBuffer::empty();
-    } else {
-        unsafe { slice::from_raw_parts(hmac_key_ptr, hmac_key_len) }
-    };
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let x = if x_ptr.is_null() || x_len == 0 {
+            return RustBuffer::empty();
+        } else {
+            unsafe { slice::from_raw_parts(x_ptr, x_len) }
+        };
+        let y = if y_ptr.is_null() || y_len == 0 {
+            return RustBuffer::empty();
+        } else {
+            unsafe { slice::from_raw_parts(y_ptr, y_len) }
+        };
+        let hmac_key = if hmac_key_ptr.is_null() || hmac_key_len == 0 {
+            return RustBuffer::empty();
+        } else {
+            unsafe { slice::from_raw_parts(hmac_key_ptr, hmac_key_len) }
+        };
 
-    match cose::generate_maced_public_key(x, y, hmac_key) {
-        Ok(buf) => RustBuffer::from_vec(buf),
-        Err(_) => RustBuffer::empty(),
-    }
+        match cose::generate_maced_public_key(x, y, hmac_key) {
+            Ok(buf) => RustBuffer::from_vec(buf),
+            Err(_) => RustBuffer::empty(),
+        }
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Create a DeviceInfo CBOR map for RKP certificate requests.
@@ -159,29 +174,31 @@ pub unsafe extern "C" fn rust_create_device_info(
     device_ptr: *const u8,
     device_len: usize,
 ) -> RustBuffer {
-    let to_str = |ptr: *const u8, len: usize| -> Option<String> {
-        if ptr.is_null() || len == 0 {
-            None
-        } else {
-            Some(String::from_utf8_lossy(unsafe { slice::from_raw_parts(ptr, len) }).into_owned())
-        }
-    };
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let to_str = |ptr: *const u8, len: usize| -> Option<String> {
+            if ptr.is_null() || len == 0 {
+                None
+            } else {
+                Some(String::from_utf8_lossy(unsafe { slice::from_raw_parts(ptr, len) }).into_owned())
+            }
+        };
 
-    let brand = to_str(brand_ptr, brand_len);
-    let manufacturer = to_str(manufacturer_ptr, manufacturer_len);
-    let product = to_str(product_ptr, product_len);
-    let model = to_str(model_ptr, model_len);
-    let device = to_str(device_ptr, device_len);
+        let brand = to_str(brand_ptr, brand_len);
+        let manufacturer = to_str(manufacturer_ptr, manufacturer_len);
+        let product = to_str(product_ptr, product_len);
+        let model = to_str(model_ptr, model_len);
+        let device = to_str(device_ptr, device_len);
 
-    let result = cose::create_device_info_cbor(
-        brand.as_deref(),
-        manufacturer.as_deref(),
-        product.as_deref(),
-        model.as_deref(),
-        device.as_deref(),
-    );
+        let result = cose::create_device_info_cbor(
+            brand.as_deref(),
+            manufacturer.as_deref(),
+            product.as_deref(),
+            model.as_deref(),
+            device.as_deref(),
+        );
 
-    RustBuffer::from_vec(result)
+        RustBuffer::from_vec(result)
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Create a certificate request response for RKP.
@@ -204,40 +221,42 @@ pub unsafe extern "C" fn rust_create_certificate_request(
     device_info_ptr: *const u8,
     device_info_len: usize,
 ) -> RustBuffer {
-    // Parse concatenated keys using offsets
-    let mut maced_keys: Vec<Vec<u8>> = Vec::new();
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        // Parse concatenated keys using offsets
+        let mut maced_keys: Vec<Vec<u8>> = Vec::new();
 
-    if !keys_data_ptr.is_null()
-        && keys_data_len > 0
-        && !keys_offsets_ptr.is_null()
-        && keys_count > 0
-    {
-        let keys_data = unsafe { slice::from_raw_parts(keys_data_ptr, keys_data_len) };
-        let offsets = unsafe { slice::from_raw_parts(keys_offsets_ptr, keys_count + 1) };
+        if !keys_data_ptr.is_null()
+            && keys_data_len > 0
+            && !keys_offsets_ptr.is_null()
+            && keys_count > 0
+        {
+            let keys_data = unsafe { slice::from_raw_parts(keys_data_ptr, keys_data_len) };
+            let offsets = unsafe { slice::from_raw_parts(keys_offsets_ptr, keys_count + 1) };
 
-        for i in 0..keys_count {
-            let start = offsets[i];
-            let end = offsets[i + 1];
-            if start <= end && end <= keys_data_len {
-                maced_keys.push(keys_data[start..end].to_vec());
+            for i in 0..keys_count {
+                let start = offsets[i];
+                let end = offsets[i + 1];
+                if start <= end && end <= keys_data_len {
+                    maced_keys.push(keys_data[start..end].to_vec());
+                }
             }
         }
-    }
 
-    let challenge = if challenge_ptr.is_null() || challenge_len == 0 {
-        &[]
-    } else {
-        unsafe { slice::from_raw_parts(challenge_ptr, challenge_len) }
-    };
+        let challenge = if challenge_ptr.is_null() || challenge_len == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(challenge_ptr, challenge_len) }
+        };
 
-    let device_info = if device_info_ptr.is_null() || device_info_len == 0 {
-        &[]
-    } else {
-        unsafe { slice::from_raw_parts(device_info_ptr, device_info_len) }
-    };
+        let device_info = if device_info_ptr.is_null() || device_info_len == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(device_info_ptr, device_info_len) }
+        };
 
-    let result = cose::create_certificate_request_response(&maced_keys, challenge, device_info);
-    RustBuffer::from_vec(result)
+        let result = cose::create_certificate_request_response(&maced_keys, challenge, device_info);
+        RustBuffer::from_vec(result)
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 // ---- Fingerprint Cache FFI ----
@@ -252,15 +271,17 @@ pub unsafe extern "C" fn rust_create_certificate_request(
 /// `data_ptr` must point to `data_len` valid UTF-8 bytes, or be null.
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) -> usize {
-    if data_ptr.is_null() || data_len == 0 {
-        return 0;
-    }
-    let bytes = unsafe { slice::from_raw_parts(data_ptr, data_len) };
-    let text = match std::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => return 0,
-    };
-    crate::fingerprint::inject_fingerprints(text)
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        if data_ptr.is_null() || data_len == 0 {
+            return 0;
+        }
+        let bytes = unsafe { slice::from_raw_parts(data_ptr, data_len) };
+        let text = match std::str::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+        crate::fingerprint::inject_fingerprints(text)
+    })).unwrap_or(0)
 }
 
 /// Fetch fingerprints from a URL into the cache.
@@ -272,13 +293,15 @@ pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) ->
 /// `url_ptr` must point to `url_len` valid UTF-8 bytes, or be null.
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> usize {
-    let url = if url_ptr.is_null() || url_len == 0 {
-        None
-    } else {
-        let bytes = unsafe { slice::from_raw_parts(url_ptr, url_len) };
-        std::str::from_utf8(bytes).ok()
-    };
-    crate::fingerprint::fetch_fingerprints(url).unwrap_or(0)
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let url = if url_ptr.is_null() || url_len == 0 {
+            None
+        } else {
+            let bytes = unsafe { slice::from_raw_parts(url_ptr, url_len) };
+            std::str::from_utf8(bytes).ok()
+        };
+        crate::fingerprint::fetch_fingerprints(url).unwrap_or(0)
+    })).unwrap_or(0)
 }
 
 /// Look up a cached fingerprint by device codename.
@@ -290,30 +313,57 @@ pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> us
 /// `device_ptr` must point to `device_len` valid UTF-8 bytes.
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -> RustBuffer {
-    if device_ptr.is_null() || device_len == 0 {
-        return RustBuffer::empty();
-    }
-    let bytes = unsafe { slice::from_raw_parts(device_ptr, device_len) };
-    let device = match std::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => return RustBuffer::empty(),
-    };
-    match crate::fingerprint::get_fingerprint(device) {
-        Some(fp) => RustBuffer::from_vec(fp.into_bytes()),
-        None => RustBuffer::empty(),
-    }
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        if device_ptr.is_null() || device_len == 0 {
+            return RustBuffer::empty();
+        }
+        let bytes = unsafe { slice::from_raw_parts(device_ptr, device_len) };
+        let device = match std::str::from_utf8(bytes) {
+            Ok(s) => s,
+            Err(_) => return RustBuffer::empty(),
+        };
+        match crate::fingerprint::get_fingerprint(device) {
+            Some(fp) => RustBuffer::from_vec(fp.into_bytes()),
+            None => RustBuffer::empty(),
+        }
+    })).unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Get the number of fingerprints in the cache.
 #[no_mangle]
 pub extern "C" fn rust_fp_count() -> usize {
-    crate::fingerprint::cache_count()
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        crate::fingerprint::cache_count()
+    })).unwrap_or(0)
 }
 
 /// Clear the fingerprint cache.
 #[no_mangle]
 pub extern "C" fn rust_fp_clear() {
-    crate::fingerprint::clear_cache();
+    let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        crate::fingerprint::clear_cache();
+    }));
+}
+
+#[cfg(test)]
+#[no_mangle]
+pub extern "C" fn rust_test_panic() -> u32 {
+    std::panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        panic!("Oops");
+    })).unwrap_or(42)
+}
+
+#[cfg(test)]
+mod panic_tests {
+    use super::*;
+
+    #[test]
+    fn test_ffi_catch_unwind_works() {
+        // This validates that our catch_unwind pattern correctly handles panics
+        // and returns the fallback value (42) instead of crashing.
+        let result = rust_test_panic();
+        assert_eq!(result, 42);
+    }
 }
 
 #[cfg(test)]
