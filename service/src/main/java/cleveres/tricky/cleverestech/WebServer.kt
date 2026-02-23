@@ -987,7 +987,7 @@ class WebServer(
                 <label for="kbFilename" style="display:none">Keybox File</label>
                 <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
                 <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Keybox Content (XML)</label>
-                <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content" style="display:none;"></textarea>
+                <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em; display:none;" aria-label="Keybox XML Content"></textarea>
                 <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
             </div>
         </div>
