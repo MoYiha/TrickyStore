@@ -41,6 +41,8 @@ pub enum CborValue {
     Bool(bool),
     /// Null value.
     Null,
+    /// Raw encoded CBOR bytes (embedded directly).
+    Raw(Vec<u8>),
 }
 
 impl CborValue {
@@ -104,6 +106,7 @@ pub fn encode_item<W: Write>(w: &mut W, value: &CborValue) -> io::Result<()> {
         }
         CborValue::Bool(b) => encode_type_and_length(w, MT_SIMPLE, if *b { 21 } else { 20 }),
         CborValue::Null => encode_type_and_length(w, MT_SIMPLE, 22),
+        CborValue::Raw(bytes) => w.write_all(bytes),
     }
 }
 

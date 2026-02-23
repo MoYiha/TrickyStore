@@ -267,6 +267,19 @@ pub unsafe extern "C" fn rust_create_certificate_request(
     .unwrap_or_else(|_| RustBuffer::empty())
 }
 
+/// Generate a spoofed Boot Certificate Chain (BCC).
+///
+/// Returns a RustBuffer containing the CBOR-encoded BCC array.
+/// The caller must free the buffer with `rust_free_buffer`.
+#[no_mangle]
+pub extern "C" fn rust_generate_spoofed_bcc() -> RustBuffer {
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let bcc = crate::bcc::generate_spoofed_bcc();
+        RustBuffer::from_vec(bcc)
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
+}
+
 // ---- Fingerprint Cache FFI ----
 
 /// Inject fingerprint data into the in-memory cache.
@@ -520,6 +533,17 @@ mod tests {
     }
 
     #[test]
+    fn test_ffi_generate_spoofed_bcc() {
+        let buf = rust_generate_spoofed_bcc();
+        assert!(!buf.data.is_null());
+        assert!(buf.len > 0);
+        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        // Should be a CBOR array (0x80..0x9F)
+        assert_eq!(bytes[0] & 0xE0, 0x80);
+        unsafe { rust_free_buffer(buf) };
+    }
+
+    #[test]
     fn test_ffi_free_empty_buffer() {
         let buf = RustBuffer::empty();
         // Should not crash
@@ -527,11 +551,13 @@ mod tests {
     }
 
     // ---- Fingerprint FFI tests ----
+    use serial_test::serial;
 
     const SAMPLE_FP: &[u8] = b"google/husky/husky:15/AP41.250105.002/12731906:user/release-keys\n\
           google/shiba/shiba:15/AP41.250105.002/12731906:user/release-keys\n";
 
     #[test]
+    #[serial]
     fn test_ffi_fp_inject_and_get() {
         rust_fp_clear();
         let count = unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
@@ -547,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_get_missing() {
         rust_fp_clear();
         let device = b"nonexistent";
@@ -556,12 +583,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_inject_null() {
         let count = unsafe { rust_fp_inject(ptr::null(), 0) };
         assert_eq!(count, 0);
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_clear() {
         unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
         assert!(rust_fp_count() > 0);
