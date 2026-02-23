@@ -23,12 +23,19 @@ class ConfigPatchLevelTest {
         iPmField.isAccessible = true
         iPmField.set(Config, mockPm)
 
-        // 3. Inject Security Patch Map
-        val securityPatchField = Config::class.java.getDeclaredField("securityPatch")
-        securityPatchField.isAccessible = true
+        // 3. Inject Security Patch Map via SecurityPatchState
+        val securityPatchStateField = Config::class.java.getDeclaredField("securityPatchState")
+        securityPatchStateField.isAccessible = true
 
         val testPatchMap = mapOf("com.example.patched" to "2023-12-05")
-        securityPatchField.set(Config, testPatchMap)
+
+        val stateClass = Config::class.java.declaredClasses.find { it.simpleName == "SecurityPatchState" }
+            ?: throw ClassNotFoundException("SecurityPatchState not found")
+        val constructor = stateClass.getDeclaredConstructor(Map::class.java, Any::class.java)
+        constructor.isAccessible = true
+        val state = constructor.newInstance(testPatchMap, null)
+
+        securityPatchStateField.set(Config, state)
 
         try {
             // 5. Verify Patch Level

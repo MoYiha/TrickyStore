@@ -10,15 +10,19 @@ class ConfigPatchLevelSharedUidTest {
     fun testPatchLevelSharedUid() {
         Config.reset()
 
-        val securityPatchField = Config::class.java.getDeclaredField("securityPatch")
-        securityPatchField.isAccessible = true
-        // Set securityPatch map directly
-        val testPatchMap = mapOf("com.example.pkgB" to "2023-01-01")
-        securityPatchField.set(Config, testPatchMap)
+        val securityPatchStateField = Config::class.java.getDeclaredField("securityPatchState")
+        securityPatchStateField.isAccessible = true
 
-        val defaultPatchField = Config::class.java.getDeclaredField("defaultSecurityPatch")
-        defaultPatchField.isAccessible = true
-        defaultPatchField.set(Config, "2024-01-01") // Set default
+        val testPatchMap = mapOf("com.example.pkgB" to "2023-01-01")
+        val defaultPatch = "2024-01-01"
+
+        val stateClass = Config::class.java.declaredClasses.find { it.simpleName == "SecurityPatchState" }
+            ?: throw ClassNotFoundException("SecurityPatchState not found")
+        val stateConstructor = stateClass.getDeclaredConstructor(Map::class.java, Any::class.java)
+        stateConstructor.isAccessible = true
+        val state = stateConstructor.newInstance(testPatchMap, defaultPatch)
+
+        securityPatchStateField.set(Config, state)
 
         // Mock packages for UID 1001: [com.example.pkgA, com.example.pkgB]
         val packages = arrayOf("com.example.pkgA", "com.example.pkgB")
