@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "cleveres.tricky.encryptor.encryptor-app-debug-4:/xml_backup_rules.xml.flat",
+        "source": "cleveres.tricky.encryptor.encryptor-app-main-6:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "cleveres.tricky.encryptor.encryptor-app-debug-4:/xml_data_extraction_rules.xml.flat",
+        "source": "cleveres.tricky.encryptor.encryptor-app-main-6:/xml/data_extraction_rules.xml"
+    }
+]
