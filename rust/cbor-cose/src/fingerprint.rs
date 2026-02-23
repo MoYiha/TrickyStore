@@ -179,6 +179,7 @@ pub fn clear_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     const SAMPLE_FP_DATA: &str = "\
 google/husky/husky:15/AP41.250105.002/12731906:user/release-keys
@@ -223,6 +224,7 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
     }
 
     #[test]
+    #[serial]
     fn test_inject_and_get_fingerprint() {
         clear_cache();
         let count = inject_fingerprints(SAMPLE_FP_DATA);
@@ -238,6 +240,7 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
     }
 
     #[test]
+    #[serial]
     fn test_get_all_fingerprints() {
         clear_cache();
         inject_fingerprints(SAMPLE_FP_DATA);
@@ -247,6 +250,7 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
     }
 
     #[test]
+    #[serial]
     fn test_clear_cache() {
         inject_fingerprints(SAMPLE_FP_DATA);
         assert!(cache_count() > 0);
@@ -256,6 +260,7 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
     }
 
     #[test]
+    #[serial]
     fn test_cache_overwrite() {
         clear_cache();
         inject_fingerprints(SAMPLE_FP_DATA);

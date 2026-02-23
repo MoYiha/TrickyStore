@@ -551,11 +551,13 @@ mod tests {
     }
 
     // ---- Fingerprint FFI tests ----
+    use serial_test::serial;
 
     const SAMPLE_FP: &[u8] = b"google/husky/husky:15/AP41.250105.002/12731906:user/release-keys\n\
           google/shiba/shiba:15/AP41.250105.002/12731906:user/release-keys\n";
 
     #[test]
+    #[serial]
     fn test_ffi_fp_inject_and_get() {
         rust_fp_clear();
         let count = unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
@@ -571,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_get_missing() {
         rust_fp_clear();
         let device = b"nonexistent";
@@ -580,12 +583,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_inject_null() {
         let count = unsafe { rust_fp_inject(ptr::null(), 0) };
         assert_eq!(count, 0);
     }
 
     #[test]
+    #[serial]
     fn test_ffi_fp_clear() {
         unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
         assert!(rust_fp_count() > 0);

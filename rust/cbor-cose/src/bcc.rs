@@ -4,15 +4,15 @@
 //! This allows the device to present a "valid" chain of trust rooted in a
 //! randomly generated key, effectively creating a fresh identity.
 
+use crate::cbor;
+use crate::cbor::CborValue;
 use coset::{
     iana, CborSerializable, CoseKey, CoseSign1, CoseSign1Builder, HeaderBuilder,
     TaggedCborSerializable,
 };
-use p256::ecdsa::{SigningKey, VerifyingKey, signature::Signer};
+use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
 use p256::pkcs8::EncodePublicKey;
 use rand_core::OsRng;
-use crate::cbor::CborValue;
-use crate::cbor;
 
 /// Generate a spoofed Boot Certificate Chain (BCC).
 ///
@@ -57,12 +57,8 @@ fn public_key_to_cose_key(key: &VerifyingKey) -> CoseKey {
     let x = point.x().unwrap().as_slice();
     let y = point.y().unwrap().as_slice();
 
-    coset::CoseKeyBuilder::new_ec2_pub_key(
-        iana::EllipticCurve::P_256,
-        x.to_vec(),
-        y.to_vec(),
-    )
-    .build()
+    coset::CoseKeyBuilder::new_ec2_pub_key(iana::EllipticCurve::P_256, x.to_vec(), y.to_vec())
+        .build()
 }
 
 /// Create a COSE_Sign1 entry for the BCC.
@@ -95,10 +91,12 @@ fn create_bcc_entry(
     // We use a workaround: construct the builder, then sign manually.
     // Actually coset's `create_signature` helper is useful here if we have a Signer.
 
-    builder.create_signature(&[], |data| {
-        let signature: p256::ecdsa::Signature = signer_key.sign(data);
-        signature.to_vec()
-    }).build()
+    builder
+        .create_signature(&[], |data| {
+            let signature: p256::ecdsa::Signature = signer_key.sign(data);
+            signature.to_vec()
+        })
+        .build()
 }
 
 #[cfg(test)]
