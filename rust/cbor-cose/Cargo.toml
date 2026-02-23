@@ -1,0 +1,17 @@
+[package]
+name = "cleverestricky-cbor-cose"
+version = "0.1.0"
+edition = "2021"
+description = "Memory-safe CBOR/COSE encoder for CleveresTricky RKP attestation spoofing"
+license = "GPL-3.0"
+
+[lib]
+name = "cleverestricky_cbor_cose"
+crate-type = ["lib"]
+
+[dependencies]
+hmac = "0.12"
+sha2 = "0.10"
+
+[dev-dependencies]
+hex = "0.4"
