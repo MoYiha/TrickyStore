@@ -5,6 +5,7 @@ import android.os.FileObserver
 import android.os.ServiceManager
 import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
+import cleveres.tricky.cleverestech.util.DeviceKeyManager
 import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
@@ -183,7 +184,7 @@ object Config {
     // Key: filename, Value: Pair(lastModified, List<KeyBox>)
     private val directoryKeyboxCache = ConcurrentHashMap<String, Pair<Long, List<CertHack.KeyBox>>>()
 
-    private fun updateKeyBoxes() = scope.launch {
+    fun updateKeyBoxes() = scope.launch {
         runCatching {
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
@@ -205,7 +206,7 @@ object Config {
                 lastKeyboxModified = 0
             }
 
-            // 2. Directory files
+            // 2. Directory files (Plain XML)
             if (keyboxDir.exists() && keyboxDir.isDirectory) {
                 val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
                 val currentFiles = HashSet<String>()
@@ -242,6 +243,13 @@ object Config {
             } else {
                 directoryKeyboxCache.clear()
             }
+
+            // 3. Local CBOX files
+            CboxManager.refresh()
+            allKeyboxes.addAll(CboxManager.getUnlockedKeyboxes())
+
+            // 4. Remote Server Keyboxes
+            allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
 
             CertHack.setKeyboxes(allKeyboxes)
 
@@ -752,6 +760,9 @@ object Config {
     fun initialize() {
         SecureFile.mkdirs(root, 448) // 0700
         SecureFile.mkdirs(keyboxDir, 448) // 0700
+        DeviceKeyManager.initialize(root)
+        CboxManager.initialize()
+        ServerManager.initialize()
         DeviceTemplateManager.initialize(root)
 
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))

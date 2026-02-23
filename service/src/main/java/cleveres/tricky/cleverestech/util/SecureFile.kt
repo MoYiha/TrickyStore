@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withLock
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
+    fun writeBytes(file: File, content: ByteArray)
     fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {}
     fun mkdirs(file: File, mode: Int)
     fun touch(file: File, mode: Int)
@@ -25,6 +26,14 @@ object SecureFile {
         runBlocking {
             mutex.withLock {
                 impl.writeText(file, content)
+            }
+        }
+    }
+
+    fun writeBytes(file: File, content: ByteArray) {
+        runBlocking {
+            mutex.withLock {
+                impl.writeBytes(file, content)
             }
         }
     }
@@ -55,6 +64,10 @@ object SecureFile {
 
     class DefaultSecureFileOperations : SecureFileOperations {
         override fun writeText(file: File, content: String) {
+            writeBytes(file, content.toByteArray(Charsets.UTF_8))
+        }
+
+        override fun writeBytes(file: File, bytes: ByteArray) {
             val path = file.absolutePath
             val tmpPath = "$path.tmp"
             var fd: FileDescriptor? = null
@@ -67,7 +80,6 @@ object SecureFile {
                 // Ensure permissions are set correctly
                 Os.fchmod(fd, mode)
 
-                val bytes = content.toByteArray(Charsets.UTF_8)
                 var bytesWritten = 0
                 while (bytesWritten < bytes.size) {
                     val w = Os.write(fd, bytes, bytesWritten, bytes.size - bytesWritten)

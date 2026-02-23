@@ -40,6 +40,25 @@ CleveresTricky supports **automatic rotation** of multiple keyboxes to evade det
     - **WebUI Upload:** You can upload new keyboxes directly via the "Keybox Jukebox" section in the web interface.
     - **Verification:** Click "VERIFY KEYBOXES" in the WebUI to check your keys against Google's Certificate Revocation List (CRL).
 
+## Encrypted Keybox Distribution
+
+Protect your key material using encrypted containers and remote distribution.
+
+### 1. .cbox Files (Local Encrypted)
+Distributors can use the **Encryptor App** to create password-protected `.cbox` files.
+- **Secure:** Encrypted with AES-256-GCM.
+- **Cached:** Once unlocked in the WebUI, the keybox is cached on your device using hardware-backed encryption (Android Keystore). You only enter the password once.
+- **Usage:** Place `.cbox` files in `/data/adb/cleverestricky/keyboxes/`. Go to WebUI -> Keyboxes to unlock.
+
+### 2. Remote Servers (Community Distribution)
+Automatically fetch and rotate keyboxes from community servers.
+- **Auto-Refresh:** Checks for updates periodically (e.g., every 24 hours).
+- **Authentication:** Supports Bearer Tokens, Telegram Auth, and more.
+- **Smart Priority:** Define server priority to control which keys are used first.
+- **Zero Config:** Just add the server URL in the WebUI.
+
+**WebUI Guide:** Check the "📖 Guide" tab in the module's interface for detailed instructions.
+
 ## Configuration
 
 ### keybox.xml

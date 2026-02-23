@@ -1,0 +1,18 @@
+<lint-module
+    format="1"
+    dir="/app/encryptor-app"
+    name=":encryptor-app"
+    type="APP"
+    maven="CleveresTricky:encryptor-app:unspecified"
+    agpVersion="8.5.1"
+    buildFolder="build"
+    bootClassPath="/opt/android-sdk/platforms/android-35/android.jar:/opt/android-sdk/build-tools/34.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-35">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>
