@@ -90,6 +90,7 @@ jobs:
         run: |
           ./gradlew zipRelease
           ./gradlew zipDebug
+          ./gradlew :encryptor-app:assembleRelease
 
       - name: Prepare artifact
         if: success()
@@ -123,6 +124,12 @@ jobs:
         with:
           name: release-mappings
           path: "./service/build/outputs/mapping/release"
+
+      - name: Upload Encryptor App
+        uses: actions/upload-artifact@v4
+        with:
+          name: EncryptorApp
+          path: "./encryptor-app/build/outputs/apk/release/*.apk"
 
       - name: Check for Release
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -171,3 +178,4 @@ jobs:
           files: |
             module/release/*-release.zip
             module/release/*-debug.zip
+            encryptor-app/build/outputs/apk/release/*.apk

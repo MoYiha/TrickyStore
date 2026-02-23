@@ -1,0 +1,24 @@
+BUILD_LOG: FAILURE
+--- LAST 20 LINES ---
+e: file:///app/service/src/main/java/cleveres/tricky/cleverestech/WebServer.kt:772:14 Unresolved reference 'getAppName'.
+e: file:///app/service/src/main/java/cleveres/tricky/cleverestech/WebServer.kt:835:11 Unresolved reference 'getAppName'.
+
+> Task :encryptor-app:lintVitalAnalyzeRelease
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':service:compileReleaseKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 40s
+60 actionable tasks: 2 executed, 58 up-to-date
+APK_ENCRYPTOR: MISSING
+APK_SERVICE: MISSING
