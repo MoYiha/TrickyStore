@@ -10,9 +10,9 @@
 //! All functions in this module use `unsafe` only at the FFI boundary to convert
 //! between C pointers and Rust slices. The inner logic is entirely safe Rust.
 
+use std::panic;
 use std::ptr;
 use std::slice;
-use std::panic;
 
 use crate::cbor::{self, CborValue};
 use crate::cose;
@@ -50,10 +50,8 @@ impl RustBuffer {
 #[no_mangle]
 pub unsafe extern "C" fn rust_free_buffer(buf: RustBuffer) {
     if !buf.data.is_null() && buf.len > 0 {
-        let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            unsafe {
-                let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(buf.data, buf.len));
-            }
+        let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| unsafe {
+            let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(buf.data, buf.len));
         }));
     }
 }
@@ -66,7 +64,8 @@ pub unsafe extern "C" fn rust_free_buffer(buf: RustBuffer) {
 pub extern "C" fn rust_cbor_encode_unsigned(value: u64) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         RustBuffer::from_vec(cbor::encode(&CborValue::UnsignedInt(value)))
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR signed integer (handles both positive and negative).
@@ -77,7 +76,8 @@ pub extern "C" fn rust_cbor_encode_unsigned(value: u64) -> RustBuffer {
 pub extern "C" fn rust_cbor_encode_int(value: i64) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         RustBuffer::from_vec(cbor::encode(&CborValue::from_int(value)))
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR byte string.
@@ -93,7 +93,8 @@ pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> 
             unsafe { slice::from_raw_parts(data, len) }.to_vec()
         };
         RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(bytes)))
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Encode a CBOR text string.
@@ -110,7 +111,8 @@ pub unsafe extern "C" fn rust_cbor_encode_text(data: *const u8, len: usize) -> R
             String::from_utf8_lossy(bytes).into_owned()
         };
         RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Generate a COSE_Mac0 MACed public key for RKP.
@@ -152,7 +154,8 @@ pub unsafe extern "C" fn rust_generate_maced_public_key(
             Ok(buf) => RustBuffer::from_vec(buf),
             Err(_) => RustBuffer::empty(),
         }
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Create a DeviceInfo CBOR map for RKP certificate requests.
@@ -179,7 +182,10 @@ pub unsafe extern "C" fn rust_create_device_info(
             if ptr.is_null() || len == 0 {
                 None
             } else {
-                Some(String::from_utf8_lossy(unsafe { slice::from_raw_parts(ptr, len) }).into_owned())
+                Some(
+                    String::from_utf8_lossy(unsafe { slice::from_raw_parts(ptr, len) })
+                        .into_owned(),
+                )
             }
         };
 
@@ -198,7 +204,8 @@ pub unsafe extern "C" fn rust_create_device_info(
         );
 
         RustBuffer::from_vec(result)
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Create a certificate request response for RKP.
@@ -256,7 +263,8 @@ pub unsafe extern "C" fn rust_create_certificate_request(
 
         let result = cose::create_certificate_request_response(&maced_keys, challenge, device_info);
         RustBuffer::from_vec(result)
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 // ---- Fingerprint Cache FFI ----
@@ -281,7 +289,8 @@ pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) ->
             Err(_) => return 0,
         };
         crate::fingerprint::inject_fingerprints(text)
-    })).unwrap_or(0)
+    }))
+    .unwrap_or(0)
 }
 
 /// Fetch fingerprints from a URL into the cache.
@@ -301,7 +310,8 @@ pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> us
             std::str::from_utf8(bytes).ok()
         };
         crate::fingerprint::fetch_fingerprints(url).unwrap_or(0)
-    })).unwrap_or(0)
+    }))
+    .unwrap_or(0)
 }
 
 /// Look up a cached fingerprint by device codename.
@@ -326,7 +336,8 @@ pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -
             Some(fp) => RustBuffer::from_vec(fp.into_bytes()),
             None => RustBuffer::empty(),
         }
-    })).unwrap_or_else(|_| RustBuffer::empty())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
 }
 
 /// Get the number of fingerprints in the cache.
@@ -334,7 +345,8 @@ pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -
 pub extern "C" fn rust_fp_count() -> usize {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         crate::fingerprint::cache_count()
-    })).unwrap_or(0)
+    }))
+    .unwrap_or(0)
 }
 
 /// Clear the fingerprint cache.
@@ -350,7 +362,8 @@ pub extern "C" fn rust_fp_clear() {
 pub extern "C" fn rust_test_panic() -> u32 {
     std::panic::catch_unwind(panic::AssertUnwindSafe(|| {
         panic!("Oops");
-    })).unwrap_or(42)
+    }))
+    .unwrap_or(42)
 }
 
 #[cfg(test)]
