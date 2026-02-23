@@ -5,10 +5,12 @@ on:
     branches: [ "master" ]
     paths:
       - "rust/**"
+      - "Rust.md"
   pull_request:
     branches: [ "master" ]
     paths:
       - "rust/**"
+      - "Rust.md"
   workflow_dispatch:
 
 permissions:

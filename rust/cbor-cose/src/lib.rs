@@ -16,3 +16,4 @@
 pub mod cbor;
 pub mod cose;
 pub mod ffi;
+pub mod fingerprint;

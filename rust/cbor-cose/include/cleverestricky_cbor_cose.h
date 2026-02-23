@@ -2,11 +2,26 @@
  * cleverestricky_cbor_cose.h
  *
  * C header for the Rust CBOR/COSE core library.
- * Architecture: Zygisk -> C++ entry (binder_interceptor) -> Rust core (this library)
+ * Architecture: Zygisk -> C++ entry (binder_interceptor) -> Rust core
  *
- * The C++ binder_interceptor remains the injection entry point. It calls these
- * functions for all CBOR encoding and COSE/RKP operations, delegating the
- * memory-critical work to Rust's borrow-checked implementation.
+ * SYMBOL VISIBILITY / ANTI-DETECTION
+ * -----------------------------------
+ * These function names are ONLY visible at link time. They do NOT appear in
+ * the final .so because the CMake build uses:
+ *   -fvisibility=hidden   (C++ symbols default to hidden)
+ *   -s                    (strip all symbol tables)
+ *   --exclude-libs,ALL    (prevent re-exporting from static libs)
+ * Combined with Rust's release profile (strip = "symbols", lto = true),
+ * no Rust symbols leak into the loadable binary. Renaming them would be
+ * security-through-obscurity with no real benefit — the linker already
+ * removes them from the exported symbol table.
+ *
+ * BUFFER OWNERSHIP
+ * ----------------
+ * !! NEVER call free() / delete on a RustBuffer.data pointer !!
+ * Rust-allocated memory MUST be returned to Rust via rust_free_buffer().
+ * The C/C++ and Rust heaps are separate; calling the wrong deallocator
+ * causes undefined behaviour (double-free, heap corruption, crashes).
  */
 
 #ifndef CLEVERESTRICKY_CBOR_COSE_H
@@ -21,7 +36,9 @@ extern "C" {
 
 /**
  * Buffer returned by Rust FFI functions.
- * Must be freed with rust_free_buffer() when no longer needed.
+ *
+ * OWNERSHIP RULE: The caller MUST free this buffer by calling
+ * rust_free_buffer(). Do NOT pass buf.data to free() or delete.
  * A null data pointer with len==0 indicates an error or empty result.
  */
 typedef struct {
@@ -30,12 +47,14 @@ typedef struct {
 } RustBuffer;
 
 /**
- * Free a buffer previously returned by a rust_* function.
- * Safe to call with a null/empty buffer.
+ * Free a buffer previously returned by a Rust FFI function.
+ * Safe to call with a null/empty buffer. Idempotent for empty buffers.
+ *
+ * !! This is the ONLY correct way to release a RustBuffer !!
  */
 void rust_free_buffer(RustBuffer buf);
 
-/* ---- CBOR Encoding ---- */
+/* ==== CBOR Encoding ==== */
 
 /** Encode a CBOR unsigned integer. */
 RustBuffer rust_cbor_encode_unsigned(uint64_t value);
@@ -49,7 +68,7 @@ RustBuffer rust_cbor_encode_bytes(const uint8_t *data, size_t len);
 /** Encode a CBOR text string (UTF-8). data may be NULL if len is 0. */
 RustBuffer rust_cbor_encode_text(const uint8_t *data, size_t len);
 
-/* ---- COSE / RKP Operations ---- */
+/* ==== COSE / RKP Operations ==== */
 
 /**
  * Generate a COSE_Mac0 MACed public key for RKP.
@@ -99,6 +118,34 @@ RustBuffer rust_create_certificate_request(
     const uint8_t *challenge_ptr, size_t challenge_len,
     const uint8_t *device_info_ptr, size_t device_info_len
 );
+
+/* ==== Fingerprint Cache ==== */
+
+/**
+ * Inject fingerprint data (newline-separated) into the in-memory cache.
+ * Returns the number of fingerprints parsed, or 0 on error.
+ */
+size_t rust_fp_inject(const uint8_t *data_ptr, size_t data_len);
+
+/**
+ * Fetch fingerprints from a URL into the cache.
+ * Pass NULL/0 to use the default Pixel Beta fingerprint URL.
+ * Returns the number of fingerprints fetched, or 0 on error.
+ */
+size_t rust_fp_fetch(const uint8_t *url_ptr, size_t url_len);
+
+/**
+ * Look up a cached fingerprint by device codename.
+ * Returns the fingerprint string as a RustBuffer (free with rust_free_buffer),
+ * or an empty buffer if not found.
+ */
+RustBuffer rust_fp_get(const uint8_t *device_ptr, size_t device_len);
+
+/** Get the number of fingerprints currently in the cache. */
+size_t rust_fp_count(void);
+
+/** Clear the fingerprint cache. */
+void rust_fp_clear(void);
 
 #ifdef __cplusplus
 }

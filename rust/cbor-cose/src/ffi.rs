@@ -240,6 +240,82 @@ pub unsafe extern "C" fn rust_create_certificate_request(
     RustBuffer::from_vec(result)
 }
 
+// ---- Fingerprint Cache FFI ----
+
+/// Inject fingerprint data into the in-memory cache.
+///
+/// Parses the provided text (newline-separated fingerprint lines) and
+/// stores the results in the thread-safe cache. Returns the number of
+/// fingerprints parsed, or 0 on error.
+///
+/// # Safety
+/// `data_ptr` must point to `data_len` valid UTF-8 bytes, or be null.
+#[no_mangle]
+pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) -> usize {
+    if data_ptr.is_null() || data_len == 0 {
+        return 0;
+    }
+    let bytes = unsafe { slice::from_raw_parts(data_ptr, data_len) };
+    let text = match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    crate::fingerprint::inject_fingerprints(text)
+}
+
+/// Fetch fingerprints from a URL into the cache.
+///
+/// Pass null/0 for `url_ptr`/`url_len` to use the default URL.
+/// Returns the number of fingerprints fetched, or 0 on error.
+///
+/// # Safety
+/// `url_ptr` must point to `url_len` valid UTF-8 bytes, or be null.
+#[no_mangle]
+pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> usize {
+    let url = if url_ptr.is_null() || url_len == 0 {
+        None
+    } else {
+        let bytes = unsafe { slice::from_raw_parts(url_ptr, url_len) };
+        std::str::from_utf8(bytes).ok()
+    };
+    crate::fingerprint::fetch_fingerprints(url).unwrap_or(0)
+}
+
+/// Look up a cached fingerprint by device codename.
+///
+/// Returns the fingerprint string as a RustBuffer, or an empty buffer if
+/// not found. The caller must free the result with `rust_free_buffer`.
+///
+/// # Safety
+/// `device_ptr` must point to `device_len` valid UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -> RustBuffer {
+    if device_ptr.is_null() || device_len == 0 {
+        return RustBuffer::empty();
+    }
+    let bytes = unsafe { slice::from_raw_parts(device_ptr, device_len) };
+    let device = match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => return RustBuffer::empty(),
+    };
+    match crate::fingerprint::get_fingerprint(device) {
+        Some(fp) => RustBuffer::from_vec(fp.into_bytes()),
+        None => RustBuffer::empty(),
+    }
+}
+
+/// Get the number of fingerprints in the cache.
+#[no_mangle]
+pub extern "C" fn rust_fp_count() -> usize {
+    crate::fingerprint::cache_count()
+}
+
+/// Clear the fingerprint cache.
+#[no_mangle]
+pub extern "C" fn rust_fp_clear() {
+    crate::fingerprint::clear_cache();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,5 +461,48 @@ mod tests {
         let buf = RustBuffer::empty();
         // Should not crash
         unsafe { rust_free_buffer(buf) };
+    }
+
+    // ---- Fingerprint FFI tests ----
+
+    const SAMPLE_FP: &[u8] = b"google/husky/husky:15/AP41.250105.002/12731906:user/release-keys\n\
+          google/shiba/shiba:15/AP41.250105.002/12731906:user/release-keys\n";
+
+    #[test]
+    fn test_ffi_fp_inject_and_get() {
+        rust_fp_clear();
+        let count = unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
+        assert_eq!(count, 2);
+        assert_eq!(rust_fp_count(), 2);
+
+        let device = b"husky";
+        let buf = unsafe { rust_fp_get(device.as_ptr(), device.len()) };
+        assert!(!buf.data.is_null());
+        let fp = unsafe { std::str::from_utf8(slice::from_raw_parts(buf.data, buf.len)).unwrap() };
+        assert!(fp.contains("husky"));
+        unsafe { rust_free_buffer(buf) };
+    }
+
+    #[test]
+    fn test_ffi_fp_get_missing() {
+        rust_fp_clear();
+        let device = b"nonexistent";
+        let buf = unsafe { rust_fp_get(device.as_ptr(), device.len()) };
+        assert!(buf.data.is_null());
+        assert_eq!(buf.len, 0);
+    }
+
+    #[test]
+    fn test_ffi_fp_inject_null() {
+        let count = unsafe { rust_fp_inject(ptr::null(), 0) };
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_ffi_fp_clear() {
+        unsafe { rust_fp_inject(SAMPLE_FP.as_ptr(), SAMPLE_FP.len()) };
+        assert!(rust_fp_count() > 0);
+        rust_fp_clear();
+        assert_eq!(rust_fp_count(), 0);
     }
 }
