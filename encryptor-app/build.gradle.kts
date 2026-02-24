@@ -62,4 +62,9 @@ dependencies {
 
     // Core Android
     implementation(libs.annotation)
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.robolectric)
 }

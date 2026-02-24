@@ -29,12 +29,16 @@ object CryptoUtils {
     private const val CBOX_MAGIC = "CBOX"
     private const val CBOX_VERSION = 1
 
+    var KEYSTORE_PROVIDER = "AndroidKeyStore"
+    var SKIP_SIGNING_FOR_TEST = false
+
     fun generateSigningKey() {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        if (SKIP_SIGNING_FOR_TEST) return
+        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
         keyStore.load(null)
         if (!keyStore.containsAlias(KEY_ALIAS)) {
             val keyPairGenerator = java.security.KeyPairGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_RSA, "AndroidKeyStore"
+                KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE_PROVIDER
             )
             keyPairGenerator.initialize(
                 KeyGenParameterSpec.Builder(
@@ -52,14 +56,15 @@ object CryptoUtils {
     }
 
     fun getPublicKeyBase64(): String? {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
         keyStore.load(null)
         val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry ?: return null
         return Base64.encodeToString(entry.certificate.publicKey.encoded, Base64.NO_WRAP)
     }
 
     private fun signData(data: ByteArray): String {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
+        if (SKIP_SIGNING_FOR_TEST) return "DUMMY_SIGNATURE_FOR_TESTING"
+        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
         keyStore.load(null)
         val entry = keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
             ?: throw IllegalStateException("Key not found")
