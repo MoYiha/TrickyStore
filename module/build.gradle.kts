@@ -63,6 +63,52 @@ dependencies {
 
 evaluationDependsOn(":service")
 
+// Rust Build Integration
+task<Exec>("cargoBuild") {
+    group = "rust"
+    description = "Builds the Rust static library for all Android targets using cargo-ndk"
+    workingDir = file("../rust/cbor-cose")
+
+    // Set NDK home from AGP
+    environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+
+    // Using cargo-ndk to build for all supported ABIs.
+    // We removed -o because it fails for staticlibs. We manually copy below.
+    commandLine(
+        "cargo", "ndk",
+        "-t", "arm64-v8a",
+        "-t", "armeabi-v7a",
+        "-t", "x86_64",
+        "-t", "x86",
+        "build", "--release"
+    )
+
+    doLast {
+        // Manually copy static libraries to where CMake expects them
+        copy {
+            from("../rust/cbor-cose/target/aarch64-linux-android/release/libcleverestricky_cbor_cose.a")
+            into("src/main/cpp/external/rust_libs/arm64-v8a")
+        }
+        copy {
+            from("../rust/cbor-cose/target/armv7-linux-androideabi/release/libcleverestricky_cbor_cose.a")
+            into("src/main/cpp/external/rust_libs/armeabi-v7a")
+        }
+        copy {
+            from("../rust/cbor-cose/target/x86_64-linux-android/release/libcleverestricky_cbor_cose.a")
+            into("src/main/cpp/external/rust_libs/x86_64")
+        }
+        copy {
+            from("../rust/cbor-cose/target/i686-linux-android/release/libcleverestricky_cbor_cose.a")
+            into("src/main/cpp/external/rust_libs/x86")
+        }
+    }
+}
+
+// Hook into preBuild to ensure Rust libs are ready before CMake runs
+tasks.named("preBuild") {
+    dependsOn("cargoBuild")
+}
+
 afterEvaluate {
     android.applicationVariants.forEach { variant ->
         val variantLowered = variant.name.lowercase()

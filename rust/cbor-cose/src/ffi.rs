@@ -370,6 +370,20 @@ pub extern "C" fn rust_fp_clear() {
     }));
 }
 
+// ---- Utils FFI ----
+
+/// Trigger signal to interrupt threads blocked in ioctl.
+///
+/// This function is used by the C++ binder interceptor during initialization
+/// to ensure that any threads already blocked in `binder_ioctl` are interrupted
+/// and can re-enter with our hook active.
+#[no_mangle]
+pub extern "C" fn rust_kick_already_blocked_ioctls() {
+    let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        crate::utils::kick_already_blocked_ioctls();
+    }));
+}
+
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn rust_test_panic() -> u32 {

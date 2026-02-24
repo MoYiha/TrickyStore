@@ -119,6 +119,14 @@ RustBuffer rust_create_certificate_request(
     const uint8_t *device_info_ptr, size_t device_info_len
 );
 
+/**
+ * Generate a spoofed Boot Certificate Chain (BCC).
+ *
+ * Returns a RustBuffer containing the CBOR-encoded BCC array.
+ * The caller must free the buffer with `rust_free_buffer`.
+ */
+RustBuffer rust_generate_spoofed_bcc(void);
+
 /* ==== Fingerprint Cache ==== */
 
 /**
@@ -146,6 +154,14 @@ size_t rust_fp_count(void);
 
 /** Clear the fingerprint cache. */
 void rust_fp_clear(void);
+
+/* ==== Utils ==== */
+
+/**
+ * Trigger signal to interrupt threads blocked in ioctl.
+ * Used during initialization.
+ */
+void rust_kick_already_blocked_ioctls(void);
 
 #ifdef __cplusplus
 }

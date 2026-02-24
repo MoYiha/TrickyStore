@@ -31,5 +31,12 @@ target_link_libraries(binder PRIVATE utils)
 add_executable(inject inject/main.cpp inject/utils.cpp)
 target_link_libraries(inject PRIVATE lsplt my_logging)
 
+# Rust Core Integration
+add_library(rust_core STATIC IMPORTED)
+set_target_properties(rust_core PROPERTIES IMPORTED_LOCATION
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/rust_libs/${ANDROID_ABI}/libcleverestricky_cbor_cose.a
+)
+
 add_library(${MODULE_NAME} SHARED binder_interceptor.cpp)
-target_link_libraries(${MODULE_NAME} PRIVATE log binder utils elf_util my_logging)
+target_include_directories(${MODULE_NAME} PRIVATE ../../../../rust/cbor-cose/include)
+target_link_libraries(${MODULE_NAME} PRIVATE log binder utils elf_util my_logging rust_core)
