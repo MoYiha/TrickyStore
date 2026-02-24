@@ -7,7 +7,7 @@
 //! This module is gated behind the `fingerprint` feature (enabled by default)
 //! which pulls in `minreq` for lightweight HTTPS fetching.
 
-use std::collections::HashMap;
+use ahash::AHashMap;
 use std::sync::RwLock;
 
 /// Thread-safe in-memory fingerprint cache.
@@ -22,7 +22,7 @@ const DEFAULT_FP_URL: &str =
 #[allow(dead_code)]
 struct FingerprintCache {
     /// Map of device codename → fingerprint string.
-    entries: HashMap<String, String>,
+    entries: AHashMap<String, String>,
     /// URL the fingerprints were fetched from (diagnostic metadata).
     source_url: String,
     /// Timestamp (seconds since epoch) of last successful fetch (diagnostic metadata).
@@ -38,8 +38,8 @@ struct FingerprintCache {
 ///
 /// The device codename is extracted from the third `/`-separated segment
 /// (before the `:`), e.g. `husky` from `google/husky/husky:15/...`.
-pub fn parse_fingerprints(data: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
+pub fn parse_fingerprints(data: &str) -> AHashMap<String, String> {
+    let mut map = AHashMap::new();
     for line in data.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
