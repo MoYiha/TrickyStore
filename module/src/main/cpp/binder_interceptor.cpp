@@ -543,7 +543,8 @@ static void kick_handler(int) {}
 void kick_already_blocked_ioctls() {
     // Iterate through candidate signals to find one that is safe to use
     // (i.e., not already handled by the application).
-    static const int signals[] = {SIGWINCH, SIGURG, SIGIO, SIGPWR};
+    // Removed SIGIO and SIGPWR as their default action is Terminate, posing a crash risk.
+    static const int signals[] = {SIGWINCH, SIGURG};
 
     for (int sig : signals) {
         struct sigaction sa;
@@ -589,6 +590,9 @@ void kick_already_blocked_ioctls() {
             }
 
             // Restore the original handler (which was DFL or IGN)
+            // Wait a bit to ensure the signal is delivered and handled by the dummy handler,
+            // interrupting the syscall, before restoring the original handler.
+            usleep(1000);
             sigaction(sig, &old_sa, NULL);
             return; // Success
         } else {
