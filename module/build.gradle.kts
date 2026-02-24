@@ -64,13 +64,26 @@ dependencies {
 evaluationDependsOn(":service")
 
 // Rust Build Integration
+
+// Ensure cargo-ndk is installed
+task<Exec>("installCargoNdk") {
+    group = "rust"
+    description = "Installs cargo-ndk if not present"
+    // Check if cargo-ndk is already installed to avoid reinstalling every time
+    // But since `cargo install` is idempotent (mostly) or fails if installed, we can check first.
+    // A simple check is `cargo ndk --version` which returns exit code 0 if installed.
+    // However, in CI we want to ensure it's there.
+
+    // We use a bash script snippet to check and install
+    commandLine("bash", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
+}
+
 task<Exec>("cargoBuild") {
     group = "rust"
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
 
-    // We removed the explicit environment setting for ANDROID_NDK_HOME
-    // cargo-ndk should pick up the environment variable provided by the CI or user
+    dependsOn("installCargoNdk")
 
     // Using cargo-ndk to build for all supported ABIs.
     commandLine(
