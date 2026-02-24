@@ -59,17 +59,17 @@ class WebServerUXTest {
 
         // Verify Apply System-Wide Button passes 'this'
         assertTrue("Apply System-Wide button should pass 'this' to handler",
-            html.contains("onclick=\"applyTemplateToGlobal(this)\"")
+            html.contains("onclick=\"applySpoofing(this)\"")
         )
 
         // Verify JS function signature updated (checking for btn arg)
-        assertTrue("applyTemplateToGlobal should accept btn argument",
-            html.contains("async function applyTemplateToGlobal(btn)")
+        assertTrue("applySpoofing should accept btn argument",
+            html.contains("async function applySpoofing(btn)")
         )
 
         // Verify JS loading state logic
-        assertTrue("applyTemplateToGlobal should show loading state",
-            html.contains("btn.innerText = 'Applying...'")
+        assertTrue("applySpoofing should show loading state",
+            html.contains("btn.innerText = 'Saving...'")
         )
     }
 

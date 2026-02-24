@@ -951,7 +951,7 @@ class WebServer(
                 <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
                 <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint"><span aria-hidden="true">📋</span></button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
-            <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="applyTemplateToGlobal(this)">Apply Global</button></div>
+            <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="applySpoofing(this)">Apply Global</button></div>
         </div>
         <div class="panel"><h3>System-Wide Spoofing (Global Hardware)</h3>
             <div class="section-header">Modem</div><div class="grid-2">
@@ -970,7 +970,7 @@ class WebServer(
                 <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')"></div>
                 <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator"></div>
             </div>
-            <div style="margin-top:15px; text-align:right;"><button onclick="applyTemplateToGlobal(this)" class="danger">Apply System-Wide</button></div>
+            <div style="margin-top:15px; text-align:right;"><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
         </div>
     </div>
 
@@ -1459,14 +1459,101 @@ class WebServer(
             }
         }
 
-        async function saveAdvancedSpoof() { notify('Use "Apply Global" to save'); }
+        async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
 
-        async function applyTemplateToGlobal(btn) {
-             const imei = document.getElementById('inputImei');
-             if (imei.value && imei.classList.contains('invalid')) { notify('Invalid IMEI', 'error'); return; }
-             const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Applying...';
+        async function applySpoofing(btn) {
+             const inputs = ['inputImei', 'inputImsi', 'inputIccid', 'inputSerial', 'inputWifiMac', 'inputBtMac', 'inputSimIso'];
+             for (const id of inputs) {
+                 const el = document.getElementById(id);
+                 if (el.value && el.classList.contains('invalid')) {
+                     notify('Invalid ' + id.replace('input', ''), 'error');
+                     el.focus();
+                     return;
+                 }
+             }
+
+             const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
              try {
-                 notify('Global Template Applied');
+                 // 1. Fetch current spoof_build_vars content
+                 let content = "";
+                 try {
+                     const res = await fetchAuth('/api/file?filename=spoof_build_vars');
+                     if (res.ok) content = await res.text();
+                 } catch(e) {}
+
+                 // 2. Parse lines
+                 let lines = content.split('\n');
+                 const newKeyValues = {};
+
+                 // 3. Get values from UI
+                 const sel = document.getElementById('templateSelect');
+                 if (sel.value) newKeyValues['TEMPLATE'] = sel.value;
+
+                 const map = {
+                     'inputImei': 'ATTESTATION_ID_IMEI',
+                     'inputImsi': 'ATTESTATION_ID_IMSI',
+                     'inputIccid': 'ATTESTATION_ID_ICCID',
+                     'inputSerial': 'ATTESTATION_ID_SERIAL',
+                     'inputWifiMac': 'ATTESTATION_ID_WIFI_MAC',
+                     'inputBtMac': 'ATTESTATION_ID_BT_MAC',
+                     'inputSimIso': 'SIM_COUNTRY_ISO',
+                     'inputSimOp': 'SIM_OPERATOR_NAME'
+                 };
+
+                 for (const [id, key] of Object.entries(map)) {
+                     const el = document.getElementById(id);
+                     if (el.value.trim()) {
+                         newKeyValues[key] = el.value.trim();
+                     } else {
+                         // If empty, user wants to remove the override (use template default)
+                         newKeyValues[key] = null;
+                     }
+                 }
+
+                 // 4. Update content
+                 const updatedLines = [];
+                 const processedKeys = new Set();
+
+                 for (let line of lines) {
+                     if (line.trim().startsWith('#') || !line.includes('=')) {
+                         updatedLines.push(line);
+                         continue;
+                     }
+                     const parts = line.split('=');
+                     const key = parts[0].trim();
+                     if (newKeyValues.hasOwnProperty(key)) {
+                         if (newKeyValues[key] !== null) {
+                             updatedLines.push(key + '=' + newKeyValues[key]);
+                         }
+                         processedKeys.add(key);
+                     } else {
+                         updatedLines.push(line);
+                     }
+                 }
+
+                 // Append new keys
+                 for (const [key, val] of Object.entries(newKeyValues)) {
+                     if (val !== null && !processedKeys.has(key)) {
+                         updatedLines.push(key + '=' + val);
+                     }
+                 }
+
+                 // 5. Save
+                 const newContent = updatedLines.join('\n');
+                 const saveRes = await fetchAuth('/api/save', {
+                     method: 'POST',
+                     body: new URLSearchParams({ filename: 'spoof_build_vars', content: newContent })
+                 });
+
+                 if (saveRes.ok) {
+                     notify('Configuration Saved');
+                 } else {
+                     const txt = await saveRes.text();
+                     notify('Save Failed: ' + txt, 'error');
+                 }
+
+             } catch (e) {
+                 notify('Error: ' + e.message, 'error');
              } finally {
                  btn.disabled = false; btn.innerText = orig;
              }
