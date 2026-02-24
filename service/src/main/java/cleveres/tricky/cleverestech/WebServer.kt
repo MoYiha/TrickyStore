@@ -158,6 +158,11 @@ class WebServer(
     private val CACHE_DURATION_SUCCESS = 10 * 60 * 1000L
     private val CACHE_DURATION_ERROR = 1 * 60 * 1000L
 
+    @Volatile private var cachedBannedCount: String? = null
+    @Volatile private var lastBannedFetchTime: Long = 0
+    @Volatile private var isFetchingBanned = false
+    private val CACHE_DURATION_BANNED = 1 * 60 * 60 * 1000L // 1 hour
+
     private fun fetchTelegramCount(): String {
         val now = System.currentTimeMillis()
         val currentCache = cachedTelegramCount
@@ -177,6 +182,30 @@ class WebServer(
                     lastTelegramFetchTime = System.currentTimeMillis()
                 } finally {
                     isFetchingTelegram = false
+                }
+            }
+        }
+        return currentCache ?: "Loading..."
+    }
+
+    private fun fetchBannedCount(): String {
+        val now = System.currentTimeMillis()
+        val currentCache = cachedBannedCount
+        val lastTime = lastBannedFetchTime
+
+        if (currentCache != null && (now - lastTime) < CACHE_DURATION_BANNED) {
+            return currentCache
+        }
+
+        if (!isFetchingBanned) {
+            isFetchingBanned = true
+            scope.launch {
+                try {
+                    val count = KeyboxVerifier.countRevokedKeys()
+                    cachedBannedCount = if (count >= 0) count.toString() else "Error"
+                    lastBannedFetchTime = System.currentTimeMillis()
+                } finally {
+                    isFetchingBanned = false
                 }
             }
         }
@@ -728,8 +757,10 @@ class WebServer(
 
         if (uri == "/api/stats" && method == Method.GET) {
             val count = fetchTelegramCount()
+            val banned = fetchBannedCount()
             val json = JSONObject()
             json.put("members", count)
+            json.put("banned", banned)
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
@@ -890,7 +921,8 @@ class WebServer(
             <div class="row"><label for="auto_beta_fetch">Auto Beta Fetch</label><input type="checkbox" class="toggle" id="auto_beta_fetch" onchange="toggle('auto_beta_fetch')"></div>
             <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" class="toggle" id="auto_keybox_check" onchange="toggle('auto_keybox_check')"></div>
             <div class="row"><label for="auto_patch_update">Auto Patch Update</label><input type="checkbox" class="toggle" id="auto_patch_update" onchange="toggle('auto_patch_update')"></div>
-            <div class="row"><label for="random_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
+            <div class="row"><label for="random_on_boot">Randomize IMEI on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
+            <div class="row"><label style="opacity:0.7;">Random Serial on Boot</label><div style="font-size:0.8em; color:var(--accent); border:1px solid var(--accent); padding:2px 8px; border-radius:4px;">Always Enabled (Required for Anti-Fingerprinting & Keybox Protection)</div></div>
             <div class="section-header">Boot Properties</div>
             <div class="row"><label for="hide_sensitive_props">Hide Sensitive Props</label><input type="checkbox" class="toggle" id="hide_sensitive_props" onchange="toggle('hide_sensitive_props')"></div>
             <div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" onchange="toggle('spoof_region_cn')"></div>
@@ -900,7 +932,7 @@ class WebServer(
             </div>
         </div>
         <div class="panel"><h3>Configuration Management</h3><div class="grid-2"><button onclick="backupConfig()">Backup Config</button><button onclick="document.getElementById('restoreInput').click()">Restore Config</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip"></div></div>
-        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a><div style="margin-top:15px;"><div class="section-header">Donate</div><div style="margin-top:5px;"><span style="color:#888; font-size:0.85em;">Binance ID: 114574830</span> <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" style="padding:2px 8px; font-size:0.8em;" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span></button></div></div></div>
+        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a><div style="margin-top:15px;"><div class="section-header">Donate</div><div style="margin-top:5px;"><span style="color:#888; font-size:0.85em;">Binance ID: 114574830</span> <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" style="padding:2px 8px; font-size:0.8em;" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span></button></div></div></div>
     </div>
 
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
@@ -1328,7 +1360,10 @@ class WebServer(
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
             } catch(e) {}
 
-            fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => document.getElementById('communityCount').innerText = d.members);
+            fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
+                document.getElementById('communityCount').innerText = d.members;
+                document.getElementById('bannedCount').innerText = 'Global Banned Keys: ' + d.banned;
+            });
             const tRes = await fetchAuth(getAuthUrl('/api/templates'));
             const templates = await tRes.json();
             const sel = document.getElementById('templateSelect');
