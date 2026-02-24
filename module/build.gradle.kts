@@ -69,13 +69,24 @@ evaluationDependsOn(":service")
 task<Exec>("installCargoNdk") {
     group = "rust"
     description = "Installs cargo-ndk if not present"
-    // Check if cargo-ndk is already installed to avoid reinstalling every time
-    // But since `cargo install` is idempotent (mostly) or fails if installed, we can check first.
-    // A simple check is `cargo ndk --version` which returns exit code 0 if installed.
-    // However, in CI we want to ensure it's there.
-
-    // We use a bash script snippet to check and install
     commandLine("bash", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
+}
+
+// Ensure Rust Android targets are installed
+task<Exec>("installRustTargets") {
+    group = "rust"
+    description = "Installs Android Rust targets via rustup"
+    // We run rustup target add for all required targets.
+    // Ideally we should check if they are installed, but `rustup target add` is idempotent and fast if already installed.
+    commandLine(
+        "rustup", "target", "add",
+        "aarch64-linux-android",
+        "armv7-linux-androideabi",
+        "x86_64-linux-android",
+        "i686-linux-android"
+    )
+    // Ensure cargo-ndk is installed first (though not strictly dependent, good for ordering)
+    dependsOn("installCargoNdk")
 }
 
 task<Exec>("cargoBuild") {
@@ -83,7 +94,7 @@ task<Exec>("cargoBuild") {
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
 
-    dependsOn("installCargoNdk")
+    dependsOn("installRustTargets")
 
     // Using cargo-ndk to build for all supported ABIs.
     commandLine(
