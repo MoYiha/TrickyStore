@@ -119,7 +119,7 @@ class ConfigInitializationLogicTest {
 
         assertEquals("123456789012345", Config.getBuildVar("ATTESTATION_ID_IMEI"))
 
-        callCheckRandomizeOnBoot()
+        callEnforceRandomization()
 
         // Mirror the fix: Call updateBuildVars again to load the new values
         try {
@@ -150,8 +150,8 @@ class ConfigInitializationLogicTest {
         method.invoke(Config, file)
     }
 
-    private fun callCheckRandomizeOnBoot() {
-        val method = Config::class.java.getDeclaredMethod("checkRandomizeOnBoot")
+    private fun callEnforceRandomization() {
+        val method = Config::class.java.getDeclaredMethod("enforceRandomization")
         method.isAccessible = true
         method.invoke(Config)
     }

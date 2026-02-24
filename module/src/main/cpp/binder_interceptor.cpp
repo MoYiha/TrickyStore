@@ -39,7 +39,7 @@ using namespace android;
 // Define Target Properties
 // Optimization: Use std::array<std::string_view> instead of std::set<std::string>
 // to avoid std::string construction (heap allocation) on every property access check.
-static constexpr std::array<std::string_view, 34> g_target_properties = {
+static constexpr std::array<std::string_view, 36> g_target_properties = {
     "ro.boot.verifiedbootstate",
     "ro.boot.flash.locked",
     "ro.boot.veritymode",
@@ -73,7 +73,9 @@ static constexpr std::array<std::string_view, 34> g_target_properties = {
     "ro.vendor.build.security_patch",
     "ro.product.first_api_level",
     "ro.vendor.build.fingerprint",
-    "ro.odm.build.fingerprint"
+    "ro.odm.build.fingerprint",
+    "ro.serialno",
+    "ro.boot.serialno"
 };
 
 // Declare Original Function Pointer

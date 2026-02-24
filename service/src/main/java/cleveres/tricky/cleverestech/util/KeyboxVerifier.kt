@@ -90,6 +90,62 @@ object KeyboxVerifier {
     }
 
     @JvmStatic
+    fun countRevokedKeys(): Int {
+        return try {
+            val url = URL(CRL_URL)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 10000
+            conn.readTimeout = 10000
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Cache-Control", "no-cache")
+
+            if (conn.responseCode != 200) {
+                Logger.e("CRL Fetch Failed (Count): ${conn.responseCode}")
+                return -1
+            }
+
+            conn.inputStream.bufferedReader().use { reader ->
+                countCrlEntries(reader)
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to count CRL entries", e)
+            -1
+        }
+    }
+
+    @JvmStatic
+    fun countCrlEntries(reader: java.io.Reader): Int {
+        var count = 0
+        val jsonReader = android.util.JsonReader(reader)
+        var entriesFound = false
+        try {
+            jsonReader.beginObject()
+            while (jsonReader.hasNext()) {
+                val name = jsonReader.nextName()
+                if (name == "entries") {
+                    entriesFound = true
+                    jsonReader.beginObject()
+                    while (jsonReader.hasNext()) {
+                        jsonReader.nextName() // Skip key
+                        jsonReader.skipValue() // Skip value
+                        count++
+                    }
+                    jsonReader.endObject()
+                } else {
+                    jsonReader.skipValue()
+                }
+            }
+            jsonReader.endObject()
+        } catch (e: Exception) {
+            Logger.e("Failed to count CRL JSON entries", e)
+            return -1
+        } finally {
+            try { jsonReader.close() } catch (e: Exception) {}
+        }
+        return if (entriesFound) count else -1
+    }
+
+    @JvmStatic
     fun parseCrl(reader: java.io.Reader): Set<String> {
         val set = HashSet<String>()
         val jsonReader = android.util.JsonReader(reader)
