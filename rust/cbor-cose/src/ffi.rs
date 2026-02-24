@@ -272,11 +272,10 @@ pub unsafe extern "C" fn rust_create_certificate_request(
             }
         }
 
-        let challenge = unsafe { validate_slice_args(challenge_ptr, challenge_len) }
-            .unwrap_or(&[]);
+        let challenge = unsafe { validate_slice_args(challenge_ptr, challenge_len) }.unwrap_or(&[]);
 
-        let device_info = unsafe { validate_slice_args(device_info_ptr, device_info_len) }
-            .unwrap_or(&[]);
+        let device_info =
+            unsafe { validate_slice_args(device_info_ptr, device_info_len) }.unwrap_or(&[]);
 
         let result = cose::create_certificate_request_response(&maced_keys, challenge, device_info);
         RustBuffer::from_vec(result)
@@ -618,7 +617,8 @@ mod tests {
         let device = b"husky";
         let buf = unsafe { rust_fp_get(device.as_ptr(), device.len()) };
         assert!(!buf.data.is_null());
-        let fp = unsafe { std::str::from_utf8(std::slice::from_raw_parts(buf.data, buf.len)).unwrap() };
+        let fp =
+            unsafe { std::str::from_utf8(std::slice::from_raw_parts(buf.data, buf.len)).unwrap() };
         assert!(fp.contains("husky"));
         unsafe { rust_free_buffer(buf) };
     }
