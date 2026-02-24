@@ -12,10 +12,39 @@
 
 use std::panic;
 use std::ptr;
-use std::slice;
 
 use crate::cbor::{self, CborValue};
 use crate::cose;
+
+/// Validate pointer and length for slice creation.
+///
+/// Ensures that:
+/// 1. `ptr` is not null (unless `len` is 0, though we prefer valid pointers).
+/// 2. `ptr` is properly aligned for `T`.
+/// 3. `len` * `size_of::<T>()` does not overflow `isize::MAX`.
+///
+/// Returns `None` if validation fails, or `Some(slice)` if successful.
+unsafe fn validate_slice_args<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+    if len == 0 {
+        return Some(&[]);
+    }
+    if ptr.is_null() {
+        return None;
+    }
+    #[allow(clippy::manual_is_multiple_of)]
+    if (ptr as usize) % std::mem::align_of::<T>() != 0 {
+        return None;
+    }
+    // Check for overflow
+    let size_of_t = std::mem::size_of::<T>();
+    if size_of_t > 0 {
+        let size = len.checked_mul(size_of_t)?;
+        if size > isize::MAX as usize {
+            return None;
+        }
+    }
+    Some(std::slice::from_raw_parts(ptr, len))
+}
 
 /// Result buffer returned to C/C++ callers.
 /// The caller must free the buffer with `rust_free_buffer`.
@@ -87,11 +116,9 @@ pub extern "C" fn rust_cbor_encode_int(value: i64) -> RustBuffer {
 #[no_mangle]
 pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let bytes = if data.is_null() || len == 0 {
-            vec![]
-        } else {
-            unsafe { slice::from_raw_parts(data, len) }.to_vec()
-        };
+        let bytes = unsafe { validate_slice_args(data, len) }
+            .unwrap_or(&[])
+            .to_vec();
         RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(bytes)))
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
@@ -104,11 +131,9 @@ pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> 
 #[no_mangle]
 pub unsafe extern "C" fn rust_cbor_encode_text(data: *const u8, len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let s = if data.is_null() || len == 0 {
-            String::new()
-        } else {
-            let bytes = unsafe { slice::from_raw_parts(data, len) };
-            String::from_utf8_lossy(bytes).into_owned()
+        let s = match unsafe { validate_slice_args(data, len) } {
+            Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+            None => String::new(),
         };
         RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
     }))
@@ -134,20 +159,17 @@ pub unsafe extern "C" fn rust_generate_maced_public_key(
     hmac_key_len: usize,
 ) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let x = if x_ptr.is_null() || x_len == 0 {
-            return RustBuffer::empty();
-        } else {
-            unsafe { slice::from_raw_parts(x_ptr, x_len) }
+        let x = match unsafe { validate_slice_args(x_ptr, x_len) } {
+            Some(s) => s,
+            None => return RustBuffer::empty(),
         };
-        let y = if y_ptr.is_null() || y_len == 0 {
-            return RustBuffer::empty();
-        } else {
-            unsafe { slice::from_raw_parts(y_ptr, y_len) }
+        let y = match unsafe { validate_slice_args(y_ptr, y_len) } {
+            Some(s) => s,
+            None => return RustBuffer::empty(),
         };
-        let hmac_key = if hmac_key_ptr.is_null() || hmac_key_len == 0 {
-            return RustBuffer::empty();
-        } else {
-            unsafe { slice::from_raw_parts(hmac_key_ptr, hmac_key_len) }
+        let hmac_key = match unsafe { validate_slice_args(hmac_key_ptr, hmac_key_len) } {
+            Some(s) => s,
+            None => return RustBuffer::empty(),
         };
 
         match cose::generate_maced_public_key(x, y, hmac_key) {
@@ -179,14 +201,11 @@ pub unsafe extern "C" fn rust_create_device_info(
 ) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let to_str = |ptr: *const u8, len: usize| -> Option<String> {
-            if ptr.is_null() || len == 0 {
-                None
-            } else {
-                Some(
-                    String::from_utf8_lossy(unsafe { slice::from_raw_parts(ptr, len) })
-                        .into_owned(),
-                )
+            let bytes = unsafe { validate_slice_args(ptr, len) }?;
+            if bytes.is_empty() {
+                return None;
             }
+            Some(String::from_utf8_lossy(bytes).into_owned())
         };
 
         let brand = to_str(brand_ptr, brand_len);
@@ -232,34 +251,32 @@ pub unsafe extern "C" fn rust_create_certificate_request(
         // Parse concatenated keys using offsets
         let mut maced_keys: Vec<Vec<u8>> = Vec::new();
 
-        if !keys_data_ptr.is_null()
-            && keys_data_len > 0
-            && !keys_offsets_ptr.is_null()
-            && keys_count > 0
-        {
-            let keys_data = unsafe { slice::from_raw_parts(keys_data_ptr, keys_data_len) };
-            let offsets = unsafe { slice::from_raw_parts(keys_offsets_ptr, keys_count + 1) };
+        // Validate keys_data and offsets
+        let keys_data_opt = unsafe { validate_slice_args(keys_data_ptr, keys_data_len) };
 
+        // Ensure keys_count + 1 doesn't overflow for offsets slice
+        let offsets_opt = if keys_count.checked_add(1).is_some() {
+            unsafe { validate_slice_args(keys_offsets_ptr, keys_count + 1) }
+        } else {
+            None
+        };
+
+        if let (Some(keys_data), Some(offsets)) = (keys_data_opt, offsets_opt) {
             for i in 0..keys_count {
                 let start = offsets[i];
                 let end = offsets[i + 1];
-                if start <= end && end <= keys_data_len {
+                // Check bounds within keys_data
+                if start <= end && end <= keys_data.len() {
                     maced_keys.push(keys_data[start..end].to_vec());
                 }
             }
         }
 
-        let challenge = if challenge_ptr.is_null() || challenge_len == 0 {
-            &[]
-        } else {
-            unsafe { slice::from_raw_parts(challenge_ptr, challenge_len) }
-        };
+        let challenge = unsafe { validate_slice_args(challenge_ptr, challenge_len) }
+            .unwrap_or(&[]);
 
-        let device_info = if device_info_ptr.is_null() || device_info_len == 0 {
-            &[]
-        } else {
-            unsafe { slice::from_raw_parts(device_info_ptr, device_info_len) }
-        };
+        let device_info = unsafe { validate_slice_args(device_info_ptr, device_info_len) }
+            .unwrap_or(&[]);
 
         let result = cose::create_certificate_request_response(&maced_keys, challenge, device_info);
         RustBuffer::from_vec(result)
@@ -293,10 +310,10 @@ pub extern "C" fn rust_generate_spoofed_bcc() -> RustBuffer {
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) -> usize {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        if data_ptr.is_null() || data_len == 0 {
-            return 0;
-        }
-        let bytes = unsafe { slice::from_raw_parts(data_ptr, data_len) };
+        let bytes = match unsafe { validate_slice_args(data_ptr, data_len) } {
+            Some(b) => b,
+            None => return 0,
+        };
         let text = match std::str::from_utf8(bytes) {
             Ok(s) => s,
             Err(_) => return 0,
@@ -316,12 +333,8 @@ pub unsafe extern "C" fn rust_fp_inject(data_ptr: *const u8, data_len: usize) ->
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> usize {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let url = if url_ptr.is_null() || url_len == 0 {
-            None
-        } else {
-            let bytes = unsafe { slice::from_raw_parts(url_ptr, url_len) };
-            std::str::from_utf8(bytes).ok()
-        };
+        let url = unsafe { validate_slice_args(url_ptr, url_len) }
+            .and_then(|bytes| std::str::from_utf8(bytes).ok());
         crate::fingerprint::fetch_fingerprints(url).unwrap_or(0)
     }))
     .unwrap_or(0)
@@ -337,10 +350,10 @@ pub unsafe extern "C" fn rust_fp_fetch(url_ptr: *const u8, url_len: usize) -> us
 #[no_mangle]
 pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        if device_ptr.is_null() || device_len == 0 {
-            return RustBuffer::empty();
-        }
-        let bytes = unsafe { slice::from_raw_parts(device_ptr, device_len) };
+        let bytes = match unsafe { validate_slice_args(device_ptr, device_len) } {
+            Some(b) => b,
+            None => return RustBuffer::empty(),
+        };
         let device = match std::str::from_utf8(bytes) {
             Ok(s) => s,
             Err(_) => return RustBuffer::empty(),
@@ -401,7 +414,7 @@ mod tests {
         let buf = rust_cbor_encode_unsigned(42);
         assert!(!buf.data.is_null());
         assert!(buf.len > 0);
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         // 42 = 0x18 0x2a
         assert_eq!(bytes, &[0x18, 0x2a]);
         unsafe { rust_free_buffer(buf) };
@@ -410,7 +423,7 @@ mod tests {
     #[test]
     fn test_ffi_encode_int_negative() {
         let buf = rust_cbor_encode_int(-1);
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes, &[0x20]); // -1
         unsafe { rust_free_buffer(buf) };
     }
@@ -419,7 +432,7 @@ mod tests {
     fn test_ffi_encode_bytes() {
         let data = [0x01, 0x02, 0x03];
         let buf = unsafe { rust_cbor_encode_bytes(data.as_ptr(), data.len()) };
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes, &[0x43, 0x01, 0x02, 0x03]);
         unsafe { rust_free_buffer(buf) };
     }
@@ -427,7 +440,7 @@ mod tests {
     #[test]
     fn test_ffi_encode_bytes_null() {
         let buf = unsafe { rust_cbor_encode_bytes(ptr::null(), 0) };
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes, &[0x40]); // empty byte string
         unsafe { rust_free_buffer(buf) };
     }
@@ -436,7 +449,7 @@ mod tests {
     fn test_ffi_encode_text() {
         let text = b"hello";
         let buf = unsafe { rust_cbor_encode_text(text.as_ptr(), text.len()) };
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes, &[0x65, b'h', b'e', b'l', b'l', b'o']);
         unsafe { rust_free_buffer(buf) };
     }
@@ -458,7 +471,7 @@ mod tests {
         };
         assert!(!buf.data.is_null());
         assert!(buf.len > 0);
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes[0], 0x84); // COSE_Mac0 array
         unsafe { rust_free_buffer(buf) };
     }
@@ -503,7 +516,7 @@ mod tests {
             )
         };
         assert!(!buf.data.is_null());
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes[0], 0xAB); // map of 11 items
         unsafe { rust_free_buffer(buf) };
     }
@@ -525,7 +538,7 @@ mod tests {
             )
         };
         assert!(!buf.data.is_null());
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         assert_eq!(bytes[0], 0xAB);
         let content = String::from_utf8_lossy(bytes);
         assert!(content.contains("google"));
@@ -537,7 +550,7 @@ mod tests {
         let buf = rust_generate_spoofed_bcc();
         assert!(!buf.data.is_null());
         assert!(buf.len > 0);
-        let bytes = unsafe { slice::from_raw_parts(buf.data, buf.len) };
+        let bytes = unsafe { std::slice::from_raw_parts(buf.data, buf.len) };
         // Should be a CBOR array (0x80..0x9F)
         assert_eq!(bytes[0] & 0xE0, 0x80);
         unsafe { rust_free_buffer(buf) };
@@ -548,6 +561,44 @@ mod tests {
         let buf = RustBuffer::empty();
         // Should not crash
         unsafe { rust_free_buffer(buf) };
+    }
+
+    #[test]
+    fn test_validate_slice_args_null() {
+        unsafe {
+            assert!(validate_slice_args::<u8>(ptr::null(), 1).is_none());
+        }
+    }
+
+    #[test]
+    fn test_validate_slice_args_len_0() {
+        unsafe {
+            // Allowed to pass null if len is 0 (returns empty slice)
+            assert!(validate_slice_args::<u8>(ptr::null(), 0).is_some());
+            assert_eq!(validate_slice_args::<u8>(ptr::null(), 0).unwrap().len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_validate_slice_args_alignment() {
+        let val: usize = 0;
+        let ptr = &val as *const usize as *const u8;
+        // Misaligned pointer: ptr + 1
+        unsafe {
+            let misaligned = ptr.add(1) as *const usize;
+            assert!(validate_slice_args::<usize>(misaligned, 1).is_none());
+        }
+    }
+
+    #[test]
+    fn test_validate_slice_args_overflow() {
+        let ptr = &0u8 as *const u8;
+        unsafe {
+            // usize::MAX length (total size overflow)
+            assert!(validate_slice_args::<u8>(ptr, usize::MAX).is_none());
+            // isize::MAX + 1 (slice limit exceeded)
+            assert!(validate_slice_args::<u8>(ptr, isize::MAX as usize + 1).is_none());
+        }
     }
 
     // ---- Fingerprint FFI tests ----
@@ -567,7 +618,7 @@ mod tests {
         let device = b"husky";
         let buf = unsafe { rust_fp_get(device.as_ptr(), device.len()) };
         assert!(!buf.data.is_null());
-        let fp = unsafe { std::str::from_utf8(slice::from_raw_parts(buf.data, buf.len)).unwrap() };
+        let fp = unsafe { std::str::from_utf8(std::slice::from_raw_parts(buf.data, buf.len)).unwrap() };
         assert!(fp.contains("husky"));
         unsafe { rust_free_buffer(buf) };
     }
