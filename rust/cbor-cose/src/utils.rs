@@ -28,7 +28,8 @@ pub fn kick_already_blocked_ioctls() {
 
         // Install dummy handler
         let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
-        sa.sa_sigaction = handler as usize;
+        // Fix for clippy::function_casts_as_integer
+        sa.sa_sigaction = handler as *const () as usize;
         sa.sa_flags = 0; // No SA_RESTART: essential to interrupt blocking syscalls
         unsafe { libc::sigemptyset(&mut sa.sa_mask) };
 
@@ -53,6 +54,9 @@ pub fn kick_already_blocked_ioctls() {
                         if let Ok(content) = fs::read_to_string(syscall_path) {
                             if let Some(syscall_nr_str) = content.split_whitespace().next() {
                                 if let Ok(nr) = syscall_nr_str.parse::<i64>() {
+                                    // SYS_ioctl type varies by platform (i64 on x86_64, i32 on arm/x86)
+                                    // We cast to i64 to ensure comparison works and suppress unnecessary_cast lint
+                                    #[allow(clippy::unnecessary_cast)]
                                     if nr == libc::SYS_ioctl as i64 {
                                         unsafe {
                                             libc::syscall(libc::SYS_tgkill, pid, tid, sig);

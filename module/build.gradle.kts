@@ -69,11 +69,10 @@ task<Exec>("cargoBuild") {
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
 
-    // Set NDK home from AGP
-    environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
+    // We removed the explicit environment setting for ANDROID_NDK_HOME
+    // cargo-ndk should pick up the environment variable provided by the CI or user
 
     // Using cargo-ndk to build for all supported ABIs.
-    // We removed -o because it fails for staticlibs. We manually copy below.
     commandLine(
         "cargo", "ndk",
         "-t", "arm64-v8a",
