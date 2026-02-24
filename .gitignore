@@ -17,3 +17,12 @@ local.properties
 # CodeQL artifacts
 _codeql_detected_source_root
 encryptor-app/build/
+
+# Test artifacts
+index.html
+server.log
+build_log.txt
+final_verification.txt
+test_output*.txt
+verification_*.png
+failure_*.png
