@@ -41,8 +41,8 @@ pub fn generate_spoofed_bcc() -> Vec<u8> {
 
     // 5. Construct BCC Array
     let bcc_array = CborValue::Array(vec![
-        CborValue::Raw(Cow::Owned(bcc_0.to_tagged_vec().unwrap())),
-        CborValue::Raw(Cow::Owned(bcc_1.to_tagged_vec().unwrap())),
+        CborValue::Raw(Cow::Owned(bcc_0.to_vec().unwrap())),
+        CborValue::Raw(Cow::Owned(bcc_1.to_vec().unwrap())),
     ]);
 
     cbor::encode(&bcc_array)
