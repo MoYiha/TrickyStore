@@ -5,6 +5,7 @@
 //!
 //! Based on RFC 9052 (COSE) and Android RKP specification.
 
+use std::borrow::Cow;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
@@ -41,10 +42,10 @@ const COSE_CRV_P256: i64 = 1;
 /// ]
 fn build_mac_structure(protected_headers: &[u8], payload: &[u8]) -> Vec<u8> {
     let structure = CborValue::Array(vec![
-        CborValue::TextString("MAC0".into()),
-        CborValue::ByteString(protected_headers.to_vec()),
-        CborValue::ByteString(vec![]), // external_aad
-        CborValue::ByteString(payload.to_vec()),
+        CborValue::TextString(Cow::Borrowed("MAC0")),
+        CborValue::ByteString(Cow::Borrowed(protected_headers)),
+        CborValue::ByteString(Cow::Borrowed(&[])), // external_aad
+        CborValue::ByteString(Cow::Borrowed(payload)),
     ]);
     cbor::encode(&structure)
 }
@@ -105,11 +106,11 @@ pub fn encode_cose_key(x: &[u8], y: &[u8]) -> Result<Vec<u8>, CoseError> {
         ),
         (
             CborValue::from_int(COSE_KEY_EC2_X),
-            CborValue::ByteString(x.to_vec()),
+            CborValue::ByteString(Cow::Borrowed(x)),
         ),
         (
             CborValue::from_int(COSE_KEY_EC2_Y),
-            CborValue::ByteString(y.to_vec()),
+            CborValue::ByteString(Cow::Borrowed(y)),
         ),
     ]);
     Ok(cbor::encode(&key))
@@ -140,10 +141,10 @@ pub fn generate_maced_public_key(
     let tag = compute_hmac(hmac_key, &mac_structure)?;
 
     let cose_mac0 = CborValue::Array(vec![
-        CborValue::ByteString(protected),
+        CborValue::ByteString(Cow::Borrowed(&protected)),
         CborValue::Map(vec![]), // unprotected headers (empty)
-        CborValue::ByteString(payload),
-        CborValue::ByteString(tag),
+        CborValue::ByteString(Cow::Borrowed(&payload)),
+        CborValue::ByteString(Cow::Borrowed(&tag)),
     ]);
 
     Ok(cbor::encode(&cose_mac0))
@@ -160,62 +161,62 @@ pub fn generate_maced_public_key(
 /// * `product` - Product name (e.g., "husky").
 /// * `model` - Model name (e.g., "Pixel 8 Pro").
 /// * `device` - Device codename (e.g., "husky").
-pub fn create_device_info_cbor(
-    brand: Option<&str>,
-    manufacturer: Option<&str>,
-    product: Option<&str>,
-    model: Option<&str>,
-    device: Option<&str>,
+pub fn create_device_info_cbor<'a>(
+    brand: Option<Cow<'a, str>>,
+    manufacturer: Option<Cow<'a, str>>,
+    product: Option<Cow<'a, str>>,
+    model: Option<Cow<'a, str>>,
+    device: Option<Cow<'a, str>>,
 ) -> Vec<u8> {
-    let brand = brand.unwrap_or("google");
-    let manufacturer = manufacturer.unwrap_or("Google");
-    let product = product.unwrap_or("generic");
-    let model = model.unwrap_or("Pixel");
-    let device = device.unwrap_or("generic");
+    let brand = brand.unwrap_or(Cow::Borrowed("google"));
+    let manufacturer = manufacturer.unwrap_or(Cow::Borrowed("Google"));
+    let product = product.unwrap_or(Cow::Borrowed("generic"));
+    let model = model.unwrap_or(Cow::Borrowed("Pixel"));
+    let device = device.unwrap_or(Cow::Borrowed("generic"));
 
     let map = CborValue::Map(vec![
         (
-            CborValue::TextString("brand".into()),
-            CborValue::TextString(brand.into()),
+            CborValue::TextString(Cow::Borrowed("brand")),
+            CborValue::TextString(brand),
         ),
         (
-            CborValue::TextString("manufacturer".into()),
-            CborValue::TextString(manufacturer.into()),
+            CborValue::TextString(Cow::Borrowed("manufacturer")),
+            CborValue::TextString(manufacturer),
         ),
         (
-            CborValue::TextString("product".into()),
-            CborValue::TextString(product.into()),
+            CborValue::TextString(Cow::Borrowed("product")),
+            CborValue::TextString(product),
         ),
         (
-            CborValue::TextString("model".into()),
-            CborValue::TextString(model.into()),
+            CborValue::TextString(Cow::Borrowed("model")),
+            CborValue::TextString(model),
         ),
         (
-            CborValue::TextString("device".into()),
-            CborValue::TextString(device.into()),
+            CborValue::TextString(Cow::Borrowed("device")),
+            CborValue::TextString(device),
         ),
         (
-            CborValue::TextString("vb_state".into()),
-            CborValue::TextString("green".into()),
+            CborValue::TextString(Cow::Borrowed("vb_state")),
+            CborValue::TextString(Cow::Borrowed("green")),
         ),
         (
-            CborValue::TextString("bootloader_state".into()),
-            CborValue::TextString("locked".into()),
+            CborValue::TextString(Cow::Borrowed("bootloader_state")),
+            CborValue::TextString(Cow::Borrowed("locked")),
         ),
         (
-            CborValue::TextString("vbmeta_digest".into()),
-            CborValue::ByteString(vec![0; 32]),
+            CborValue::TextString(Cow::Borrowed("vbmeta_digest")),
+            CborValue::ByteString(Cow::Borrowed(&[0; 32])),
         ),
         (
-            CborValue::TextString("os_version".into()),
-            CborValue::TextString("15.0.0".into()),
+            CborValue::TextString(Cow::Borrowed("os_version")),
+            CborValue::TextString(Cow::Borrowed("15.0.0")),
         ),
         (
-            CborValue::TextString("system_patch_level".into()),
+            CborValue::TextString(Cow::Borrowed("system_patch_level")),
             CborValue::UnsignedInt(20250205),
         ),
         (
-            CborValue::TextString("vendor_patch_level".into()),
+            CborValue::TextString(Cow::Borrowed("vendor_patch_level")),
             CborValue::UnsignedInt(20250205),
         ),
     ]);
@@ -238,14 +239,14 @@ pub fn create_certificate_request_response(
 ) -> Vec<u8> {
     let keys_array: Vec<CborValue> = maced_keys
         .iter()
-        .map(|k| CborValue::ByteString(k.clone()))
+        .map(|k| CborValue::ByteString(Cow::Borrowed(k)))
         .collect();
 
     let response = CborValue::Array(vec![
         CborValue::UnsignedInt(3), // version
         CborValue::Array(keys_array),
-        CborValue::ByteString(challenge.to_vec()),
-        CborValue::ByteString(device_info.to_vec()),
+        CborValue::ByteString(Cow::Borrowed(challenge)),
+        CborValue::ByteString(Cow::Borrowed(device_info)),
     ]);
 
     cbor::encode(&response)
@@ -300,11 +301,11 @@ mod tests {
     #[test]
     fn test_device_info_cbor_generation() {
         let info = create_device_info_cbor(
-            Some("google"),
-            Some("Google"),
-            Some("husky"),
-            Some("Pixel 8 Pro"),
-            Some("husky"),
+            Some(Cow::Borrowed("google")),
+            Some(Cow::Borrowed("Google")),
+            Some(Cow::Borrowed("husky")),
+            Some(Cow::Borrowed("Pixel 8 Pro")),
+            Some(Cow::Borrowed("husky")),
         );
 
         assert!(!info.is_empty(), "deviceInfo should not be empty");
@@ -342,11 +343,11 @@ mod tests {
 
         let maced_key = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
         let device_info = create_device_info_cbor(
-            Some("google"),
-            Some("Google"),
-            Some("redfin"),
-            Some("Pixel 5"),
-            Some("redfin"),
+            Some(Cow::Borrowed("google")),
+            Some(Cow::Borrowed("Google")),
+            Some(Cow::Borrowed("redfin")),
+            Some(Cow::Borrowed("Pixel 5")),
+            Some(Cow::Borrowed("redfin")),
         );
         let challenge = b"test_challenge";
 
@@ -374,11 +375,11 @@ mod tests {
         }
 
         let device_info = create_device_info_cbor(
-            Some("google"),
-            Some("Google"),
-            Some("husky"),
-            Some("Pixel 8 Pro"),
-            Some("husky"),
+            Some(Cow::Borrowed("google")),
+            Some(Cow::Borrowed("Google")),
+            Some(Cow::Borrowed("husky")),
+            Some(Cow::Borrowed("Pixel 8 Pro")),
+            Some(Cow::Borrowed("husky")),
         );
 
         let response =
@@ -397,11 +398,11 @@ mod tests {
 
         let maced_key = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
         let device_info = create_device_info_cbor(
-            Some("google"),
-            Some("Google"),
-            Some("generic"),
-            Some("Pixel"),
-            Some("generic"),
+            Some(Cow::Borrowed("google")),
+            Some(Cow::Borrowed("Google")),
+            Some(Cow::Borrowed("generic")),
+            Some(Cow::Borrowed("Pixel")),
+            Some(Cow::Borrowed("generic")),
         );
 
         let response = create_certificate_request_response(&[maced_key], &[], &device_info);
@@ -414,11 +415,11 @@ mod tests {
     #[test]
     fn test_empty_keys_list() {
         let device_info = create_device_info_cbor(
-            Some("google"),
-            Some("Google"),
-            Some("generic"),
-            Some("Pixel"),
-            Some("generic"),
+            Some(Cow::Borrowed("google")),
+            Some(Cow::Borrowed("Google")),
+            Some(Cow::Borrowed("generic")),
+            Some(Cow::Borrowed("Pixel")),
+            Some(Cow::Borrowed("generic")),
         );
 
         let response = create_certificate_request_response(&[], b"test", &device_info);

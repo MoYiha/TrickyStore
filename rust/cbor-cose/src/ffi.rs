@@ -10,6 +10,7 @@
 //! All functions in this module use `unsafe` only at the FFI boundary to convert
 //! between C pointers and Rust slices. The inner logic is entirely safe Rust.
 
+use std::borrow::Cow;
 use std::panic;
 use std::ptr;
 
@@ -116,10 +117,8 @@ pub extern "C" fn rust_cbor_encode_int(value: i64) -> RustBuffer {
 #[no_mangle]
 pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let bytes = unsafe { validate_slice_args(data, len) }
-            .unwrap_or(&[])
-            .to_vec();
-        RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(bytes)))
+        let bytes = unsafe { validate_slice_args(data, len) }.unwrap_or(&[]);
+        RustBuffer::from_vec(cbor::encode(&CborValue::ByteString(Cow::Borrowed(bytes))))
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
 }
@@ -132,8 +131,8 @@ pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> 
 pub unsafe extern "C" fn rust_cbor_encode_text(data: *const u8, len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let s = match unsafe { validate_slice_args(data, len) } {
-            Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
-            None => String::new(),
+            Some(bytes) => String::from_utf8_lossy(bytes),
+            None => Cow::Borrowed(""),
         };
         RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
     }))
@@ -200,12 +199,12 @@ pub unsafe extern "C" fn rust_create_device_info(
     device_len: usize,
 ) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let to_str = |ptr: *const u8, len: usize| -> Option<String> {
+        let to_str = |ptr: *const u8, len: usize| -> Option<Cow<str>> {
             let bytes = unsafe { validate_slice_args(ptr, len) }?;
             if bytes.is_empty() {
                 return None;
             }
-            Some(String::from_utf8_lossy(bytes).into_owned())
+            Some(String::from_utf8_lossy(bytes))
         };
 
         let brand = to_str(brand_ptr, brand_len);
@@ -215,11 +214,11 @@ pub unsafe extern "C" fn rust_create_device_info(
         let device = to_str(device_ptr, device_len);
 
         let result = cose::create_device_info_cbor(
-            brand.as_deref(),
-            manufacturer.as_deref(),
-            product.as_deref(),
-            model.as_deref(),
-            device.as_deref(),
+            brand,
+            manufacturer,
+            product,
+            model,
+            device,
         );
 
         RustBuffer::from_vec(result)

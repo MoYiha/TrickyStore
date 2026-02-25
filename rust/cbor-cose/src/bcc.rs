@@ -4,6 +4,8 @@
 //! This allows the device to present a "valid" chain of trust rooted in a
 //! randomly generated key, effectively creating a fresh identity.
 
+use std::borrow::Cow;
+
 use crate::cbor;
 use crate::cbor::CborValue;
 use coset::{
@@ -40,8 +42,8 @@ pub fn generate_spoofed_bcc() -> Vec<u8> {
 
     // 5. Construct BCC Array
     let bcc_array = CborValue::Array(vec![
-        CborValue::Raw(bcc_0.to_tagged_vec().unwrap()),
-        CborValue::Raw(bcc_1.to_tagged_vec().unwrap()),
+        CborValue::Raw(Cow::Owned(bcc_0.to_tagged_vec().unwrap())),
+        CborValue::Raw(Cow::Owned(bcc_1.to_tagged_vec().unwrap())),
     ]);
 
     cbor::encode(&bcc_array)
@@ -67,10 +69,10 @@ fn public_key_to_cose_key(key: &VerifyingKey) -> CoseKey {
 /// * `signer_key` - The private key to sign this entry with.
 /// * `payload_key` - The public key to be contained in the payload.
 /// * `extra_payload` - Optional map to add to the payload (e.g. device info).
-fn create_bcc_entry(
+fn create_bcc_entry<'a>(
     signer_key: &SigningKey,
     payload_key: &CoseKey,
-    _extra_payload: Option<CborValue>, // Unused for basic spoofing but kept for future
+    _extra_payload: Option<CborValue<'a>>, // Unused for basic spoofing but kept for future
 ) -> CoseSign1 {
     // Payload is the COSE_Key of the next key
     let payload_bytes = payload_key.clone().to_vec().unwrap();
