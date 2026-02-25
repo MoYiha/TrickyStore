@@ -8,9 +8,7 @@ use std::borrow::Cow;
 
 use crate::cbor;
 use crate::cbor::CborValue;
-use coset::{
-    iana, CborSerializable, CoseKey, CoseSign1, CoseSign1Builder, HeaderBuilder,
-};
+use coset::{iana, CborSerializable, CoseKey, CoseSign1, CoseSign1Builder, HeaderBuilder};
 use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
 use p256::pkcs8::EncodePublicKey;
 use rand_core::OsRng;
@@ -131,6 +129,9 @@ mod tests {
         }
 
         // Should be array of 4 (0x84)
-        assert_eq!(first_elem_byte, 0x84, "Expected untagged COSE_Sign1 (Array(4))");
+        assert_eq!(
+            first_elem_byte, 0x84,
+            "Expected untagged COSE_Sign1 (Array(4))"
+        );
     }
 }
