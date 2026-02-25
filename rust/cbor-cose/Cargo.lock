@@ -93,6 +93,7 @@ dependencies = [
  "coset",
  "hex",
  "hmac",
+ "libc",
  "minreq",
  "p256",
  "rand",

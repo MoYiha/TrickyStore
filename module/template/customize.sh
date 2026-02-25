@@ -72,15 +72,31 @@ chmod 755 "$MODPATH/daemon"
 extract "$ZIPFILE" 'action.sh'       "$MODPATH"
 chmod 755 "$MODPATH/action.sh"
 
-if [ "$ARCH" = "x64" ]; then
-  ui_print "- Extracting x64 libraries"
-  extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
-  extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
-else
-  ui_print "- Extracting arm64 libraries"
-  extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
-  extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
-fi
+case "$ARCH" in
+  "x64")
+    ui_print "- Extracting x64 libraries"
+    extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
+    ;;
+  "arm64")
+    ui_print "- Extracting arm64 libraries"
+    extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
+    ;;
+  "arm")
+    ui_print "- Extracting arm libraries"
+    extract "$ZIPFILE" "lib/armeabi-v7a/lib$SONAME.so" "$MODPATH" true
+    extract "$ZIPFILE" "lib/armeabi-v7a/inject" "$MODPATH" true
+    ;;
+  "x86")
+    ui_print "- Extracting x86 libraries"
+    extract "$ZIPFILE" "lib/x86/lib$SONAME.so" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86/inject" "$MODPATH" true
+    ;;
+  *)
+    abort "! Unsupported ARCH: $ARCH"
+    ;;
+esac
 
 chmod 755 "$MODPATH/inject"
 
