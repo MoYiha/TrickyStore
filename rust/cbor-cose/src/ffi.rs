@@ -213,13 +213,7 @@ pub unsafe extern "C" fn rust_create_device_info(
         let model = to_str(model_ptr, model_len);
         let device = to_str(device_ptr, device_len);
 
-        let result = cose::create_device_info_cbor(
-            brand,
-            manufacturer,
-            product,
-            model,
-            device,
-        );
+        let result = cose::create_device_info_cbor(brand, manufacturer, product, model, device);
 
         RustBuffer::from_vec(result)
     }))

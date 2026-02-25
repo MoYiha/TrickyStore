@@ -5,9 +5,9 @@
 //!
 //! Based on RFC 9052 (COSE) and Android RKP specification.
 
-use std::borrow::Cow;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
+use std::borrow::Cow;
 
 use crate::cbor::{self, CborValue};
 
