@@ -8,7 +8,6 @@ use crate::cbor;
 use crate::cbor::CborValue;
 use coset::{
     iana, CborSerializable, CoseKey, CoseSign1, CoseSign1Builder, HeaderBuilder,
-    TaggedCborSerializable,
 };
 use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
 use p256::pkcs8::EncodePublicKey;
@@ -40,8 +39,8 @@ pub fn generate_spoofed_bcc() -> Vec<u8> {
 
     // 5. Construct BCC Array
     let bcc_array = CborValue::Array(vec![
-        CborValue::Raw(bcc_0.to_tagged_vec().unwrap()),
-        CborValue::Raw(bcc_1.to_tagged_vec().unwrap()),
+        CborValue::Raw(bcc_0.to_vec().unwrap()),
+        CborValue::Raw(bcc_1.to_vec().unwrap()),
     ]);
 
     cbor::encode(&bcc_array)
@@ -110,5 +109,26 @@ mod tests {
 
         // Should be a CBOR array
         assert_eq!(bcc_bytes[0] & 0xE0, 0x80);
+    }
+
+    #[test]
+    fn test_generate_spoofed_bcc_no_tags() {
+        let bcc_bytes = generate_spoofed_bcc();
+        // Parse the CBOR array manually to check for tags
+        // CBOR array header is 1 byte (0x80..0x9F) for short arrays
+        // 0x82 means array(2)
+        assert_eq!(bcc_bytes[0], 0x82, "Expected CBOR Array(2)");
+
+        // The first element should NOT start with tag 18 (0xD2)
+        // It should start with COSE_Sign1 structure (Array of 4 items: 0x84)
+        let first_elem_byte = bcc_bytes[1];
+
+        // If tagged (Tag 18 = 0xD2)
+        if first_elem_byte == 0xD2 {
+            panic!("BCC elements should NOT be tagged with COSE_Sign1 tag (18)");
+        }
+
+        // Should be array of 4 (0x84)
+        assert_eq!(first_elem_byte, 0x84, "Expected untagged COSE_Sign1 (Array(4))");
     }
 }
