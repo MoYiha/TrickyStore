@@ -6,6 +6,7 @@
 //! - Arrays and maps (with deterministic key ordering)
 //! - Simple values (null, true, false)
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::io::{self, Write};
 
@@ -21,31 +22,31 @@ const MT_SIMPLE: u8 = 7;
 
 /// A CBOR value that can be encoded.
 #[derive(Debug, Clone, PartialEq)]
-pub enum CborValue {
+pub enum CborValue<'a> {
     /// Unsigned integer (major type 0).
     UnsignedInt(u64),
     /// Negative integer (major type 1). Stored as the positive magnitude - 1.
     NegativeInt(i64),
     /// Byte string (major type 2).
-    ByteString(Vec<u8>),
+    ByteString(Cow<'a, [u8]>),
     /// Text string (major type 3).
-    TextString(String),
+    TextString(Cow<'a, str>),
     /// Array of CBOR values (major type 4).
-    Array(Vec<CborValue>),
+    Array(Vec<CborValue<'a>>),
     /// Map of CBOR key-value pairs (major type 5).
     /// Keys are sorted in canonical order during encoding.
-    Map(Vec<(CborValue, CborValue)>),
+    Map(Vec<(CborValue<'a>, CborValue<'a>)>),
     /// CBOR tag (major type 6).
-    Tag(u64, Box<CborValue>),
+    Tag(u64, Box<CborValue<'a>>),
     /// Boolean value.
     Bool(bool),
     /// Null value.
     Null,
     /// Raw encoded CBOR bytes (embedded directly).
-    Raw(Vec<u8>),
+    Raw(Cow<'a, [u8]>),
 }
 
-impl CborValue {
+impl<'a> CborValue<'a> {
     /// Create from a signed integer, choosing unsigned or negative encoding.
     pub fn from_int(value: i64) -> Self {
         if value >= 0 {
@@ -57,14 +58,14 @@ impl CborValue {
 }
 
 /// Encode a CBOR value to bytes.
-pub fn encode(value: &CborValue) -> Vec<u8> {
+pub fn encode<'a>(value: &CborValue<'a>) -> Vec<u8> {
     let mut buf = Vec::with_capacity(256);
     encode_item(&mut buf, value).expect("writing to Vec should not fail");
     buf
 }
 
 /// Encode a CBOR value to a writer.
-pub fn encode_item<W: Write>(w: &mut W, value: &CborValue) -> io::Result<()> {
+pub fn encode_item<'a, W: Write>(w: &mut W, value: &CborValue<'a>) -> io::Result<()> {
     match value {
         CborValue::UnsignedInt(v) => encode_type_and_length(w, MT_UNSIGNED, *v),
         CborValue::NegativeInt(v) => {
@@ -91,7 +92,7 @@ pub fn encode_item<W: Write>(w: &mut W, value: &CborValue) -> io::Result<()> {
             encode_type_and_length(w, MT_MAP, entries.len() as u64)?;
 
             // Sort entries by canonical key ordering (RFC 8949 Section 4.2.1).
-            let mut sorted: Vec<&(CborValue, CborValue)> = entries.iter().collect();
+            let mut sorted: Vec<&(CborValue<'a>, CborValue<'a>)> = entries.iter().collect();
             sorted.sort_by(|a, b| canonical_key_cmp(&a.0, &b.0));
 
             for (key, val) in sorted {
@@ -152,7 +153,7 @@ fn encode_type_and_length<W: Write>(w: &mut W, major_type: u8, value: u64) -> io
 ///   Within same type, smaller absolute values first.
 /// - String keys: Shorter strings first, then lexicographic byte comparison.
 /// - Mixed: Integer keys come before string keys (lower major type first).
-fn canonical_key_cmp(a: &CborValue, b: &CborValue) -> Ordering {
+fn canonical_key_cmp<'a>(a: &CborValue<'a>, b: &CborValue<'a>) -> Ordering {
     match (a, b) {
         // Both integers
         (CborValue::UnsignedInt(a_val), CborValue::UnsignedInt(b_val)) => a_val.cmp(b_val),
@@ -320,7 +321,7 @@ mod tests {
     fn test_encode_byte_string() {
         let bytes = vec![0x01, 0x02, 0x03];
         assert_eq!(
-            encode(&CborValue::ByteString(bytes)),
+            encode(&CborValue::ByteString(Cow::from(bytes))),
             vec![0x43, 0x01, 0x02, 0x03]
         );
     }
@@ -408,7 +409,7 @@ mod tests {
     #[test]
     fn test_encode_large_byte_string() {
         let bytes = vec![0xAB; 300];
-        let encoded = encode(&CborValue::ByteString(bytes.clone()));
+        let encoded = encode(&CborValue::ByteString(Cow::from(bytes.clone())));
         // 300 = 0x012C => MT_BYTE_STRING | 25, then 0x01, 0x2C
         assert_eq!(encoded[0], 0x59); // 0x40 | 25
         assert_eq!(encoded[1], 0x01);
