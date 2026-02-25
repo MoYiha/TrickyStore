@@ -294,6 +294,11 @@ int new_ioctl(int fd, unsigned long request, ...) {
     auto result = old_ioctl(fd, request, arg);
 
     if (result >= 0 && request == BINDER_WRITE_READ) {
+        // Safety: ensure arg is not null before dereferencing
+        if (arg == nullptr) {
+            return result;
+        }
+
         // Check if the FD is a binder device.
         // Note: We use a cache in is_binder_fd which never invalidates.
         // This is generally safe because if an FD is reused for a non-binder file,
@@ -304,9 +309,17 @@ int new_ioctl(int fd, unsigned long request, ...) {
         }
 
         auto &bwr = *(struct binder_write_read*) arg;
+
+        // Safety: validate read_buffer and size
+        if (bwr.read_buffer == 0 || bwr.read_size == 0) {
+            return result;
+        }
+
         LOGD("read buffer %p size %llu consumed %llu", (void*)bwr.read_buffer, (unsigned long long)bwr.read_size,
              (unsigned long long)bwr.read_consumed);
-        if (bwr.read_buffer != 0 && bwr.read_size != 0 && bwr.read_consumed > sizeof(int32_t)) {
+
+        // Ensure read_consumed is within bounds and has minimum size
+        if (bwr.read_consumed > sizeof(int32_t) && bwr.read_consumed <= bwr.read_size) {
             auto ptr = bwr.read_buffer;
             auto consumed = bwr.read_consumed;
             while (consumed >= sizeof(uint32_t)) {
