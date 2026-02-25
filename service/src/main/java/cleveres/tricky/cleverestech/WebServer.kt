@@ -898,6 +898,13 @@ class WebServer(
         input.valid { border-color: var(--success); }
         input.invalid { border-color: var(--danger); }
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
+        @media screen and (max-width: 600px) {
+            #appTable thead { display: none; }
+            #appTable tr { display: block; border: 1px solid var(--border); margin-bottom: 10px; border-radius: 8px; background: #1a1a1a; }
+            #appTable td { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 12px; }
+            #appTable td:last-child { border-bottom: none; justify-content: flex-end; }
+            #appTable td::before { content: attr(data-label); color: #888; font-weight: 500; margin-right: 10px; }
+        }
     </style>
 </head>
 <body>
@@ -1575,7 +1582,7 @@ class WebServer(
             appRules.forEach((rule, idx) => {
                 if (filter && !rule.package.toLowerCase().includes(filter)) return;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${'$'}{rule.package}</td><td>${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td>${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">×</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">×</button></td>`;
                 tbody.appendChild(tr);
             });
         }
