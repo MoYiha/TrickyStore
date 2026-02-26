@@ -6,9 +6,8 @@ import java.io.File
 import java.io.FileDescriptor
 import java.io.InputStream
 import cleveres.tricky.cleverestech.Logger
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 interface SecureFileOperations {
     fun writeText(file: File, content: String)
@@ -22,45 +21,35 @@ interface SecureFileOperations {
 
 object SecureFile {
     var impl: SecureFileOperations = DefaultSecureFileOperations()
-    private val mutex = Mutex()
+    private val lock = ReentrantLock()
 
     fun writeText(file: File, content: String) {
-        runBlocking {
-            mutex.withLock {
-                impl.writeText(file, content)
-            }
+        lock.withLock {
+            impl.writeText(file, content)
         }
     }
 
     fun writeBytes(file: File, content: ByteArray) {
-        runBlocking {
-            mutex.withLock {
-                impl.writeBytes(file, content)
-            }
+        lock.withLock {
+            impl.writeBytes(file, content)
         }
     }
 
     fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {
-        runBlocking {
-            mutex.withLock {
-                impl.writeStream(file, inputStream, limit)
-            }
+        lock.withLock {
+            impl.writeStream(file, inputStream, limit)
         }
     }
 
     fun mkdirs(file: File, mode: Int) {
-        runBlocking {
-            mutex.withLock {
-                impl.mkdirs(file, mode)
-            }
+        lock.withLock {
+            impl.mkdirs(file, mode)
         }
     }
 
     fun touch(file: File, mode: Int) {
-        runBlocking {
-            mutex.withLock {
-                impl.touch(file, mode)
-            }
+        lock.withLock {
+            impl.touch(file, mode)
         }
     }
 
