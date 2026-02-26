@@ -779,6 +779,7 @@ object Config {
             sb.append("SIM_OPERATOR_NAME=$simCarrier\n")
 
             SecureFile.writeText(spoofFile, sb.toString())
+            updateBuildVars(spoofFile)
             Logger.i("Enforced identity randomization (IMEI random: $randomImei)")
 
         } catch (e: Exception) {
