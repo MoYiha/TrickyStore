@@ -12,7 +12,7 @@ import java.util.Map;
 
 public class XMLParser {
 
-    private static class Element {
+    static class Element {
         String name;
         Map<String, String> attributes = new HashMap<>();
         StringBuilder textBuilder;
@@ -25,9 +25,34 @@ public class XMLParser {
         void addChild(Element child) {
             children.computeIfAbsent(child.name, k -> new ArrayList<>()).add(child);
         }
+
+        public List<Element> getChildren(String name) {
+            List<Element> list = children.get(name);
+            return list != null ? list : new ArrayList<>();
+        }
+
+        public Element getFirstChild(String name) {
+            List<Element> list = children.get(name);
+            if (list != null && !list.isEmpty()) {
+                return list.get(0);
+            }
+            return null;
+        }
+
+        public String getText() {
+            return textBuilder != null ? textBuilder.toString() : null;
+        }
+
+        public String getAttribute(String name) {
+            return attributes.get(name);
+        }
     }
 
     private final Element root;
+
+    Element getRoot() {
+        return root;
+    }
 
     public XMLParser(Reader reader) throws Exception {
         root = parse(reader);

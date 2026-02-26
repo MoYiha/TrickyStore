@@ -195,42 +195,41 @@ public final class CertHack {
         List<KeyBox> parsedList = new ArrayList<>();
         try {
             XMLParser xmlParser = new XMLParser(reader);
-            var numPath = xmlParser.obtainPath("AndroidAttestation.NumberOfKeyboxes");
-            if (numPath == null || numPath.get("text") == null) {
+            XMLParser.Element root = xmlParser.getRoot();
+            if (root == null || !"AndroidAttestation".equals(root.name)) {
                 return Collections.emptyList();
             }
-            // Ignore NumberOfKeyboxes text value, use actual element count for robustness
-            int actualKeyboxElements = xmlParser.getChildCount("AndroidAttestation", "Keybox");
 
-            for (int i = 0; i < actualKeyboxElements; i++) {
-                String keyboxPath;
-                if (actualKeyboxElements > 1) {
-                    keyboxPath = "AndroidAttestation.Keybox[" + i + "]";
-                } else {
-                    keyboxPath = "AndroidAttestation.Keybox";
-                }
+            XMLParser.Element numKeyboxesElem = root.getFirstChild("NumberOfKeyboxes");
+            if (numKeyboxesElem == null || numKeyboxesElem.getText() == null) {
+                return Collections.emptyList();
+            }
 
-                int keyCount = xmlParser.getChildCount(keyboxPath, "Key");
-                for (int k = 0; k < keyCount; k++) {
-                    String keyBasePath;
-                    if (keyCount > 1) {
-                        keyBasePath = keyboxPath + ".Key[" + k + "]";
-                    } else {
-                        keyBasePath = keyboxPath + ".Key";
-                    }
+            List<XMLParser.Element> keyboxes = root.getChildren("Keybox");
 
-                    String keyboxAlgorithm = xmlParser.obtainPath(keyBasePath).get("algorithm");
-                    String privateKey = xmlParser.obtainPath(keyBasePath + ".PrivateKey").get("text");
+            for (XMLParser.Element keybox : keyboxes) {
+                List<XMLParser.Element> keys = keybox.getChildren("Key");
 
-                    var numCertsPath = xmlParser.obtainPath(keyBasePath + ".CertificateChain.NumberOfCertificates");
-                    if (numCertsPath == null || numCertsPath.get("text") == null) continue;
+                for (XMLParser.Element key : keys) {
+                    String keyboxAlgorithm = key.getAttribute("algorithm");
+                    XMLParser.Element privateKeyElem = key.getFirstChild("PrivateKey");
+                    String privateKey = (privateKeyElem != null) ? privateKeyElem.getText() : null;
 
-                    int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsPath.get("text")));
+                    if (privateKey == null) continue;
+
+                    XMLParser.Element certChainElem = key.getFirstChild("CertificateChain");
+                    if (certChainElem == null) continue;
+
+                    XMLParser.Element numCertsElem = certChainElem.getFirstChild("NumberOfCertificates");
+                    if (numCertsElem == null || numCertsElem.getText() == null) continue;
+
+                    int numberOfCertificates = Integer.parseInt(numCertsElem.getText());
 
                     LinkedList<Certificate> certificateChain = new LinkedList<>();
-                    for (int j = 0; j < numberOfCertificates; j++) {
-                        String certPem = xmlParser.obtainPath(
-                                keyBasePath + ".CertificateChain.Certificate[" + j + "]").get("text");
+                    List<XMLParser.Element> certs = certChainElem.getChildren("Certificate");
+
+                    for (int j = 0; j < numberOfCertificates && j < certs.size(); j++) {
+                        String certPem = certs.get(j).getText();
                         certificateChain.add(parseCert(certPem));
                     }
 
