@@ -36,6 +36,9 @@ pub enum CborValue<'a> {
     /// Map of CBOR key-value pairs (major type 5).
     /// Keys are sorted in canonical order during encoding.
     Map(Vec<(CborValue<'a>, CborValue<'a>)>),
+    /// Map of CBOR key-value pairs (major type 5), already sorted.
+    /// Keys are ASSUMED to be in canonical order; no sorting is performed.
+    SortedMap(Vec<(CborValue<'a>, CborValue<'a>)>),
     /// CBOR tag (major type 6).
     Tag(u64, Box<CborValue<'a>>),
     /// Boolean value.
@@ -96,6 +99,14 @@ pub fn encode_item<'a, W: Write>(w: &mut W, value: &CborValue<'a>) -> io::Result
             sorted.sort_by(|a, b| canonical_key_cmp(&a.0, &b.0));
 
             for (key, val) in sorted {
+                encode_item(w, key)?;
+                encode_item(w, val)?;
+            }
+            Ok(())
+        }
+        CborValue::SortedMap(entries) => {
+            encode_type_and_length(w, MT_MAP, entries.len() as u64)?;
+            for (key, val) in entries {
                 encode_item(w, key)?;
                 encode_item(w, val)?;
             }

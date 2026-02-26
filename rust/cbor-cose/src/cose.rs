@@ -32,7 +32,7 @@ const COSE_KEY_EC2_Y: i64 = -3;
 /// P-256 curve identifier.
 const COSE_CRV_P256: i64 = 1;
 
-/// Build the COSE_Mac0 MAC structure for computing the MAC tag.
+/// Build the COSE_Mac0 MAC structure as a CBOR value.
 ///
 /// MAC_structure = [
 ///   "MAC0",           // context
@@ -40,21 +40,39 @@ const COSE_CRV_P256: i64 = 1;
 ///   external_aad,     // empty byte string
 ///   payload           // the payload bytes
 /// ]
-fn build_mac_structure(protected_headers: &[u8], payload: &[u8]) -> Vec<u8> {
-    let structure = CborValue::Array(vec![
+fn build_mac_structure<'a>(protected_headers: &'a [u8], payload: &'a [u8]) -> CborValue<'a> {
+    CborValue::Array(vec![
         CborValue::TextString(Cow::Borrowed("MAC0")),
         CborValue::ByteString(Cow::Borrowed(protected_headers)),
         CborValue::ByteString(Cow::Borrowed(&[])), // external_aad
         CborValue::ByteString(Cow::Borrowed(payload)),
-    ]);
-    cbor::encode(&structure)
+    ])
 }
 
-/// Compute HMAC-SHA256 over the given data.
-fn compute_hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>, CoseError> {
+/// Wrapper to implement `std::io::Write` for HMAC updates.
+struct MacWriter<'a, M: Mac>(&'a mut M);
+
+impl<'a, M: Mac> std::io::Write for MacWriter<'a, M> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.update(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Compute HMAC-SHA256 over the given CBOR value by streaming the encoding.
+fn compute_hmac_cbor(key: &[u8], value: &CborValue) -> Result<[u8; 32], CoseError> {
     let mut mac = HmacSha256::new_from_slice(key).map_err(|_| CoseError::InvalidKeyLength)?;
-    mac.update(data);
-    Ok(mac.finalize().into_bytes().to_vec())
+    {
+        let mut writer = MacWriter(&mut mac);
+        // This unwrap is safe because writing to HMAC (via MacWriter) never fails (always returns Ok)
+        cbor::encode_item(&mut writer, value).expect("HMAC update failed");
+    }
+    let output = mac.finalize().into_bytes();
+    // GenericArray<u8, 32> implements Into<[u8; 32]>
+    Ok(output.into())
 }
 
 /// Errors that can occur during COSE operations.
@@ -138,7 +156,7 @@ pub fn generate_maced_public_key(
     let payload = encode_cose_key(x, y)?;
 
     let mac_structure = build_mac_structure(&protected, &payload);
-    let tag = compute_hmac(hmac_key, &mac_structure)?;
+    let tag = compute_hmac_cbor(hmac_key, &mac_structure)?;
 
     let cose_mac0 = CborValue::Array(vec![
         CborValue::ByteString(Cow::Borrowed(&protected)),
@@ -174,18 +192,13 @@ pub fn create_device_info_cbor<'a>(
     let model = model.unwrap_or(Cow::Borrowed("Pixel"));
     let device = device.unwrap_or(Cow::Borrowed("generic"));
 
-    let map = CborValue::Map(vec![
+    // Keys are manually sorted by length (asc) then lexicographically
+    // to avoid runtime sorting allocation.
+    // Order: brand, model, device, product, vb_state, os_version, manufacturer, vbmeta_digest, bootloader_state, system_patch_level, vendor_patch_level
+    let map = CborValue::SortedMap(vec![
         (
             CborValue::TextString(Cow::Borrowed("brand")),
             CborValue::TextString(brand),
-        ),
-        (
-            CborValue::TextString(Cow::Borrowed("manufacturer")),
-            CborValue::TextString(manufacturer),
-        ),
-        (
-            CborValue::TextString(Cow::Borrowed("product")),
-            CborValue::TextString(product),
         ),
         (
             CborValue::TextString(Cow::Borrowed("model")),
@@ -196,20 +209,28 @@ pub fn create_device_info_cbor<'a>(
             CborValue::TextString(device),
         ),
         (
+            CborValue::TextString(Cow::Borrowed("product")),
+            CborValue::TextString(product),
+        ),
+        (
             CborValue::TextString(Cow::Borrowed("vb_state")),
             CborValue::TextString(Cow::Borrowed("green")),
         ),
         (
-            CborValue::TextString(Cow::Borrowed("bootloader_state")),
-            CborValue::TextString(Cow::Borrowed("locked")),
+            CborValue::TextString(Cow::Borrowed("os_version")),
+            CborValue::TextString(Cow::Borrowed("15.0.0")),
+        ),
+        (
+            CborValue::TextString(Cow::Borrowed("manufacturer")),
+            CborValue::TextString(manufacturer),
         ),
         (
             CborValue::TextString(Cow::Borrowed("vbmeta_digest")),
             CborValue::ByteString(Cow::Borrowed(&[0; 32])),
         ),
         (
-            CborValue::TextString(Cow::Borrowed("os_version")),
-            CborValue::TextString(Cow::Borrowed("15.0.0")),
+            CborValue::TextString(Cow::Borrowed("bootloader_state")),
+            CborValue::TextString(Cow::Borrowed("locked")),
         ),
         (
             CborValue::TextString(Cow::Borrowed("system_patch_level")),
