@@ -284,7 +284,6 @@ static bool is_binder_fd(int fd) {
     return is_binder;
 }
 
-// FIXME: when use ioctl hooking, some already blocked ioctl calls will not be hooked
 int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
 int new_ioctl(int fd, unsigned long request, ...) {
     va_list list;
