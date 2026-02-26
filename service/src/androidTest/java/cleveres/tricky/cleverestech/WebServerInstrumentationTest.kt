@@ -27,9 +27,12 @@ class WebServerInstrumentationTest {
             val port = server.listeningPort
             assertTrue("Port should be greater than 0", port > 0)
 
-            val url = URL("http://localhost:$port/")
+            // Connect using loopback IP explicitly instead of "localhost" to avoid DNS issues in some envs
+            val url = URL("http://127.0.0.1:$port/")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
+            connection.connectTimeout = 2000 // 2s timeout
+            connection.readTimeout = 2000
             connection.connect()
 
             assertEquals("Response code should be 200", 200, connection.responseCode)
@@ -73,8 +76,8 @@ class WebServerInstrumentationTest {
             val port = server.listeningPort
             assertTrue("Port should be greater than 0", port > 0)
 
-            // 1. Should connect via localhost
-            val localUrl = URL("http://localhost:$port/")
+            // 1. Should connect via localhost (127.0.0.1)
+            val localUrl = URL("http://127.0.0.1:$port/")
             val localConn = localUrl.openConnection() as HttpURLConnection
             localConn.connectTimeout = 1000
             localConn.connect()
@@ -92,7 +95,7 @@ class WebServerInstrumentationTest {
                     fail("Should not be able to connect via external IP: $deviceIp")
                 } catch (e: Exception) {
                     // Expecting ConnectException or SocketTimeoutException
-                    assertTrue("Expected connection failure", true)
+                    // or some IO Exception indicating refusal or timeout
                 }
             } else {
                 // If no external IP, we can't test this part, but that's fine for emulator
