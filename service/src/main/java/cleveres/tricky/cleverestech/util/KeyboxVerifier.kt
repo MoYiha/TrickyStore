@@ -29,6 +29,7 @@ object KeyboxVerifier {
     private val HEX_REGEX = Regex("^[0-9a-fA-F]+$")
 
     @JvmStatic
+    @JvmOverloads
     fun verify(configDir: File, crlFetcher: () -> Set<String>? = { fetchCrl() }): List<Result> {
         val results = ArrayList<Result>()
         val revokedSerials = crlFetcher()
