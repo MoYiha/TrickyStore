@@ -656,3 +656,20 @@ mod tests {
         assert_eq!(rust_fp_count(), 0);
     }
 }
+
+// ---- Race Engine FFI ----
+
+/// Start the Multi-Factor Race Condition Engine on the specified core.
+///
+/// This spawns a thread pinned to  that continuously executes
+/// the race condition logic.
+///
+/// # Safety
+/// No pointers; always safe.
+#[no_mangle]
+pub extern "C" fn rust_start_race_engine(core_id: usize) {
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        crate::race_engine::rust_start_race_engine(core_id);
+    }))
+    .unwrap_or(());
+}
