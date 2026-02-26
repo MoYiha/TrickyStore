@@ -22,6 +22,9 @@ object DeviceKeyManager {
     private var fallbackKey: SecretKey? = null
     private var useFallback = false
 
+    @Volatile
+    private var cachedKey: SecretKey? = null
+
     fun initialize(rootDir: File) {
         try {
             val ks = KeyStore.getInstance(ANDROID_KEYSTORE)
@@ -70,13 +73,19 @@ object DeviceKeyManager {
 
     private fun getKey(): SecretKey? {
         if (useFallback) return fallbackKey
-        return try {
-            val ks = KeyStore.getInstance(ANDROID_KEYSTORE)
-            ks.load(null)
-            val entry = ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
-            entry?.secretKey
-        } catch (e: Exception) {
-            null
+        cachedKey?.let { return it }
+
+        synchronized(this) {
+            cachedKey?.let { return it }
+            return try {
+                val ks = KeyStore.getInstance(ANDROID_KEYSTORE)
+                ks.load(null)
+                val entry = ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry
+                cachedKey = entry?.secretKey
+                cachedKey
+            } catch (e: Exception) {
+                null
+            }
         }
     }
 
