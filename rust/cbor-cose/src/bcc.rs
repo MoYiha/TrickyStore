@@ -134,5 +134,4 @@ mod tests {
             "Expected untagged COSE_Sign1 (Array(4))"
         );
     }
-
 }
