@@ -841,7 +841,7 @@ class WebServer(
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
         .island { background: #000; color: #fff; border-radius: 30px; height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); }
-        .island.active { width: auto; min-width: 200px; padding: 0 20px; opacity: 1; transform: translateY(0); }
+        .island.active { width: auto; min-width: 250px; padding: 12px 24px; opacity: 1; transform: translateY(0); font-size: 0.9em; }
         .island.error { background: #330000; border: 1px solid var(--danger); }
         .island.error #islandText { color: #FECACA; }
         .spinner { width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 10px; display: none; }
@@ -862,9 +862,9 @@ class WebServer(
         .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; min-height: 30px; }
         .row.wrap { flex-wrap: wrap; }
         label { font-size: 0.9em; color: #BBB; cursor: pointer; }
-        input[type="text"], input[type="password"], textarea, select { background: var(--input-bg); border: 1px solid var(--border); color: #fff; padding: 10px 12px; border-radius: 6px; width: 100%; box-sizing: border-box; font-family: inherit; transition: border-color 0.2s; font-size: 0.9em; }
+        input[type="text"], input[type="password"], textarea, select { background: var(--input-bg); border: 1px solid var(--border); color: #fff; padding: 12px 14px; border-radius: 6px; width: 100%; box-sizing: border-box; font-family: inherit; transition: border-color 0.2s; font-size: 0.95em; min-height: 44px; }
         input[type="text"]:focus, textarea:focus, select:focus { border-color: var(--accent); outline: none; }
-        button { background: var(--border); border: none; color: var(--fg); padding: 10px 20px; border-radius: 6px; cursor: pointer; font-family: inherit; font-weight: 500; font-size: 0.85em; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
+        button { background: var(--border); border: none; color: var(--fg); padding: 12px 24px; border-radius: 6px; cursor: pointer; font-family: inherit; font-weight: 500; font-size: 0.95em; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; min-height: 44px; touch-action: manipulation; }
         button:hover { background: #444; }
         button:active { transform: scale(0.98); }
         button.primary { background: var(--accent); color: #000; }
@@ -945,9 +945,9 @@ class WebServer(
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
         <div class="panel">
             <h3>DRM / Streaming</h3>
-            <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:5px 10px; font-size:0.75em;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
+            <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:36px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
             <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
-            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="font-size:0.75em;">Regenerate DRM ID</button></div>
+            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="padding:8px 16px; font-size:0.85em; min-height:36px;">Regenerate DRM ID</button></div>
         </div>
         <div class="panel"><h3>Beta Profile Fetcher</h3><button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button></div>
         <div class="panel">
