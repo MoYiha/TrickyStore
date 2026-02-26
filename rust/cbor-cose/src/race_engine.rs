@@ -1,7 +1,7 @@
+use libc::{cpu_set_t, sched_setaffinity, CPU_SET, CPU_ZERO};
+use std::mem;
 use std::thread;
 use std::time::Duration;
-use libc::{sched_setaffinity, cpu_set_t, CPU_SET, CPU_ZERO};
-use std::mem;
 
 /// Pin the current thread to a specific CPU core.
 /// This ensures consistent timing behavior by avoiding OS scheduler preemption.
