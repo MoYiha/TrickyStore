@@ -43,10 +43,6 @@ public class XMLParser {
 
     private final Element root;
 
-    Element getRoot() {
-        return root;
-    }
-
     public XMLParser(Reader reader) throws Exception {
         root = parse(reader);
     }

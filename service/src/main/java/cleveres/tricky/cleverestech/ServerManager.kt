@@ -127,7 +127,7 @@ object ServerManager {
     fun removeServer(id: String) {
         servers.removeIf { it.id == id }
         serverKeyboxes.remove(id)
-        File(Config.keyboxDirectory.parentFile, "server_cache_$id.enc").delete()
+        File(Config.keyboxDirectory.parentFile, "server_cache_${id}.enc").delete()
         saveServers()
         // Trigger update
         // We need a callback or Config listens to us?
@@ -226,7 +226,9 @@ object ServerManager {
             val bytes = conn.inputStream.readBytes()
 
             // Process Content
-            val keyboxes = processContent(bytes, server)
+            val result = processContent(bytes, server)
+            val keyboxes = result.first
+            val xmlContent = result.second
 
             if (keyboxes.isNotEmpty()) {
                 serverKeyboxes[server.id] = keyboxes
@@ -238,24 +240,10 @@ object ServerManager {
                     server.lastAuthor = "Unknown"
                 }
 
-                // Cache locally (encrypted)
-                // Combine all XMLs or pick first? KeyBox object doesn't store XML string.
-                // We need to re-serialize or store original XML.
-                // CertHack.parseKeyboxXml returns objects.
-                // We should cache the decrypted XML string.
-                // But processContent returns List<KeyBox>.
-                // Refactor: processContent should return XML string(s)?
-                // Or just cache the bytes if they were XML/CBOX.
+                if (xmlContent != null) {
+                    cacheXml(server.id, xmlContent)
+                }
 
-                // For simplicity: We will cache the *processed list* by serializing it? No.
-                // We cache the *source* XML if possible.
-                // If it was ZIP with multiple CBOXs, we have multiple XMLs.
-                // Let's assume processContent handles extraction.
-                // To support offline cache, we need to save what we parsed.
-
-                // Hack: We can't easily get XML back from KeyBox object.
-                // So we should cache the downloaded file (if CBOX/XML) or extracted XMLs.
-                // Let's modify processContent to return Pair<List<KeyBox>, String> where String is the full XML dump for caching.
             } else {
                 server.lastStatus = "INVALID_CONTENT"
                 saveServers()
@@ -272,7 +260,7 @@ object ServerManager {
         }
     }
 
-    private fun processContent(bytes: ByteArray, server: ServerConfig): List<CertHack.KeyBox> {
+    internal fun processContent(bytes: ByteArray, server: ServerConfig): Pair<List<CertHack.KeyBox>, String?> {
         val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), StandardCharsets.US_ASCII) else ""
 
         if (magic == "CBOX") {
@@ -289,8 +277,7 @@ object ServerManager {
                 }
                 val kbs = CertHack.parseKeyboxXml(StringReader(payload.xmlContent), "server_${server.name}")
                 if (kbs.isNotEmpty()) {
-                    cacheXml(server.id, payload.xmlContent)
-                    return kbs
+                    return Pair(kbs, payload.xmlContent)
                 }
             }
         } else if (bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
@@ -320,8 +307,7 @@ object ServerManager {
                 }
 
                 if (allKeys.isNotEmpty()) {
-                    cacheXml(server.id, sb.toString())
-                    return allKeys
+                    return Pair(allKeys, sb.toString())
                 }
             }
         } else {
@@ -330,12 +316,11 @@ object ServerManager {
             if (xml.contains("AndroidAttestation")) {
                  val kbs = CertHack.parseKeyboxXml(StringReader(xml), "server_${server.name}")
                  if (kbs.isNotEmpty()) {
-                     cacheXml(server.id, xml)
-                     return kbs
+                     return Pair(kbs, xml)
                  }
             }
         }
-        return emptyList()
+        return Pair(emptyList(), null)
     }
 
     private fun cacheXml(serverId: String, xml: String) {
