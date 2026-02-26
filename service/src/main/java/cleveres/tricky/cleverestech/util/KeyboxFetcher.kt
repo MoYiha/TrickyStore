@@ -102,9 +102,10 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
             }
 
             var added = 0
+            val digest = MessageDigest.getInstance("SHA-256")
             for (kb in keyboxes) {
                 if (KeyboxVerifier.verifyKeybox(kb, crl) == KeyboxVerifier.Status.VALID) {
-                    saveKeybox(kb, outputDir)
+                    saveKeybox(kb, outputDir, digest)
                     added++
                 }
             }
@@ -119,10 +120,10 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
     private val hexFormat = HexFormat { upperCase = false }
 
     @OptIn(ExperimentalStdlibApi::class)
-    private fun saveKeybox(kb: CertHack.KeyBox, dir: File) {
+    private fun saveKeybox(kb: CertHack.KeyBox, dir: File, digest: MessageDigest) {
         try {
             val pubEncoded = kb.keyPair.public.encoded
-            val hash = MessageDigest.getInstance("SHA-256").digest(pubEncoded)
+            val hash = digest.digest(pubEncoded)
             val hashStr = hash.toHexString(hexFormat).substring(0, 16)
             val fileName = "harvested_$hashStr.xml"
             val file = File(dir, fileName)
