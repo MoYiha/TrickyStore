@@ -60,9 +60,8 @@ impl RaceEngine {
     }
 }
 
-/// C-compatible entry point to start the engine
-#[no_mangle]
-pub extern "C" fn rust_start_race_engine(core_id: usize) {
+/// Internal entry point to start the engine, called by FFI wrapper
+pub fn internal_start_race_engine(core_id: usize) {
     let engine = RaceEngine::new(core_id);
     engine.start();
 }

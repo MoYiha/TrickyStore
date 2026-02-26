@@ -389,6 +389,23 @@ pub extern "C" fn rust_kick_already_blocked_ioctls() {
     }));
 }
 
+// ---- Race Engine FFI ----
+
+/// Start the Multi-Factor Race Condition Engine on the specified core.
+///
+/// This spawns a thread pinned to `core_id` that continuously executes
+/// the race condition logic.
+///
+/// # Safety
+/// No pointers; always safe.
+#[no_mangle]
+pub extern "C" fn rust_start_race_engine(core_id: usize) {
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        crate::race_engine::internal_start_race_engine(core_id);
+    }))
+    .unwrap_or(());
+}
+
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn rust_test_panic() -> u32 {
@@ -610,8 +627,7 @@ mod tests {
     // ---- Fingerprint FFI tests ----
     use serial_test::serial;
 
-    const SAMPLE_FP: &[u8] = b"google/husky/husky:15/AP41.250105.002/12731906:user/release-keys\n\
-          google/shiba/shiba:15/AP41.250105.002/12731906:user/release-keys\n";
+    const SAMPLE_FP: &[u8] = b"google/husky/husky:15/AP41.250105.002/12731906:user/release-keys\n          google/shiba/shiba:15/AP41.250105.002/12731906:user/release-keys\n";
 
     #[test]
     #[serial]
@@ -655,21 +671,4 @@ mod tests {
         rust_fp_clear();
         assert_eq!(rust_fp_count(), 0);
     }
-}
-
-// ---- Race Engine FFI ----
-
-/// Start the Multi-Factor Race Condition Engine on the specified core.
-///
-/// This spawns a thread pinned to  that continuously executes
-/// the race condition logic.
-///
-/// # Safety
-/// No pointers; always safe.
-#[no_mangle]
-pub extern "C" fn rust_start_race_engine(core_id: usize) {
-    panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        crate::race_engine::rust_start_race_engine(core_id);
-    }))
-    .unwrap_or(());
 }
