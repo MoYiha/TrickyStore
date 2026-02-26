@@ -9,8 +9,6 @@ import cleveres.tricky.cleverestech.util.CboxDecryptor
 import cleveres.tricky.cleverestech.util.ZipProcessor
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -59,7 +57,7 @@ class WebServer(
     private val RATE_LIMIT = 100
     private val RATE_WINDOW = 60 * 1000L
 
-    private val fileMutex = Mutex()
+    private val fileLock = Any()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private fun isRateLimited(ip: String): Boolean {
@@ -77,46 +75,40 @@ class WebServer(
     }
 
     private fun readFile(filename: String): String {
-        return runBlocking {
-            fileMutex.withLock {
-                try { File(configDir, filename).readText() } catch (e: Exception) { "" }
-            }
+        synchronized(fileLock) {
+            return try { File(configDir, filename).readText() } catch (e: Exception) { "" }
         }
     }
 
     private fun saveFile(filename: String, content: String): Boolean {
-        return runBlocking {
-            fileMutex.withLock {
-                try {
-                    val f = File(configDir, filename)
-                    SecureFile.writeText(f, content)
-                    true
-                } catch (e: Exception) {
-                    Logger.e("Failed to save file: $filename", e)
-                    false
-                }
+        synchronized(fileLock) {
+            return try {
+                val f = File(configDir, filename)
+                SecureFile.writeText(f, content)
+                true
+            } catch (e: Exception) {
+                Logger.e("Failed to save file: $filename", e)
+                false
             }
         }
     }
 
     private fun fileExists(filename: String): Boolean {
-        return runBlocking {
-            fileMutex.withLock { File(configDir, filename).exists() }
+        synchronized(fileLock) {
+            return File(configDir, filename).exists()
         }
     }
 
     private fun listKeyboxes(): List<String> {
-        return runBlocking {
-            fileMutex.withLock {
-                val keyboxDir = File(configDir, "keyboxes")
-                if (keyboxDir.exists() && keyboxDir.isDirectory) {
-                    keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
-                        ?.map { it.name }
-                        ?.sorted()
-                        ?: emptyList()
-                } else {
-                    emptyList()
-                }
+        synchronized(fileLock) {
+            val keyboxDir = File(configDir, "keyboxes")
+            if (keyboxDir.exists() && keyboxDir.isDirectory) {
+                return keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                    ?.map { it.name }
+                    ?.sorted()
+                    ?: emptyList()
+            } else {
+                return emptyList()
             }
         }
     }
@@ -127,27 +119,25 @@ class WebServer(
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
         if (!isValidSetting(filename)) return false
-        return runBlocking {
-            fileMutex.withLock {
-                val f = File(configDir, filename)
-                try {
-                    if (enable) {
-                        if (!f.exists()) {
-                            if (filename == "drm_fix") {
-                                val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
-                                SecureFile.writeText(f, content)
-                            } else {
-                                SecureFile.touch(f, 384)
-                            }
+        synchronized(fileLock) {
+            val f = File(configDir, filename)
+            return try {
+                if (enable) {
+                    if (!f.exists()) {
+                        if (filename == "drm_fix") {
+                            val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
+                            SecureFile.writeText(f, content)
+                        } else {
+                            SecureFile.touch(f, 384)
                         }
-                    } else {
-                        if (f.exists()) f.delete()
                     }
-                    true
-                } catch (e: Exception) {
-                    Logger.e("Failed to toggle setting: $filename", e)
-                    false
+                } else {
+                    if (f.exists()) f.delete()
                 }
+                true
+            } catch (e: Exception) {
+                Logger.e("Failed to toggle setting: $filename", e)
+                false
             }
         }
     }
@@ -512,34 +502,32 @@ class WebServer(
         if (uri == "/api/app_config_structured" && method == Method.GET) {
             val file = File(configDir, "app_config")
             val array = JSONArray()
-            runBlocking {
-                fileMutex.withLock {
-                    if (file.exists()) {
-                        file.useLines { lines ->
-                            lines.forEach { line ->
-                                if (line.isNotBlank() && !line.startsWith("#")) {
-                                    val parts = line.trim().split(WHITESPACE_REGEX)
-                                    if (parts.isNotEmpty()) {
-                                        val pkg = parts[0]
-                                        if (pkg.matches(PKG_NAME_REGEX)) {
-                                            val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
-                                            val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
-                                            val perms = if (parts.size > 3 && parts[3] != "null") parts[3] else ""
-                                            val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
-                                            val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
-                                            val isPermsValid = perms.isEmpty() || perms.matches(PERMISSIONS_REGEX)
-                                            if (isTmplValid && isKbValid && isPermsValid) {
-                                                val obj = JSONObject()
-                                                obj.put("package", pkg)
-                                                obj.put("template", tmpl)
-                                                obj.put("keybox", kb)
-                                                if (perms.isNotEmpty()) {
-                                                    val permArray = JSONArray()
-                                                    perms.split(",").forEach { permArray.put(it) }
-                                                    obj.put("permissions", permArray)
-                                                }
-                                                array.put(obj)
+            synchronized(fileLock) {
+                if (file.exists()) {
+                    file.useLines { lines ->
+                        lines.forEach { line ->
+                            if (line.isNotBlank() && !line.startsWith("#")) {
+                                val parts = line.trim().split(WHITESPACE_REGEX)
+                                if (parts.isNotEmpty()) {
+                                    val pkg = parts[0]
+                                    if (pkg.matches(PKG_NAME_REGEX)) {
+                                        val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
+                                        val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
+                                        val perms = if (parts.size > 3 && parts[3] != "null") parts[3] else ""
+                                        val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
+                                        val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
+                                        val isPermsValid = perms.isEmpty() || perms.matches(PERMISSIONS_REGEX)
+                                        if (isTmplValid && isKbValid && isPermsValid) {
+                                            val obj = JSONObject()
+                                            obj.put("package", pkg)
+                                            obj.put("template", tmpl)
+                                            obj.put("keybox", kb)
+                                            if (perms.isNotEmpty()) {
+                                                val permArray = JSONArray()
+                                                perms.split(",").forEach { permArray.put(it) }
+                                                obj.put("permissions", permArray)
                                             }
+                                            array.put(obj)
                                         }
                                     }
                                 }
@@ -581,17 +569,15 @@ class WebServer(
                          if (pkg.contains(WHITESPACE_FIND_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input")
                          sb.append("$pkg $tmpl $kb $permsStr\n")
                      }
-                     return runBlocking {
-                         fileMutex.withLock {
-                             try {
-                                 val f = File(configDir, "app_config")
-                                 SecureFile.writeText(f, sb.toString())
-                                 f.setLastModified(System.currentTimeMillis())
-                                 secureResponse(Response.Status.OK, "text/plain", "Saved")
-                             } catch (e: Exception) {
-                                 Logger.e("Failed to save app_config", e)
-                                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-                             }
+                     synchronized(fileLock) {
+                         try {
+                             val f = File(configDir, "app_config")
+                             SecureFile.writeText(f, sb.toString())
+                             f.setLastModified(System.currentTimeMillis())
+                             return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                         } catch (e: Exception) {
+                             Logger.e("Failed to save app_config", e)
+                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
                          }
                      }
                  } catch (e: Exception) {
@@ -661,24 +647,22 @@ class WebServer(
 
              // Legacy XML upload
              if (filename != null && content != null && filename.endsWith(".xml") && filename.matches(FILENAME_REGEX)) {
-                 return runBlocking {
-                     fileMutex.withLock {
-                         try {
-                             val keyboxes = CertHack.parseKeyboxXml(StringReader(content), filename)
-                             if (keyboxes.isEmpty()) return@runBlocking secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
-                         } catch (e: Exception) {
-                             return@runBlocking secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
-                         }
-                         val keyboxDir = File(configDir, "keyboxes")
-                         SecureFile.mkdirs(keyboxDir, 448)
-                         val file = File(keyboxDir, filename)
-                         try {
-                             SecureFile.writeText(file, content)
-                             secureResponse(Response.Status.OK, "text/plain", "Saved")
-                         } catch (e: Exception) {
-                             Logger.e("Failed to save keybox", e)
-                             secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
-                         }
+                 synchronized(fileLock) {
+                     try {
+                         val keyboxes = CertHack.parseKeyboxXml(StringReader(content), filename)
+                         if (keyboxes.isEmpty()) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
+                     } catch (e: Exception) {
+                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid Keybox XML")
+                     }
+                     val keyboxDir = File(configDir, "keyboxes")
+                     SecureFile.mkdirs(keyboxDir, 448)
+                     val file = File(keyboxDir, filename)
+                     try {
+                         SecureFile.writeText(file, content)
+                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                     } catch (e: Exception) {
+                         Logger.e("Failed to save keybox", e)
+                         return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
                      }
                  }
              }
@@ -687,12 +671,11 @@ class WebServer(
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
-                return runBlocking {
-                    fileMutex.withLock {
-                        val results = KeyboxVerifier.verify(configDir)
-                        val json = createKeyboxVerificationJson(results)
-                        secureResponse(Response.Status.OK, "application/json", json)
-                    }
+                val crl = KeyboxVerifier.fetchCrl()
+                synchronized(fileLock) {
+                    val results = KeyboxVerifier.verify(configDir) { crl }
+                    val json = createKeyboxVerificationJson(results)
+                    return secureResponse(Response.Status.OK, "application/json", json)
                 }
              } catch(e: Exception) {
                  Logger.e("Failed to verify keyboxes", e)
@@ -713,11 +696,9 @@ class WebServer(
 
         if (uri == "/api/reload" && method == Method.POST) {
              try {
-                return runBlocking {
-                    fileMutex.withLock {
-                        File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
-                        secureResponse(Response.Status.OK, "text/plain", "Reloaded")
-                    }
+                synchronized(fileLock) {
+                    File(configDir, "target.txt").setLastModified(System.currentTimeMillis())
+                    return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
                 }
              } catch(e: Exception) {
                  Logger.e("Failed to reload", e)
@@ -727,16 +708,14 @@ class WebServer(
 
         if (uri == "/api/reset_drm" && method == Method.POST) {
              try {
-                 return runBlocking {
-                     fileMutex.withLock {
-                         val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
-                         dirs.forEach { path ->
-                             try { File(path).walkBottomUp().forEach { if (it.path != path) it.delete() } } catch (e: Exception) {}
-                         }
-                         val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
-                         p.waitFor()
-                         secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
+                 synchronized(fileLock) {
+                     val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+                     dirs.forEach { path ->
+                         try { File(path).walkBottomUp().forEach { if (it.path != path) it.delete() } } catch (e: Exception) {}
                      }
+                     val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                     p.waitFor()
+                     return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
                  }
              } catch(e: Exception) {
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
@@ -745,11 +724,9 @@ class WebServer(
 
         if (uri == "/api/fetch_beta" && method == Method.POST) {
              try {
-                 return runBlocking(Dispatchers.IO) {
-                    val result = BetaFetcher.fetchAndApply(null)
-                    if (result.success) secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
-                    else secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
-                 }
+                 val result = BetaFetcher.fetchAndApply(null)
+                 if (result.success) return secureResponse(Response.Status.OK, "text/plain", "Success: ${result.profile?.model}")
+                 else return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: ${result.error}")
              } catch(e: Exception) {
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
@@ -783,13 +760,11 @@ class WebServer(
              if (tmpFilePath != null) {
                  val tmpFile = File(tmpFilePath)
                  return try {
-                     runBlocking {
-                         fileMutex.withLock {
-                             restoreBackupZip(configDir, tmpFile.inputStream())
-                             val target = File(configDir, "target.txt")
-                             if (target.exists()) target.setLastModified(System.currentTimeMillis())
-                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
-                         }
+                     synchronized(fileLock) {
+                         restoreBackupZip(configDir, tmpFile.inputStream())
+                         val target = File(configDir, "target.txt")
+                         if (target.exists()) target.setLastModified(System.currentTimeMillis())
+                         secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                      }
                  } catch (e: Exception) {
                      Logger.e("Failed to restore backup", e)
