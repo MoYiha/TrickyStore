@@ -31,11 +31,11 @@ pub fn generate_spoofed_bcc() -> Vec<u8> {
 
     // 3. Create BCC[0]: Root -> Root (Self-signed)
     let dk_cose_key = public_key_to_cose_key(&dk_public);
-    let bcc_0 = create_bcc_entry(&dk_private, &dk_cose_key, None);
+    let bcc_0 = create_bcc_entry(&dk_private, dk_cose_key, None);
 
     // 4. Create BCC[1]: Root -> KeyMint
     let km_cose_key = public_key_to_cose_key(&km_public);
-    let bcc_1 = create_bcc_entry(&dk_private, &km_cose_key, None);
+    let bcc_1 = create_bcc_entry(&dk_private, km_cose_key, None);
 
     // 5. Construct BCC Array
     let bcc_array = CborValue::Array(vec![
@@ -68,11 +68,11 @@ fn public_key_to_cose_key(key: &VerifyingKey) -> CoseKey {
 /// * `extra_payload` - Optional map to add to the payload (e.g. device info).
 fn create_bcc_entry<'a>(
     signer_key: &SigningKey,
-    payload_key: &CoseKey,
+    payload_key: CoseKey,
     _extra_payload: Option<CborValue<'a>>, // Unused for basic spoofing but kept for future
 ) -> CoseSign1 {
     // Payload is the COSE_Key of the next key
-    let payload_bytes = payload_key.clone().to_vec().unwrap();
+    let payload_bytes = payload_key.to_vec().unwrap();
 
     let protected = HeaderBuilder::new()
         .algorithm(iana::Algorithm::ES256)
