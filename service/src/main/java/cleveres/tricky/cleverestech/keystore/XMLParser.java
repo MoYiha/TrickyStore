@@ -6,45 +6,38 @@ import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.Reader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class XMLParser {
 
-    static class Element {
-        String name;
-        Map<String, String> attributes = new HashMap<>();
-        StringBuilder textBuilder;
-        Map<String, List<Element>> children = new HashMap<>();
+    public static class Element {
+        public String name;
+        public Map<String, String> attributes = new HashMap<>();
+        public StringBuilder textBuilder;
+        public Map<String, List<Element>> children = new HashMap<>();
 
-        Element(String name) {
+        public Element(String name) {
             this.name = name;
         }
 
-        void addChild(Element child) {
+        public void addChild(Element child) {
             children.computeIfAbsent(child.name, k -> new ArrayList<>()).add(child);
         }
 
-        public List<Element> getChildren(String name) {
-            List<Element> list = children.get(name);
-            return list != null ? list : new ArrayList<>();
-        }
-
-        public Element getFirstChild(String name) {
-            List<Element> list = children.get(name);
-            if (list != null && !list.isEmpty()) {
-                return list.get(0);
-            }
-            return null;
-        }
-
         public String getText() {
-            return textBuilder != null ? textBuilder.toString() : null;
+            return textBuilder == null ? null : textBuilder.toString();
         }
 
-        public String getAttribute(String name) {
-            return attributes.get(name);
+        public Element getChild(String name) {
+            List<Element> list = children.get(name);
+            return (list != null && !list.isEmpty()) ? list.get(0) : null;
+        }
+
+        public List<Element> getChildren(String name) {
+            return children.getOrDefault(name, Collections.emptyList());
         }
     }
 
@@ -56,6 +49,10 @@ public class XMLParser {
 
     public XMLParser(Reader reader) throws Exception {
         root = parse(reader);
+    }
+
+    public Element getRoot() {
+        return root;
     }
 
     private Element parse(Reader reader) throws Exception {

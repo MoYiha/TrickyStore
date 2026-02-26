@@ -196,12 +196,13 @@ public final class CertHack {
         try {
             XMLParser xmlParser = new XMLParser(reader);
             XMLParser.Element root = xmlParser.getRoot();
+
             if (root == null || !"AndroidAttestation".equals(root.name)) {
                 return Collections.emptyList();
             }
 
-            XMLParser.Element numKeyboxesElem = root.getFirstChild("NumberOfKeyboxes");
-            if (numKeyboxesElem == null || numKeyboxesElem.getText() == null) {
+            XMLParser.Element numKeyboxes = root.getChild("NumberOfKeyboxes");
+            if (numKeyboxes == null || numKeyboxes.getText() == null) {
                 return Collections.emptyList();
             }
 
@@ -209,27 +210,26 @@ public final class CertHack {
 
             for (XMLParser.Element keybox : keyboxes) {
                 List<XMLParser.Element> keys = keybox.getChildren("Key");
-
                 for (XMLParser.Element key : keys) {
-                    String keyboxAlgorithm = key.getAttribute("algorithm");
-                    XMLParser.Element privateKeyElem = key.getFirstChild("PrivateKey");
-                    String privateKey = (privateKeyElem != null) ? privateKeyElem.getText() : null;
+                    // keyboxAlgorithm is fetched but seemingly unused in original code, kept for consistency if side effects existed (unlikely)
+                    String keyboxAlgorithm = key.attributes.get("algorithm");
 
+                    XMLParser.Element privateKeyElement = key.getChild("PrivateKey");
+                    String privateKey = privateKeyElement != null ? privateKeyElement.getText() : null;
                     if (privateKey == null) continue;
 
-                    XMLParser.Element certChainElem = key.getFirstChild("CertificateChain");
-                    if (certChainElem == null) continue;
+                    XMLParser.Element certChain = key.getChild("CertificateChain");
+                    if (certChain == null) continue;
 
-                    XMLParser.Element numCertsElem = certChainElem.getFirstChild("NumberOfCertificates");
-                    if (numCertsElem == null || numCertsElem.getText() == null) continue;
+                    XMLParser.Element numCertsElement = certChain.getChild("NumberOfCertificates");
+                    if (numCertsElement == null || numCertsElement.getText() == null) continue;
 
-                    int numberOfCertificates = Integer.parseInt(numCertsElem.getText());
+                    int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsElement.getText()));
 
+                    List<XMLParser.Element> certificates = certChain.getChildren("Certificate");
                     LinkedList<Certificate> certificateChain = new LinkedList<>();
-                    List<XMLParser.Element> certs = certChainElem.getChildren("Certificate");
-
-                    for (int j = 0; j < numberOfCertificates && j < certs.size(); j++) {
-                        String certPem = certs.get(j).getText();
+                    for (int j = 0; j < numberOfCertificates; j++) {
+                        String certPem = certificates.get(j).getText();
                         certificateChain.add(parseCert(certPem));
                     }
 
