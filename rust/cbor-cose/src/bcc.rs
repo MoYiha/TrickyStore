@@ -40,8 +40,12 @@ pub fn generate_spoofed_bcc() -> Result<Vec<u8>, CoseError> {
 
     // 5. Construct BCC Array
     let bcc_array = CborValue::Array(vec![
-        CborValue::Raw(Cow::Owned(bcc_0.to_vec().map_err(|_| CoseError::EncodingError)?)),
-        CborValue::Raw(Cow::Owned(bcc_1.to_vec().map_err(|_| CoseError::EncodingError)?)),
+        CborValue::Raw(Cow::Owned(
+            bcc_0.to_vec().map_err(|_| CoseError::EncodingError)?,
+        )),
+        CborValue::Raw(Cow::Owned(
+            bcc_1.to_vec().map_err(|_| CoseError::EncodingError)?,
+        )),
     ]);
 
     Ok(cbor::encode(&bcc_array))
@@ -49,7 +53,9 @@ pub fn generate_spoofed_bcc() -> Result<Vec<u8>, CoseError> {
 
 /// Helper to convert p256 Public Key to COSE_Key structure.
 fn public_key_to_cose_key(key: &VerifyingKey) -> Result<CoseKey, CoseError> {
-    let _encoded = key.to_public_key_der().map_err(|_| CoseError::InvalidPublicKey)?;
+    let _encoded = key
+        .to_public_key_der()
+        .map_err(|_| CoseError::InvalidPublicKey)?;
     // P-256 point is last 64 bytes of SubjectPublicKeyInfo for uncompressed
     // (technically we should parse DER properly, but for P-256 it's fixed offset usually.
     // However, p256 crate provides encoded point directly via `to_encoded_point`)
@@ -57,8 +63,10 @@ fn public_key_to_cose_key(key: &VerifyingKey) -> Result<CoseKey, CoseError> {
     let x = point.x().ok_or(CoseError::InvalidPublicKey)?.as_slice();
     let y = point.y().ok_or(CoseError::InvalidPublicKey)?.as_slice();
 
-    Ok(coset::CoseKeyBuilder::new_ec2_pub_key(iana::EllipticCurve::P_256, x.to_vec(), y.to_vec())
-        .build())
+    Ok(
+        coset::CoseKeyBuilder::new_ec2_pub_key(iana::EllipticCurve::P_256, x.to_vec(), y.to_vec())
+            .build(),
+    )
 }
 
 /// Create a COSE_Sign1 entry for the BCC.
