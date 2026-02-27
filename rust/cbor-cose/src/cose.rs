@@ -67,8 +67,7 @@ fn compute_hmac_cbor(key: &[u8], value: &CborValue) -> Result<[u8; 32], CoseErro
     let mut mac = HmacSha256::new_from_slice(key).map_err(|_| CoseError::InvalidKeyLength)?;
     {
         let mut writer = MacWriter(&mut mac);
-        // This unwrap is safe because writing to HMAC (via MacWriter) never fails (always returns Ok)
-        cbor::encode_item(&mut writer, value).expect("HMAC update failed");
+        cbor::encode_item(&mut writer, value).map_err(|_| CoseError::EncodingError)?;
     }
     let output = mac.finalize().into_bytes();
     // GenericArray<u8, 32> implements Into<[u8; 32]>
@@ -82,6 +81,8 @@ pub enum CoseError {
     InvalidKeyLength,
     /// The EC public key coordinates are invalid.
     InvalidPublicKey,
+    /// Error encoding CBOR structures.
+    EncodingError,
 }
 
 impl std::fmt::Display for CoseError {
@@ -89,6 +90,7 @@ impl std::fmt::Display for CoseError {
         match self {
             CoseError::InvalidKeyLength => write!(f, "invalid HMAC key length"),
             CoseError::InvalidPublicKey => write!(f, "invalid EC public key coordinates"),
+            CoseError::EncodingError => write!(f, "error encoding CBOR structure"),
         }
     }
 }
