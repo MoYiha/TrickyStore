@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech
 import android.content.pm.IPackageManager
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.mockito.Mockito
 
 class ConfigPatchLevelTest {
 
@@ -10,13 +11,9 @@ class ConfigPatchLevelTest {
     fun testGetPatchLevel_usesPackageName() {
         Config.reset()
 
-        // 1. Mock IPackageManager
-        val mockPm = object : IPackageManager {
-             override fun getPackagesForUid(uid: Int): Array<String> {
-                 if (uid == 1002) return arrayOf("com.example.patched")
-                 return emptyArray()
-             }
-        }
+        // 1. Mock IPackageManager with Mockito
+        val mockPm = Mockito.mock(IPackageManager::class.java)
+        Mockito.doReturn(arrayOf("com.example.patched")).`when`(mockPm).getPackagesForUid(1002)
 
         // 2. Inject Mock PM into Config
         val iPmField = Config::class.java.getDeclaredField("iPm")
