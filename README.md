@@ -405,6 +405,9 @@ CleveresTricky supports community translations for the WebUI.
 For instructions on how to add a language or contribute translations, please see: [LANGUAGES.md](LANGUAGES.md)
 
 ## Roadmap
+- **Zygisk-less Operation:** Support for standalone mode (Magisk-only/KernelSU native) without Zygisk dependency.
+- **Native KernelSU Support:** Enhanced integration for KernelSU users.
+- **Enhanced Detection Evasion:** Advanced techniques independent of Zygisk injection.
 
 ## Acknowledgements
 

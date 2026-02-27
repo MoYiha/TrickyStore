@@ -224,6 +224,48 @@ class WebServer(
 
     @Suppress("DEPRECATION")
 
+
+    private fun getEnvironmentInfo(): String {
+        if (File("/data/adb/ksu").exists() || File("/data/adb/ksud").exists()) return "KernelSU"
+        if (File("/data/adb/apatch").exists()) return "APatch"
+        if (File("/sbin/magisk").exists() || File("/data/adb/magisk").exists()) return "Magisk"
+        return "Unknown Root"
+    }
+
+    private var lastCpuTime: Long = 0
+    private var lastSysTime: Long = 0
+    private var lastCpuUsage: Double = 0.0
+
+    private fun getCpuUsagePercent(): Double {
+        try {
+            val selfStat = File("/proc/self/stat").readText().split(" ")
+            val sysStat = File("/proc/stat").readLines()[0].split(Regex("\\s+"))
+
+            val uTime = selfStat[13].toLong()
+            val sTime = selfStat[14].toLong()
+            val procTime = uTime + sTime
+
+            var totalTime = 0L
+            for (i in 1 until sysStat.size) {
+                totalTime += sysStat[i].toLongOrNull() ?: 0L
+            }
+
+            if (lastSysTime > 0 && totalTime > lastSysTime) {
+                val deltaProc = procTime - lastCpuTime
+                val deltaSys = totalTime - lastSysTime
+                if (deltaSys > 0) {
+                    lastCpuUsage = (deltaProc.toDouble() / deltaSys.toDouble()) * 100.0 * Runtime.getRuntime().availableProcessors()
+                }
+            }
+            lastCpuTime = procTime
+            lastSysTime = totalTime
+
+            return lastCpuUsage
+        } catch (e: Exception) {
+            return 0.0
+        }
+    }
+
     private fun getRamUsageKb(): Long {
         try {
             File("/proc/self/status").useLines { lines ->
@@ -789,6 +831,8 @@ class WebServer(
             json.put("rkp_bypass", fileExists("rkp_bypass"))
             json.put("tee_broken_mode", fileExists("tee_broken_mode"))
             json.put("real_ram_kb", getRamUsageKb())
+            json.put("real_cpu", getCpuUsagePercent())
+            json.put("environment", getEnvironmentInfo())
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
@@ -1771,7 +1815,10 @@ class WebServer(
 
             const totalRow = document.createElement('tr');
             const ramMb = (data.real_ram_kb / 1024).toFixed(2);
-            totalRow.innerHTML = `<td colspan="5" style="background:#222; font-weight:bold; padding:10px;">Total Process Memory: ${'$'}{ramMb} MB</td>`;
+            const cpu = data.real_cpu ? data.real_cpu.toFixed(1) : "0.0";
+            const env = data.environment || "Unknown";
+
+            totalRow.innerHTML = '<td colspan="5" style="background:#222; font-weight:bold; padding:10px;">Env: ' + env + ' | CPU: ' + cpu + '% | RAM: ' + ramMb + ' MB</td>';
             tbody.appendChild(totalRow);
 
             const keyboxRam = (data.keybox_count * 0.01).toFixed(2);
@@ -1792,23 +1839,22 @@ class WebServer(
 
                 if (isToggleable) {
                     const isChecked = data[f.id] ? 'checked' : '';
-                    statusHtml = `<input type="checkbox" class="toggle" id="res_toggle_${'$'}{f.id}" ${'$'}{isChecked} onchange="toggle('${'$'}{f.id}')">`;
+                    statusHtml = '<input type="checkbox" class="toggle" id="res_toggle_' + f.id + '" ' + isChecked + ' onchange="toggle(\'' + f.id + '\')">';
                 } else {
                     statusHtml = '<span style="color:#888;">Info Only</span>';
                 }
 
                 let secColor = f.sec === 'Critical' ? 'var(--danger)' : (f.sec === 'High' ? 'orange' : 'var(--success)');
 
-                tr.innerHTML = `
-                    <td style="font-weight:bold;">${'$'}{f.name}</td>
-                    <td>${'$'}{statusHtml}</td>
-                    <td style="font-family:monospace;">${'$'}{f.ram}</td>
-                    <td>${'$'}{f.cpu}</td>
-                    <td style="color:${'$'}{secColor}; font-weight:bold;">${'$'}{f.sec}</td>
-                `;
+                tr.innerHTML =
+                    '<td style="font-weight:bold;">' + f.name + '</td>' +
+                    '<td>' + statusHtml + '</td>' +
+                    '<td style="font-family:monospace;">' + f.ram + '</td>' +
+                    '<td>' + f.cpu + '</td>' +
+                    '<td style="color:' + secColor + '; font-weight:bold;">' + f.sec + '</td>';
 
                 const trDesc = document.createElement('tr');
-                trDesc.innerHTML = `<td colspan="5" style="border-bottom:1px solid #333; padding-bottom:10px; color:#888; font-size:0.85em;">${'$'}{f.desc}</td>`;
+                trDesc.innerHTML = '<td colspan="5" style="border-bottom:1px solid #333; padding-bottom:10px; color:#888; font-size:0.85em;">' + f.desc + '</td>';
 
                 tbody.appendChild(tr);
                 tbody.appendChild(trDesc);
