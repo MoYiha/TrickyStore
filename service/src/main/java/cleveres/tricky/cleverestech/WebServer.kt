@@ -223,6 +223,23 @@ class WebServer(
     }
 
     @Suppress("DEPRECATION")
+
+    private fun getRamUsageKb(): Long {
+        try {
+            File("/proc/self/status").useLines { lines ->
+                lines.forEach { line ->
+                    if (line.startsWith("VmRSS:")) {
+                        val parts = line.split(Regex("\\s+"))
+                        if (parts.size >= 2) {
+                            return parts[1].toLongOrNull() ?: 0L
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+        return (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024
+    }
+
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
@@ -771,6 +788,7 @@ class WebServer(
             json.put("global_mode", fileExists("global_mode"))
             json.put("rkp_bypass", fileExists("rkp_bypass"))
             json.put("tee_broken_mode", fileExists("tee_broken_mode"))
+            json.put("real_ram_kb", getRamUsageKb())
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
@@ -911,7 +929,7 @@ class WebServer(
         <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
         <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="-1" aria-selected="false" aria-controls="apps" onkeydown="handleTabNavigation(event, 'apps')">Apps</div>
         <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="-1" aria-selected="false" aria-controls="keys" onkeydown="handleTabNavigation(event, 'keys')">Keyboxes</div>
-        <div class="tab" id="tab_info" onclick="switchTab('info)" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">📖 Guide</div>
+        <div class="tab" id="tab_info" onclick="switchTab('info)" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">Guide</div>
         <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
     </div>
 
@@ -1750,6 +1768,11 @@ class WebServer(
             const tbody = document.getElementById('resourceBody');
             if (!tbody) return;
             tbody.innerHTML = '';
+
+            const totalRow = document.createElement('tr');
+            const ramMb = (data.real_ram_kb / 1024).toFixed(2);
+            totalRow.innerHTML = `<td colspan="5" style="background:#222; font-weight:bold; padding:10px;">Total Process Memory: ${'$'}{ramMb} MB</td>`;
+            tbody.appendChild(totalRow);
 
             const keyboxRam = (data.keybox_count * 0.01).toFixed(2);
             const appConfigRam = (data.app_config_size / 1024).toFixed(2);

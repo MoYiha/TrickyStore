@@ -5,7 +5,6 @@ The CleveresTricky module is developed and maintained in **English by default**.
 ## Contributing Translations
 
 We highly encourage the community to contribute translations to make the module accessible to a wider audience.
-Priority is given to **Chinese**, **Russian**, and **English** sources, as these are the primary languages used by our community and contributors.
 
 ### How to Add a Language
 
