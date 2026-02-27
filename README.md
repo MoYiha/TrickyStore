@@ -18,7 +18,7 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 - Low memory footprint with immediate config release
 - **Resource Monitor** to view and manage feature impact on RAM/CPU
 
-**New Advanced Features (v2.0):**
+**Advanced Features:**
 - **Race Condition Engine:** Simulates Keystore TOCTOU (Time-of-Check to Time-of-Use) vulnerabilities to bypass rigorous timing checks.
 - **Stealth Daemon:** Native process with `kworker` disguising, memory map sanitization, and anti-debugging protections (`ptrace` detection).
 - **Leak Prevention:** Improved Binder FD management to prevent resource exhaustion and detection.
