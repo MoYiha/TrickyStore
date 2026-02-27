@@ -74,9 +74,26 @@ class WebServer(
         return current!!.count > RATE_LIMIT
     }
 
+    private fun isSafePath(file: File): Boolean {
+        return try {
+            val configCanonical = configDir.canonicalPath
+            val fileCanonical = file.canonicalPath
+            fileCanonical.equals(configCanonical) || fileCanonical.startsWith(configCanonical + File.separator)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun readFile(filename: String): String {
         synchronized(fileLock) {
-            return try { File(configDir, filename).readText() } catch (e: Exception) { "" }
+            return try {
+                val f = File(configDir, filename)
+                if (!isSafePath(f)) {
+                    Logger.e("Path traversal attempt detected: $filename")
+                    return ""
+                }
+                f.readText()
+            } catch (e: Exception) { "" }
         }
     }
 
@@ -84,6 +101,10 @@ class WebServer(
         synchronized(fileLock) {
             return try {
                 val f = File(configDir, filename)
+                if (!isSafePath(f)) {
+                    Logger.e("Path traversal attempt detected during save: $filename")
+                    return false
+                }
                 SecureFile.writeText(f, content)
                 true
             } catch (e: Exception) {
@@ -95,7 +116,8 @@ class WebServer(
 
     private fun fileExists(filename: String): Boolean {
         synchronized(fileLock) {
-            return File(configDir, filename).exists()
+            val f = File(configDir, filename)
+            return isSafePath(f) && f.exists()
         }
     }
 
