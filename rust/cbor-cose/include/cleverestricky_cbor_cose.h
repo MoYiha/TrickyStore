@@ -163,6 +163,18 @@ void rust_fp_clear(void);
  */
 void rust_kick_already_blocked_ioctls(void);
 
+/* ==== Race Condition Engine ==== */
+
+/**
+ * Start the Multi-Factor Race Condition Engine on the specified core.
+ *
+ * This spawns a thread pinned to `core_id` that continuously executes
+ * the race condition logic (TOCTOU simulation).
+ *
+ * @param core_id   The CPU core ID to pin the engine thread to.
+ */
+void rust_start_race_engine(size_t core_id);
+
 #ifdef __cplusplus
 }
 #endif

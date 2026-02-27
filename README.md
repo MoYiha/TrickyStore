@@ -17,6 +17,11 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 - Security patch level customization
 - Low memory footprint with immediate config release
 
+**New Advanced Features (v2.0):**
+- **Race Condition Engine:** Simulates Keystore TOCTOU (Time-of-Check to Time-of-Use) vulnerabilities to bypass rigorous timing checks.
+- **Stealth Daemon:** Native process with `kworker` disguising, memory map sanitization, and anti-debugging protections (`ptrace` detection).
+- **Leak Prevention:** Improved Binder FD management to prevent resource exhaustion and detection.
+
 **Integrity Support:**
 - MEETS_USE_BRAIN
 
@@ -28,6 +33,13 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 4. Enable RKP bypass for STRONG integrity: `touch /data/adb/cleverestricky/rkp_bypass`
 
 Configuration changes take effect immediately.
+
+## Security & Detection Analysis
+
+We maintain a comprehensive document detailing theoretical detection vectors for TEE emulators and our specific mitigations.
+This includes analysis of eBPF tracing, DroidGuard timing checks, and memory artifacts.
+
+👉 **Read the full report:** [DETECTION_ANALYSIS.md](DETECTION_ANALYSIS.md)
 
 ## Keybox Jukebox (Multi-Key Rotation)
 

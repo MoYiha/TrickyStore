@@ -284,6 +284,19 @@ static bool is_binder_fd(int fd) {
     return is_binder;
 }
 
+int (*old_close)(int fd) = nullptr;
+int new_close(int fd) {
+    {
+        // Invalidate cache if present
+        std::unique_lock<std::shared_mutex> lock(g_binder_fd_lock);
+        auto it = g_binder_fds.find(fd);
+        if (it != g_binder_fds.end()) {
+            g_binder_fds.erase(it);
+        }
+    }
+    return old_close(fd);
+}
+
 int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
 int new_ioctl(int fd, unsigned long request, ...) {
     va_list list;
@@ -629,7 +642,8 @@ bool initialize_hooks() {
         // return false; // Should not return early if libbinder hook was set
     } else {
         lsplt::RegisterHook(libc_dev, libc_ino, "__system_property_get", (void *) new_system_property_get, (void **) &original_system_property_get);
-        LOGI("Registered __system_property_get hook for libc.so");
+        lsplt::RegisterHook(libc_dev, libc_ino, "close", (void *) new_close, (void **) &old_close);
+        LOGI("Registered __system_property_get and close hooks for libc.so");
     }
     
     if (!binder_found && !libc_found) {
