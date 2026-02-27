@@ -45,4 +45,5 @@ target_link_libraries(${MODULE_NAME} PRIVATE log binder utils elf_util my_loggin
 add_executable(keystore_race_daemon daemon/main.cpp)
 target_include_directories(keystore_race_daemon PRIVATE ../../../../rust/cbor-cose/include)
 # Link against the same Rust core library
-target_link_libraries(keystore_race_daemon PRIVATE log binder utils rust_core)
+# Added my_logging to link dependencies to provide logging.hpp include path
+target_link_libraries(keystore_race_daemon PRIVATE log binder utils rust_core my_logging)
