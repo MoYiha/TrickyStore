@@ -33,3 +33,10 @@ The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and
 *   **Tabs**: Panel background, bottom border, active state uses Accent color.
 *   **Buttons**: Uppercase, rounded corners (6px), flat design. Primary buttons use Accent color.
 *   **Toggles**: iOS-style switches.
+
+## Mobile-First Design
+
+Since this WebUI is designed for a Magisk module, it is primarily accessed via mobile devices (e.g., Termux, local browser).
+*   **Responsive Layout:** The interface must be fully responsive and optimized for touch targets.
+*   **Vertical Scrolling:** Prioritize vertical flow over horizontal complexity.
+*   **Touch Targets:** Buttons and inputs should be at least 44px height.
