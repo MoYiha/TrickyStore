@@ -929,10 +929,10 @@ class WebServer(
         button.primary:hover { background: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.2); }
         button.danger { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid var(--danger); }
         button.danger:hover { background: var(--danger); color: #fff; }
-        input[type="checkbox"].toggle { appearance: none; width: 40px; height: 22px; background: #333; border-radius: 20px; position: relative; cursor: pointer; transition: background 0.3s; }
-        input[type="checkbox"].toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform 0.3s; }
+        input[type="checkbox"].toggle { appearance: none; width: 52px; height: 32px; background: #333; border-radius: 16px; position: relative; cursor: pointer; transition: background 0.3s; }
+        input[type="checkbox"].toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; background: #fff; border-radius: 50%; transition: transform 0.3s; }
         input[type="checkbox"].toggle:checked { background: var(--accent); }
-        input[type="checkbox"].toggle:checked::after { transform: translateX(18px); }
+        input[type="checkbox"].toggle:checked::after { transform: translateX(20px); }
         textarea:disabled, input:disabled, select:disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: #888; font-weight: 500; }
@@ -956,12 +956,14 @@ class WebServer(
         input.valid { border-color: var(--success); }
         input.invalid { border-color: var(--danger); }
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
+        .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
         @media screen and (max-width: 600px) {
-            #appTable thead { display: none; }
-            #appTable tr { display: block; border: 1px solid var(--border); margin-bottom: 10px; border-radius: 8px; background: #1a1a1a; }
-            #appTable td { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding: 12px; }
-            #appTable td:last-child { border-bottom: none; justify-content: flex-end; }
-            #appTable td::before { content: attr(data-label); color: #888; font-weight: 500; margin-right: 10px; }
+            .responsive-table thead { display: none; }
+            .responsive-table tr { display: block; border: 1px solid var(--border); margin-bottom: 10px; border-radius: 8px; background: #1a1a1a; }
+            .responsive-table td { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #333; padding: 12px; min-height: 40px; }
+            .responsive-table td:last-child { border-bottom: none; }
+            .responsive-table td::before { content: attr(data-label); color: #888; font-weight: 500; margin-right: 10px; min-width: 100px; display: inline-block; }
+            .responsive-table td > div, .responsive-table td > span { text-align: right; flex: 1; word-break: break-word; }
         }
     </style>
 </head>
@@ -973,7 +975,7 @@ class WebServer(
         <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
         <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="-1" aria-selected="false" aria-controls="apps" onkeydown="handleTabNavigation(event, 'apps')">Apps</div>
         <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="-1" aria-selected="false" aria-controls="keys" onkeydown="handleTabNavigation(event, 'keys')">Keyboxes</div>
-        <div class="tab" id="tab_info" onclick="switchTab('info)" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">Guide</div>
+        <div class="tab" id="tab_info" onclick="switchTab('info')" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">Guide</div>
         <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
     </div>
 
@@ -1049,7 +1051,7 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>Active Rules</h3><input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" style="width:100%; margin-bottom:10px;" aria-label="Filter rules">
-            <table id="appTable"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th></th></tr></thead><tbody></tbody></table>
+            <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th></th></tr></thead><tbody></tbody></table>
             <div style="margin-top:15px; text-align:right;"><button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button></div>
         </div>
     </div>
@@ -1105,7 +1107,7 @@ class WebServer(
         <div class="panel">
             <h3 data-i18n="resource_monitor_title">Resource Monitor</h3>
             <p style="font-size:0.9em; color:#888;">Monitor resource usage and manage feature impact. <span style="color:var(--danger)">Disabling security features may expose your device.</span></p>
-            <table id="resourceTable">
+            <table id="resourceTable" class="responsive-table">
                 <thead>
                     <tr>
                         <th data-i18n="col_feature">Feature</th>
@@ -1839,25 +1841,22 @@ class WebServer(
 
                 if (isToggleable) {
                     const isChecked = data[f.id] ? 'checked' : '';
-                    statusHtml = '<input type="checkbox" class="toggle" id="res_toggle_' + f.id + '" ' + isChecked + ' onchange="toggle(\'' + f.id + '\')">';
+                    statusHtml = '<input type="checkbox" class="toggle" id="res_toggle_' + f.id + '" ' + isChecked + ' onchange="toggle(\' + f.id + \')">';
                 } else {
                     statusHtml = '<span style="color:#888;">Info Only</span>';
                 }
 
                 let secColor = f.sec === 'Critical' ? 'var(--danger)' : (f.sec === 'High' ? 'orange' : 'var(--success)');
 
+                // Single row layout for responsive design
                 tr.innerHTML =
-                    '<td style="font-weight:bold;">' + f.name + '</td>' +
-                    '<td>' + statusHtml + '</td>' +
-                    '<td style="font-family:monospace;">' + f.ram + '</td>' +
-                    '<td>' + f.cpu + '</td>' +
-                    '<td style="color:' + secColor + '; font-weight:bold;">' + f.sec + '</td>';
-
-                const trDesc = document.createElement('tr');
-                trDesc.innerHTML = '<td colspan="5" style="border-bottom:1px solid #333; padding-bottom:10px; color:#888; font-size:0.85em;">' + f.desc + '</td>';
+                    '<td data-label="' + t('col_feature') + '"><div>' + f.name + '</div><div class="res-desc">' + f.desc + '</div></td>' +
+                    '<td data-label="' + t('col_status') + '">' + statusHtml + '</td>' +
+                    '<td data-label="' + t('col_ram') + '" style="font-family:monospace;">' + f.ram + '</td>' +
+                    '<td data-label="' + t('col_cpu') + '">' + f.cpu + '</td>' +
+                    '<td data-label="' + t('col_security') + '" style="color:' + secColor + '; font-weight:bold;">' + f.sec + '</td>';
 
                 tbody.appendChild(tr);
-                tbody.appendChild(trDesc);
             });
         }
 
