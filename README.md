@@ -40,7 +40,7 @@ Configuration changes take effect immediately.
 We maintain a comprehensive document detailing theoretical detection vectors for TEE emulators and our specific mitigations.
 This includes analysis of eBPF tracing, DroidGuard timing checks, and memory artifacts.
 
-👉 **Read the full report:** [DETECTION_ANALYSIS.md](DETECTION_ANALYSIS.md)
+**Read the full report:** [DETECTION_ANALYSIS.md](DETECTION_ANALYSIS.md)
 
 ## Keybox Jukebox (Multi-Key Rotation)
 
@@ -70,7 +70,7 @@ Automatically fetch and rotate keyboxes from community servers.
 - **Smart Priority:** Define server priority to control which keys are used first.
 - **Zero Config:** Just add the server URL in the WebUI.
 
-**WebUI Guide:** Check the "📖 Guide" tab in the module's interface for detailed instructions.
+**WebUI Guide:** Check the "Guide" tab in the module's interface for detailed instructions.
 
 ## Configuration
 
