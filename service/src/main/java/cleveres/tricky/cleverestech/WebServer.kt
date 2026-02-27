@@ -753,6 +753,27 @@ class WebServer(
             }
         }
 
+        if (uri == "/api/language" && method == Method.GET) {
+            val langFile = File(configDir, "lang.json")
+            if (langFile.exists()) {
+                return secureResponse(Response.Status.OK, "application/json", readFile("lang.json"))
+            } else {
+                return secureResponse(Response.Status.NOT_FOUND, "application/json", "{}")
+            }
+        }
+
+        if (uri == "/api/resource_usage" && method == Method.GET) {
+            val json = JSONObject()
+            val keyboxCount = CertHack.getKeyboxCount()
+            json.put("keybox_count", keyboxCount)
+            val appConfigSize = File(configDir, "app_config").length()
+            json.put("app_config_size", appConfigSize)
+            json.put("global_mode", fileExists("global_mode"))
+            json.put("rkp_bypass", fileExists("rkp_bypass"))
+            json.put("tee_broken_mode", fileExists("tee_broken_mode"))
+            return secureResponse(Response.Status.OK, "application/json", json.toString())
+        }
+
         if (uri == "/api/restore" && method == Method.POST) {
              val files = HashMap<String, String>()
              try { session.parseBody(files) } catch (e: Exception) { return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body") }
@@ -890,7 +911,7 @@ class WebServer(
         <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
         <div class="tab" id="tab_apps" onclick="switchTab('apps')" role="tab" tabindex="-1" aria-selected="false" aria-controls="apps" onkeydown="handleTabNavigation(event, 'apps')">Apps</div>
         <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="-1" aria-selected="false" aria-controls="keys" onkeydown="handleTabNavigation(event, 'keys')">Keyboxes</div>
-        <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">📖 Guide</div>
+        <div class="tab" id="tab_info" onclick="switchTab('info)" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">📖 Guide</div>
         <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
     </div>
 
@@ -1018,6 +1039,37 @@ class WebServer(
         </div>
     </div>
 
+    <div id="info" class="content" role="tabpanel" aria-labelledby="tab_info">
+        <div class="panel">
+            <h3 data-i18n="resource_monitor_title">Resource Monitor</h3>
+            <p style="font-size:0.9em; color:#888;">Monitor resource usage and manage feature impact. <span style="color:var(--danger)">Disabling security features may expose your device.</span></p>
+            <table id="resourceTable">
+                <thead>
+                    <tr>
+                        <th data-i18n="col_feature">Feature</th>
+                        <th data-i18n="col_status">Status</th>
+                        <th data-i18n="col_ram">Est. RAM</th>
+                        <th data-i18n="col_cpu">Est. CPU</th>
+                        <th data-i18n="col_security">Security Impact</th>
+                    </tr>
+                </thead>
+                <tbody id="resourceBody">
+                </tbody>
+            </table>
+            <div style="margin-top:10px; font-size:0.8em; color:#666;">
+                * RAM estimates are approximate based on loaded objects.
+            </div>
+        </div>
+        <div class="panel">
+            <h3>Language Support</h3>
+            <p>The module is English-first, but supports community translations.</p>
+            <p>To add a language, place a <code>lang.json</code> file in <code>/data/adb/cleverestricky/</code>.</p>
+            <div class="grid-2">
+                <button onclick="downloadLangTemplate()">Download Template</button>
+                <button onclick="loadLanguage()">Reload Language File</button>
+            </div>
+        </div>
+    </div>
     <div id="guide" class="content" role="tabpanel" aria-labelledby="tab_guide">
         <div class="panel">
             <h3>Encrypted Keybox Distribution</h3>
@@ -1170,6 +1222,7 @@ class WebServer(
             document.getElementById(id).classList.add('active');
             if (id === 'apps') loadAppConfig();
             if (id === 'keys') loadKeyInfo();
+            if (id === 'info') loadResourceUsage();
         }
 
         function handleTabNavigation(e, id) {
@@ -1650,6 +1703,119 @@ class WebServer(
             }
         }
 
+
+
+        let translations = {};
+        async function loadLanguage() {
+            try {
+                const res = await fetchAuth('/api/language');
+                if (res.ok) {
+                    translations = await res.json();
+                    applyTranslations();
+                    notify('Language Loaded');
+                }
+            } catch(e) {
+                // Silent fail
+            }
+        }
+
+        function t(key, defaultVal) {
+            return translations[key] || defaultVal;
+        }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[key]) el.innerText = translations[key];
+            });
+            // Update tabs
+            if(translations['tab_dashboard']) document.getElementById('tab_dashboard').innerText = translations['tab_dashboard'];
+            if(translations['tab_spoof']) document.getElementById('tab_spoof').innerText = translations['tab_spoof'];
+            if(translations['tab_apps']) document.getElementById('tab_apps').innerText = translations['tab_apps'];
+            if(translations['tab_keys']) document.getElementById('tab_keys').innerText = translations['tab_keys'];
+            if(translations['tab_info']) document.getElementById('tab_info').innerText = translations['tab_info'];
+            if(translations['tab_guide']) document.getElementById('tab_guide').innerText = translations['tab_guide'];
+            if(translations['tab_editor']) document.getElementById('tab_editor').innerText = translations['tab_editor'];
+        }
+
+        async function loadResourceUsage() {
+             try {
+                 const res = await fetchAuth('/api/resource_usage');
+                 const data = await res.json();
+                 renderResourceTable(data);
+             } catch(e) {}
+        }
+
+        function renderResourceTable(data) {
+            const tbody = document.getElementById('resourceBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const keyboxRam = (data.keybox_count * 0.01).toFixed(2);
+            const appConfigRam = (data.app_config_size / 1024).toFixed(2);
+
+            const features = [
+                { id: 'global_mode', name: 'Global Mode', ram: '~5 MB', cpu: 'High (All Apps)', sec: 'Medium', desc: 'Hooks all apps. Disabling saves RAM but breaks global spoofing.' },
+                { id: 'rkp_bypass', name: 'RKP Bypass', ram: '~2 MB', cpu: 'Medium (Crypto)', sec: 'Critical', desc: 'Required for Strong Integrity. Do not disable unless necessary.' },
+                { id: 'tee_broken_mode', name: 'TEE Broken Mode', ram: 'Negligible', cpu: 'Low', sec: 'Low', desc: 'Forces software keystore behavior.' },
+                { id: 'keybox_storage', name: 'Keybox Storage', ram: '~' + keyboxRam + ' MB', cpu: 'Low', sec: 'Medium', desc: data.keybox_count + ' keyboxes loaded. More keys = more RAM.' },
+                { id: 'app_rules', name: 'App Rules', ram: '~' + appConfigRam + ' KB', cpu: 'Low', sec: 'Low', desc: 'Per-app configuration rules.' }
+            ];
+
+            features.forEach(f => {
+                const tr = document.createElement('tr');
+                const isToggleable = ['global_mode', 'rkp_bypass', 'tee_broken_mode'].includes(f.id);
+                let statusHtml = '';
+
+                if (isToggleable) {
+                    const isChecked = data[f.id] ? 'checked' : '';
+                    statusHtml = `<input type="checkbox" class="toggle" id="res_toggle_${'$'}{f.id}" ${'$'}{isChecked} onchange="toggle('${'$'}{f.id}')">`;
+                } else {
+                    statusHtml = '<span style="color:#888;">Info Only</span>';
+                }
+
+                let secColor = f.sec === 'Critical' ? 'var(--danger)' : (f.sec === 'High' ? 'orange' : 'var(--success)');
+
+                tr.innerHTML = `
+                    <td style="font-weight:bold;">${'$'}{f.name}</td>
+                    <td>${'$'}{statusHtml}</td>
+                    <td style="font-family:monospace;">${'$'}{f.ram}</td>
+                    <td>${'$'}{f.cpu}</td>
+                    <td style="color:${'$'}{secColor}; font-weight:bold;">${'$'}{f.sec}</td>
+                `;
+
+                const trDesc = document.createElement('tr');
+                trDesc.innerHTML = `<td colspan="5" style="border-bottom:1px solid #333; padding-bottom:10px; color:#888; font-size:0.85em;">${'$'}{f.desc}</td>`;
+
+                tbody.appendChild(tr);
+                tbody.appendChild(trDesc);
+            });
+        }
+
+        function downloadLangTemplate() {
+            const template = {
+                "resource_monitor_title": "Resource Monitor",
+                "col_feature": "Feature",
+                "col_status": "Status",
+                "col_ram": "Est. RAM",
+                "col_cpu": "Est. CPU",
+                "col_security": "Security Impact",
+                "tab_dashboard": "Dashboard",
+                "tab_spoof": "Spoofing",
+                "tab_apps": "Apps",
+                "tab_keys": "Keyboxes",
+                "tab_info": "Info & Resources",
+                "tab_guide": "Guide",
+                "tab_editor": "Editor"
+            };
+            const blob = new Blob([JSON.stringify(template, null, 2)], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "lang.json";
+            a.click();
+        }
+loadLanguage();
         init();
     </script>
 </body>
