@@ -283,8 +283,10 @@ pub unsafe extern "C" fn rust_create_certificate_request(
 #[no_mangle]
 pub extern "C" fn rust_generate_spoofed_bcc() -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let bcc = crate::bcc::generate_spoofed_bcc();
-        RustBuffer::from_vec(bcc)
+        match crate::bcc::generate_spoofed_bcc() {
+            Ok(bcc) => RustBuffer::from_vec(bcc),
+            Err(_) => RustBuffer::empty(),
+        }
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
 }
