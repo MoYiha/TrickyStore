@@ -47,15 +47,21 @@ pub fn parse_fingerprints(data: &str) -> AHashMap<String, String> {
         }
         // Extract device codename: split by '/' to get segments
         // Optimization: Use iterator directly to avoid Vec allocation
-        let mut parts = line.splitn(4, '/');
-        // Skip first two segments (brand, product)
-        if parts.next().is_some() && parts.next().is_some() {
-            // Third segment is "device:version"
-            if let Some(device_segment) = parts.next() {
-                // Take before ':'
-                let device = device_segment.split(':').next().unwrap_or(device_segment);
-                if !device.is_empty() {
-                    map.insert(device.to_string(), line.to_string());
+        let bytes = line.as_bytes();
+        let mut slash_count = 0;
+        let mut start_idx = 0;
+        for (i, &b) in bytes.iter().enumerate() {
+            if b == b'/' {
+                slash_count += 1;
+                if slash_count == 2 {
+                    start_idx = i + 1;
+                } else if slash_count == 3 {
+                    let device_segment = std::str::from_utf8(&bytes[start_idx..i]).unwrap_or("");
+                    let device = device_segment.split(':').next().unwrap_or(device_segment);
+                    if !device.is_empty() {
+                        map.insert(device.to_string(), line.to_string());
+                    }
+                    break;
                 }
             }
         }
