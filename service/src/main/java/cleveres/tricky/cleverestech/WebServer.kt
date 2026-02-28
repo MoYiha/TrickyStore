@@ -87,6 +87,10 @@ class WebServer(
     private fun readFile(filename: String): String {
         synchronized(fileLock) {
             return try {
+                if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                    Logger.e("Path traversal attempt detected in filename: $filename")
+                    return ""
+                }
                 val f = File(configDir, filename)
                 if (!isSafePath(f)) {
                     Logger.e("Path traversal attempt detected: $filename")
@@ -100,6 +104,10 @@ class WebServer(
     private fun saveFile(filename: String, content: String): Boolean {
         synchronized(fileLock) {
             return try {
+                if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                    Logger.e("Path traversal attempt detected in save filename: $filename")
+                    return false
+                }
                 val f = File(configDir, filename)
                 if (!isSafePath(f)) {
                     Logger.e("Path traversal attempt detected during save: $filename")
@@ -710,7 +718,7 @@ class WebServer(
              val tmpFilePath = map["file"]
              if (tmpFilePath != null) {
                  val originalName = params["filename"] ?: "upload.bin"
-                 if (originalName.contains("..") || originalName.contains("/")) {
+                 if (originalName.contains("..") || originalName.contains("/") || originalName.contains("\\")) {
                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
                  }
                  val tmpFile = File(tmpFilePath)
@@ -1962,7 +1970,7 @@ class WebServer(
         }
 
         fun isValidFilename(name: String): Boolean {
-            return name.matches(FILENAME_REGEX) && !name.contains("..") && !name.contains("/")
+            return name.matches(FILENAME_REGEX) && !name.contains("..") && !name.contains("/") && !name.contains("\\")
         }
 
         fun validateContent(filename: String, content: String): Boolean {
@@ -2055,7 +2063,7 @@ class WebServer(
                 var entry = zis.nextEntry
                 while (entry != null) {
                     val name = entry.name
-                    if (!name.contains("..") && !name.startsWith("/")) {
+                    if (!name.contains("..") && !name.startsWith("/") && !name.contains("\\")) {
                         val file = File(configDir, name)
                         if (name.startsWith("keyboxes/")) {
                             File(configDir, "keyboxes").mkdirs()
