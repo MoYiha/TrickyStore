@@ -1208,7 +1208,21 @@ class WebServer(
         function notify(msg, type = 'normal') {
             if (notifyTimeout) clearTimeout(notifyTimeout);
             const island = document.getElementById('island');
-            document.getElementById('islandText').innerText = msg;
+            let iconHtml = '';
+            if (type === 'working') {
+                iconHtml = '<div class="spinner"></div>';
+            } else if (type === 'error') {
+                iconHtml = '<span class="island-icon">❌</span>';
+            } else {
+                iconHtml = '<span class="island-icon">✅</span>';
+            }
+
+            // Escape HTML for message
+            const div = document.createElement('div');
+            div.innerText = msg;
+            const safeMsg = div.innerHTML;
+
+            document.getElementById('islandText').innerHTML = iconHtml + '<span style="vertical-align: middle;">' + safeMsg + '</span>';
             island.className = 'island active ' + type;
             if (type === 'working') {
                 // Keep active until cleared manually or by another notify
@@ -1587,7 +1601,7 @@ class WebServer(
              for (const id of inputs) {
                  const el = document.getElementById(id);
                  if (el.value && el.classList.contains('invalid')) {
-                     notify('Invalid ' + id.replace('input', ''), 'error');
+                     notify('Invalid ' + id.replace('input', '').toUpperCase(), 'error');
                      el.focus();
                      return;
                  }
