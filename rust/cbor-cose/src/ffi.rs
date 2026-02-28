@@ -40,7 +40,7 @@ unsafe fn validate_slice_args<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T
     let size_of_t = std::mem::size_of::<T>();
     if size_of_t > 0 {
         let size = len.checked_mul(size_of_t)?;
-        if size > isize::MAX as usize {
+        if (ptr as usize).checked_add(size).is_none() || size > isize::MAX as usize {
             return None;
         }
     }
