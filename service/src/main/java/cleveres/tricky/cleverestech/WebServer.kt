@@ -710,6 +710,9 @@ class WebServer(
              val tmpFilePath = map["file"]
              if (tmpFilePath != null) {
                  val originalName = params["filename"] ?: "upload.bin"
+                 if (originalName.contains("..") || originalName.contains("/")) {
+                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+                 }
                  val tmpFile = File(tmpFilePath)
                  val bytes = tmpFile.readBytes()
 
@@ -718,6 +721,9 @@ class WebServer(
                      val keyboxDir = File(configDir, "keyboxes")
                      SecureFile.mkdirs(keyboxDir, 448)
                      val dest = File(keyboxDir, originalName)
+                     if (!dest.canonicalPath.startsWith(keyboxDir.canonicalPath)) {
+                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
+                     }
                      SecureFile.writeBytes(dest, bytes)
                      // Trigger refresh
                      CboxManager.refresh()
