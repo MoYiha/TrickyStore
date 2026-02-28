@@ -619,7 +619,7 @@ object Config {
                                           value.contains("DD")) {
                             null
                         } else {
-                            runCatching { value.convertPatchLevel(false) }.getOrNull()
+                            runCatching { value.convertPatchLevel(false) }.getOrNull() ?: value
                         }
                         newPatch[key] = preCalc ?: value
                     } else if (parts.size == 1) {
@@ -631,7 +631,7 @@ object Config {
                                           value.contains("DD")) {
                             null
                         } else {
-                            runCatching { value.convertPatchLevel(false) }.getOrNull()
+                            runCatching { value.convertPatchLevel(false) }.getOrNull() ?: value
                         }
                          newDefault = preCalc ?: value
                     }
