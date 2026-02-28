@@ -93,17 +93,11 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
         // Scoped block for FD passing
         {
             // SELinux context setting - best effort, log if fails
-            if (!set_sockcreate_con("u:object_r:system_file:s0")) {
-                 PLOGW("set_sockcreate_con failed (non-fatal)");
-            }
             UniqueFd local_socket = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
             if (local_socket == -1) {
                 PLOGE("Failed to create local_socket");
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
-            }
-            if (setfilecon(lib_path, "u:object_r:system_file:s0") == -1) {
-                PLOGW("setfilecon for lib_path %s failed (non-fatal)", lib_path);
             }
             UniqueFd local_lib_fd = open(lib_path, O_RDONLY | O_CLOEXEC);
             if (local_lib_fd == -1) {

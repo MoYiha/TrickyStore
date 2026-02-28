@@ -1,3 +1,0 @@
-failure.png
-verify_cbox.py
-verify_webui.py
