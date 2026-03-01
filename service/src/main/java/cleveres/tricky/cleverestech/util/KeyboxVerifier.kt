@@ -317,10 +317,24 @@ object KeyboxVerifier {
     @OptIn(ExperimentalStdlibApi::class)
     private val hexFormat = HexFormat { upperCase = false }
 
+    private val digestCache = object : ThreadLocal<HashMap<String, MessageDigest>>() {
+        override fun initialValue(): HashMap<String, MessageDigest> {
+            return HashMap()
+        }
+    }
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun checkHash(data: ByteArray, algorithm: String, set: Set<String>): Boolean {
         try {
-            val digest = MessageDigest.getInstance(algorithm).digest(data)
+            val cache = digestCache.get()!!
+            var md = cache[algorithm]
+            if (md == null) {
+                md = MessageDigest.getInstance(algorithm)
+                cache[algorithm] = md
+            } else {
+                md.reset()
+            }
+            val digest = md.digest(data)
             // Convert to Hex String (Zero Padded)
             val hex = digest.toHexString(hexFormat)
             return set.contains(hex)
