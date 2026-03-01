@@ -63,7 +63,9 @@ impl<'a> CborValue<'a> {
 /// Encode a CBOR value to bytes.
 pub fn encode<'a>(value: &CborValue<'a>) -> Vec<u8> {
     let mut buf = Vec::with_capacity(256);
-    encode_item(&mut buf, value).expect("writing to Vec should not fail");
+    if encode_item(&mut buf, value).is_err() {
+        return Vec::new();
+    }
     buf
 }
 

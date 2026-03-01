@@ -729,7 +729,7 @@ class WebServer(
                      val keyboxDir = File(configDir, "keyboxes")
                      SecureFile.mkdirs(keyboxDir, 448)
                      val dest = File(keyboxDir, originalName)
-                     if (!dest.canonicalPath.startsWith(keyboxDir.canonicalPath)) {
+                     if (!isSafePath(dest) || !dest.canonicalPath.startsWith(keyboxDir.canonicalPath)) {
                          return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
                      }
                      SecureFile.writeBytes(dest, bytes)
@@ -752,6 +752,9 @@ class WebServer(
                      val keyboxDir = File(configDir, "keyboxes")
                      SecureFile.mkdirs(keyboxDir, 448)
                      val file = File(keyboxDir, filename)
+                     if (!isSafePath(file) || !file.canonicalPath.startsWith(keyboxDir.canonicalPath)) {
+                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
+                     }
                      try {
                          SecureFile.writeText(file, content)
                          return secureResponse(Response.Status.OK, "text/plain", "Saved")
@@ -1983,6 +1986,16 @@ class WebServer(
             return h == "localhost" || h == "127.0.0.1" || h == "[::1]"
         }
 
+        fun isSafePath(configDir: File, file: File): Boolean {
+            return try {
+                val configCanonical = configDir.canonicalPath
+                val fileCanonical = file.canonicalPath
+                fileCanonical.equals(configCanonical) || fileCanonical.startsWith(configCanonical + File.separator)
+            } catch (e: Exception) {
+                false
+            }
+        }
+
         fun isValidFilename(name: String): Boolean {
             return name.matches(FILENAME_REGEX) && !name.contains("..") && !name.contains("/") && !name.contains("\\")
         }
@@ -2079,6 +2092,10 @@ class WebServer(
                     val name = entry.name
                     if (!name.contains("..") && !name.startsWith("/") && !name.contains("\\")) {
                         val file = File(configDir, name)
+                        if (!isSafePath(configDir, file)) {
+                            entry = zis.nextEntry
+                            continue
+                        }
                         if (name.startsWith("keyboxes/")) {
                             File(configDir, "keyboxes").mkdirs()
                         }
