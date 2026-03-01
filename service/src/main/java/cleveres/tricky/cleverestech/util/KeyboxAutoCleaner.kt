@@ -51,12 +51,9 @@ object KeyboxAutoCleaner {
 
     private fun notifyUser(count: Int) {
         try {
+            // Post a high-priority, actionable notification
             val cmd = arrayOf(
-                "cmd", "notification", "post",
-                "-S", "bigtext",
-                "-t", "CleveresTricky",
-                "Keybox Revocation Alert",
-                "$count keybox(es) were found to be revoked/invalid and have been disabled."
+                "su", "-c", "cmd notification post -S bigtext -t CleveresTricky 'Keybox Revoked Alert' '$count keybox(es) were found to be revoked/invalid and have been disabled. Check WebUI!' -a 'android.intent.action.VIEW' -d 'http://localhost:5623'"
             )
             Runtime.getRuntime().exec(cmd)
         } catch (e: Exception) {

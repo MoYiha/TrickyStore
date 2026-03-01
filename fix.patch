@@ -1,0 +1,12 @@
+--- service/src/main/java/cleveres/tricky/cleverestech/util/KeyboxAutoCleaner.kt
++++ service/src/main/java/cleveres/tricky/cleverestech/util/KeyboxAutoCleaner.kt
+@@ -53,7 +53,9 @@
+         try {
+             val cmd = arrayOf(
+                 "cmd", "notification", "post",
+                 "-S", "bigtext",
+                 "-t", "CleveresTricky",
++                "tag", "cleveres_revoked",
+                 "Keybox Revocation Alert",
+                 "$count keybox(es) were found to be revoked/invalid and have been disabled."
+             )
