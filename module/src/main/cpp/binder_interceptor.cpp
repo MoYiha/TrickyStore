@@ -675,5 +675,15 @@ extern "C" [[gnu::visibility("default")]] [[gnu::used]] bool entry(void *handle)
         LOGE("Failed to generate spoofed BCC");
     }
 
+
+    // Demonstrate Advanced KeyMint 4.0 Exploitation
+    RustBuffer exploit = rust_generate_keymint_exploit_payload();
+    if (exploit.data && exploit.len > 0) {
+        LOGI("🔥 God-Mode Evolution: KeyMint payload ready, length %zu", exploit.len);
+        rust_free_buffer(exploit);
+    } else {
+        LOGE("Failed to generate KeyMint 4.0 exploit payload");
+    }
+
     return initialize_hooks();
 }

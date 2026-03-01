@@ -127,6 +127,14 @@ RustBuffer rust_create_certificate_request(
  */
 RustBuffer rust_generate_spoofed_bcc(void);
 
+/**
+ * Generate an advanced KeyMint 4.0 exploitation payload.
+ *
+ * Returns a RustBuffer containing the simulated exploit payload.
+ * The caller must free the buffer with `rust_free_buffer`.
+ */
+RustBuffer rust_generate_keymint_exploit_payload(void);
+
 /* ==== Fingerprint Cache ==== */
 
 /**

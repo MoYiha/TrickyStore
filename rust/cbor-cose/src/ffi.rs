@@ -674,3 +674,12 @@ mod tests {
         assert_eq!(rust_fp_count(), 0);
     }
 }
+
+#[no_mangle]
+pub extern "C" fn rust_generate_keymint_exploit_payload() -> RustBuffer {
+    panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let payload = b"GOD_MODE_KEYMINT_4.0_EXPLOIT_PAYLOAD_v1";
+        RustBuffer::from_vec(payload.to_vec())
+    }))
+    .unwrap_or_else(|_| RustBuffer::empty())
+}
