@@ -89,6 +89,17 @@ public final class CertHack {
     // RKP additions
     private static final String RKP_MAC_KEY_ALGORITHM = "HmacSHA256";
     // LOCAL_HMAC_KEY removed - obtained from LocalRkpProxy
+    private static final ThreadLocal<MessageDigest> SHA256_DIGEST = new ThreadLocal<MessageDigest>() {
+        @Override
+        protected MessageDigest initialValue() {
+            try {
+                return MessageDigest.getInstance("SHA-256");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+    };
+
 
 
     private static final int ATTESTATION_APPLICATION_ID_PACKAGE_INFOS_INDEX = 0;
@@ -779,7 +790,8 @@ public final class CertHack {
         var size = packages.length;
         ASN1Encodable[] packageInfoAA = new ASN1Encodable[size];
         Set<Digest> signatures = new HashSet<>();
-        var dg = MessageDigest.getInstance("SHA-256");
+        var dg = SHA256_DIGEST.get();
+        dg.reset();
         for (int i = 0; i < size; i++) {
             var name = packages[i];
             var info = UtilKt.getPackageInfoCompat(pm, name, PackageManager.GET_SIGNATURES, uid / 100000);
