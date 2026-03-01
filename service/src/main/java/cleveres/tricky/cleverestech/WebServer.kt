@@ -1016,6 +1016,16 @@ class WebServer(
     </div>
 
     <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <div style="flex: 1; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
+                <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">RKP Bypass</div>
+                <div id="status_rkp" style="font-weight: bold; color: var(--danger); margin-top: 5px;">Inactive</div>
+            </div>
+            <div style="flex: 1; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
+                <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">DRM Fix</div>
+                <div id="status_drm" style="font-weight: bold; color: var(--danger); margin-top: 5px;">Inactive</div>
+            </div>
+        </div>
         <div class="panel">
             <h3>System Control</h3>
             <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" class="toggle" id="global_mode" onchange="toggle('global_mode')"></div>
@@ -1507,6 +1517,17 @@ class WebServer(
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
+
+                const rkpStatus = document.getElementById('status_rkp');
+                if (rkpStatus) {
+                    if (data.rkp_bypass) { rkpStatus.innerText = 'Active'; rkpStatus.style.color = 'var(--success)'; }
+                    else { rkpStatus.innerText = 'Inactive'; rkpStatus.style.color = 'var(--danger)'; }
+                }
+                const drmStatus = document.getElementById('status_drm');
+                if (drmStatus) {
+                    if (data.drm_fix) { drmStatus.innerText = 'Active'; drmStatus.style.color = 'var(--success)'; }
+                    else { drmStatus.innerText = 'Inactive'; drmStatus.style.color = 'var(--danger)'; }
+                }
             } catch(e) {}
 
             fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
@@ -1532,7 +1553,7 @@ class WebServer(
             await loadFile();
         }
 
-        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
+        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
 
         function editDrmConfig() {
             document.getElementById('fileSelector').value = 'drm_fix';
