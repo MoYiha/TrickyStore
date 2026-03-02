@@ -16,7 +16,7 @@ nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "2.3.1" }
 junit = { module = "junit:junit", version.ref = "junit" }
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bcpkix-jdk18on" }
-cxx = { module = "org.lsposed.libcxx:libcxx", version = "27.0.12077973" }
+cxx = { module = "org.lsposed.libcxx:libcxx", version = "29.0.14206865" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
