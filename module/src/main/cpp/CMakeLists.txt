@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.28...3.31)
 project(cleverestricky)
 
-find_package(cxx REQUIRED CONFIG)
-link_libraries(cxx::cxx)
+
+
 
 # Obfuscation / Size Optimization flags
 add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -Os -flto)
