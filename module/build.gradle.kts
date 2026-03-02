@@ -133,11 +133,11 @@ tasks.named("preBuild") {
 }
 
 afterEvaluate {
-    android.applicationVariants.forEach { variant ->
-        val variantLowered = variant.name.lowercase()
-        val variantCapped = variant.name.capitalizeUS()
-        val buildTypeCapped = variant.buildType.name.replaceFirstChar { it.uppercase() }
-        val buildTypeLowered = variant.buildType.name.lowercase()
+    android.buildTypes.forEach { buildType ->
+        val variantLowered = buildType.name.lowercase()
+        val variantCapped = buildType.name.capitalizeUS()
+        val buildTypeCapped = buildType.name.replaceFirstChar { it.uppercase() }
+        val buildTypeLowered = buildType.name.lowercase()
         val supportedAbis = abiList.map {
             when (it) {
                 "arm64-v8a" -> "arm64"

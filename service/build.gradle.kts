@@ -113,9 +113,9 @@ dependencies {
 }
 
 afterEvaluate {
-    android.applicationVariants.forEach { variant ->
-        val variantLowered = variant.name.lowercase()
-        val variantCapped = variant.name.capitalizeUS()
+    android.buildTypes.forEach { buildType ->
+        val variantLowered = buildType.name.lowercase()
+        val variantCapped = buildType.name.capitalizeUS()
         val pushTask = task<Task>("pushService$variantCapped") {
             group = "Service"
             dependsOn("assemble$variantCapped")
