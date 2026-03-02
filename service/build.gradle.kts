@@ -120,24 +120,20 @@ afterEvaluate {
             group = "Service"
             dependsOn("assemble$variantCapped")
             doLast {
-                providers.exec {
-                    commandLine(
-                        "adb",
-                        "push",
-                        layout.buildDirectory.file("outputs/apk/$variantLowered/service-$variantLowered.apk")
-                            .get().asFile.absolutePath,
-                        "/data/local/tmp/service.apk"
-                    )
-                }.result.get().assertNormalExitValue()
-                providers.exec {
-                    commandLine(
-                        "adb",
-                        "shell",
-                        "su",
-                        "-c",
-                        "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
-                    )
-                }.result.get().assertNormalExitValue()
+                ProcessBuilder(
+                    "adb",
+                    "push",
+                    layout.buildDirectory.file("outputs/apk/$variantLowered/service-$variantLowered.apk")
+                        .get().asFile.absolutePath,
+                    "/data/local/tmp/service.apk"
+                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
+                ProcessBuilder(
+                    "adb",
+                    "shell",
+                    "su",
+                    "-c",
+                    "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
+                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
             }
         }
 
@@ -145,9 +141,7 @@ afterEvaluate {
             group = "Service"
             dependsOn(pushTask)
             doLast {
-                providers.exec {
-                    commandLine("adb", "shell", "su", "-c", "setprop ctl.restart keystore2")
-                }.result.get().assertNormalExitValue()
+                ProcessBuilder("adb", "shell", "su", "-c", "setprop ctl.restart keystore2").inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
             }
         }
     }
