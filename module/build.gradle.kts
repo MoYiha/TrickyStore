@@ -257,7 +257,9 @@ afterEvaluate {
         val pushTask = tasks.register<Exec>("push$variantCapped") {
             group = "module"
             dependsOn(zipTask)
-            commandLine("adb", "push", zipTask.get().outputs.files.singleFile.path, "/data/local/tmp")
+            doFirst {
+                commandLine("adb", "push", zipTask.get().outputs.files.singleFile.path, "/data/local/tmp")
+            }
         }
 
         val installKsuTask = tasks.register<Exec>("installKsu$variantCapped") {
