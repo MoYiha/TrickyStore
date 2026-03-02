@@ -82,6 +82,9 @@ object CboxManager {
     }
 
     fun unlock(filename: String, password: String, publicKey: String?): Boolean {
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return false
+        }
         val dir = Config.keyboxDirectory
         val file = File(dir, filename)
         if (!file.exists()) return false
