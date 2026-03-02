@@ -751,6 +751,9 @@ class WebServer(
                      }
                      val keyboxDir = File(configDir, "keyboxes")
                      SecureFile.mkdirs(keyboxDir, 448)
+                     if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+                     }
                      val file = File(keyboxDir, filename)
                      if (!isSafePath(file) || !file.canonicalPath.startsWith(keyboxDir.canonicalPath)) {
                          return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
