@@ -66,3 +66,5 @@ allow radio radio process execmem
 allow cleverestricky_daemon radio:process { ptrace }
 allow radio cleverestricky_daemon:binder { call transfer }
 allow cleverestricky_daemon radio:binder { transfer }
+allow cleverestricky_daemon keystore:unix_dgram_socket { sendto };
+allow system_file keystore:unix_dgram_socket { sendto };
