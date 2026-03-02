@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.daemon.common.toHexString
 import java.security.MessageDigest
 
 plugins {
-    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.agp.app)
 }
 
@@ -52,10 +51,6 @@ android {
         }
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildTypes {
         release {
             signingConfig = signingConfigs["debug"]
@@ -92,6 +87,12 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
+    }
+}
+
 dependencies {
     compileOnly(project(":stub"))
     implementation(libs.annotation)
@@ -112,14 +113,14 @@ dependencies {
 }
 
 afterEvaluate {
-    android.applicationVariants.forEach { variant ->
-        val variantLowered = variant.name.lowercase()
-        val variantCapped = variant.name.capitalizeUS()
-        val pushTask = task<Task>("pushService$variantCapped") {
+    android.buildTypes.forEach { buildType ->
+        val variantLowered = buildType.name.lowercase()
+        val variantCapped = buildType.name.capitalizeUS()
+        val pushTask = tasks.register<Task>("pushService$variantCapped") {
             group = "Service"
             dependsOn("assemble$variantCapped")
             doLast {
-                exec {
+                providers.exec {
                     commandLine(
                         "adb",
                         "push",
@@ -127,24 +128,26 @@ afterEvaluate {
                             .get().asFile.absolutePath,
                         "/data/local/tmp/service.apk"
                     )
-                }
-                exec {
+                }.result.get().assertNormalExitValue()
+                providers.exec {
                     commandLine(
                         "adb",
                         "shell",
-                        "su -c 'rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/'"
+                        "su",
+                        "-c",
+                        "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
                     )
-                }
+                }.result.get().assertNormalExitValue()
             }
         }
 
-        task<Task>("pushAndRestartService$variantCapped") {
+        tasks.register<Task>("pushAndRestartService$variantCapped") {
             group = "Service"
             dependsOn(pushTask)
             doLast {
-                exec {
-                    commandLine("adb", "shell", "su -c \"setprop ctl.restart keystore2\"")
-                }
+                providers.exec {
+                    commandLine("adb", "shell", "su", "-c", "setprop ctl.restart keystore2")
+                }.result.get().assertNormalExitValue()
             }
         }
     }

@@ -5,7 +5,6 @@ import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.agp.app)
-    alias(libs.plugins.lsplugin.cmaker)
 }
 
 val moduleId: String by rootProject.extra
@@ -24,6 +23,23 @@ android {
         ndk {
             abiFilters.addAll(abiList)
         }
+        externalNativeBuild {
+            cmake {
+                arguments(
+                    "-Wno-dev",
+                    "-DANDROID_STL=none",
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                    "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
+                    "-DMODULE_NAME=$moduleId",
+                    "-DCMAKE_CXX_STANDARD=23",
+                    "-DCMAKE_C_STANDARD=23",
+                    "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
+                    "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
+                    "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
+                    "-DCMAKE_C_VISIBILITY_PRESET=hidden",
+                )
+            }
+        }
     }
 
     buildFeatures {
@@ -38,25 +54,6 @@ android {
     }
 }
 
-cmaker {
-    default {
-        arguments += arrayOf(
-            "-Wno-dev",
-            "-DANDROID_STL=none",
-            "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
-            "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
-            "-DMODULE_NAME=$moduleId",
-            "-DCMAKE_CXX_STANDARD=23",
-            "-DCMAKE_C_STANDARD=23",
-            "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
-            "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
-            "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
-            "-DCMAKE_C_VISIBILITY_PRESET=hidden",
-            )
-        abiFilters(*abiList.toTypedArray())
-    }
-}
-
 dependencies {
     implementation(libs.cxx)
 }
@@ -66,14 +63,14 @@ evaluationDependsOn(":service")
 // Rust Build Integration
 
 // Ensure cargo-ndk is installed
-task<Exec>("installCargoNdk") {
+tasks.register<Exec>("installCargoNdk") {
     group = "rust"
     description = "Installs cargo-ndk if not present"
     commandLine("bash", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
 }
 
 // Ensure Rust Android targets are installed
-task<Exec>("installRustTargets") {
+tasks.register<Exec>("installRustTargets") {
     group = "rust"
     description = "Installs Android Rust targets via rustup"
     // We run rustup target add for all required targets.
@@ -89,7 +86,7 @@ task<Exec>("installRustTargets") {
     dependsOn("installCargoNdk")
 }
 
-task<Exec>("cargoBuild") {
+tasks.register<Exec>("cargoBuild") {
     group = "rust"
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
@@ -133,11 +130,11 @@ tasks.named("preBuild") {
 }
 
 afterEvaluate {
-    android.applicationVariants.forEach { variant ->
-        val variantLowered = variant.name.lowercase()
-        val variantCapped = variant.name.capitalizeUS()
-        val buildTypeCapped = variant.buildType.name.replaceFirstChar { it.uppercase() }
-        val buildTypeLowered = variant.buildType.name.lowercase()
+    android.buildTypes.forEach { buildType ->
+        val variantLowered = buildType.name.lowercase()
+        val variantCapped = buildType.name.capitalizeUS()
+        val buildTypeCapped = buildType.name.replaceFirstChar { it.uppercase() }
+        val buildTypeLowered = buildType.name.lowercase()
         val supportedAbis = abiList.map {
             when (it) {
                 "arm64-v8a" -> "arm64"
@@ -152,7 +149,7 @@ afterEvaluate {
         val zipFileName =
             "$moduleName-$verName-$verCode-$commitHash-$buildTypeLowered.zip".replace(' ', '-')
 
-        val prepareModuleFilesTask = task<Sync>("prepareModuleFiles$variantCapped") {
+        val prepareModuleFilesTask = tasks.register<Sync>("prepareModuleFiles$variantCapped") {
             group = "module"
             dependsOn(
                 "assemble$variantCapped",
@@ -246,7 +243,7 @@ afterEvaluate {
             }
         }
 
-        val zipTask = task<Zip>("zip$variantCapped") {
+        val zipTask = tasks.register<Zip>("zip$variantCapped") {
             group = "module"
             dependsOn(prepareModuleFilesTask)
             archiveFileName.set(zipFileName)
@@ -254,13 +251,15 @@ afterEvaluate {
             from(moduleDir)
         }
 
-        val pushTask = task<Exec>("push$variantCapped") {
+        val pushTask = tasks.register<Exec>("push$variantCapped") {
             group = "module"
             dependsOn(zipTask)
-            commandLine("adb", "push", zipTask.outputs.files.singleFile.path, "/data/local/tmp")
+            doFirst {
+                commandLine("adb", "push", zipTask.get().outputs.files.singleFile.path, "/data/local/tmp")
+            }
         }
 
-        val installKsuTask = task<Exec>("installKsu$variantCapped") {
+        val installKsuTask = tasks.register<Exec>("installKsu$variantCapped") {
             group = "module"
             dependsOn(pushTask)
             commandLine(
@@ -269,7 +268,7 @@ afterEvaluate {
             )
         }
 
-        val installMagiskTask = task<Exec>("installMagisk$variantCapped") {
+        val installMagiskTask = tasks.register<Exec>("installMagisk$variantCapped") {
             group = "module"
             dependsOn(pushTask)
             commandLine(
@@ -282,13 +281,13 @@ afterEvaluate {
             )
         }
 
-        task<Exec>("installKsuAndReboot$variantCapped") {
+        tasks.register<Exec>("installKsuAndReboot$variantCapped") {
             group = "module"
             dependsOn(installKsuTask)
             commandLine("adb", "reboot")
         }
 
-        task<Exec>("installMagiskAndReboot$variantCapped") {
+        tasks.register<Exec>("installMagiskAndReboot$variantCapped") {
             group = "module"
             dependsOn(installMagiskTask)
             commandLine("adb", "reboot")
