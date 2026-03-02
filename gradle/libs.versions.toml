@@ -9,7 +9,7 @@ activity-compose = "1.9.0"
 androidx-test-ext-junit = "1.2.1"
 espresso-core = "3.6.1"
 androidx-test-runner = "1.6.1"
-robolectric = "4.11.1"
+robolectric = "4.16.1"
 
 [libraries]
 nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "2.3.1" }
