@@ -120,7 +120,7 @@ afterEvaluate {
             group = "Service"
             dependsOn("assemble$variantCapped")
             doLast {
-                exec {
+                project.exec {
                     commandLine(
                         "adb",
                         "push",
@@ -129,7 +129,7 @@ afterEvaluate {
                         "/data/local/tmp/service.apk"
                     )
                 }
-                exec {
+                project.exec {
                     commandLine(
                         "adb",
                         "shell",
@@ -143,7 +143,7 @@ afterEvaluate {
             group = "Service"
             dependsOn(pushTask)
             doLast {
-                exec {
+                project.exec {
                     commandLine("adb", "shell", "su -c \"setprop ctl.restart keystore2\"")
                 }
             }
