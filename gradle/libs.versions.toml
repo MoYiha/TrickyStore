@@ -2,7 +2,7 @@
 agp = "9.0.1"
 bcpkix-jdk18on = "1.79"
 kotlin = "2.3.10"
-annotation = "1.8.0"
+annotation = "1.9.1"
 junit = "4.13.2"
 compose-bom = "2026.02.01"
 activity-compose = "1.12.4"
