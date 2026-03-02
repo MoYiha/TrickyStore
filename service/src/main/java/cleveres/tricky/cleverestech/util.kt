@@ -115,7 +115,7 @@ fun String.convertPatchLevel(long: Boolean) = kotlin.runCatching {
             year * 100 + month
         }
     }
-}.onFailure { Logger.e("invalid patch level $this !", it) }.getOrDefault(202404)
+}.onFailure { Logger.e("invalid patch level $this !", it) }.getOrDefault(if (long) 20240401 else 202404)
 
 fun IPackageManager.getPackageInfoCompat(name: String, flags: Long, userId: Int) =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
