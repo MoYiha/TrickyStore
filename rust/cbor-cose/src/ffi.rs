@@ -679,7 +679,7 @@ mod tests {
 pub extern "C" fn rust_generate_keymint_exploit_payload() -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         crate::bcc::generate_keymint_4_0_exploit()
-            .map(|payload| RustBuffer::from_vec(payload))
+            .map(RustBuffer::from_vec)
             .unwrap_or_else(|_| RustBuffer::empty())
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
