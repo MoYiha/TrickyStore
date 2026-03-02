@@ -781,6 +781,25 @@ class WebServer(
              }
         }
 
+
+        if (uri == "/api/apply_profile" && method == Method.POST) {
+             val map = HashMap<String, String>()
+             try { session.parseBody(map) } catch(e:Exception){}
+             val profileName = session.parms["profile"]
+             if (profileName != null) {
+                 synchronized(fileLock) {
+                     try {
+                         SecureFile.writeText(File(configDir, "apply_profile"), profileName)
+                         return secureResponse(Response.Status.OK, "text/plain", "Profile Applied")
+                     } catch (e: Exception) {
+                         Logger.e("Failed to apply profile via file", e)
+                         return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                     }
+                 }
+             }
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing profile")
+        }
+
         if (uri == "/api/toggle" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
@@ -1028,6 +1047,19 @@ class WebServer(
                 <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">DRM Fix</div>
                 <div id="status_drm" style="font-weight: bold; color: var(--danger); margin-top: 5px;">Inactive</div>
             </div>
+        </div>
+
+        <div class="panel">
+            <h3>Quick Profile</h3>
+            <div class="row">
+                <select id="profileSelect" onchange="applyProfile(this.value)" style="width: 100%;">
+                    <option value="">Select a Profile...</option>
+                    <option value="GodProfile">God Mode (Max Spoofing)</option>
+                    <option value="DailyUse">Daily Use (Standard Spoofing)</option>
+                    <option value="Minimal">Minimal (Clean state)</option>
+                </select>
+            </div>
+            <div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
         </div>
         <div class="panel">
             <h3>System Control</h3>
@@ -1519,6 +1551,7 @@ class WebServer(
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
+                determineActiveProfile(data);
                 document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
 
                 const rkpStatus = document.getElementById('status_rkp');
@@ -1780,6 +1813,44 @@ class WebServer(
             const btn = document.getElementById('btnAddRule'); const input = document.getElementById('appPkg');
             if (btn && input) btn.disabled = !input.value.trim();
         }
+
+        async function applyProfile(profileName) {
+            if (!profileName) return;
+            if (!confirm(`Apply the ${"$"}{profileName} profile? This will change your current settings.`)) {
+                // Reset select if cancelled
+                const res = await fetchAuth(getAuthUrl('/api/config'));
+                const data = await res.json();
+                determineActiveProfile(data);
+                return;
+            }
+            try {
+                const formData = new URLSearchParams();
+                formData.append('profile', profileName);
+                const res = await fetchAuth('/api/apply_profile', { method: 'POST', body: formData });
+                if (res.ok) {
+                    notify(`Profile ${"$"}{profileName} Applied`);
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    notify('Failed to apply profile', 'error');
+                }
+            } catch (e) {
+                notify('Error', 'error');
+            }
+        }
+
+        function determineActiveProfile(data) {
+            const isGod = data.global_mode && data.rkp_bypass && !data.tee_broken_mode && data.random_on_boot && data.hide_sensitive_props && data.drm_fix;
+            const isDaily = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && data.hide_sensitive_props && !data.drm_fix;
+            const isMinimal = !data.global_mode && !data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && !data.hide_sensitive_props && !data.drm_fix;
+
+            const select = document.getElementById('profileSelect');
+            if (!select) return;
+            if (isGod) select.value = 'GodProfile';
+            else if (isDaily) select.value = 'DailyUse';
+            else if (isMinimal) select.value = 'Minimal';
+            else select.value = '';
+        }
+
         async function reloadConfig() {
             await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000);
         }
