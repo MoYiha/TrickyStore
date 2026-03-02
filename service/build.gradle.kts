@@ -144,7 +144,7 @@ afterEvaluate {
             dependsOn(pushTask)
             doLast {
                 project.exec {
-                    commandLine("adb", "shell", "su -c \"setprop ctl.restart keystore2\"")
+                    commandLine("adb", "shell", "su", "-c", "setprop ctl.restart keystore2")
                 }
             }
         }
