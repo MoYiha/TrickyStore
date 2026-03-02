@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.agp.app)
-    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.compose.compiler)
 }
 

@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.daemon.common.toHexString
 import java.security.MessageDigest
 
 plugins {
-    alias(libs.plugins.jetbrains.kotlin.android)
     alias(libs.plugins.agp.app)
 }
 
