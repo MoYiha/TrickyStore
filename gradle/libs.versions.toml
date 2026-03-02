@@ -1,7 +1,7 @@
 [versions]
 agp = "8.5.1"
 bcpkix-jdk18on = "1.78.1"
-kotlin = "2.0.0"
+kotlin = "2.3.10"
 annotation = "1.8.0"
 junit = "4.13.2"
 compose-bom = "2024.06.00"
