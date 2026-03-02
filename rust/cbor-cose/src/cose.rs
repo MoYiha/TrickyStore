@@ -285,7 +285,7 @@ mod tests {
     fn test_maced_public_key_generation() {
         let x = vec![0x01; 32]; // dummy X coordinate
         let y = vec![0x02; 32]; // dummy Y coordinate
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
 
         let result = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
 
@@ -300,7 +300,7 @@ mod tests {
     /// Mirrors RkpInterceptorTest.testMacedPublicKeyMultipleGenerations.
     #[test]
     fn test_maced_public_key_multiple_generations() {
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
         let mut keys = Vec::new();
 
         for i in 0u8..5 {
@@ -362,7 +362,7 @@ mod tests {
     fn test_certificate_request_response_generation() {
         let x = vec![0x01; 32];
         let y = vec![0x02; 32];
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
 
         let maced_key = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
         let device_info = create_device_info_cbor(
@@ -387,7 +387,7 @@ mod tests {
     /// Mirrors RkpInterceptorTest.testCertificateRequestWithMultipleKeys.
     #[test]
     fn test_certificate_request_with_multiple_keys() {
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
         let mut maced_keys = Vec::new();
 
         for i in 0u8..3 {
@@ -417,7 +417,7 @@ mod tests {
     fn test_certificate_request_with_empty_challenge() {
         let x = vec![0x01; 32];
         let y = vec![0x02; 32];
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
 
         let maced_key = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
         let device_info = create_device_info_cbor(
@@ -453,7 +453,7 @@ mod tests {
     /// Test invalid key coordinates.
     #[test]
     fn test_invalid_key_coordinates() {
-        let hmac_key = vec![0x00; 32];
+        let hmac_key = vec![0x00; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
 
         let result = generate_maced_public_key(&[], &[0x02; 32], &hmac_key);
         assert!(result.is_err(), "empty X should fail");
@@ -480,7 +480,7 @@ mod tests {
     fn test_hmac_deterministic() {
         let x = vec![0x01; 32];
         let y = vec![0x02; 32];
-        let hmac_key = vec![0xAA; 32];
+        let hmac_key = vec![0xAA; 32]; // codeql[rust/hardcoded-credentials] False positive in tests
 
         let result1 = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
         let result2 = generate_maced_public_key(&x, &y, &hmac_key).unwrap();
