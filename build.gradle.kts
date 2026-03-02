@@ -1,5 +1,6 @@
-import com.android.build.gradle.AppExtension
-import com.android.build.gradle.LibraryExtension
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.LibraryExtension
+import org.gradle.api.GradleException
 import java.io.ByteArrayOutputStream
 
 plugins {
@@ -10,12 +11,16 @@ plugins {
 
 fun String.execute(currentWorkingDir: File = file("./")): String {
     val byteOut = ByteArrayOutputStream()
-    project.exec {
-        workingDir = currentWorkingDir
-        commandLine = split("\\s".toRegex())
-        standardOutput = byteOut
+    val process = ProcessBuilder(trim().split("\\s+".toRegex()))
+        .directory(currentWorkingDir)
+        .redirectErrorStream(true)
+        .start()
+    process.inputStream.copyTo(byteOut)
+    val output = byteOut.toString().trim()
+    if (process.waitFor() != 0) {
+        throw GradleException("Command failed: $this\n$output")
     }
-    return String(byteOut.toByteArray()).trim()
+    return output
 }
 
 val gitCommitCount = "git rev-list HEAD --count".execute().toInt()
@@ -44,9 +49,9 @@ tasks.register("Delete", Delete::class) {
 }
 
 fun Project.configureBaseExtension() {
-    extensions.findByType(AppExtension::class)?.run {
+    extensions.findByType(ApplicationExtension::class)?.run {
         namespace = "cleveres.tricky.cleverestech"
-        compileSdkVersion(androidCompileSdkVersion)
+        compileSdk = androidCompileSdkVersion
         ndkVersion = androidCompileNdkVersion
         buildToolsVersion = androidBuildToolsVersion
 
