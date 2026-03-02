@@ -87,6 +87,12 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
+    }
+}
+
 dependencies {
     compileOnly(project(":stub"))
     implementation(libs.annotation)
