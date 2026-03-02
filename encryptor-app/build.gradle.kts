@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "cleveres.tricky.encryptor"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "cleveres.tricky.encryptor"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -69,4 +69,14 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.robolectric)
+}
+
+dependencies {
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
+}
+
+dependencies {
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
 }

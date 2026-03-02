@@ -27,5 +27,10 @@ final_verification.txt
 test_output*.txt
 verification_*.png
 failure_*.png
-logcat.log
-downloaded_logcat.log
+
+# Gradle build directories
+build/
+encryptor-app/build/
+module/build/
+service/build/
+stub/build/
