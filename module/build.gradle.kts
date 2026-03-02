@@ -66,14 +66,14 @@ evaluationDependsOn(":service")
 // Rust Build Integration
 
 // Ensure cargo-ndk is installed
-task<Exec>("installCargoNdk") {
+tasks.register<Exec>("installCargoNdk") {
     group = "rust"
     description = "Installs cargo-ndk if not present"
     commandLine("bash", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
 }
 
 // Ensure Rust Android targets are installed
-task<Exec>("installRustTargets") {
+tasks.register<Exec>("installRustTargets") {
     group = "rust"
     description = "Installs Android Rust targets via rustup"
     // We run rustup target add for all required targets.
@@ -89,7 +89,7 @@ task<Exec>("installRustTargets") {
     dependsOn("installCargoNdk")
 }
 
-task<Exec>("cargoBuild") {
+tasks.register<Exec>("cargoBuild") {
     group = "rust"
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
@@ -152,7 +152,7 @@ afterEvaluate {
         val zipFileName =
             "$moduleName-$verName-$verCode-$commitHash-$buildTypeLowered.zip".replace(' ', '-')
 
-        val prepareModuleFilesTask = task<Sync>("prepareModuleFiles$variantCapped") {
+        val prepareModuleFilesTask = tasks.register<Sync>("prepareModuleFiles$variantCapped") {
             group = "module"
             dependsOn(
                 "assemble$variantCapped",
@@ -246,7 +246,7 @@ afterEvaluate {
             }
         }
 
-        val zipTask = task<Zip>("zip$variantCapped") {
+        val zipTask = tasks.register<Zip>("zip$variantCapped") {
             group = "module"
             dependsOn(prepareModuleFilesTask)
             archiveFileName.set(zipFileName)
@@ -254,13 +254,13 @@ afterEvaluate {
             from(moduleDir)
         }
 
-        val pushTask = task<Exec>("push$variantCapped") {
+        val pushTask = tasks.register<Exec>("push$variantCapped") {
             group = "module"
             dependsOn(zipTask)
-            commandLine("adb", "push", zipTask.outputs.files.singleFile.path, "/data/local/tmp")
+            commandLine("adb", "push", zipTask.get().outputs.files.singleFile.path, "/data/local/tmp")
         }
 
-        val installKsuTask = task<Exec>("installKsu$variantCapped") {
+        val installKsuTask = tasks.register<Exec>("installKsu$variantCapped") {
             group = "module"
             dependsOn(pushTask)
             commandLine(
@@ -269,7 +269,7 @@ afterEvaluate {
             )
         }
 
-        val installMagiskTask = task<Exec>("installMagisk$variantCapped") {
+        val installMagiskTask = tasks.register<Exec>("installMagisk$variantCapped") {
             group = "module"
             dependsOn(pushTask)
             commandLine(
@@ -282,13 +282,13 @@ afterEvaluate {
             )
         }
 
-        task<Exec>("installKsuAndReboot$variantCapped") {
+        tasks.register<Exec>("installKsuAndReboot$variantCapped") {
             group = "module"
             dependsOn(installKsuTask)
             commandLine("adb", "reboot")
         }
 
-        task<Exec>("installMagiskAndReboot$variantCapped") {
+        tasks.register<Exec>("installMagiskAndReboot$variantCapped") {
             group = "module"
             dependsOn(installMagiskTask)
             commandLine("adb", "reboot")
