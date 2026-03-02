@@ -116,7 +116,7 @@ afterEvaluate {
     android.buildTypes.forEach { buildType ->
         val variantLowered = buildType.name.lowercase()
         val variantCapped = buildType.name.capitalizeUS()
-        val pushTask = task<Task>("pushService$variantCapped") {
+        val pushTask = tasks.register<Task>("pushService$variantCapped") {
             group = "Service"
             dependsOn("assemble$variantCapped")
             doLast {
@@ -139,7 +139,7 @@ afterEvaluate {
             }
         }
 
-        task<Task>("pushAndRestartService$variantCapped") {
+        tasks.register<Task>("pushAndRestartService$variantCapped") {
             group = "Service"
             dependsOn(pushTask)
             doLast {
