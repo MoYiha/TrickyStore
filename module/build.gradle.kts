@@ -5,7 +5,6 @@ import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.agp.app)
-    alias(libs.plugins.lsplugin.cmaker)
 }
 
 val moduleId: String by rootProject.extra
@@ -34,26 +33,20 @@ android {
         cmake {
             version = "3.28.0+"
             path("src/main/cpp/CMakeLists.txt")
-        }
-    }
-}
-
-cmaker {
-    default {
-        arguments += arrayOf(
-            "-Wno-dev",
-            "-DANDROID_STL=none",
-            "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
-            "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
-            "-DMODULE_NAME=$moduleId",
-            "-DCMAKE_CXX_STANDARD=23",
-            "-DCMAKE_C_STANDARD=23",
-            "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
-            "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
-            "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
-            "-DCMAKE_C_VISIBILITY_PRESET=hidden",
+            arguments += listOf(
+                "-Wno-dev",
+                "-DANDROID_STL=none",
+                "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+                "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
+                "-DMODULE_NAME=$moduleId",
+                "-DCMAKE_CXX_STANDARD=23",
+                "-DCMAKE_C_STANDARD=23",
+                "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
+                "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
+                "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
+                "-DCMAKE_C_VISIBILITY_PRESET=hidden",
             )
-        abiFilters(*abiList.toTypedArray())
+        }
     }
 }
 
