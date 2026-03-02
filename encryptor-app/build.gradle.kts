@@ -70,3 +70,13 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.robolectric)
 }
+
+dependencies {
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
+}
+
+dependencies {
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.compose.material:material-icons-extended")
+}

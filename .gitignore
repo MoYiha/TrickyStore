@@ -27,3 +27,10 @@ final_verification.txt
 test_output*.txt
 verification_*.png
 failure_*.png
+
+# Gradle build directories
+build/
+encryptor-app/build/
+module/build/
+service/build/
+stub/build/
