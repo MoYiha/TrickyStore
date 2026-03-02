@@ -120,7 +120,7 @@ afterEvaluate {
             group = "Service"
             dependsOn("assemble$variantCapped")
             doLast {
-                project.exec {
+                providers.exec {
                     commandLine(
                         "adb",
                         "push",
@@ -128,14 +128,16 @@ afterEvaluate {
                             .get().asFile.absolutePath,
                         "/data/local/tmp/service.apk"
                     )
-                }
-                project.exec {
+                }.result.get().assertNormalExitValue()
+                providers.exec {
                     commandLine(
                         "adb",
                         "shell",
-                        "su -c 'rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/'"
+                        "su",
+                        "-c",
+                        "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
                     )
-                }
+                }.result.get().assertNormalExitValue()
             }
         }
 
@@ -143,9 +145,9 @@ afterEvaluate {
             group = "Service"
             dependsOn(pushTask)
             doLast {
-                project.exec {
+                providers.exec {
                     commandLine("adb", "shell", "su", "-c", "setprop ctl.restart keystore2")
-                }
+                }.result.get().assertNormalExitValue()
             }
         }
     }
