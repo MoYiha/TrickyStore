@@ -724,6 +724,7 @@ object Config {
                 File(root, TEE_BROKEN_MODE_FILE).delete()
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
                 SecureFile.touch(File(root, HIDE_SENSITIVE_PROPS_FILE), 384)
+                SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
 
                 // Set DRM fix content
                 val drmContent = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
@@ -735,24 +736,26 @@ object Config {
                 File(root, TEE_BROKEN_MODE_FILE).delete()
                 File(root, RANDOM_ON_BOOT_FILE).delete()
                 SecureFile.touch(File(root, HIDE_SENSITIVE_PROPS_FILE), 384)
+                SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 File(root, DRM_FIX_FILE).delete()
             }
             "minimal" -> {
-                File(root, GLOBAL_MODE_FILE).delete()
-                File(root, RKP_BYPASS_FILE).delete()
-                File(root, TEE_BROKEN_MODE_FILE).delete()
-                File(root, RANDOM_ON_BOOT_FILE).delete()
-                File(root, HIDE_SENSITIVE_PROPS_FILE).delete()
-                File(root, DRM_FIX_FILE).delete()
-            }
-            "default" -> {
-                // Same as dailyuse for now, could be customized
                 File(root, GLOBAL_MODE_FILE).delete()
                 SecureFile.touch(File(root, RKP_BYPASS_FILE), 384)
                 File(root, TEE_BROKEN_MODE_FILE).delete()
                 File(root, RANDOM_ON_BOOT_FILE).delete()
                 File(root, HIDE_SENSITIVE_PROPS_FILE).delete()
                 File(root, DRM_FIX_FILE).delete()
+                File(root, SPOOF_BUILD_VARS_FILE).delete()
+            }
+            "default" -> {
+                File(root, GLOBAL_MODE_FILE).delete()
+                SecureFile.touch(File(root, RKP_BYPASS_FILE), 384)
+                File(root, TEE_BROKEN_MODE_FILE).delete()
+                File(root, RANDOM_ON_BOOT_FILE).delete()
+                File(root, HIDE_SENSITIVE_PROPS_FILE).delete()
+                File(root, DRM_FIX_FILE).delete()
+                File(root, SPOOF_BUILD_VARS_FILE).delete()
             }
             else -> {
                 Logger.e("Unknown profile: $profileName")
