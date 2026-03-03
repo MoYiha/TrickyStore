@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.28...3.31)
 project(cleverestricky)
 
-find_package(cxx REQUIRED CONFIG)
-link_libraries(cxx::cxx)
+
+
 
 # Obfuscation / Size Optimization flags
 add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -Os -flto)
@@ -47,3 +47,6 @@ target_include_directories(keystore_race_daemon PRIVATE ../../../../rust/cbor-co
 # Link against the same Rust core library
 # Added my_logging to link dependencies to provide logging.hpp include path
 target_link_libraries(keystore_race_daemon PRIVATE log binder utils rust_core my_logging)
+set_target_properties(binder PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")
+set_target_properties(keystore_race_daemon PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")
+set_target_properties(cleverestricky PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")

@@ -27,7 +27,7 @@ android {
             cmake {
                 arguments(
                     "-Wno-dev",
-                    "-DANDROID_STL=none",
+
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                     "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
                     "-DMODULE_NAME=$moduleId",
@@ -55,7 +55,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.cxx)
+
 }
 
 evaluationDependsOn(":service")
