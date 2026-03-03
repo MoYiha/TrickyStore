@@ -118,10 +118,13 @@ pub fn fetch_fingerprints(_url: Option<&str>) -> Result<usize, String> {
 /// Look up a cached fingerprint by device codename.
 ///
 /// Returns `None` if the cache is empty or the device is not found.
-pub fn get_fingerprint(device: &str) -> Option<String> {
+pub fn get_fingerprint<F, R>(device: &str, f: F) -> Option<R>
+where
+    F: FnOnce(&str) -> R,
+{
     let guard = CACHE.read().ok()?;
     let cache = guard.as_ref()?;
-    cache.entries.get(device).cloned()
+    cache.entries.get(device).map(|s| f(s.as_str()))
 }
 
 /// Get all cached fingerprints as a list of `"device=fingerprint"` lines.
@@ -237,11 +240,11 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
         assert_eq!(count, 5);
         assert_eq!(cache_count(), 5);
 
-        let fp = get_fingerprint("husky");
+        let fp = get_fingerprint("husky", |s| s.to_string());
         assert!(fp.is_some());
         assert!(fp.unwrap().contains("husky"));
 
-        let fp = get_fingerprint("nonexistent");
+        let fp = get_fingerprint("nonexistent", |s| s.to_string());
         assert!(fp.is_none());
     }
 
@@ -262,7 +265,7 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
         assert!(cache_count() > 0);
         clear_cache();
         assert_eq!(cache_count(), 0);
-        assert!(get_fingerprint("husky").is_none());
+        assert!(get_fingerprint("husky", |s| s.to_string()).is_none());
     }
 
     #[test]
@@ -277,8 +280,8 @@ google/redfin/redfin:13/TQ3A.230805.001/10316531:user/release-keys
             "samsung/dm1q/dm1q:14/UP1A.231005.007/S901BXXU8CXK1:user/release-keys\n",
         );
         assert_eq!(cache_count(), 1);
-        assert!(get_fingerprint("dm1q").is_some());
-        assert!(get_fingerprint("husky").is_none());
+        assert!(get_fingerprint("dm1q", |s| s.to_string()).is_some());
+        assert!(get_fingerprint("husky", |s| s.to_string()).is_none());
     }
 
     #[test]

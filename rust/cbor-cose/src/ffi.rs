@@ -131,10 +131,10 @@ pub unsafe extern "C" fn rust_cbor_encode_bytes(data: *const u8, len: usize) -> 
 pub unsafe extern "C" fn rust_cbor_encode_text(data: *const u8, len: usize) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let s = match unsafe { validate_slice_args(data, len) } {
-            Some(bytes) => String::from_utf8_lossy(bytes),
-            None => Cow::Borrowed(""),
+            Some(bytes) => std::str::from_utf8(bytes).unwrap_or(""),
+            None => "",
         };
-        RustBuffer::from_vec(cbor::encode(&CborValue::TextString(s)))
+        RustBuffer::from_vec(cbor::encode(&CborValue::TextString(Cow::Borrowed(s))))
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
 }
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn rust_create_device_info(
             if bytes.is_empty() {
                 return None;
             }
-            Some(String::from_utf8_lossy(bytes))
+            Some(Cow::Borrowed(std::str::from_utf8(bytes).unwrap_or("")))
         };
 
         let brand = to_str(brand_ptr, brand_len);
@@ -352,8 +352,8 @@ pub unsafe extern "C" fn rust_fp_get(device_ptr: *const u8, device_len: usize) -
             Ok(s) => s,
             Err(_) => return RustBuffer::empty(),
         };
-        match crate::fingerprint::get_fingerprint(device) {
-            Some(fp) => RustBuffer::from_vec(fp.into_bytes()),
+        match crate::fingerprint::get_fingerprint(device, |s| s.as_bytes().to_vec()) {
+            Some(bytes) => RustBuffer::from_vec(bytes),
             None => RustBuffer::empty(),
         }
     }))
