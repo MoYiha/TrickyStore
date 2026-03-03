@@ -21,7 +21,7 @@ fun main(args: Array<String>) {
     // Start Web Server
     try {
         val configDir = File("/data/adb/cleverestricky")
-        val server = WebServer(0, configDir) // Random port
+        val server = WebServer(5623, configDir) // Fixed port 5623
         server.start()
         val port = server.listeningPort
         val token = server.token
