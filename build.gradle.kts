@@ -28,7 +28,7 @@ val gitCommitHash = "git rev-parse --verify --short HEAD".execute()
 
 // also the soname
 val moduleId by extra("cleverestricky")
-val moduleName by extra("CleveresTricky Beta")
+val moduleName by extra("CleveresTricky")
 val author by extra("tryigitx")
 val description by extra("AI Powered trick of keystore. See GitHub for changelog details.")
 val verName by extra("V2.2.0")

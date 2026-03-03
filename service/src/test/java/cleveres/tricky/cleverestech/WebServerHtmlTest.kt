@@ -49,7 +49,6 @@ class WebServerHtmlTest {
 
         // Verify Title and Badge
         assertTrue("Missing Title", html.contains("<h1>CleveresTricky"))
-        assertTrue("Missing Beta Badge", html.contains("BETA</span></h1>"))
 
         // Verify Tabs
         assertTrue("Missing Dashboard Tab", html.contains("id=\"tab_dashboard\""))

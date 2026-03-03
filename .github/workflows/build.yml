@@ -172,7 +172,7 @@ jobs:
         run: |
           VERSION=$(grep 'val verName by extra' build.gradle.kts | cut -d'"' -f2 | sed 's/^[vV]//')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          if git rev-parse "V$VERSION" >/dev/null 2>&1; then
+          if git ls-remote --exit-code --tags origin "refs/tags/V$VERSION" >/dev/null 2>&1; then
             echo "Tag V$VERSION already exists."
             echo "create_release=false" >> $GITHUB_OUTPUT
           else
