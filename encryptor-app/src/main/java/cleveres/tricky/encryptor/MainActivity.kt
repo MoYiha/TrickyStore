@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -216,14 +217,14 @@ fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            SmallTopAppBar(
+            TopAppBar(
                 title = { Text("Create Keybox", color = WebUiForeground) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = WebUiForeground)
                     }
                 },
-                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = WebUiBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = WebUiBackground)
             )
         },
         containerColor = WebUiBackground

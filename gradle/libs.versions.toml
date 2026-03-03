@@ -29,6 +29,7 @@ espresso-core = { group = "androidx.test.espresso", name = "espresso-core", vers
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidx-test-runner" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
+androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 [plugins]
 agp-app = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
