@@ -19,5 +19,6 @@ pub mod cose;
 pub mod ffi;
 pub mod fingerprint;
 pub mod utils;
+pub mod properties;
 
 pub mod race_engine;
