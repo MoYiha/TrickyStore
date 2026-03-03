@@ -422,7 +422,7 @@ mod tests {
     #[test]
     fn test_encode_large_byte_string() {
         let bytes = vec![0xAB; 300];
-        let encoded = encode(&CborValue::ByteString(Cow::from(bytes.clone())));
+        let encoded = encode(&CborValue::ByteString(Cow::from(bytes)));
         // 300 = 0x012C => MT_BYTE_STRING | 25, then 0x01, 0x2C
         assert_eq!(encoded[0], 0x59); // 0x40 | 25
         assert_eq!(encoded[1], 0x01);
