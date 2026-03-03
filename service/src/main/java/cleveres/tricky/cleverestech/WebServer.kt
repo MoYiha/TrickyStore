@@ -1642,6 +1642,63 @@ class WebServer(
             notify('Identity Generated');
         }
 
+        async function verifyKeyboxes() {
+            const resultDiv = document.getElementById('verifyResult');
+            resultDiv.innerHTML = '<div style="color:#888;">Verifying... Please wait.</div>';
+            try {
+                const res = await fetchAuth('/api/verify_keyboxes', { method: 'POST' });
+                if (!res.ok) {
+                    const txt = await res.text();
+                    resultDiv.innerHTML = '<div style="color:var(--danger);">' + txt + '</div>';
+                    notify('Verification Failed', 'error');
+                    return;
+                }
+                const results = await res.json();
+                resultDiv.innerHTML = '';
+                if (results.length === 0) {
+                    resultDiv.innerHTML = '<div style="color:#888;">No keyboxes found.</div>';
+                    notify('No keyboxes to verify');
+                    return;
+                }
+                results.forEach(r => {
+                    const div = document.createElement('div');
+                    div.style.padding = '8px';
+                    div.style.marginBottom = '5px';
+                    div.style.border = '1px solid var(--border)';
+                    div.style.borderRadius = '4px';
+                    const isSuccess = r.status === 'VALID' || r.status === 'OK';
+                    const color = isSuccess ? 'var(--success)' : 'var(--danger)';
+                    div.style.borderLeft = '4px solid ' + color;
+
+                    const titleDiv = document.createElement('div');
+                    titleDiv.style.fontWeight = 'bold';
+                    titleDiv.textContent = r.filename;
+
+                    const statusDiv = document.createElement('div');
+                    statusDiv.style.color = color;
+                    statusDiv.style.fontSize = '0.9em';
+                    statusDiv.style.marginTop = '2px';
+                    statusDiv.textContent = r.status;
+
+                    const detailsDiv = document.createElement('div');
+                    detailsDiv.style.color = '#888';
+                    detailsDiv.style.fontSize = '0.8em';
+                    detailsDiv.style.marginTop = '2px';
+                    detailsDiv.style.wordBreak = 'break-all';
+                    detailsDiv.textContent = r.details;
+
+                    div.appendChild(titleDiv);
+                    div.appendChild(statusDiv);
+                    div.appendChild(detailsDiv);
+                    resultDiv.appendChild(div);
+                });
+                notify('Verification Complete');
+            } catch(e) {
+                resultDiv.innerHTML = '<div style="color:var(--danger);">Error: ' + e.message + '</div>';
+                notify('Error', 'error');
+            }
+        }
+
         async function loadKeyboxes() {
             try {
                 const res = await fetchAuth('/api/keyboxes');
