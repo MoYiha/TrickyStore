@@ -31,7 +31,7 @@ object ZipProcessor {
                     if (!entry.isDirectory) {
                         val name = entry.name
                         // Check for directory traversal
-                        if (name.contains("..")) {
+                        if (name.contains("..") || name.contains("/") || name.contains("\\")) {
                             Logger.e("Zip entry contains directory traversal: $name")
                             return null
                         }
