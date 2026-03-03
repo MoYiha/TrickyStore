@@ -1030,7 +1030,7 @@ class WebServer(
 </head>
 <body>
     <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon">⚠️</div><span id="islandText">Notification</span></div></div>
-    <h1>${getAppName()} <span style="font-size:0.5em; vertical-align:middle; color:var(--accent); opacity:0.7; border: 1px solid var(--accent); border-radius: 4px; padding: 2px 6px; margin-left: 10px;">BETA</span></h1>
+    <h1>${getAppName()}</h1>
     <div class="tabs" role="tablist">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabNavigation(event, 'dashboard')">Dashboard</div>
         <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
@@ -2069,6 +2069,19 @@ class WebServer(
 
         loadLanguage();
         init();
+
+        const isRelease = !("${BuildConfig.DEBUG}" === "true");
+        if (!isRelease) {
+            const devFooter = document.createElement("div");
+            devFooter.style.textAlign = "center";
+            devFooter.style.marginTop = "30px";
+            devFooter.style.padding = "15px";
+            devFooter.style.backgroundColor = "var(--panel-bg)";
+            devFooter.style.borderRadius = "var(--radius)";
+            devFooter.style.border = "1px solid var(--accent)";
+            devFooter.innerHTML = `<span style="color:var(--accent); font-weight:bold;">BETA / DEV BUILD</span><br><br>Bu modül şu an geliştirme buildidir. Stable sürüm için lütfen <a href="https://github.com/tryigit/CleveresTricky/releases" style="color:var(--accent);" target="_blank">Stable Buildi (GitHub Releases)</a> indirin.`;
+            document.body.appendChild(devFooter);
+        }
     </script>
 </body>
 </html>
