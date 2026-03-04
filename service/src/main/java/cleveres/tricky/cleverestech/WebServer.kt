@@ -1532,6 +1532,7 @@ class WebServer(
                         return;
                     }
                     notify('Uploaded');
+                    document.getElementById('kbContent').value = '';
                     loadKeyInfo();
                 } catch(e) { notify('Error', 'error'); } finally {
                     resetDropZone();
@@ -1715,14 +1716,6 @@ class WebServer(
                     if (dl) { dl.innerHTML = ''; keys.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
                 }
             } catch(e) {}
-        }
-
-        async function loadFileContent(input) {
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
-                reader.readAsText(input.files[0]);
-            }
         }
 
         async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
