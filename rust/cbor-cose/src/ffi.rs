@@ -693,7 +693,7 @@ pub extern "C" fn rust_generate_keymint_exploit_payload() -> RustBuffer {
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> RustBuffer {
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if name_ptr.is_null() || name_len == 0 {
             return RustBuffer::empty();
         }
@@ -716,7 +716,7 @@ pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> 
         } else {
             RustBuffer::empty()
         }
-    })
+    }))
     .unwrap_or(RustBuffer::empty())
 }
 
@@ -729,7 +729,7 @@ pub unsafe extern "C" fn rust_prop_set(
     value_ptr: *const u8,
     value_len: usize,
 ) {
-    let _ = std::panic::catch_unwind(|| {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if name_ptr.is_null() || name_len == 0 {
             return;
         }
@@ -749,5 +749,5 @@ pub unsafe extern "C" fn rust_prop_set(
         ) {
             crate::properties::set_property(name_str, value_str);
         }
-    });
+    }));
 }
