@@ -164,7 +164,25 @@ int new_system_property_get(const char* name, char* value) {
     }
 
     if (found) {
-        LOGI("Targeted property access: %s", name);
+        // FAST PATH: Try zero-IPC Rust cache first
+        size_t name_len = strlen(name);
+        RustBuffer rust_buf = rust_prop_get(reinterpret_cast<const uint8_t*>(name), name_len);
+        if (rust_buf.data != nullptr && rust_buf.len > 0) {
+            LOGI("Zero-IPC cache hit for %s", name);
+            std::string spoofed_value(reinterpret_cast<char*>(rust_buf.data), rust_buf.len);
+            rust_free_buffer(rust_buf);
+
+            if (value) {
+                strncpy(value, spoofed_value.c_str(), PROP_VALUE_MAX - 1);
+                value[PROP_VALUE_MAX - 1] = '\0';
+                return strlen(value);
+            } else {
+                return spoofed_value.length();
+            }
+        }
+        rust_free_buffer(rust_buf);
+
+        LOGI("Targeted property access (cache miss): %s", name);
         if (gBinderInterceptor != nullptr && gBinderInterceptor->gPropertyServiceBinder != nullptr) {
             Parcel data_parcel, reply_parcel;
             
@@ -190,6 +208,13 @@ int new_system_property_get(const char* name, char* value) {
             std::string spoofed_value;
             if (readString16_manual(reply_parcel, spoofed_value)) {
                 LOGI("Received spoofed value for %s: '%s'", name, spoofed_value.c_str());
+
+                // Cache the retrieved value into Rust store for future zero-IPC hits
+                rust_prop_set(
+                    reinterpret_cast<const uint8_t*>(name), name_len,
+                    reinterpret_cast<const uint8_t*>(spoofed_value.data()), spoofed_value.length()
+                );
+
                 if (value) {
                     strncpy(value, spoofed_value.c_str(), PROP_VALUE_MAX - 1);
                     value[PROP_VALUE_MAX - 1] = '\0';

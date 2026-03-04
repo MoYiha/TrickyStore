@@ -183,6 +183,21 @@ void rust_kick_already_blocked_ioctls(void);
  */
 void rust_start_race_engine(size_t core_id);
 
+
+/* ==== System Properties ==== */
+
+/**
+ * Look up a spoofed property from the thread-safe Rust cache.
+ * Returns the property string as a RustBuffer (free with rust_free_buffer),
+ * or an empty buffer if not found.
+ */
+RustBuffer rust_prop_get(const uint8_t *name_ptr, size_t name_len);
+
+/**
+ * Set a spoofed property in the thread-safe Rust cache.
+ */
+void rust_prop_set(const uint8_t *name_ptr, size_t name_len, const uint8_t *value_ptr, size_t value_len);
+
 #ifdef __cplusplus
 }
 #endif

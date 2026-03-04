@@ -684,3 +684,70 @@ pub extern "C" fn rust_generate_keymint_exploit_payload() -> RustBuffer {
     }))
     .unwrap_or_else(|_| RustBuffer::empty())
 }
+
+/* ==== System Properties ==== */
+
+/// Get a spoofed property from the thread-safe Rust cache.
+/// Returns a RustBuffer containing the property value, or an empty buffer if not found.
+/// The caller must free the buffer with `rust_free_buffer`.
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> RustBuffer {
+    std::panic::catch_unwind(|| {
+        if name_ptr.is_null() || name_len == 0 {
+            return RustBuffer::empty();
+        }
+
+        let name_slice = std::slice::from_raw_parts(name_ptr, name_len);
+        let name_str = match std::str::from_utf8(name_slice) {
+            Ok(s) => s,
+            Err(_) => return RustBuffer::empty(),
+        };
+
+        if let Some(val) = crate::properties::get_property(name_str) {
+            let mut vec = val.into_bytes();
+            // Ensure null termination is NOT added unless needed, the C++ side expects exact string length usually.
+            // Wait, readString16_manual expects length or null terminated?
+            // "Returns a RustBuffer containing the spoofed value"
+            let len = vec.len();
+            let data = vec.as_mut_ptr();
+            std::mem::forget(vec);
+            RustBuffer { data, len }
+        } else {
+            RustBuffer::empty()
+        }
+    })
+    .unwrap_or(RustBuffer::empty())
+}
+
+/// Set a spoofed property in the thread-safe Rust cache.
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn rust_prop_set(
+    name_ptr: *const u8,
+    name_len: usize,
+    value_ptr: *const u8,
+    value_len: usize,
+) {
+    let _ = std::panic::catch_unwind(|| {
+        if name_ptr.is_null() || name_len == 0 {
+            return;
+        }
+
+        // value_ptr can be null or empty
+        let value_slice = if value_ptr.is_null() || value_len == 0 {
+            &[]
+        } else {
+            std::slice::from_raw_parts(value_ptr, value_len)
+        };
+
+        let name_slice = std::slice::from_raw_parts(name_ptr, name_len);
+
+        if let (Ok(name_str), Ok(value_str)) = (
+            std::str::from_utf8(name_slice),
+            std::str::from_utf8(value_slice),
+        ) {
+            crate::properties::set_property(name_str, value_str);
+        }
+    });
+}
