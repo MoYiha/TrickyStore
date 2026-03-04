@@ -743,7 +743,7 @@ pub unsafe extern "C" fn rust_prop_set(
 
         if let (Ok(name_str), Ok(value_str)) = (
             std::str::from_utf8(name_slice),
-            std::str::from_utf8(value_slice)
+            std::str::from_utf8(value_slice),
         ) {
             crate::properties::set_property(name_str, value_str);
         }
