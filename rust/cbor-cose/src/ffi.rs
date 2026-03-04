@@ -691,6 +691,7 @@ pub extern "C" fn rust_generate_keymint_exploit_payload() -> RustBuffer {
 /// Returns a RustBuffer containing the property value, or an empty buffer if not found.
 /// The caller must free the buffer with `rust_free_buffer`.
 #[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> RustBuffer {
     std::panic::catch_unwind(|| {
         if name_ptr.is_null() || name_len == 0 {
@@ -721,6 +722,7 @@ pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> 
 
 /// Set a spoofed property in the thread-safe Rust cache.
 #[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn rust_prop_set(
     name_ptr: *const u8,
     name_len: usize,
