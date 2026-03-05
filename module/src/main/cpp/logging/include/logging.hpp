@@ -9,7 +9,7 @@
 # define LOG_TAG "CleveresTricky"
 #endif
 
-#ifndef NDEBUG
+#ifdef DEBUG_BUILD
 #define LOGD(...)  logging::log(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGV(...)  logging::log(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
 #else

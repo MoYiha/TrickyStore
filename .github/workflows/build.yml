@@ -118,6 +118,9 @@ jobs:
         with:
           packages: ''
 
+      - name: Run Module Tests
+        run: ./gradlew :module:testDebugUnitTest
+
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
 

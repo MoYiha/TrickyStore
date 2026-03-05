@@ -4,9 +4,18 @@ project(cleverestricky)
 
 
 
-# Obfuscation / Size Optimization flags
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(DEBUG_BUILD)
+    add_compile_options(-O0 -g)
+else()
+    # Obfuscation / Size Optimization flags
 add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden -Os -flto)
 add_link_options(-s -Wl,--gc-sections -Wl,--exclude-libs,ALL)
+endif()
+
+# We still want GC sections everywhere to reduce size, but don't strip symbols in debug
+add_link_options(-Wl,--gc-sections)
+
 
 add_library(elf_util STATIC elf_util/elf_util.cpp)
 add_library(my_logging STATIC logging/logging.cpp)
