@@ -1,1 +1,0 @@
-print('CodeQL python dummy')

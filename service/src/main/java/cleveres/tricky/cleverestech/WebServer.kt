@@ -48,6 +48,15 @@ class WebServer(
     }
 ) : NanoHTTPD("127.0.0.1", port) {
 
+    override fun start(timeout: Int, daemon: Boolean) {
+        try {
+            super.start(timeout, daemon)
+        } catch (e: Exception) {
+            Logger.e("WebServer: Failed to start", e)
+        }
+    }
+
+    init { cleveres.tricky.cleverestech.util.LoggerConfig.disableNanoHttpdLogging() }
     val token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 10 * 1024 * 1024L // 10MB for ZIPs
     private val MAX_BODY_SIZE = 5 * 1024 * 1024L // 5MB for non-multipart requests
@@ -313,6 +322,15 @@ class WebServer(
     }
 
     override fun serve(session: IHTTPSession): Response {
+        return try {
+            serveInternal(session)
+        } catch (e: Exception) {
+            Logger.e("WebServer: Error handling request", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "Internal Server Error")
+        }
+    }
+
+    private fun serveInternal(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
         val params = session.parms
