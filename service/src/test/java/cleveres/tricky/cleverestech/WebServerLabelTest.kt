@@ -48,7 +48,7 @@ class WebServerLabelTest {
         val html = conn.inputStream.bufferedReader().readText()
 
         assertTrue("Keybox Content textarea should have a visible label",
-            html.contains("<label for=\"kbContent\"") && html.contains(">Keybox Content (XML)</label>")
+            html.contains("<label for=\"kbContent\"") && html.contains(">Manual Paste (XML)</label>")
         )
     }
 

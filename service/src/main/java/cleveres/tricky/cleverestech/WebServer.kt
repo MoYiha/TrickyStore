@@ -1169,12 +1169,17 @@ class WebServer(
 
         <div class="panel">
             <h3>Upload Keybox / CBOX</h3>
-            <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}">
-                <label for="kbFilename" style="display:none">Keybox File</label>
-                <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
-                <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Keybox Content (XML)</label>
-                <textarea id="kbContent" placeholder="XML Content" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
-                <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
+            <div class="grid-2">
+                <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}">
+                    <label for="kbFilename" style="display:none">Keybox File</label>
+                    <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
+                    <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
+                </div>
+                <div>
+                    <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
+                    <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
+                    <button id="saveKeyboxBtn" class="primary" style="width:100%; margin-top:10px;" onclick="savePastedKeybox()">Save Pasted XML</button>
+                </div>
             </div>
         </div>
         <div class="panel">
@@ -1509,9 +1514,13 @@ class WebServer(
                 const file = input.files[0];
 
                 // 1. Preview content
-                const reader = new FileReader();
-                reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
-                reader.readAsText(file);
+                if (!file.name.endsWith('.cbox') && !file.name.endsWith('.zip')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => document.getElementById('kbContent').value = e.target.result;
+                    reader.readAsText(file);
+                } else {
+                    document.getElementById('kbContent').value = 'Binary file (' + file.name + ') selected. Preview unavailable.';
+                }
 
                 // 2. Upload
                 const dz = document.getElementById('dropZoneContent');
@@ -1544,6 +1553,35 @@ class WebServer(
             const dz = document.getElementById('dropZoneContent');
             dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
             document.getElementById('dropZone').style.borderColor = 'var(--border)';
+        }
+
+        async function savePastedKeybox() {
+            const content = document.getElementById('kbContent').value.trim();
+            if (!content) {
+                notify('Please paste XML content first', 'error');
+                return;
+            }
+            let filename = prompt("Enter a filename for this Keybox (e.g. keybox1.xml):", "keybox.xml");
+            if (!filename) return;
+            if (!filename.endsWith('.xml')) filename += '.xml';
+
+            notify('Saving...', 'working');
+            try {
+                const res = await fetchAuth('/api/upload_keybox', {
+                    method: 'POST',
+                    body: new URLSearchParams({ filename: filename, content: content })
+                });
+                if (!res.ok) {
+                    const msg = await res.text();
+                    notify('Error: ' + msg, 'error');
+                } else {
+                    notify('Saved Successfully');
+                    document.getElementById('kbContent').value = '';
+                    loadKeyInfo();
+                }
+            } catch(e) {
+                notify('Error', 'error');
+            }
         }
 
         // Rest of existing JS (simplified/merged)
