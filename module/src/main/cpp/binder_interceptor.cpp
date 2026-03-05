@@ -277,7 +277,7 @@ class BinderStub : public BBinder {
 static sp<BinderStub> gBinderStub = nullptr;
 
 static std::shared_mutex g_binder_fd_lock;
-static std::map<int, bool> g_binder_fds;
+static std::unordered_map<int, bool> g_binder_fds;
 
 static bool is_binder_fd(int fd) {
     {
@@ -458,9 +458,10 @@ BinderInterceptor::onTransact(uint32_t code, const android::Parcel &data, androi
         {
             WriteGuard wg{lock};
             wp<IBinder> t = target;
-            auto it = items.lower_bound(t);
-            if (it == items.end() || it->first != t) {
-                it = items.emplace_hint(it, t, InterceptItem{});
+            auto it = items.find(t);
+            if (it == items.end()) {
+                auto result = items.insert({t, InterceptItem{}});
+                it = result.first;
                 it->second.target = t;
             } else if (it->second.interceptor != nullptr && it->second.interceptor != interceptor) {
                 Parcel data, reply;

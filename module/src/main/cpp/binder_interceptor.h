@@ -7,10 +7,23 @@
 #include <binder/Binder.h>
 #include <utils/StrongPointer.h>
 #include <map>
+#include <unordered_map>
 #include <shared_mutex>
 
 // Using android namespace for convenience if many types from it are used
 using namespace android;
+
+struct WpIBinderHash {
+    std::size_t operator()(const wp<IBinder>& ptr) const {
+        return std::hash<IBinder*>()(ptr.unsafe_get());
+    }
+};
+
+struct WpIBinderEqual {
+    bool operator()(const wp<IBinder>& lhs, const wp<IBinder>& rhs) const {
+        return lhs == rhs;
+    }
+};
 
 class BinderInterceptor : public BBinder {
 public:
@@ -48,7 +61,7 @@ private:
     using WriteGuard = std::unique_lock<RwLock>;
     using ReadGuard = std::shared_lock<RwLock>;
     RwLock lock;
-    std::map<wp<IBinder>, InterceptItem> items{};
+    std::unordered_map<wp<IBinder>, InterceptItem, WpIBinderHash, WpIBinderEqual> items{};
 };
 
 #endif // BINDER_INTERCEPTOR_H
