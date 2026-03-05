@@ -50,6 +50,6 @@ class FilePollerInstrumentationTest {
             println("Benchmark: Detection took ${duration}ms")
         }
 
-        assertTrue("Detection took too long: ${duration}ms. Expected near-instant detection with FileObserver. Test fallback polling took >500ms", detected)
+        assertTrue("Detection took too long: ${duration}ms. Expected near-instant detection with FileObserver. Test fallback polling took $>500ms", detected)
     }
 }
