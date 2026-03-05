@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import android.util.Log
+import cleveres.tricky.cleverestech.BuildConfig
 
 object Logger {
     const val TAG = "SysService"
@@ -88,13 +89,13 @@ object Logger {
 
     @JvmStatic
     inline fun i(msg: () -> String) {
-        if (Log.isLoggable(TAG, Log.INFO)) {
+        if (BuildConfig.DEBUG || Log.isLoggable(TAG, Log.INFO)) {
             i(msg())
         }
     }
 
     @JvmStatic
     fun isDebugEnabled(): Boolean {
-        return Log.isLoggable(TAG, Log.DEBUG)
+        return BuildConfig.DEBUG || Log.isLoggable(TAG, Log.DEBUG)
     }
 }
