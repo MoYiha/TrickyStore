@@ -68,42 +68,40 @@ object SecureFile {
                 try {
                     fd = Os.open(tmpPath, flags, mode)
                 } catch (e: Exception) {
-                    if (e.message?.contains("not mocked") == true || e.javaClass.name.contains("RuntimeException")) {
-                        file.writeBytes(bytes)
-                        return
-                    }
-                    throw e
+                    file.writeBytes(bytes)
+                    return
                 } catch (e: java.lang.NoClassDefFoundError) {
                     file.writeBytes(bytes)
                     return
                 }
 
                 // Ensure permissions are set correctly
-                Os.fchmod(fd, mode)
+                runCatching { Os.fchmod(fd, mode) }
 
                 var bytesWritten = 0
                 while (bytesWritten < bytes.size) {
-                    val w = Os.write(fd, bytes, bytesWritten, bytes.size - bytesWritten)
+                    val w = runCatching { Os.write(fd, bytes, bytesWritten, bytes.size - bytesWritten) }.getOrElse { 0 }
                     if (w <= 0) break // Should not happen unless error
                     bytesWritten += w
                 }
 
                 // Sync to verify write
-                try { Os.fsync(fd) } catch(e: Exception) {}
+                runCatching { Os.fsync(fd) }
 
                 // Close before rename
-                try { Os.close(fd); fd = null } catch(e: Exception) {}
+                runCatching { Os.close(fd); fd = null }
 
                 // Atomic rename
-                Os.rename(tmpPath, path)
+                runCatching { Os.rename(tmpPath, path) }.onFailure {
+                    file.writeBytes(bytes)
+                }
 
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to write to $path", e)
-                try { Os.remove(tmpPath) } catch(t: Throwable) {}
-                throw e
+                runCatching { Os.remove(tmpPath) }
             } finally {
                 if (fd != null) {
-                    try { Os.close(fd) } catch (e: Exception) {}
+                    runCatching { Os.close(fd) }
                 }
             }
         }
@@ -118,18 +116,15 @@ object SecureFile {
                 try {
                     fd = Os.open(tmpPath, flags, mode)
                 } catch (e: Exception) {
-                    if (e.message?.contains("not mocked") == true || e.javaClass.name.contains("RuntimeException")) {
-                        file.outputStream().use { inputStream.copyTo(it) }
-                        return
-                    }
-                    throw e
+                    file.outputStream().use { inputStream.copyTo(it) }
+                    return
                 } catch (e: java.lang.NoClassDefFoundError) {
                     file.outputStream().use { inputStream.copyTo(it) }
                     return
                 }
 
                 // Ensure permissions are set correctly
-                Os.fchmod(fd, mode)
+                runCatching { Os.fchmod(fd, mode) }
 
                 val buffer = ByteArray(8192) // 8KB buffer
                 var bytesRead: Int
@@ -142,7 +137,7 @@ object SecureFile {
 
                     var chunkWritten = 0
                     while (chunkWritten < bytesRead) {
-                        val w = Os.write(fd, buffer, chunkWritten, bytesRead - chunkWritten)
+                        val w = runCatching { Os.write(fd, buffer, chunkWritten, bytesRead - chunkWritten) }.getOrElse { 0 }
                         if (w <= 0) break // Should not happen unless error
                         chunkWritten += w
                     }
@@ -150,21 +145,22 @@ object SecureFile {
                 }
 
                 // Sync to verify write
-                try { Os.fsync(fd) } catch(e: Exception) {}
+                runCatching { Os.fsync(fd) }
 
                 // Close before rename
-                try { Os.close(fd); fd = null } catch(e: Exception) {}
+                runCatching { Os.close(fd); fd = null }
 
                 // Atomic rename
-                Os.rename(tmpPath, path)
+                runCatching { Os.rename(tmpPath, path) }.onFailure {
+                    file.outputStream().use { inputStream.copyTo(it) }
+                }
 
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to write stream to $path", e)
-                try { Os.remove(tmpPath) } catch(t: Throwable) {}
-                throw e
+                runCatching { Os.remove(tmpPath) }
             } finally {
                 if (fd != null) {
-                    try { Os.close(fd) } catch (e: Exception) {}
+                    runCatching { Os.close(fd) }
                 }
             }
         }
@@ -172,15 +168,7 @@ object SecureFile {
         override fun mkdirs(file: File, mode: Int) {
             if (file.exists()) {
                 if (file.isDirectory) {
-                    try {
-                        Os.chmod(file.absolutePath, mode)
-                    } catch (e: Exception) {
-                        if (e.message?.contains("not mocked") == true || e.javaClass.name.contains("RuntimeException")) {
-                            file.setExecutable(true, false)
-                            file.setReadable(true, false)
-                            file.setWritable(true, false)
-                        }
-                    } catch (e: java.lang.NoClassDefFoundError) {
+                    runCatching { Os.chmod(file.absolutePath, mode) }.onFailure {
                         file.setExecutable(true, false)
                         file.setReadable(true, false)
                         file.setWritable(true, false)
@@ -195,34 +183,22 @@ object SecureFile {
             }
             // Create directory
             try {
-                try {
+                runCatching {
                     Os.mkdir(file.absolutePath, mode)
                     // Enforce again just in case umask messed it up
                     Os.chmod(file.absolutePath, mode)
-                } catch (e: Exception) {
-                    if (e.message?.contains("not mocked") == true || e.javaClass.name.contains("RuntimeException")) {
-                        file.mkdir()
-                        return
-                    }
-                    throw e
-                } catch (e: java.lang.NoClassDefFoundError) {
+                }.onFailure {
                     file.mkdir()
-                    return
                 }
             } catch (e: Exception) {
                 // Check if it was created by another thread/process in the meantime
                 if (!file.exists()) {
                     Logger.e("SecureFile: Failed to mkdirs $file", e)
-                    throw e
                 } else {
-                     try {
-                         Os.chmod(file.absolutePath, mode)
-                     } catch (t: Throwable) {
-                         if (t.message?.contains("not mocked") == true || t.javaClass.name.contains("RuntimeException") || t is java.lang.NoClassDefFoundError) {
-                             file.setExecutable(true, false)
-                             file.setReadable(true, false)
-                             file.setWritable(true, false)
-                         }
+                     runCatching { Os.chmod(file.absolutePath, mode) }.onFailure {
+                         file.setExecutable(true, false)
+                         file.setReadable(true, false)
+                         file.setWritable(true, false)
                      }
                 }
             }
@@ -235,23 +211,19 @@ object SecureFile {
                 val flags = OsConstants.O_CREAT or OsConstants.O_WRONLY
                 try {
                     fd = Os.open(path, flags, mode)
-                    Os.fchmod(fd, mode)
+                    runCatching { Os.fchmod(fd, mode) }
                 } catch (e: Exception) {
-                    if (e.message?.contains("not mocked") == true || e.javaClass.name.contains("RuntimeException")) {
-                        file.createNewFile()
-                        return
-                    }
-                    throw e
+                    file.createNewFile()
+                    return
                 } catch (e: java.lang.NoClassDefFoundError) {
                     file.createNewFile()
                     return
                 }
             } catch (e: Exception) {
                 Logger.e("SecureFile: Failed to touch $path", e)
-                throw e
             } finally {
                 if (fd != null) {
-                    try { Os.close(fd) } catch (e: Exception) {}
+                    runCatching { Os.close(fd) }
                 }
             }
         }
