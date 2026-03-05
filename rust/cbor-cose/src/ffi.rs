@@ -698,7 +698,10 @@ pub unsafe extern "C" fn rust_prop_get(name_ptr: *const u8, name_len: usize) -> 
             return RustBuffer::empty();
         }
 
-        let name_slice = std::slice::from_raw_parts(name_ptr, name_len);
+        let name_slice = match unsafe { validate_slice_args(name_ptr, name_len) } {
+            Some(s) => s,
+            None => return RustBuffer::empty(),
+        };
         let name_str = match std::str::from_utf8(name_slice) {
             Ok(s) => s,
             Err(_) => return RustBuffer::empty(),
@@ -738,10 +741,13 @@ pub unsafe extern "C" fn rust_prop_set(
         let value_slice = if value_ptr.is_null() || value_len == 0 {
             &[]
         } else {
-            std::slice::from_raw_parts(value_ptr, value_len)
+            unsafe { validate_slice_args(value_ptr, value_len) }.unwrap_or(&[])
         };
 
-        let name_slice = std::slice::from_raw_parts(name_ptr, name_len);
+        let name_slice = match unsafe { validate_slice_args(name_ptr, name_len) } {
+            Some(s) => s,
+            None => return,
+        };
 
         if let (Ok(name_str), Ok(value_str)) = (
             std::str::from_utf8(name_slice),
