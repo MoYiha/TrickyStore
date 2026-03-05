@@ -51,6 +51,12 @@ object Config {
     @Volatile
     private var moduleHash: ByteArray? = null
     private var isRkpBypass = false
+    private var isSpoofBuild = true
+    private var isSpoofBuildPs = true
+    private var isSpoofProps = false
+    private var isSpoofProvider = false
+    private var isSpoofSignature = false
+    private var isSpoofSdkPs = false
     @Volatile
     private var moduleHashFromVars: ByteArray? = null
 
@@ -68,6 +74,13 @@ object Config {
     private var appConfigState = AppConfigState(PackageTrie())
 
     fun shouldBypassRkp() = isRkpBypass
+
+    fun isSpoofBuild() = isSpoofBuild
+    fun isSpoofBuildPs() = isSpoofBuildPs
+    fun isSpoofProps() = isSpoofProps
+    fun isSpoofProvider() = isSpoofProvider
+    fun isSpoofSignature() = isSpoofSignature
+    fun isSpoofSdkPs() = isSpoofSdkPs
 
     fun setTeeBroken(broken: Boolean) {
         isAutoTeeBroken = broken
@@ -271,6 +284,13 @@ object Config {
         isTeeBrokenMode = f?.exists() == true
         Logger.i("TEE broken mode is ${if (isTeeBrokenMode) "enabled" else "disabled"}")
     }
+
+    private fun updateSpoofBuild(f: File?) { isSpoofBuild = f?.exists() == true; Logger.i("Spoof Build is ${if (isSpoofBuild) "enabled" else "disabled"}") }
+    private fun updateSpoofBuildPs(f: File?) { isSpoofBuildPs = f?.exists() == true; Logger.i("Spoof Build PS is ${if (isSpoofBuildPs) "enabled" else "disabled"}") }
+    private fun updateSpoofProps(f: File?) { isSpoofProps = f?.exists() == true; Logger.i("Spoof Props is ${if (isSpoofProps) "enabled" else "disabled"}") }
+    private fun updateSpoofProvider(f: File?) { isSpoofProvider = f?.exists() == true; Logger.i("Spoof Provider is ${if (isSpoofProvider) "enabled" else "disabled"}") }
+    private fun updateSpoofSignature(f: File?) { isSpoofSignature = f?.exists() == true; Logger.i("Spoof Signature is ${if (isSpoofSignature) "enabled" else "disabled"}") }
+    private fun updateSpoofSdkPs(f: File?) { isSpoofSdkPs = f?.exists() == true; Logger.i("Spoof Sdk PS is ${if (isSpoofSdkPs) "enabled" else "disabled"}") }
 
     private fun updateRkpBypass(f: File?) {
         isRkpBypass = f?.exists() == true
@@ -663,6 +683,12 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val RKP_BYPASS_FILE = "rkp_bypass"
+    private const val SPOOF_BUILD_FILE = "spoof_build"
+    private const val SPOOF_BUILD_PS_FILE = "spoof_build_ps"
+    private const val SPOOF_PROPS_FILE = "spoof_props"
+    private const val SPOOF_PROVIDER_FILE = "spoof_provider"
+    private const val SPOOF_SIGNATURE_FILE = "spoof_signature"
+    private const val SPOOF_SDK_PS_FILE = "spoof_sdk_ps"
     private const val DRM_FIX_FILE = "drm_fix"
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
     private const val MODULE_HASH_FILE = "module_hash"
@@ -880,6 +906,12 @@ object Config {
                 }
 
                 RKP_BYPASS_FILE -> updateRkpBypass(f)
+                SPOOF_BUILD_FILE -> updateSpoofBuild(f)
+                SPOOF_BUILD_PS_FILE -> updateSpoofBuildPs(f)
+                SPOOF_PROPS_FILE -> updateSpoofProps(f)
+                SPOOF_PROVIDER_FILE -> updateSpoofProvider(f)
+                SPOOF_SIGNATURE_FILE -> updateSpoofSignature(f)
+                SPOOF_SDK_PS_FILE -> updateSpoofSdkPs(f)
 
                 DRM_FIX_FILE -> updateDrmFix(f)
 
@@ -909,6 +941,12 @@ object Config {
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateRkpBypass(File(root, RKP_BYPASS_FILE))
+        updateSpoofBuild(File(root, SPOOF_BUILD_FILE))
+        updateSpoofBuildPs(File(root, SPOOF_BUILD_PS_FILE))
+        updateSpoofProps(File(root, SPOOF_PROPS_FILE))
+        updateSpoofProvider(File(root, SPOOF_PROVIDER_FILE))
+        updateSpoofSignature(File(root, SPOOF_SIGNATURE_FILE))
+        updateSpoofSdkPs(File(root, SPOOF_SDK_PS_FILE))
         updateDrmFix(File(root, DRM_FIX_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateModuleHash(File(root, MODULE_HASH_FILE))

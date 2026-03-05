@@ -144,7 +144,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32", "spoof_build", "spoof_build_ps", "spoof_props", "spoof_provider", "spoof_signature", "spoof_sdk_ps")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -376,6 +376,12 @@ class WebServer(
             json.put("hide_sensitive_props", fileExists("hide_sensitive_props"))
             json.put("spoof_region_cn", fileExists("spoof_region_cn"))
             json.put("remove_magisk_32", fileExists("remove_magisk_32"))
+            json.put("spoof_build", fileExists("spoof_build"))
+            json.put("spoof_build_ps", fileExists("spoof_build_ps"))
+            json.put("spoof_props", fileExists("spoof_props"))
+            json.put("spoof_provider", fileExists("spoof_provider"))
+            json.put("spoof_signature", fileExists("spoof_signature"))
+            json.put("spoof_sdk_ps", fileExists("spoof_sdk_ps"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
@@ -1087,6 +1093,18 @@ class WebServer(
     </div>
 
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
+        <div class="panel">
+            <h3>Custom ROM Spoofing (PIF Features)</h3>
+            <div style="font-size:0.85em; color:var(--danger); border:1px solid var(--danger); padding:8px; border-radius:6px; margin-bottom:15px;">
+                These features are generally useful for Custom ROMs. Do not use them on Stock ROMs unless necessary.
+            </div>
+            <div class="row"><label for="spoof_build">Spoof Build</label><input type="checkbox" class="toggle" id="spoof_build" onchange="toggle('spoof_build')"></div>
+            <div class="row"><label for="spoof_build_ps">Spoof Build (Play Store)</label><input type="checkbox" class="toggle" id="spoof_build_ps" onchange="toggle('spoof_build_ps')"></div>
+            <div class="row"><label for="spoof_props">Spoof Props</label><input type="checkbox" class="toggle" id="spoof_props" onchange="toggle('spoof_props')"></div>
+            <div class="row"><label for="spoof_provider">Spoof Provider</label><input type="checkbox" class="toggle" id="spoof_provider" onchange="toggle('spoof_provider')"></div>
+            <div class="row"><label for="spoof_signature">Spoof Signature</label><input type="checkbox" class="toggle" id="spoof_signature" onchange="toggle('spoof_signature')"></div>
+            <div class="row"><label for="spoof_sdk_ps">Spoof Sdk (Play Store)</label><input type="checkbox" class="toggle" id="spoof_sdk_ps" onchange="toggle('spoof_sdk_ps')"></div>
+        </div>
         <div class="panel">
             <h3>DRM / Streaming</h3>
             <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:36px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
