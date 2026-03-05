@@ -49,6 +49,11 @@ jobs:
   instrumentation-test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [31, 32, 33, 34, 35, 36, "36.1"]
+    name: instrumentation-test (API ${{ matrix.api-level }})
     steps:
       - name: Enable KVM
         run: |
@@ -81,7 +86,7 @@ jobs:
       - name: Run Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: ${{ matrix.api-level }}
           target: google_apis
           # Use x86_64 for hardware acceleration on CI (Intel-based runners).
           # ARM emulation is too slow (software-only) and causes timeouts.
