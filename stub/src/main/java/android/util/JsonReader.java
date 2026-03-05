@@ -19,9 +19,10 @@ public class JsonReader implements Closeable {
         try {
             // Read all into a StringBuilder
             StringBuilder sb = new StringBuilder();
-            int ch;
-            while ((ch = in.read()) != -1) {
-                sb.append((char) ch);
+            char[] buffer = new char[8192];
+            int n;
+            while ((n = in.read(buffer)) != -1) {
+                sb.append(buffer, 0, n);
             }
             if (sb.length() == 0) return;
 
