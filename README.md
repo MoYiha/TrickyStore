@@ -26,6 +26,11 @@ CleveresTricky provides comprehensive keystore spoofing with the following capab
 **Integrity Support:**
 - MEETS_USE_BRAIN
 
+
+## Troubleshooting
+
+For instructions on how to read the logs and the best logcat filters to use, please refer to the [Log Documentation](LOG.md).
+
 ## Quick Start
 
 1. Flash the module and reboot
