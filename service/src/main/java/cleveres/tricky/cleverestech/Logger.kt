@@ -4,7 +4,7 @@ import android.util.Log
 import cleveres.tricky.cleverestech.BuildConfig
 
 object Logger {
-    const val TAG = "SysService"
+    const val TAG = "cleverestricky"
 
     interface LogImpl {
         fun d(tag: String, msg: String)

@@ -6,13 +6,13 @@ The module does not use a proprietary log file. Instead, it integrates directly 
 ## Best Logcat Filter
 To view logs specifically for this module, use the following filter in your terminal:
 ```bash
-adb logcat -s SysService
+adb logcat -s cleverestricky
 ```
 
 ## What to Pay Attention To First
 When analyzing logs, pay attention to the following:
 1. **Initialization:** Look for the startup message `Welcome to Service!` to ensure the module is loading.
-2. **Errors:** Look for any `E/SysService` tags which indicate errors (e.g., failure to load config, server start failures).
+2. **Errors:** Look for any `E/cleverestricky` tags which indicate errors (e.g., failure to load config, server start failures).
 3. **WebUI:** Check if `Web server started on port` appears.
 4. **Interceptors:** Verify that `PropertyHiderService registered successfully` and similar Binder interceptor logs appear.
 
