@@ -3,7 +3,6 @@ package cleveres.tricky.encryptor
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -27,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import java.io.ByteArrayOutputStream
@@ -84,18 +84,27 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainApp() {
     var currentScreen by remember { mutableStateOf(Screen.List) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        when (currentScreen) {
-            Screen.List -> KeyboxListScreen(
-                onNavigateToCreate = { currentScreen = Screen.Create }
-            )
-            Screen.Create -> CreateKeyboxScreen(
-                onNavigateBack = { currentScreen = Screen.List }
-            )
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            when (currentScreen) {
+                Screen.List -> KeyboxListScreen(
+                    onNavigateToCreate = { currentScreen = Screen.Create }
+                )
+                Screen.Create -> CreateKeyboxScreen(
+                    onNavigateBack = { currentScreen = Screen.List },
+                    snackbarHostState = snackbarHostState,
+                    coroutineScope = coroutineScope
+                )
+            }
         }
     }
 }
@@ -178,7 +187,11 @@ fun KeyboxItem(file: File) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
+fun CreateKeyboxScreen(
+    onNavigateBack: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
     val context = LocalContext.current
     var author by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -210,7 +223,9 @@ fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
                     if (xmlFilename == null) xmlFilename = "keybox.xml"
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Error reading file: ${e.message}", Toast.LENGTH_SHORT).show()
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Error reading file: ${e.message}")
+                }
             }
         }
     }
@@ -260,7 +275,9 @@ fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
                     val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     val clip = android.content.ClipData.newPlainText("Public Key", publicKey)
                     clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar("Copied to clipboard")
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = WebUiPanel, contentColor = WebUiAccent),
                 border = androidx.compose.foundation.BorderStroke(1.dp, WebUiBorder)
@@ -338,15 +355,21 @@ fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
             Button(
                 onClick = {
                     if (author.isBlank()) {
-                        Toast.makeText(context, "Author required", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Author required")
+                        }
                         return@Button
                     }
                     if (password.isBlank() || password != confirmPassword) {
-                        Toast.makeText(context, "Passwords do not match or empty", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Passwords do not match or empty")
+                        }
                         return@Button
                     }
                     if (xmlContent == null) {
-                        Toast.makeText(context, "Select an XML file", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Select an XML file")
+                        }
                         return@Button
                     }
 
@@ -356,10 +379,14 @@ fun CreateKeyboxScreen(onNavigateBack: () -> Unit) {
                         file.outputStream().use { stream ->
                             CryptoUtils.encryptAndWriteCbox(stream, xmlContent!!, author, password)
                         }
-                        Toast.makeText(context, "Saved to ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Saved to ${file.absolutePath}")
+                        }
                         onNavigateBack() // Go back to list
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Error saving: ${e.message}")
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
