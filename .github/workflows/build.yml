@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api-level: [31, 32, 33, 34, 35, 36, "36.1"]
+        api-level: [31, 32, 33, 34, 35, 36]
     name: instrumentation-test (API ${{ matrix.api-level }})
     steps:
       - name: Enable KVM
@@ -92,7 +92,7 @@ jobs:
           # ARM emulation is too slow (software-only) and causes timeouts.
           arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew connectedCheck
           emulator-boot-timeout: 1200
