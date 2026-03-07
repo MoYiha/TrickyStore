@@ -263,11 +263,11 @@ Generates fresh IMEI (Luhn-compliant), Serial, MAC addresses, and selects a rand
 
 ## 🙏 Acknowledgements
 
-- [PlayIntegrityFix](https://github.com/chiteroman/PlayIntegrityFix) — Original inspiration
-- [FrameworkPatch](https://github.com/chiteroman/FrameworkPatch) — Framework patching
-- [BootloaderSpoofer](https://github.com/chiteroman/BootloaderSpoofer) — Bootloader state spoofing
-- [KeystoreInjection](https://github.com/aviraxp/Zygisk-KeystoreInjection) — Zygisk-based injection
-- [LSPosed](https://github.com/LSPosed/LSPosed) — Xposed framework
+- [PlayIntegrityFix](https://github.com/chiteroman/PlayIntegrityFix) - Original inspiration
+- [FrameworkPatch](https://github.com/chiteroman/FrameworkPatch) - Framework patching
+- [BootloaderSpoofer](https://github.com/chiteroman/BootloaderSpoofer) - Bootloader state spoofing
+- [KeystoreInjection](https://github.com/aviraxp/Zygisk-KeystoreInjection) - Zygisk-based injection
+- [LSPosed](https://github.com/LSPosed/LSPosed) - Xposed framework
 
 ## 💬 Community
 
