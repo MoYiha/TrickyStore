@@ -93,6 +93,9 @@ tasks.register<Exec>("cargoBuild") {
 
     dependsOn("installRustTargets")
 
+    // Treat Rust warnings as errors
+    environment("RUSTFLAGS", "-D warnings")
+
     // Using cargo-ndk to build for all supported ABIs.
     commandLine(
         "cargo", "ndk",

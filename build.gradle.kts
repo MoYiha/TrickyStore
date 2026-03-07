@@ -103,4 +103,14 @@ subprojects {
             targetCompatibility = androidTargetCompatibility
         }
     }
+
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            allWarningsAsErrors = true
+        }
+    }
+
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.addAll(listOf("-Werror", "-Xlint:all", "-Xlint:-options", "-Xlint:-path"))
+    }
 }

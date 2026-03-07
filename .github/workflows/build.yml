@@ -169,6 +169,8 @@ jobs:
   rust-test:
     needs: safety-check
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
     defaults:
       run:
         working-directory: rust/cbor-cose

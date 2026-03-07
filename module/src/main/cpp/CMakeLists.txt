@@ -16,6 +16,9 @@ endif()
 # We still want GC sections everywhere to reduce size, but don't strip symbols in debug
 add_link_options(-Wl,--gc-sections)
 
+# Treat all warnings as errors for C/C++
+add_compile_options(-Werror -Wall -Wextra)
+
 
 add_library(elf_util STATIC elf_util/elf_util.cpp)
 add_library(my_logging STATIC logging/logging.cpp)
