@@ -55,11 +55,11 @@ A Magisk/KernelSU module that provides certificate-level keystore spoofing, syst
 
 ## 🚀 Quick Start
 
-1. **Install** — Flash the module ZIP from Magisk/KernelSU manager and reboot
-2. **Configure** — Open WebUI at `http://localhost:5623` (port shown in module logs)
-3. **Add Keybox** *(optional)* — Place `keybox.xml` at `/data/adb/cleverestricky/keybox.xml`
-4. **Enable RKP** *(for STRONG integrity)* — `touch /data/adb/cleverestricky/rkp_bypass`
-5. **Set Targets** *(optional)* — Add package names to `/data/adb/cleverestricky/target.txt`
+1. **Install** Flash the module ZIP from Magisk/KernelSU manager and reboot
+2. **Configure** Open WebUI at `http://localhost:5623` (port shown in module logs)
+3. **Add Keybox** *(optional)* Place `keybox.xml` at `/data/adb/cleverestricky/keybox.xml`
+4. **Enable RKP** *(for STRONG integrity)* `touch /data/adb/cleverestricky/rkp_bypass`
+5. **Set Targets** *(optional)* Add package names to `/data/adb/cleverestricky/target.txt`
 
 > **Tip:** Configuration changes take effect immediately — no reboot needed.
 
