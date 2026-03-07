@@ -2325,16 +2325,16 @@ class WebServer(
                     val name = entry.name
                     if (!name.contains("..") && !name.startsWith("/") && !name.contains("\\")) {
                         val file = File(configDir, name)
-                        if (!file.canonicalPath.equals(configDir.canonicalPath) && !file.canonicalPath.startsWith(configDir.canonicalPath + File.separator)) {
-                            continue
-                        }
-                        if (name.startsWith("keyboxes/")) {
-                            File(configDir, "keyboxes").mkdirs()
-                        }
-                        if (!entry.isDirectory) {
-                            SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
+                        if (file.canonicalPath.equals(configDir.canonicalPath) || file.canonicalPath.startsWith(configDir.canonicalPath + File.separator)) {
+                            if (name.startsWith("keyboxes/")) {
+                                File(configDir, "keyboxes").mkdirs()
+                            }
+                            if (!entry.isDirectory) {
+                                SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
+                            }
                         }
                     }
+                    zis.closeEntry()
                     entry = zis.nextEntry
                 }
             }
