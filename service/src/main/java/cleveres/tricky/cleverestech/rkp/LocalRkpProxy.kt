@@ -55,7 +55,7 @@ object LocalRkpProxy {
             }
         } catch (e: Throwable) {
             Logger.e("LocalRkpProxy: Failed to load key, using random ephemeral", e)
-            java.util.Random().nextBytes(serverHmacKey)
+            java.security.SecureRandom().nextBytes(serverHmacKey)
         }
     }
 

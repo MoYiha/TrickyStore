@@ -195,7 +195,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             Logger.i("no TEE SecurityLevel found!")
         }
         if (strongBox != null) {
-            Logger.i("register for StrongBox SecurityLevel $tee!")
+            Logger.i("register for StrongBox SecurityLevel $strongBox!")
             val interceptor = SecurityLevelInterceptor(strongBox, SecurityLevel.STRONGBOX)
             registerBinderInterceptor(bd, strongBox.asBinder(), interceptor)
             strongBoxInterceptor = interceptor

@@ -47,24 +47,24 @@ type cleverestricky_public_file, file_type, data_file_type, mlstrustedobject;
 allow * cleverestricky_public_file:file { read open getattr map };
 
 # allow hooking system server
-allow system_server system_server process execmem
-allow zygote zygote process execmem
+allow system_server system_server process execmem;
+allow zygote zygote process execmem;
 
 # allow zygote unmounting
-allow zygote adb_data_file dir search
-allow zygote mnt_vendor_file dir search
-allow zygote system_file dir mounton
-allow zygote labeledfs filesystem mount
-allow zygote fs_type filesystem unmount
+allow zygote adb_data_file dir search;
+allow zygote mnt_vendor_file dir search;
+allow zygote system_file dir mounton;
+allow zygote labeledfs filesystem mount;
+allow zygote fs_type filesystem unmount;
 
-allow zygote unlabeled file { open read getattr }
-allow zygote zygote capability sys_chroot
-allow zygote nsfs file { open read }
+allow zygote unlabeled file { open read getattr };
+allow zygote zygote capability sys_chroot;
+allow zygote nsfs file { open read };
 
 # TelephonyInterceptor support (System-Wide IMEI Spoofing)
-allow radio radio process execmem
-allow cleverestricky_daemon radio:process { ptrace }
-allow radio cleverestricky_daemon:binder { call transfer }
-allow cleverestricky_daemon radio:binder { transfer }
+allow radio radio process execmem;
+allow cleverestricky_daemon radio:process { ptrace };
+allow radio cleverestricky_daemon:binder { call transfer };
+allow cleverestricky_daemon radio:binder { transfer };
 allow cleverestricky_daemon keystore:unix_dgram_socket { sendto };
 allow system_file keystore:unix_dgram_socket { sendto };
