@@ -31,7 +31,9 @@ jobs:
 
             # allow/dontaudit/neverallow/auditallow statements must end with ;
             if echo "$trimmed" | grep -qE '^(allow|dontaudit|neverallow|auditallow) '; then
-              if [[ "$trimmed" != *";" ]]; then
+              # Strip trailing inline comments (e.g. "allow ... { exec }; # comment")
+              statement=$(echo "$trimmed" | sed 's/#.*//' | sed 's/[[:space:]]*$//')
+              if [[ "$statement" != *";" ]]; then
                 echo "::error file=module/template/sepolicy.rule,line=$LINE_NUM::Missing semicolon: $trimmed"
                 ERRORS=$((ERRORS + 1))
               fi
