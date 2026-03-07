@@ -59,7 +59,7 @@
 4. **Enable RKP** *(for STRONG integrity)* `touch /data/adb/cleverestricky/rkp_bypass`
 5. **Set Targets** *(optional)* Add package names to `/data/adb/cleverestricky/target.txt`
 
-> **Tip:** Configuration changes take effect immediately — no reboot needed.
+> **Tip:** Configuration changes take effect immediately, no reboot needed.
 
 ---
 
