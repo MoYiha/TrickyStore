@@ -79,8 +79,8 @@ object ZipProcessor {
 
             // Priority: config.json > individual files
             if (config != null) {
-                if (config!!.has("password")) password = config!!.getString("password")
-                if (config!!.has("public_key")) publicKey = config!!.getString("public_key")
+                if (config.has("password")) password = config.getString("password")
+                if (config.has("public_key")) publicKey = config.getString("public_key")
             }
 
             return ProcessedPack(cboxFiles, password, publicKey, config)

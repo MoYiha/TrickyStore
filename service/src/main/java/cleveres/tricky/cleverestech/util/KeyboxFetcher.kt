@@ -164,12 +164,12 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
     }
 
     private fun getPem(key: PrivateKey): String {
-        val encoded = Base64.getMimeEncoder(64, byteArrayOf(10)).encodeToString(key.encoded)
+        val encoded = Base64.getEncoder().encodeToString(key.encoded)
         return "-----BEGIN PRIVATE KEY-----\n$encoded\n-----END PRIVATE KEY-----"
     }
 
     private fun getPem(cert: Certificate): String {
-        val encoded = Base64.getMimeEncoder(64, byteArrayOf(10)).encodeToString(cert.encoded)
+        val encoded = Base64.getEncoder().encodeToString(cert.encoded)
         return "-----BEGIN CERTIFICATE-----\n$encoded\n-----END CERTIFICATE-----"
     }
 

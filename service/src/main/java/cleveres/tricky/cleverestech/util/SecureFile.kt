@@ -65,8 +65,6 @@ object SecureFile {
             try {
                 val mode = 384
                 val flags = OsConstants.O_CREAT or OsConstants.O_TRUNC or OsConstants.O_WRONLY
-                try {
-                    fd = Os.open(tmpPath, flags, mode)
                 } catch (e: Exception) {
                     file.writeBytes(bytes)
                     return
