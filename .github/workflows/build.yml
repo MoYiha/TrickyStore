@@ -11,7 +11,163 @@ permissions:
   contents: write
 
 jobs:
+  # ============================================================
+  # Phase 1: Safety & Quality Gate (runs first, gates everything)
+  # ============================================================
+
+  safety-check:
+    name: "🛡️ Safety & Quality Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: "🔒 SELinux Policy — Check semicolons"
+        run: |
+          echo "=== Checking sepolicy.rule for missing semicolons ==="
+          ERRORS=0
+          LINE_NUM=0
+          while IFS= read -r line; do
+            LINE_NUM=$((LINE_NUM + 1))
+            trimmed=$(echo "$line" | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
+            [ -z "$trimmed" ] && continue
+            [[ "$trimmed" == \#* ]] && continue
+            [[ "$trimmed" == type\ * ]] && continue
+
+            if echo "$trimmed" | grep -qE '^(allow|dontaudit|neverallow|auditallow) '; then
+              statement=$(echo "$trimmed" | sed 's/#.*//' | sed 's/[[:space:]]*$//')
+              if [[ "$statement" != *";" ]]; then
+                echo "::error file=module/template/sepolicy.rule,line=$LINE_NUM::Missing semicolon: $trimmed"
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done < module/template/sepolicy.rule
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::$ERRORS sepolicy statement(s) missing semicolons! This WILL break policy compilation on device."
+            exit 1
+          fi
+          echo "✅ All sepolicy statements properly terminated"
+
+      - name: "🔑 Security — Check for insecure PRNG"
+        run: |
+          echo "=== Scanning for java.util.Random in production code ==="
+          ERRORS=0
+          FILES=$(grep -rl "java\.util\.Random" --include="*.kt" --include="*.java" service/ module/ 2>/dev/null || true)
+          for f in $FILES; do
+            LINES=$(grep -n "java\.util\.Random" "$f" | grep -iv "test" || true)
+            if [ -n "$LINES" ]; then
+              while IFS= read -r match; do
+                LINE_NUM=$(echo "$match" | cut -d: -f1)
+                echo "::error file=$f,line=$LINE_NUM::Insecure java.util.Random in production code. Use java.security.SecureRandom."
+                ERRORS=$((ERRORS + 1))
+              done <<< "$LINES"
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then
+            exit 1
+          fi
+          echo "✅ No insecure PRNG usage"
+
+      - name: "🦀 Security — Check for unwrap/expect in Rust FFI"
+        run: |
+          echo "=== Scanning for unwrap()/expect() near FFI boundary ==="
+          for f in $(find rust/ -name "*.rs" ! -path "*/test*"); do
+            if grep -q 'extern "C"' "$f" 2>/dev/null; then
+              MATCHES=$(awk '
+                /^#\[cfg\(test\)\]/ { in_test=1 }
+                /^mod tests/ { in_test=1 }
+                in_test && /^}$/ { in_test=0 }
+                !in_test && /\.(unwrap|expect)\(/ { print NR": "$0 }
+              ' "$f" 2>/dev/null || true)
+              if [ -n "$MATCHES" ]; then
+                while IFS= read -r match; do
+                  LINE_NUM=$(echo "$match" | cut -d: -f1)
+                  echo "::warning file=$f,line=$LINE_NUM::unwrap()/expect() found near FFI boundary"
+                done <<< "$MATCHES"
+              fi
+            fi
+          done
+          echo "✅ FFI panic safety check complete"
+
+      - name: "⚡ Performance — Check binder FD caching"
+        run: |
+          if grep -q 'if (is_binder)' module/src/main/cpp/binder_interceptor.cpp 2>/dev/null; then
+            if ! grep -q 'g_binder_fds\[fd\] = is_binder' module/src/main/cpp/binder_interceptor.cpp 2>/dev/null; then
+              echo "::warning file=module/src/main/cpp/binder_interceptor.cpp::is_binder_fd may not cache negative results"
+            fi
+          fi
+          echo "✅ Performance check complete"
+
+      - name: "📱 Real-World — Validate Magisk/KernelSU module structure"
+        run: |
+          ERRORS=0
+          for f in module.prop customize.sh service.sh post-fs-data.sh sepolicy.rule; do
+            if [ ! -f "module/template/$f" ]; then
+              echo "::error::Missing required module file: module/template/$f"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+          if [ -f "module/template/module.prop" ]; then
+            for field in id name version versionCode author description; do
+              if ! grep -q "^${field}=" "module/template/module.prop"; then
+                echo "::error file=module/template/module.prop::Missing required field: $field"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+          fi
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Module structure valid"
+
+      - name: "📱 Real-World — Validate shell scripts"
+        run: |
+          ERRORS=0
+          for script in module/template/customize.sh module/template/service.sh module/template/post-fs-data.sh; do
+            if [ -f "$script" ]; then
+              if ! bash -n "$script" 2>/dev/null; then
+                echo "::error file=$script::Shell syntax error"
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Shell scripts valid"
+
+      - name: "📱 Real-World — Validate Rust static libraries"
+        run: |
+          ERRORS=0
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            LIB="module/src/main/cpp/external/rust_libs/$abi/libcbor_cose.a"
+            if [ ! -f "$LIB" ]; then
+              echo "::warning::Missing Rust library for $abi"
+            else
+              SIZE=$(stat -c%s "$LIB" 2>/dev/null || stat -f%z "$LIB" 2>/dev/null)
+              if [ "$SIZE" -lt 1000 ]; then
+                echo "::error file=$LIB::Rust library suspiciously small ($SIZE bytes)"
+                ERRORS=$((ERRORS + 1))
+              fi
+            fi
+          done
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Rust libraries valid"
+
+      - name: "🔗 Real-World — Check Binder transaction code consistency"
+        run: |
+          CPP_PROP_CODE=$(grep -oP 'REGISTER_PROPERTY_SERVICE\s*=\s*\K\d+' module/src/main/cpp/binder_interceptor.cpp 2>/dev/null || echo "not_found")
+          KT_PROP_CODE=$(grep -oP 'REGISTER_PROPERTY_SERVICE_TRANSACTION_CODE\s*=\s*\K\d+' service/src/main/java/cleveres/tricky/cleverestech/binder/BinderInterceptor.kt 2>/dev/null || echo "not_found")
+          if [ "$CPP_PROP_CODE" != "not_found" ] && [ "$KT_PROP_CODE" != "not_found" ]; then
+            if [ "$CPP_PROP_CODE" != "$KT_PROP_CODE" ]; then
+              echo "::error::Binder transaction code mismatch! C++=$CPP_PROP_CODE vs Kotlin=$KT_PROP_CODE"
+              exit 1
+            fi
+          fi
+          echo "✅ Binder codes consistent"
+
+  # ============================================================
+  # Phase 2: Rust Tests (after safety check)
+  # ============================================================
+
   rust-test:
+    needs: safety-check
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,7 +202,12 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
+  # ============================================================
+  # Phase 3: Instrumentation Tests (after safety check)
+  # ============================================================
+
   instrumentation-test:
+    needs: safety-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -88,8 +249,6 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis
-          # Use x86_64 for hardware acceleration on CI (Intel-based runners).
-          # ARM emulation is too slow (software-only) and causes timeouts.
           arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
@@ -99,7 +258,12 @@ jobs:
         env:
           ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: 60
 
+  # ============================================================
+  # Phase 4: Build & Release (after Rust tests pass)
+  # ============================================================
+
   build:
+    needs: rust-test
     runs-on: ubuntu-latest
     steps:
       - name: Check out
