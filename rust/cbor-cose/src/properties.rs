@@ -6,7 +6,9 @@ static PROPERTIES: RwLock<Option<AHashMap<String, String>>> = RwLock::new(None);
 pub fn get_property<R, F: FnOnce(&str) -> R>(name: &str, f: F) -> Option<R> {
     // Avoid panics inside Zygote
     if let Ok(cache) = PROPERTIES.read() {
-        cache.as_ref().and_then(|c| c.get(name).map(|s| f(s.as_str())))
+        cache
+            .as_ref()
+            .and_then(|c| c.get(name).map(|s| f(s.as_str())))
     } else {
         None
     }
