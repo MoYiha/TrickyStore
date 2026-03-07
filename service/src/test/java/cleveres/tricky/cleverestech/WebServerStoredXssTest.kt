@@ -59,16 +59,20 @@ class WebServerStoredXssTest {
         val session = object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("host" to "localhost")
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = mapOf("host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.GET
             override fun getParms() = mapOf("token" to webServer.token)
-            override fun getParameters() = emptyMap<String, List<String>>()
-            override fun getQueryParameterString() = ""
+            override fun getParameters(): Map<String, List<String>> = emptyMap<String, List<String>>()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/app_config_structured"
             override fun parseBody(files: MutableMap<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
         }
 
         val response = webServer.serve(session)

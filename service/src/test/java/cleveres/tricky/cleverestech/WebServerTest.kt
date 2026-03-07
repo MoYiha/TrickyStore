@@ -26,26 +26,32 @@ class WebServerTest {
         File(keyboxDir, "ignore.txt").createNewFile()
 
         // Init WebServer with no-op permission setter
-        val server = WebServer(0, tempDir) { _, _ -> }
+        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
+        server.token = "testtoken"
+        server.token = "testtoken"
 
         // Create dummy session
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders() = hashMapOf("host" to "localhost")
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to "testtoken")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {
                 val map = HashMap<String, String>()
-                map["token"] = server.token // Auth token
+                map["token"] = "testtoken" // Auth token
                 return map
             }
-            override fun getQueryParameterString() = ""
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/keyboxes"
             override fun parseBody(files: Map<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = HashMap()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
         }
 
         val response = server.serve(session)
@@ -68,26 +74,32 @@ class WebServerTest {
         tempDir.mkdirs()
 
         // Init WebServer
-        val server = WebServer(0, tempDir) { _, _ -> }
+        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
+        server.token = "testtoken"
+        server.token = "testtoken"
 
         // Create dummy session
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders() = hashMapOf("host" to "localhost")
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to "testtoken")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {
                  val map = HashMap<String, String>()
-                 map["token"] = server.token
+                 map["token"] = "testtoken"
                  return map
             }
-            override fun getQueryParameterString() = ""
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/"
             override fun parseBody(files: Map<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = HashMap()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
         }
 
         val response = server.serve(session)
@@ -109,25 +121,31 @@ class WebServerTest {
         tempDir.mkdirs()
         File(tempDir, "keyboxes").mkdirs()
 
-        val server = WebServer(0, tempDir) { _, _ -> }
+        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
+        server.token = "testtoken"
+        server.token = "testtoken"
 
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders() = hashMapOf("host" to "localhost", "content-length" to "0") // Must add content-length for POST
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = hashMapOf("host" to "localhost", "content-length" to "0", "x-auth-token" to "testtoken") // Must add content-length for POST
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.POST
             override fun getParms(): Map<String, String> {
                 val map = HashMap<String, String>()
-                map["token"] = server.token
+                map["token"] = "testtoken"
                 return map
             }
-            override fun getQueryParameterString() = ""
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/verify_keyboxes"
             override fun parseBody(files: Map<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = HashMap()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
         }
 
         // Just check that it doesn't crash with MethodNotFound or similar.

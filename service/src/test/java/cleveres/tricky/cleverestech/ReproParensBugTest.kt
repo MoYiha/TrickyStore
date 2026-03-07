@@ -45,7 +45,8 @@ class ReproParensBugTest {
         return object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf(
@@ -53,12 +54,15 @@ class ReproParensBugTest {
                 "filename" to filename,
                 "content" to content
             )
-            override fun getParameters() = emptyMap<String, List<String>>()
-            override fun getQueryParameterString() = ""
+            override fun getParameters(): Map<String, List<String>> = emptyMap<String, List<String>>()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/save"
             override fun parseBody(files: MutableMap<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
         }
     }
 

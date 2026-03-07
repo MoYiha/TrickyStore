@@ -341,7 +341,7 @@ object Config {
                      if (l.startsWith("[") && l.endsWith("]")) {
                          // Save previous
                          if (currentTemplate != null && currentProps != null) {
-                             newTemplates[currentTemplate!!] = currentProps!!
+                             currentTemplate?.let { t -> currentProps?.let { p -> newTemplates[t] = p } }
                          }
                          currentTemplate = l.substring(1, l.length - 1).lowercase()
                          // Extend existing or create new
@@ -355,8 +355,10 @@ object Config {
                  }
              }
              // Save last
-             if (currentTemplate != null && currentProps != null) {
-                 newTemplates[currentTemplate!!] = currentProps!!
+             val t = currentTemplate
+             val p = currentProps
+             if (t != null && p != null) {
+                 newTemplates[t] = p
              }
         }
         templates = newTemplates
@@ -1040,9 +1042,9 @@ object Config {
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
-        if (packages.isEmpty()) return false
+        if (packages.isEmpty()) return@runCatching false
         val ps = getPackages(callingUid)
-        if (ps.isEmpty()) return false
+        if (ps.isEmpty()) return@runCatching false
         ps.any { pkgName -> matchesPackage(pkgName, packages) }
     }.onFailure { Logger.e("failed to get packages", it) }.getOrNull() ?: false
 

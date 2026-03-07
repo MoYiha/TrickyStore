@@ -13,7 +13,8 @@ class WebServerHostValidationTest {
         return object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
-            override fun getHeaders(): Map<String, String> {
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders(): Map<String, String> {
                 val map = HashMap<String, String>()
                 if (hostHeader != null) map["host"] = hostHeader
                 if (hostHeader != null) map["origin"] = "http://$hostHeader"
@@ -26,12 +27,15 @@ class WebServerHostValidationTest {
                 map["token"] = server.token
                 return map
             }
-            override fun getQueryParameterString() = ""
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/config"
             override fun parseBody(files: Map<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = HashMap()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
         }
     }
 
@@ -41,7 +45,9 @@ class WebServerHostValidationTest {
         tempDir.mkdirs()
 
         // Use no-op permission setter
-        val server = WebServer(0, tempDir) { _, _ -> }
+        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
+        server.token = "testtoken"
+        server.token = "testtoken"
 
         // Test Case 1: Valid Host (localhost)
         val sessionLocalhost = createSession(server, "localhost:8080")

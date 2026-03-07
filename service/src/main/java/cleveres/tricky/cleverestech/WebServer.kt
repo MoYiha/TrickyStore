@@ -57,7 +57,7 @@ class WebServer(
     }
 
     init { cleveres.tricky.cleverestech.util.LoggerConfig.disableNanoHttpdLogging() }
-    val token = UUID.randomUUID().toString()
+    var token = UUID.randomUUID().toString()
     private val MAX_UPLOAD_SIZE = 10 * 1024 * 1024L // 10MB for ZIPs
     private val MAX_BODY_SIZE = 5 * 1024 * 1024L // 5MB for non-multipart requests
 
@@ -333,7 +333,8 @@ class WebServer(
     private fun serveInternal(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
-        val params = session.parameters
+        @Suppress("DEPRECATION")
+        val params = session.parms
         val headers = session.headers
 
         if (!isSafeHost(headers["host"])) return secureResponse(Response.Status.FORBIDDEN, "text/plain", "Invalid Host header")
@@ -448,9 +449,9 @@ class WebServer(
         if (uri == "/api/unlock_cbox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val password = session.parameters["password"]
-             val pubKey = session.parameters["public_key"]
+             val filename = session.parameters["filename"]?.firstOrNull()
+             val password = session.parameters["password"]?.firstOrNull()
+             val pubKey = session.parameters["public_key"]?.firstOrNull()
 
              if (filename != null && password != null) {
                  if (CboxManager.unlock(filename, password, pubKey)) {
@@ -486,7 +487,7 @@ class WebServer(
         if (uri == "/api/server/add" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = session.parameters["data"]
+             val jsonStr = session.parameters["data"]?.firstOrNull()
              if (jsonStr != null) {
                  try {
                      val obj = JSONObject(jsonStr)
@@ -519,7 +520,7 @@ class WebServer(
         if (uri == "/api/server/delete" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val id = session.parameters["id"]
+             val id = session.parameters["id"]?.firstOrNull()
              if (id != null) {
                  ServerManager.removeServer(id)
                  Config.updateKeyBoxes()
@@ -531,7 +532,7 @@ class WebServer(
         if (uri == "/api/server/refresh" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val id = session.parameters["id"]
+             val id = session.parameters["id"]?.firstOrNull()
              if (id != null) {
                  val s = ServerManager.getServers().find { it.id == id }
                  if (s != null) {
@@ -655,7 +656,7 @@ class WebServer(
         if (uri == "/api/app_config_structured" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = session.parameters["data"]
+             val jsonStr = session.parameters["data"]?.firstOrNull()
              if (jsonStr != null) {
                  try {
                      val array = JSONArray(jsonStr)
@@ -714,8 +715,8 @@ class WebServer(
         if (uri == "/api/save" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val content = session.parameters["content"]
+             val filename = session.parameters["filename"]?.firstOrNull()
+             val content = session.parameters["content"]?.firstOrNull()
              if (filename != null && isValidFilename(filename) && content != null) {
                  if (validateContent(filename, content)) {
                      if (saveFile(filename, content)) {
@@ -731,8 +732,8 @@ class WebServer(
         if (uri == "/api/upload_keybox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val content = session.parameters["content"] // Raw text content for XML
+             val filename = session.parameters["filename"]?.firstOrNull()
+             val content = session.parameters["content"]?.firstOrNull() // Raw text content for XML
              // For binary upload (CBOX/ZIP), we might need multipart or read raw body
              // Since WebUI uses multipart or simple body for text...
              // Wait, for binary files, we need better upload handling.
@@ -797,7 +798,7 @@ class WebServer(
         if (uri == "/api/delete_keybox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
+             val filename = session.parameters["filename"]?.firstOrNull()
              if (filename != null && isValidFilename(filename)) {
                  synchronized(fileLock) {
                      val keyboxDir = File(configDir, "keyboxes")
@@ -838,7 +839,7 @@ class WebServer(
         if (uri == "/api/apply_profile" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val profileName = session.parameters["profile"]
+             val profileName = session.parameters["profile"]?.firstOrNull()
              if (profileName != null) {
                  synchronized(fileLock) {
                      try {
@@ -856,8 +857,8 @@ class WebServer(
         if (uri == "/api/toggle" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val setting = session.parameters["setting"]
-             val value = session.parameters["value"]
+             val setting = session.parameters["setting"]?.firstOrNull()
+             val value = session.parameters["value"]?.firstOrNull()
              if (setting != null && value != null) {
                  if (toggleFile(setting, value.toBoolean())) return secureResponse(Response.Status.OK, "text/plain", "Toggled")
              }

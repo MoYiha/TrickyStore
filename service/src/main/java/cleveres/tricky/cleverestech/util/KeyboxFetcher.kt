@@ -21,9 +21,9 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
 
     class DefaultNetworkClient : NetworkClient {
 
-        override fun fetch(urlStr: String): String? {
+        override fun fetch(url: String): String? {
             return try {
-                val url = URL(urlStr)
+                val url = URL(url)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 15000
                 conn.readTimeout = 15000
@@ -51,11 +51,11 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
                     }
                     sb.toString()
                 } else {
-                    Logger.e("Fetcher: Failed to fetch $urlStr: ${conn.responseCode}")
+                    Logger.e("Fetcher: Failed to fetch $url: ${conn.responseCode}")
                     null
                 }
             } catch (e: Exception) {
-                Logger.e("Fetcher: Exception fetching $urlStr", e)
+                Logger.e("Fetcher: Exception fetching $url", e)
                 null
             }
         }

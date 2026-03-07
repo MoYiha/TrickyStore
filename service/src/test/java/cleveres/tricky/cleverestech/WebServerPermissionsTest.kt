@@ -126,7 +126,8 @@ class WebServerPermissionsTest {
     ) : NanoHTTPD.IHTTPSession {
         override fun execute() {}
         override fun getCookies() = server.CookieHandler(HashMap())
-        override fun getHeaders(): Map<String, String> {
+        @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders(): Map<String, String> {
             val h = HashMap<String, String>()
             h["host"] = "localhost"
             h["x-auth-token"] = token
@@ -136,11 +137,14 @@ class WebServerPermissionsTest {
         override fun getInputStream() = null
         override fun getMethod() = method
         override fun getParms() = params
-        override fun getQueryParameterString() = ""
+        @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
         override fun getUri() = uri
         override fun parseBody(files: Map<String, String>?) {}
-        override fun getRemoteIpAddress() = "127.0.0.1"
-        override fun getRemoteHostName() = "localhost"
-        override fun getParameters() = emptyMap<String, List<String>>()
+        @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+        @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+        override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
     }
 }
