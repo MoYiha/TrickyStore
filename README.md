@@ -4,7 +4,7 @@
 
 **Advanced Attestation & Identity Spoofing Module for Android 12+**
 
-A Magisk/KernelSU module that provides certificate-level keystore spoofing, system property manipulation, and identity mutation — all at the Binder layer, invisible to DroidGuard and Google Mobile Services.
+Advanced Spoofing Module for Android
 
 ---
 
