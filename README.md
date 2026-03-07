@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml/badge.svg)](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml)
 
-** Advanced Spoofing Module for Android
+### Advanced Spoofing Module for Android
 
 ---
 
