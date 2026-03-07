@@ -136,7 +136,7 @@ jobs:
         run: |
           ERRORS=0
           for abi in arm64-v8a armeabi-v7a x86 x86_64; do
-            LIB="module/src/main/cpp/external/rust_libs/$abi/libcbor_cose.a"
+            LIB="module/src/main/cpp/external/rust_libs/$abi/libcleverestricky_cbor_cose.a"
             if [ ! -f "$LIB" ]; then
               echo "::warning::Missing Rust library for $abi"
             else
