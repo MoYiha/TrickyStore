@@ -1,38 +1,60 @@
 ---
-name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
+name: Bug Report
+about: Report a bug or unexpected behavior
+title: '[BUG] '
+labels: 'bug'
 assignees: ''
-
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Environment
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+- **Device:** (e.g., Pixel 8 Pro, Samsung Galaxy S24)
+- **Android Version:** (e.g., Android 14, API 34)
+- **Root Method:** (Magisk / KernelSU / APatch)
+- **Root Version:** (e.g., Magisk 27.0, KernelSU 1.0.0)
+- **Module Version:** (e.g., v3.2.1 — check WebUI or `module.prop`)
+- **Zygisk:** (Enabled / Disabled / Zygisk Next)
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Description
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+A clear description of the bug.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+## Steps to Reproduce
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+1. ...
+2. ...
+3. ...
 
-**Additional context**
-Add any other context about the problem here.
+## Expected Behavior
+
+What should have happened?
+
+## Actual Behavior
+
+What actually happened?
+
+## Logs
+
+> **Required.** Without logs, your issue may be closed.
+> See [LOG.md](https://github.com/tryigit/CleveresTricky/blob/master/LOG.md) for logcat filter instructions.
+
+<details>
+<summary>Click to expand logs</summary>
+
+```
+Paste your logcat output here
+```
+
+</details>
+
+## Integrity Check Result
+
+If applicable, include the output from [Play Integrity API Checker](https://play.google.com/store/apps/details?id=gr.nickas.playintegrity):
+
+- MEETS_BASIC_INTEGRITY: ✅ / ❌
+- MEETS_DEVICE_INTEGRITY: ✅ / ❌
+- MEETS_STRONG_INTEGRITY: ✅ / ❌
+
+## Additional Context
+
+Any other information (screenshots, configuration files, etc.)
