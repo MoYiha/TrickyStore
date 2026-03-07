@@ -49,9 +49,7 @@ A Magisk/KernelSU module that provides certificate-level keystore spoofing, syst
 | **CI Pipeline** | Safety gate → Rust tests → Instrumentation tests → Build & release |
 
 ### ✅ Integrity Levels
-- **MEETS_BASIC_INTEGRITY** ✅
-- **MEETS_DEVICE_INTEGRITY** ✅
-- **MEETS_STRONG_INTEGRITY** ✅ (with RKP bypass + valid keybox)
+- **MEETS_USE_BRAIN** ✅
 
 ---
 
