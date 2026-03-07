@@ -794,6 +794,32 @@ class WebServer(
              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
         }
 
+        if (uri == "/api/delete_keybox" && method == Method.POST) {
+             val map = HashMap<String, String>()
+             try { session.parseBody(map) } catch(e:Exception){}
+             val filename = session.parms["filename"]
+             if (filename != null && isValidFilename(filename)) {
+                 synchronized(fileLock) {
+                     val keyboxDir = File(configDir, "keyboxes")
+                     val f = File(keyboxDir, filename)
+                     if (isSafePath(f) && f.canonicalPath.startsWith(keyboxDir.canonicalPath) && f.exists()) {
+                         if (f.delete()) {
+                             if (filename.endsWith(".cbox")) {
+                                 val cacheFile = File(keyboxDir, "$filename.cache")
+                                 if (cacheFile.exists()) cacheFile.delete()
+                                 CboxManager.refresh()
+                             }
+                             Config.updateKeyBoxes()
+                             return secureResponse(Response.Status.OK, "text/plain", "Deleted")
+                         } else {
+                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
+                         }
+                     }
+                 }
+             }
+             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+        }
+
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
              try {
                 val crl = KeyboxVerifier.fetchCrl()
@@ -1783,13 +1809,32 @@ class WebServer(
                     list.innerHTML = '';
                     keys.forEach(k => {
                         const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                        div.innerHTML = `<span>${'$'}{k}</span><span style="font-size:0.8em; color:#666; margin-left:10px;">Stored</span>`;
+                        div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="deleteKeybox('${'$'}{k}')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
                         list.appendChild(div);
                     });
                     const dl = document.getElementById('keyboxList');
                     if (dl) { dl.innerHTML = ''; keys.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
                 }
             } catch(e) {}
+        }
+
+        async function deleteKeybox(filename) {
+            if (!confirm(`Are you sure you want to delete ${'$'}{filename}?`)) return;
+            notify('Deleting...', 'working');
+            try {
+                const formData = new URLSearchParams();
+                formData.append('filename', filename);
+                const res = await fetchAuth('/api/delete_keybox', { method: 'POST', body: formData });
+                if (res.ok) {
+                    notify('Deleted');
+                    loadKeyInfo();
+                } else {
+                    const txt = await res.text();
+                    notify('Failed: ' + txt, 'error');
+                }
+            } catch (e) {
+                notify('Error', 'error');
+            }
         }
 
         async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
