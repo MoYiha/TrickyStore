@@ -37,7 +37,7 @@ class DaemonCrashResilienceTest {
     private fun readModuleTemplateFile(name: String): String {
         val candidates = sequenceOf(
             File("module/template/$name"),
-            File("../module/template/$name"),
+            File("../module/template/$name")
         )
 
         return candidates.firstOrNull(File::exists)?.readText()
