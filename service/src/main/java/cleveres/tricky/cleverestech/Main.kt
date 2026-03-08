@@ -65,12 +65,15 @@ fun main(args: Array<String>) {
 
         Config.initialize()
         BootLogic.run()
+
+        var drmRegistered = false
         while (true) {
-            // Periodically check Telephony status in case com.android.phone crashes/restarts
             if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
-                 Logger.i("Retrying Telephony Interceptor injection...")
+                 Logger.d("Retrying Telephony Interceptor injection...")
             }
-            // Maintenance: Check RKP key rotation (Anti-Fingerprinting)
+            if (!drmRegistered) {
+                drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
+            }
             LocalRkpProxy.checkAndRotate()
             Thread.sleep(10000)
         }

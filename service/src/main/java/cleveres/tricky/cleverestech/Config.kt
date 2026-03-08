@@ -75,6 +75,8 @@ object Config {
 
     fun shouldBypassRkp() = isRkpBypass
 
+    fun isDrmFixEnabled() = drmFixVars.isNotEmpty()
+
     fun isSpoofBuild() = isSpoofBuild
     fun isSpoofBuildPs() = isSpoofBuildPs
     fun isSpoofProps() = isSpoofProps

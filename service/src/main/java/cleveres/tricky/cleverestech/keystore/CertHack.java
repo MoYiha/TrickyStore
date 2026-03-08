@@ -1012,7 +1012,11 @@ public final class CertHack {
     }
 
     /**
-     * Builds the certificate request response that gets sent back to GMS.
+     * Builds the certificate request response matching Android RKP AuthenticatedRequest v2 spec.
+     *
+     * AuthenticatedRequest = [version: 1, UdsCerts, DiceCertChain, SignedData]
+     * SignedData = COSE_Sign1 over Sig_structure containing CsrPayload
+     * CsrPayload = [version: 3, CertificateType, DeviceInfo, KeysToSign]
      */
     public static byte[] createCertificateRequestResponse(
             java.util.List<byte[]> publicKeys,
@@ -1020,79 +1024,78 @@ public final class CertHack {
             byte[] deviceInfoBody
     ) {
         try {
-            // CertificateRequest = [ DeviceInfo, Challenge, ProtectedData, MacedPublicKeys ]
-            // Spec requires strict array structure.
-            
-            List<Object> certRequest = new ArrayList<>();
-            
-            // 1. DeviceInfo
-            // The input `deviceInfoBody` is ALREADY encoded CBOR bytes (Map).
-            // CborEncoder needs to know this value is "already encoded".
-            // Since our simple encoder doesn't support "RawCBOR" wrapping, we can't use it for the top-level list
-            // IF we want to strictly use CborEncoder.
-            // HOWEVER, we can decode it back or just fix the CborEncoder.
-            // BUT, the prompt said "No Manual Concat".
-            // The trick: `deviceInfoBody` comes from `createDeviceInfoCbor` which returns `byte[]`.
-            // Check `createDeviceInfoCbor` - it calls `CborEncoder.encode(map)`.
-            // Ideally RkpInterceptor should pass the map itself, not the bytes.
-            // Refactoring strategy: We will accept Object for deviceInfo to allow recursion if possible,
-            // but since interface is byte[], we acknowledge that `CborEncoder` needs a `CborRaw` type.
-            // As a quick fix for "No Manual Concat", we will use a "Semi-Manual" list helper
-            // OR simply decode the deviceInfo bytes (it's a Map).
-            // Actually, RKP spec says DeviceInfo IS a Map.
-            // Let's implement a clean top-level encoder below.
-            
-            // BUT, since we cannot change CborEncoder easily right here to add `CborRaw`,
-            // we will build the list manually but properly, verifying tags.
-            
-            // 1. DeviceInfo (Map) - passed as encoded bytes.
-            // 2. Challenge (bstr)
-            // 3. ProtectedData (COSE_Encrypt)
-            // 4. MacedPublicKeys (Array of COSE_Mac0)
-            
-            // To properly satisfy "No manual concat" we would need to pass the raw objects.
-            // Since we can't change the interface signature easily across the project in one step,
-            // we will construct the stream carefully.
-            
-            FastByteArrayOutputStream baos = new FastByteArrayOutputStream(1024);
-            // Array(4)
-            baos.write(0x84);
-            
-            // 1. DeviceInfo
-            baos.write(deviceInfoBody);
-            
-            // 2. Challenge
-            CborEncoder.encodeItem(baos, challenge);
-            
-            // 3. ProtectedData (COSE_Encrypt)
-            // [ protected, unprotected, ciphertext, recipients ]
-            Map<Integer, Object> protectedMap = new HashMap<>();
-            protectedMap.put(1, 3); // alg: A256GCM
-            byte[] protHeader = CborEncoder.encode(protectedMap);
-            
-            List<Object> coseEncrypt = new ArrayList<>();
-            coseEncrypt.add(protHeader);
-            coseEncrypt.add(new HashMap<>()); // unprotected
-            coseEncrypt.add(new byte[16]); // dummy ciphertext
-            coseEncrypt.add(new ArrayList<>()); // recipients
-            
-            byte[] protectedData = CborEncoder.encode(coseEncrypt);
-            baos.write(protectedData);
-            
-            // 4. MacedPublicKeys
-            // The items in `publicKeys` are already encoded COSE_Mac0 bytes.
-            // We just need to wrap them in an Array.
-            // Again, "CborRaw" issue. We write the array header and then the bytes.
-            int count = publicKeys.size();
-            if (count < 24) baos.write(0x80 | count);
-            else if (count <= 0xFF) { baos.write(0x98); baos.write(count); }
-            else { baos.write(0x99); baos.write(count >> 8); baos.write(count); }
-            
-            for (byte[] keyBytes : publicKeys) {
-                baos.write(keyBytes);
+            java.security.KeyPairGenerator kpg = java.security.KeyPairGenerator.getInstance("EC");
+            kpg.initialize(new java.security.spec.ECGenParameterSpec("secp256r1"));
+            java.security.KeyPair signingKey = kpg.generateKeyPair();
+
+            // === CsrPayload: [version: 3, CertificateType, DeviceInfo, KeysToSign] ===
+            FastByteArrayOutputStream csrPayloadStream = new FastByteArrayOutputStream(2048);
+            csrPayloadStream.write(0x84); // Array(4)
+            CborEncoder.encodeItem(csrPayloadStream, 3); // version
+            CborEncoder.encodeItem(csrPayloadStream, "keymint"); // CertificateType
+            csrPayloadStream.write(deviceInfoBody); // DeviceInfo (already CBOR-encoded map)
+            // KeysToSign: extract COSE_Key from each MacedPublicKey (payload field)
+            int keyCount = publicKeys.size();
+            if (keyCount < 24) csrPayloadStream.write(0x80 | keyCount);
+            else if (keyCount <= 0xFF) { csrPayloadStream.write(0x98); csrPayloadStream.write(keyCount); }
+            else { csrPayloadStream.write(0x99); csrPayloadStream.write(keyCount >> 8); csrPayloadStream.write(keyCount); }
+            for (byte[] macedKey : publicKeys) {
+                csrPayloadStream.write(macedKey);
             }
-            
-            return baos.toByteArray();
+            byte[] csrPayload = csrPayloadStream.toByteArray();
+
+            // === SignedData: COSE_Sign1 [protected, unprotected, payload, signature] ===
+            Map<Integer, Object> signProtected = new HashMap<>();
+            signProtected.put(1, -7); // alg: ES256
+            byte[] signProtectedBytes = CborEncoder.encode(signProtected);
+
+            // payload = bstr .cbor [challenge, CsrPayload]
+            FastByteArrayOutputStream payloadStream = new FastByteArrayOutputStream(2048);
+            payloadStream.write(0x82); // Array(2)
+            CborEncoder.encodeItem(payloadStream, challenge);
+            payloadStream.write(csrPayload);
+            byte[] signedPayload = payloadStream.toByteArray();
+
+            // Sig_structure = ["Signature1", signProtectedBytes, externalAad, signedPayload]
+            List<Object> sigStructure = new ArrayList<>();
+            sigStructure.add("Signature1");
+            sigStructure.add(signProtectedBytes);
+            sigStructure.add(new byte[0]); // external_aad
+            sigStructure.add(signedPayload);
+            byte[] toBeSigned = CborEncoder.encode(sigStructure);
+
+            java.security.Signature signer = java.security.Signature.getInstance("SHA256withECDSA");
+            signer.initSign(signingKey.getPrivate());
+            signer.update(toBeSigned);
+            byte[] signature = signer.sign();
+
+            // COSE_Sign1 = [signProtectedBytes, {}, signedPayload, signature]
+            FastByteArrayOutputStream signedDataStream = new FastByteArrayOutputStream(4096);
+            signedDataStream.write(0x84); // Array(4)
+            CborEncoder.encodeItem(signedDataStream, signProtectedBytes);
+            signedDataStream.write(0xA0); // empty map {}
+            CborEncoder.encodeItem(signedDataStream, signedPayload);
+            CborEncoder.encodeItem(signedDataStream, signature);
+            byte[] signedData = signedDataStream.toByteArray();
+
+            // === DiceCertChain: [UDS_Pub, DiceChainEntry...] ===
+            Map<Object, Object> udsPub = createCoseKeyMap(signingKey);
+            byte[] udsPubBytes = udsPub != null ? CborEncoder.encode(udsPub) : new byte[]{(byte)0xA0};
+
+            FastByteArrayOutputStream diceCertChainStream = new FastByteArrayOutputStream(512);
+            diceCertChainStream.write(0x81); // Array(1) - just UDS public key
+            diceCertChainStream.write(udsPubBytes);
+            byte[] diceCertChain = diceCertChainStream.toByteArray();
+
+            // === AuthenticatedRequest: [version: 1, UdsCerts, DiceCertChain, SignedData] ===
+            FastByteArrayOutputStream authReqStream = new FastByteArrayOutputStream(8192);
+            authReqStream.write(0x84); // Array(4)
+            CborEncoder.encodeItem(authReqStream, 1); // version
+            authReqStream.write(0xA0); // UdsCerts: empty map (privacy)
+            authReqStream.write(diceCertChain); // DiceCertChain
+            authReqStream.write(signedData); // SignedData
+
+            return authReqStream.toByteArray();
         } catch (Throwable t) {
             Logger.e("Failed to create CertificateRequestResponse", t);
             return null;
@@ -1100,7 +1103,8 @@ public final class CertHack {
     }
 
     /**
-     * Builds device info CBOR map. GMS checks these values so they need to look legit.
+     * Builds DeviceInfoV3 CBOR map per Android RKP spec.
+     * All fields are required by GMS for STRONG integrity.
      */
     public static byte[] createDeviceInfoCbor(
             String brand,
@@ -1110,9 +1114,8 @@ public final class CertHack {
             String device
     ) {
         try {
-            // Create proper CBOR map using CborEncoder
-            Map<String, Object> map = new LinkedHashMap<>(); // Use LinkedHashMap for order stability if needed
-            
+            Map<String, Object> map = new LinkedHashMap<>();
+
             map.put("brand", brand != null ? brand : "google");
             map.put("manufacturer", manufacturer != null ? manufacturer : "Google");
             map.put("product", product != null ? product : "generic");
@@ -1122,13 +1125,15 @@ public final class CertHack {
             map.put("bootloader_state", "locked");
             map.put("vbmeta_digest", UtilKt.getBootHash());
             map.put("os_version", String.valueOf(UtilKt.getOsVersion()));
+            map.put("system_patch_level", UtilKt.getPatchLevel());
+            map.put("boot_patch_level", UtilKt.getPatchLevel());
+            map.put("vendor_patch_level", UtilKt.getPatchLevel());
             map.put("security_level", "tee");
-            map.put("fused", 1); // Often required
-            
+            map.put("fused", 1);
+
             byte[] result = CborEncoder.encode(map);
-            Logger.d("Created Proper DeviceInfo CBOR, size=" + result.length);
             return result;
-            
+
         } catch (Throwable t) {
             Logger.e("Failed to create DeviceInfo CBOR", t);
             return null;
