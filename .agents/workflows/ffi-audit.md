@@ -82,3 +82,24 @@ The original `Vec<u8>` to raw pointer conversion had `capacity != length`, causi
 
 ### Insecure PRNG (Fixed 2026-03-07)
 `LocalRkpProxy.kt` used `java.util.Random` for HMAC key fallback instead of `SecureRandom`.
+
+### Native Property Hook Gap (Fixed 2026-03-08)
+`g_target_properties` in `binder_interceptor.cpp` only had 36 entries. Missing: `persist.radio.imei*`, `vendor.ril.imei*`, `ro.ril.oem.imei*`, DRM properties (`ro.netflix.bsp_rev`, `drm.service.enabled`, `ro.com.google.widevine.level`, `ro.crypto.state`), `ro.build.version.security_patch`, `ro.system.build.fingerprint`, `ro.build.version.base_os`. Now expanded to 52 entries.
+
+### TelephonyInterceptor Missing Hooks (Fixed 2026-03-08)
+`getLine1Number`, `getLine1NumberForSubscriber`, `getMeidForSubscriber` were not hooked. Phone number and MEID leaked to all callers. Now hooked with fallback generation.
+
+### TelephonyInterceptor Null IMEI Leak (Fixed 2026-03-08)
+When `ATTESTATION_ID_IMEI` was not configured, `onPostTransact` returned `Skip`, passing through the real IMEI from the telephony service. Now generates random fallback IMEI/IMSI/ICCID.
+
+### TelephonyInterceptor Relative Path (Fixed 2026-03-08)
+`./inject` and `libcleverestricky.so` were relative paths. On real devices the daemon CWD is not the module dir. Fixed to absolute `/data/adb/modules/cleverestricky/`.
+
+### RKP Certificate Request Format (Open - Needs Fix)
+`CertHack.createCertificateRequestResponse()` outputs `[DeviceInfo, Challenge, ProtectedData, MacedPublicKeys]` but Android RKP spec requires `AuthenticatedRequest = [version, UdsCerts, DiceCertChain, SignedData<CsrPayload>]`. This causes STRONG integrity failures. The Rust `create_certificate_request_response()` also has wrong field order `[version: 3, keysToSign, challenge, deviceInfo]`.
+
+### BCC Not Integrated (Open - Needs Fix)
+`rust_generate_spoofed_bcc()` is called in `entry()` but result is freed immediately. BCC is never injected into attestation flow. Either wire it in or remove dead code.
+
+### Anti-Debug Exit Commented Out (Open - Investigate)
+`daemon/main.cpp` lines 89-91: `exit(1)` on `check_tracer_pid()` detection is commented out. The daemon continues running even when debugger is attached. Evaluate whether this is intentional (stealth) or a bug.

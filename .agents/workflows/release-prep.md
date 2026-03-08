@@ -25,6 +25,21 @@ grep -rn "java\.util\.Random" --include="*.kt" --include="*.java" service/src/ma
 grep -n "unwrap\|expect" rust/cbor-cose/src/ffi.rs | grep -v "cfg(test)" | grep -v "//"
 ```
 
+4. Check native property hook count matches array size:
+```bash
+grep -c "\"ro\.\|\"persist\.\|\"vendor\.\|\"drm\." module/src/main/cpp/binder_interceptor.cpp
+```
+
+5. Check TelephonyInterceptor covers all IPhoneSubInfo methods:
+```bash
+diff <(grep "fun get\|fun getMeid" stub/src/main/java/com/android/internal/telephony/IPhoneSubInfo.java | sed 's/.*fun //' | sed 's/(.*//') <(grep "Transaction = getTransactCode" service/src/main/java/cleveres/tricky/cleverestech/TelephonyInterceptor.kt | sed 's/.*getTransactCode.*//' | sort)
+```
+
+6. Check no relative paths in inject calls:
+```bash
+grep -n '"\./inject\|"inject"' --include="*.kt" service/src/main/java/
+```
+
 ## Step 2: Run Tests
 
 4. Run Rust tests:
