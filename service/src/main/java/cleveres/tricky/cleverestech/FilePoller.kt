@@ -41,7 +41,8 @@ class FilePoller(
         try {
             val parent = file.parentFile
             if (parent != null && parent.exists()) {
-                val observer = object : FileObserver(parent, CLOSE_WRITE or MOVED_TO) {
+                @Suppress("DEPRECATION")
+                val observer = object : FileObserver(parent.absolutePath, CLOSE_WRITE or MOVED_TO) {
                     override fun onEvent(event: Int, path: String?) {
                         if (path == file.name && file.exists()) {
                             val currentModified = file.lastModified()
