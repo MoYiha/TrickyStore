@@ -29,7 +29,7 @@ class ConfigTargetStateTest {
         setPrivateField(Config, "isGlobalMode", false)
 
         // Reset packageCache
-        val packageCache = getPrivateField(Config, "packageCache") as ConcurrentHashMap<Int, Any>
+        val packageCache = getPrivateField(Config, "packageCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Any>
         packageCache.clear()
 
         // Reset targetState
@@ -57,7 +57,7 @@ class ConfigTargetStateTest {
         assertTrue("needHack should return true for com.hack.me", Config.needHack(1001))
 
         // 4. Verify Cache
-        val hackCache = getFieldFromTargetState(targetState, "hackCache") as ConcurrentHashMap<Int, Boolean>
+        val hackCache = getFieldFromTargetState(targetState, "hackCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Boolean>
         assertTrue("Cache should contain entry for 1001", hackCache.containsKey(1001))
         assertTrue("Cache value should be true", hackCache[1001] == true)
 
@@ -67,7 +67,7 @@ class ConfigTargetStateTest {
         // If we remove from packageCache, checkPackages would fail/return false (empty array).
         // But if hackCache works, it won't call checkPackages.
 
-        val packageCache = getPrivateField(Config, "packageCache") as ConcurrentHashMap<Int, Any>
+        val packageCache = getPrivateField(Config, "packageCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Any>
         packageCache.remove(1001)
 
         // Now Config.getPackages(1001) would return empty array (or try to fetch from PM which fails in test environment)
@@ -88,7 +88,7 @@ class ConfigTargetStateTest {
 
         assertTrue("needGenerate should return true for com.gen.me", Config.needGenerate(2001))
 
-        val genCache = getFieldFromTargetState(targetState, "generateCache") as ConcurrentHashMap<Int, Boolean>
+        val genCache = getFieldFromTargetState(targetState, "generateCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Boolean>
         assertTrue("Cache should contain entry for 2001", genCache.containsKey(2001))
         assertTrue("Cache value should be true", genCache[2001] == true)
     }
@@ -114,8 +114,8 @@ class ConfigTargetStateTest {
         assertTrue("needGenerate should return true when TEE broken and app is in hack list", Config.needGenerate(3001))
 
         // Verify caches
-        val genCache = getFieldFromTargetState(targetState, "generateCache") as ConcurrentHashMap<Int, Boolean>
-        val hackCache = getFieldFromTargetState(targetState, "hackCache") as ConcurrentHashMap<Int, Boolean>
+        val genCache = getFieldFromTargetState(targetState, "generateCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Boolean>
+        val hackCache = getFieldFromTargetState(targetState, "hackCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Boolean>
 
         assertTrue("Gen Cache should act and store false", genCache.containsKey(3001) && genCache[3001] == false)
         assertTrue("Hack Cache should act and store true", hackCache.containsKey(3001) && hackCache[3001] == true)
@@ -149,7 +149,7 @@ class ConfigTargetStateTest {
     }
 
     private fun mockPackage(uid: Int, packages: Array<String>) {
-        val packageCache = getPrivateField(Config, "packageCache") as ConcurrentHashMap<Int, Any>
+        val packageCache = getPrivateField(Config, "packageCache") as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Any>
 
         // Config.CachedPackage is internal, so we can access it?
         // Or use reflection if it fails.

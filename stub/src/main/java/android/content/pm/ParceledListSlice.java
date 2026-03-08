@@ -19,14 +19,14 @@ public class ParceledListSlice<T extends Parcelable> implements Parcelable {
         throw new RuntimeException("Stub!");
     }
 
-    public static final Creator<ParceledListSlice> CREATOR = new Creator<ParceledListSlice>() {
+    public static final Creator<ParceledListSlice<?>> CREATOR = new Creator<ParceledListSlice<?>>() {
         @Override
-        public ParceledListSlice createFromParcel(Parcel source) {
+        public ParceledListSlice<?> createFromParcel(Parcel source) {
             throw new RuntimeException("Stub!");
         }
 
         @Override
-        public ParceledListSlice[] newArray(int size) {
+        public ParceledListSlice<?>[] newArray(int size) {
             throw new RuntimeException("Stub!");
         }
     };
