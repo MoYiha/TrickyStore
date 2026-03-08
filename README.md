@@ -53,7 +53,7 @@
 
 ## 🚀 Quick Start
 
-1. **Install** Flash the module ZIP from Magisk/KernelSU manager and reboot
+1. **Install** Flash the module ZIP from Magisk manager and reboot
 2. **Configure** Open WebUI at `http://localhost:5623` (port shown in module logs)
 3. **Add Keybox** *(optional)* Place `keybox.xml` at `/data/adb/cleverestricky/keybox.xml`
 4. **Enable RKP** *(for STRONG integrity)* `touch /data/adb/cleverestricky/rkp_bypass`
