@@ -17,6 +17,9 @@ import java.io.File
  * 4. Verification failures don't crash the daemon
  */
 class DaemonCrashResilienceTest {
+    companion object {
+        private const val MAIN_ENTRY_POINT = "cleveres.tricky.cleverestech.MainKt"
+    }
 
     private lateinit var serviceShContent: String
     private lateinit var daemonContent: String
@@ -30,18 +33,8 @@ class DaemonCrashResilienceTest {
             override fun i(tag: String, msg: String) {}
         })
 
-        serviceShContent = readModuleTemplateFile("service.sh")
-        daemonContent = readModuleTemplateFile("daemon")
-    }
-
-    private fun readModuleTemplateFile(name: String): String {
-        val candidates = sequenceOf(
-            File("module/template/$name"),
-            File("../module/template/$name")
-        )
-
-        return candidates.firstOrNull(File::exists)?.readText()
-            ?: error("Could not locate module/template/$name from ${File(".").absolutePath}")
+        serviceShContent = moduleTemplateFile("service.sh").readText()
+        daemonContent = moduleTemplateFile("daemon").readText()
     }
 
     // ============================
@@ -126,7 +119,19 @@ class DaemonCrashResilienceTest {
     fun testDaemonScriptLaunchesMainKt() {
         assertTrue(
             "daemon script must launch MainKt entry point",
-            daemonContent.contains("cleveres.tricky.cleverestech.MainKt")
+            daemonContent.contains(MAIN_ENTRY_POINT)
+        )
+    }
+
+    @Test
+    fun testMainEntryPointRunsUnderRetryingServiceWrapper() {
+        assertTrue(
+            "service.sh must run the daemon wrapper so MainKt exits can be retried",
+            serviceShContent.contains("./daemon")
+        )
+        assertTrue(
+            "daemon wrapper must launch MainKt so service.sh can restart it after non-zero exits",
+            daemonContent.contains(MAIN_ENTRY_POINT)
         )
     }
 

@@ -3,15 +3,11 @@ package cleveres.tricky.cleverestech
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-
 class SepolicyTest {
 
     @Test
     fun testCleveresTrickyDataFilePermissions() {
-        // Locate the sepolicy.rule file relative to the project root
-        // Assuming the test runs from service/
-        val sepolicyFile = File("../module/template/sepolicy.rule")
+        val sepolicyFile = moduleTemplateFile("sepolicy.rule")
         assertTrue("sepolicy.rule file does not exist at ${sepolicyFile.absolutePath}", sepolicyFile.exists())
 
         val content = sepolicyFile.readText()
@@ -32,14 +28,14 @@ class SepolicyTest {
 
     @Test
     fun testNoBroadMagiskFilePermissions() {
-        val sepolicyFile = File("../module/template/sepolicy.rule")
+        val sepolicyFile = moduleTemplateFile("sepolicy.rule")
         val content = sepolicyFile.readText()
         assertFalse("sepolicy.rule should not contain broad magisk_file file permissions", content.contains("allow * magisk_file file *"))
     }
 
     @Test
     fun testPublicFilePermissions() {
-        val sepolicyFile = File("../module/template/sepolicy.rule")
+        val sepolicyFile = moduleTemplateFile("sepolicy.rule")
         val content = sepolicyFile.readText()
         assertTrue("sepolicy.rule missing public file definition", content.contains("type cleverestricky_public_file, file_type, data_file_type, mlstrustedobject;"))
         assertTrue("sepolicy.rule missing public file read permissions", content.contains("allow * cleverestricky_public_file:file { read open getattr map };"))

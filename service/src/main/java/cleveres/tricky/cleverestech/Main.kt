@@ -6,7 +6,6 @@ import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.security.MessageDigest
-import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
     Logger.i("Welcome to Service!")
