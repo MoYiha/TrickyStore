@@ -1,19 +1,39 @@
-## 2024-05-22 - Installation Script UX
-**Learning:** For root tools/modules without a GUI, the installation script (`customize.sh`) is the primary user interface. Improving messages there provides high value.
-**Action:** Always verify `ui_print` messages in installation scripts to ensure they are helpful and indicate where configuration files are located.
+## 2025-02-05 - Embedded Web Server Testing
+**Learning:** For Android apps with embedded `NanoHTTPD` web servers, you can unit test the HTML generation by instantiating the server class (mocking Android dependencies if needed) and extracting the response body from `serve(session)`. This allows for frontend verification using Playwright on the dumped HTML file without needing an emulator.
+**Action:** Use `WebServerHtmlTest` pattern to dump HTML to `/tmp/index.html` for Playwright verification in future tasks.
 
-## 2024-05-23 - Async Feedback in Embedded WebUI
-**Learning:** Embedded WebUIs often lack native browser feedback. Users may double-submit actions if buttons don't immediately react.
-**Action:** Implement a reusable 'runWithState' pattern in JS to immediately disable buttons and show loading state during async operations.
+## 2026-02-06 - Validating Embedded UI with Playwright
+**Learning:** When verifying embedded UIs where the HTML is constructed as a raw string in Kotlin/Java, you can extract the HTML string directly (via regex or simple string parsing) to a standalone file. This file can then be served via a simple HTTP server (e.g., `python3 -m http.server`) to allow Playwright verification of structure and accessibility attributes, bypassing the need for a full Android build environment.
+**Action:** Use this extraction method for rapid UI verification of embedded servers.
 
-## 2026-02-02 - Custom Tab Component Accessibility
-**Learning:** Custom tab implementations using `div` elements are invisible to screen readers and keyboard users unless explicitly managed with ARIA roles (`tablist`, `tab`, `aria-selected`) and `keydown` handlers.
-**Action:** Always check custom navigation components for keyboard accessibility (Enter/Space support) and proper ARIA roles.
+## 2026-02-08 - Mirrored Static Artifacts Drift
+**Learning:** When a project maintains a static file (e.g., `index.html`) as a mirror of an embedded string in code (e.g., `WebServer.kt`), they can easily drift out of sync (e.g., missing CSS rules).
+**Action:** Always diff the static artifact against the source of truth before editing to detect and resolve drift, ensuring consistent behavior across dev and prod.
 
-## 2026-02-03 - Mobile Text Selection
-**Learning:** Selecting long technical strings (like fingerprints) inside `div` elements is often frustrating on mobile touch interfaces due to imprecise cursors.
-**Action:** Always provide a dedicated "Copy" button for long, non-editable text fields to improve usability.
+## 2026-02-09 - Async Button State Management
+**Learning:** When adding temporary visual feedback to buttons (e.g., "✓ Copied"), rapid clicking can cause race conditions where the temporary text becomes permanent if the "original text" is captured during the temporary state.
+**Action:** Always implement a guard clause (e.g., `if (btn.innerText === '✓ Copied') return;`) or use a dedicated state flag/attribute to prevent re-triggering the action while in the temporary feedback state.
 
-## 2026-05-21 - Automated Accessibility Verification
-**Learning:** This project utilizes unit tests (`WebServerHtmlTest`) to parse and verify the existence of accessibility attributes (`aria-label`, `label for`) in the server-generated HTML.
-**Action:** When working on backend-generated UIs, leverage or create similar string-parsing unit tests to enforce accessibility standards in the CI pipeline, rather than relying solely on frontend inspection.
+## 2026-06-03 - Fingerprint Copy Button
+**Learning:** Users who generate random identities often need to copy the resulting fingerprint string for use in other tools or configs, but selecting long text in a mobile browser (embedded UI) is difficult.
+**Action:** Added a "Copy" button next to the "Fingerprint" header in the Device Identity preview. Also synchronized `index.html` which had drifted from `WebServer.kt`.
+
+## 2026-06-05 - Accessible Tab Navigation (Roving Tabindex)
+**Learning:** Implementing proper ARIA tab navigation requires managing `tabindex` dynamically (roving tabindex). Only the active tab should be focusable (`tabindex="0"`) via the Tab key, while arrow keys should be used to navigate between tabs. Initializing all tabs with `tabindex="0"` forces users to tab through every single tab, which is inefficient.
+**Action:** Implemented `handleTabNavigation` for Arrow keys and updated `switchTab` to manage `tabindex` (-1/0) and focus, ensuring a standard accessible tab experience.
+
+## 2026-06-12 - Notification Severity Handling
+**Learning:** The existing notification system (`notify`) accepted a severity `type` but visually ignored it unless it was 'working'. This led to indistinguishable feedback for errors vs success.
+**Action:** When implementing notification systems, verify that all severity levels (error, warning, success) have distinct visual treatments (color, icon) in addition to accessible attributes.
+
+## 2026-07-20 - Kotlin String Interpolation in Embedded JS
+**Learning:** When embedding JavaScript within Kotlin `"""` strings, using template literals (`${var}`) conflicts with Kotlin's string interpolation. You must escape the dollar sign as `${'$'}` in Kotlin to ensure it is emitted literally for the JS runtime.
+**Action:** Always use `${'$'}` when writing JS template literals inside Kotlin multiline strings.
+
+## 2026-08-15 - Actionable Empty States
+**Learning:** When a search filter yields no results, a static "No results" message is a dead end. Providing a "Clear Filter" button directly within the empty state message allows users to recover immediately without searching for the filter input's clear control.
+**Action:** Enhance empty states with context-aware recovery actions (e.g., Clear Filter, Reset Search).
+
+## 2026-08-16 - Implicit Labels via Paragraphs
+**Learning:** Descriptions for form controls (e.g., `<select>`) are often implemented as `<p>` tags instead of `<label>`, breaking screen reader accessibility by decoupling the description from the control.
+**Action:** When auditing embedded HTML, verify all form controls have an associated `<label>` (via `for` attribute or nesting) rather than relying on proximity or visual layout.
