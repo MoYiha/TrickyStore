@@ -162,6 +162,79 @@ jobs:
           fi
           echo "✅ Binder codes consistent"
 
+      - name: "🔄 Daemon — Check crash retry logic in service.sh"
+        run: |
+          ERRORS=0
+          SERVICE_SH="module/template/service.sh"
+
+          # 1. Verify retry counter exists
+          if ! grep -q 'FAIL_COUNT' "$SERVICE_SH"; then
+            echo "::error file=$SERVICE_SH::Missing FAIL_COUNT retry counter — daemon will crash permanently on first non-zero exit"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # 2. Verify max retries limit exists
+          if ! grep -q 'MAX_FAILS' "$SERVICE_SH"; then
+            echo "::error file=$SERVICE_SH::Missing MAX_FAILS limit — daemon has no retry cap"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # 3. Verify sleep between retries to prevent rapid crash loops
+          if ! grep -q 'sleep' "$SERVICE_SH"; then
+            echo "::error file=$SERVICE_SH::Missing sleep between retries — daemon may enter rapid crash loop"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # 4. Verify retry counter resets on clean exit
+          if ! grep -q 'FAIL_COUNT=0' "$SERVICE_SH"; then
+            echo "::error file=$SERVICE_SH::Retry counter never resets — daemon will eventually die even after successful runs"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # 5. Verify daemon script exists and is a valid shell script
+          DAEMON_SCRIPT="module/template/daemon"
+          if [ ! -f "$DAEMON_SCRIPT" ]; then
+            echo "::error::Missing daemon script: $DAEMON_SCRIPT"
+            ERRORS=$((ERRORS + 1))
+          else
+            # Verify it launches the Java service with app_process
+            if ! grep -q 'app_process' "$DAEMON_SCRIPT"; then
+              echo "::error file=$DAEMON_SCRIPT::Daemon script does not use app_process to launch Java service"
+              ERRORS=$((ERRORS + 1))
+            fi
+            # Verify exec is used (prevents zombie processes)
+            if ! grep -q '^exec ' "$DAEMON_SCRIPT"; then
+              echo "::error file=$DAEMON_SCRIPT::Daemon script should use exec to replace shell process"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Daemon crash resilience checks passed"
+
+      - name: "💀 Daemon — Check for unguarded exitProcess calls"
+        run: |
+          ERRORS=0
+          # Scan for exitProcess(1) calls that could cause permanent daemon death
+          # exitProcess(0) is fine (clean restart), exitProcess(1) is dangerous
+          FILES=$(grep -rl 'exitProcess(1)' --include="*.kt" service/ 2>/dev/null || true)
+          EXIT1_COUNT=0
+          for f in $FILES; do
+            LINES=$(grep -cn 'exitProcess(1)' "$f" 2>/dev/null || echo "0")
+            EXIT1_COUNT=$((EXIT1_COUNT + LINES))
+          done
+
+          if [ "$EXIT1_COUNT" -gt 3 ]; then
+            echo "::warning::Found $EXIT1_COUNT exitProcess(1) calls in service code. Each one can crash the daemon permanently if service.sh lacks retry logic."
+          fi
+
+          # Verify Main.kt doesn't have unguarded exitProcess
+          if grep -q 'exitProcess' service/src/main/java/cleveres/tricky/cleverestech/Main.kt 2>/dev/null; then
+            echo "::warning file=service/src/main/java/cleveres/tricky/cleverestech/Main.kt::Main.kt contains exitProcess — ensure daemon restart handles this"
+          fi
+
+          echo "✅ Daemon exit analysis complete (found $EXIT1_COUNT hard exit points)"
+
   # ============================================================
   # Phase 2: Rust Tests (after safety check)
   # ============================================================
