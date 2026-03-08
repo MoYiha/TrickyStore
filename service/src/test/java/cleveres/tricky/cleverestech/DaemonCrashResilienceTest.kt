@@ -17,6 +17,9 @@ import java.io.File
  * 4. Verification failures don't crash the daemon
  */
 class DaemonCrashResilienceTest {
+    companion object {
+        private const val MAIN_ENTRY_POINT = "cleveres.tricky.cleverestech.MainKt"
+    }
 
     private lateinit var serviceShContent: String
     private lateinit var daemonContent: String
@@ -116,7 +119,7 @@ class DaemonCrashResilienceTest {
     fun testDaemonScriptLaunchesMainKt() {
         assertTrue(
             "daemon script must launch MainKt entry point",
-            daemonContent.contains("cleveres.tricky.cleverestech.MainKt")
+            daemonContent.contains(MAIN_ENTRY_POINT)
         )
     }
 
@@ -128,7 +131,7 @@ class DaemonCrashResilienceTest {
         )
         assertTrue(
             "daemon wrapper must launch MainKt so service.sh can restart it after non-zero exits",
-            daemonContent.contains("cleveres.tricky.cleverestech.MainKt")
+            daemonContent.contains(MAIN_ENTRY_POINT)
         )
     }
 
