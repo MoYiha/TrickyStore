@@ -36,7 +36,7 @@ class ConfigPatchLevelSharedUidTest {
         val packageCacheField = Config::class.java.getDeclaredField("packageCache")
         packageCacheField.isAccessible = true
         @Suppress("UNCHECKED_CAST")
-        val packageCache = packageCacheField.get(Config) as ConcurrentHashMap<Int, Any>
+        val packageCache = packageCacheField.get(Config) as @Suppress("UNCHECKED_CAST") ConcurrentHashMap<Int, Any>
         packageCache[1001] = cachedPkg
 
         try {

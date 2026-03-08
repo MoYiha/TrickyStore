@@ -15,8 +15,8 @@ interface SecureFileOperations {
         throw UnsupportedOperationException("writeBytes not implemented in mock")
     }
     fun writeStream(file: File, inputStream: InputStream, limit: Long = -1L) {}
-    fun mkdirs(file: File, mode: Int)
-    fun touch(file: File, mode: Int)
+    fun mkdirs(file: File, mode: Int = 509)
+    fun touch(file: File, mode: Int = 438)
 }
 
 object SecureFile {
@@ -41,13 +41,13 @@ object SecureFile {
         }
     }
 
-    fun mkdirs(file: File, mode: Int) {
+    fun mkdirs(file: File, mode: Int = 509) {
         lock.withLock {
             impl.mkdirs(file, mode)
         }
     }
 
-    fun touch(file: File, mode: Int) {
+    fun touch(file: File, mode: Int = 438) {
         lock.withLock {
             impl.touch(file, mode)
         }
@@ -58,18 +58,20 @@ object SecureFile {
             writeBytes(file, content.toByteArray(Charsets.UTF_8))
         }
 
-        override fun writeBytes(file: File, bytes: ByteArray) {
+        override fun writeBytes(file: File, content: ByteArray) {
             val path = file.absolutePath
             val tmpPath = "$path.tmp"
             var fd: FileDescriptor? = null
             try {
                 val mode = 384
                 val flags = OsConstants.O_CREAT or OsConstants.O_TRUNC or OsConstants.O_WRONLY
+                try {
+                    fd = Os.open(tmpPath, flags, mode)
                 } catch (e: Exception) {
-                    file.writeBytes(bytes)
+                    file.writeBytes(content)
                     return
                 } catch (e: java.lang.NoClassDefFoundError) {
-                    file.writeBytes(bytes)
+                    file.writeBytes(content)
                     return
                 }
 
@@ -77,8 +79,8 @@ object SecureFile {
                 runCatching { Os.fchmod(fd, mode) }
 
                 var bytesWritten = 0
-                while (bytesWritten < bytes.size) {
-                    val w = runCatching { Os.write(fd, bytes, bytesWritten, bytes.size - bytesWritten) }.getOrElse { 0 }
+                while (bytesWritten < content.size) {
+                    val w = runCatching { Os.write(fd, content, bytesWritten, content.size - bytesWritten) }.getOrElse { 0 }
                     if (w <= 0) break // Should not happen unless error
                     bytesWritten += w
                 }
@@ -91,7 +93,7 @@ object SecureFile {
 
                 // Atomic rename
                 runCatching { Os.rename(tmpPath, path) }.onFailure {
-                    file.writeBytes(bytes)
+                    file.writeBytes(content)
                 }
 
             } catch (e: Exception) {

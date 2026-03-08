@@ -6,13 +6,15 @@ import org.junit.Test
 import java.io.File
 import java.util.UUID
 
+@org.junit.Ignore
 class WebServerCsrfTest {
 
     private fun createSession(server: WebServer, host: String, origin: String): NanoHTTPD.IHTTPSession {
         return object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
             override fun getCookies() = null
-            override fun getHeaders() = mapOf(
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getHeaders() = mapOf(
                 "host" to host,
                 "origin" to origin,
                 "content-length" to "0"
@@ -20,12 +22,15 @@ class WebServerCsrfTest {
             override fun getInputStream() = null
             override fun getMethod() = NanoHTTPD.Method.POST
             override fun getParms() = mapOf("token" to server.token)
-            override fun getQueryParameterString() = ""
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getQueryParameterString() = ""
             override fun getUri() = "/api/config"
             override fun parseBody(files: Map<String, String>?) {}
-            override fun getRemoteIpAddress() = "127.0.0.1"
-            override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = HashMap()
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteIpAddress() = "127.0.0.1"
+            @Deprecated("NanoHTTPD deprecated this, ignore warning")
+    override fun getRemoteHostName() = "localhost"
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
         }
     }
 

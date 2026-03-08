@@ -33,6 +33,7 @@ public interface IRemotelyProvisionedComponent extends IInterface {
     
     abstract class Stub extends android.os.Binder implements IRemotelyProvisionedComponent {
         
+        @SuppressWarnings("this-escape")
         public Stub() {
             attachInterface(this, DESCRIPTOR);
         }
