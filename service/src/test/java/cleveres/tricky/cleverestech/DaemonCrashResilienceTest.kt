@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -76,12 +75,12 @@ class DaemonCrashResilienceTest {
     }
 
     @Test
-    fun testServiceShDoesNotExitImmediatelyOnNonZero() {
-        // The old bug: `if [ $? -ne 0 ]; then exit 1; fi` killed the daemon permanently
-        // on the FIRST non-zero exit. This tests that pattern is gone.
-        assertFalse(
-            "service.sh must NOT exit immediately on first non-zero daemon exit (old crash bug)",
-            serviceShContent.contains("if [ \$? -ne 0 ]; then")
+    fun testServiceShDoesNotExitOnFirstNonZero() {
+        // The fix requires that a non-zero exit increments FAIL_COUNT and retries,
+        // rather than immediately terminating. Verify the retry increment pattern exists.
+        assertTrue(
+            "service.sh must increment FAIL_COUNT on non-zero exit to enable retries",
+            serviceShContent.contains("FAIL_COUNT=\$((FAIL_COUNT + 1))")
         )
     }
 
@@ -224,8 +223,11 @@ class DaemonCrashResilienceTest {
         )
         val (hack, generate) = Config.parsePackages(lines, false)
         // "com.valid.package" should be in hack (no !)
+        assertTrue("com.valid.package should be in hack", hack.matches("com.valid.package"))
         // "com.another.package" should be in generate (has !)
-        assertTrue("Valid package should be parsed", hack.size > 0 || generate.size > 0)
+        assertTrue("com.another.package should be in generate", generate.matches("com.another.package"))
+        assertEquals("hack should have exactly 1 entry", 1, hack.size)
+        assertEquals("generate should have exactly 1 entry", 1, generate.size)
     }
 
     @Test

@@ -220,10 +220,13 @@ jobs:
           FILES=$(grep -rl 'exitProcess(1)' --include="*.kt" service/ 2>/dev/null || true)
           EXIT1_COUNT=0
           for f in $FILES; do
-            LINES=$(grep -cn 'exitProcess(1)' "$f" 2>/dev/null || echo "0")
+            LINES=$(grep -c 'exitProcess(1)' "$f" 2>/dev/null || echo "0")
             EXIT1_COUNT=$((EXIT1_COUNT + LINES))
           done
 
+          # Threshold: more than 3 exitProcess(1) calls indicates excessive hard exits
+          # that increase the risk of daemon crash loops. Each call is a potential
+          # permanent daemon death point if retry logic is insufficient.
           if [ "$EXIT1_COUNT" -gt 3 ]; then
             echo "::warning::Found $EXIT1_COUNT exitProcess(1) calls in service code. Each one can crash the daemon permanently if service.sh lacks retry logic."
           fi
