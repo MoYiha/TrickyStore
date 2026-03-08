@@ -92,6 +92,8 @@ pub fn kick_already_blocked_ioctls() {
 
 extern "C" fn handler(_sig: libc::c_int) {}
 
+use std::os::unix::ffi::OsStrExt;
+
 /// Get a list of TIDs for the given PID that are currently blocked in the `ioctl` syscall.
 fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
     let mut threads = Vec::new();
@@ -100,11 +102,13 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
     // Read /proc/{pid}/task directory to find all threads
     if let Ok(entries) = fs::read_dir(format!("/proc/{}/task", pid)) {
         for entry in entries.flatten() {
-            if let Ok(file_name) = entry.file_name().into_string() {
-                if file_name.starts_with('.') {
-                    continue;
-                }
-                if let Ok(tid) = file_name.parse::<libc::pid_t>() {
+            let file_name = entry.file_name();
+            let bytes = file_name.as_bytes();
+            if bytes.starts_with(b".") {
+                continue;
+            }
+            if let Ok(file_name_str) = std::str::from_utf8(bytes) {
+                if let Ok(tid) = file_name_str.parse::<libc::pid_t>() {
                     // Don't kick ourselves
                     if tid == my_tid {
                         continue;
