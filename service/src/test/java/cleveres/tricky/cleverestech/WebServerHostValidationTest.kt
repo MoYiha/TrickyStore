@@ -46,9 +46,7 @@ class WebServerHostValidationTest {
         tempDir.mkdirs()
 
         // Use no-op permission setter
-        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
-        server.token = "testtoken"
-        server.token = "testtoken"
+        val server = WebServer(0, tempDir) { _, _ -> }
 
         // Test Case 1: Valid Host (localhost)
         val sessionLocalhost = createSession(server, "localhost:8080")

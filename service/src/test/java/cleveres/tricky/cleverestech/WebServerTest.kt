@@ -27,21 +27,19 @@ class WebServerTest {
         File(keyboxDir, "ignore.txt").createNewFile()
 
         // Init WebServer with no-op permission setter
-        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
-        server.token = "testtoken"
-        server.token = "testtoken"
+        val server = WebServer(0, tempDir) { _, _ -> }
+        val testToken = server.token
 
-        // Create dummy session
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to "testtoken")
+    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to testToken)
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {
                 val map = HashMap<String, String>()
-                map["token"] = "testtoken" // Auth token
+                map["token"] = testToken
                 return map
             }
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
@@ -52,7 +50,7 @@ class WebServerTest {
     override fun getRemoteIpAddress() = "127.0.0.1"
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
     override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf(testToken))
         }
 
         val response = server.serve(session)
@@ -75,21 +73,19 @@ class WebServerTest {
         tempDir.mkdirs()
 
         // Init WebServer
-        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
-        server.token = "testtoken"
-        server.token = "testtoken"
+        val server = WebServer(0, tempDir) { _, _ -> }
+        val testToken = server.token
 
-        // Create dummy session
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to "testtoken")
+    override fun getHeaders() = hashMapOf("host" to "localhost", "x-auth-token" to testToken)
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.GET
             override fun getParms(): Map<String, String> {
                  val map = HashMap<String, String>()
-                 map["token"] = "testtoken"
+                 map["token"] = testToken
                  return map
             }
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
@@ -100,7 +96,7 @@ class WebServerTest {
     override fun getRemoteIpAddress() = "127.0.0.1"
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
     override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf(testToken))
         }
 
         val response = server.serve(session)
@@ -122,20 +118,19 @@ class WebServerTest {
         tempDir.mkdirs()
         File(tempDir, "keyboxes").mkdirs()
 
-        val server = WebServer(0, tempDir) { _, _ -> }.apply { token = "testtoken" }
-        server.token = "testtoken"
-        server.token = "testtoken"
+        val server = WebServer(0, tempDir) { _, _ -> }
+        val testToken = server.token
 
         val session = object : IHTTPSession {
             override fun execute() {}
             override fun getCookies() = server.CookieHandler(HashMap())
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getHeaders() = hashMapOf("host" to "localhost", "content-length" to "0", "x-auth-token" to "testtoken") // Must add content-length for POST
+    override fun getHeaders() = hashMapOf("host" to "localhost", "content-length" to "0", "x-auth-token" to testToken)
             override fun getInputStream(): InputStream? = null
             override fun getMethod() = Method.POST
             override fun getParms(): Map<String, String> {
                 val map = HashMap<String, String>()
-                map["token"] = "testtoken"
+                map["token"] = testToken
                 return map
             }
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
@@ -146,7 +141,7 @@ class WebServerTest {
     override fun getRemoteIpAddress() = "127.0.0.1"
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
     override fun getRemoteHostName() = "localhost"
-            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
+            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf(testToken))
         }
 
         // Just check that it doesn't crash with MethodNotFound or similar.
