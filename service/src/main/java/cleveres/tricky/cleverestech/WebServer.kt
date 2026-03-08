@@ -2368,15 +2368,16 @@ class WebServer(
                 var entry = zis.nextEntry
                 while (entry != null) {
                     val name = entry.name
-                    if (!name.contains("..") && !name.startsWith("/") && !name.contains("\\")) {
-                        val file = File(configDir, name)
-                        if (file.canonicalPath.equals(configDir.canonicalPath) || file.canonicalPath.startsWith(configDir.canonicalPath + File.separator)) {
-                            if (name.startsWith("keyboxes/")) {
-                                File(configDir, "keyboxes").mkdirs()
-                            }
-                            if (!entry.isDirectory) {
-                                SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
-                            }
+                    if (name.contains("..") || name.startsWith("/") || name.contains("\\")) {
+                        throw SecurityException("Zip entry contains path traversal: $name")
+                    }
+                    val file = File(configDir, name)
+                    if (file.canonicalPath.equals(configDir.canonicalPath) || file.canonicalPath.startsWith(configDir.canonicalPath + File.separator)) {
+                        if (name.startsWith("keyboxes/")) {
+                            File(configDir, "keyboxes").mkdirs()
+                        }
+                        if (!entry.isDirectory) {
+                            SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
                         }
                     }
                     zis.closeEntry()
