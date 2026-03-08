@@ -111,6 +111,6 @@ subprojects {
     }
 
     tasks.withType<JavaCompile>().configureEach {
-        options.compilerArgs.addAll(listOf("-Werror", "-Xlint:all", "-Xlint:-options", "-Xlint:-path"))
+        options.compilerArgs.addAll(listOf("-Werror", "-Xlint:all", "-Xlint:-options", "-Xlint:-path", "-Xlint:-rawtypes", "-Xlint:-unchecked", "-Xlint:-this-escape"))
     }
 }

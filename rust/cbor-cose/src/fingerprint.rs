@@ -38,7 +38,7 @@ struct FingerprintCache {
 ///
 /// The device codename is extracted from the third `/`-separated segment
 /// (before the `:`), e.g. `husky` from `google/husky/husky:15/...`.
-pub fn parse_fingerprints(data: &str) -> AHashMap<String, String> {
+pub fn parse_fingerprints(data: &str) -> AHashMap<&str, &str> {
     let mut map = AHashMap::new();
     for line in data.lines() {
         let line = line.trim();
@@ -63,7 +63,7 @@ pub fn parse_fingerprints(data: &str) -> AHashMap<String, String> {
                         None => device_segment,
                     };
                     if !device.is_empty() {
-                        map.insert(device.to_string(), line.to_string());
+                        map.insert(device, line);
                     }
                     break;
                 }
@@ -92,8 +92,13 @@ pub fn fetch_fingerprints(url: Option<&str>) -> Result<usize, String> {
     let body = response
         .as_str()
         .map_err(|e| format!("UTF-8 error: {}", e))?;
-    let entries = parse_fingerprints(body);
-    let count = entries.len();
+    let entries_ref = parse_fingerprints(body);
+    let count = entries_ref.len();
+
+    let entries: AHashMap<String, String> = entries_ref
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -161,8 +166,13 @@ pub fn cache_count() -> usize {
 
 /// Manually inject fingerprints into the cache (for testing or manual config).
 pub fn inject_fingerprints(data: &str) -> usize {
-    let entries = parse_fingerprints(data);
-    let count = entries.len();
+    let entries_ref = parse_fingerprints(data);
+    let count = entries_ref.len();
+
+    let entries: AHashMap<String, String> = entries_ref
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
