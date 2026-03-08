@@ -1225,7 +1225,7 @@ class WebServer(
                     <option value="API_KEY">API Key</option>
                 </select>
                 <div id="authFields"></div>
-                <button onclick="addServer()" class="primary">Save Server</button>
+                <button onclick="runWithState(this, 'Saving...', addServer)" class="primary">Save Server</button>
             </div>
         </div>
 
@@ -1240,7 +1240,7 @@ class WebServer(
                 <div>
                     <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
                     <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
-                    <button id="saveKeyboxBtn" class="primary" style="width:100%; margin-top:10px;" onclick="savePastedKeybox()">Save Pasted XML</button>
+                    <button id="saveKeyboxBtn" class="primary" style="width:100%; margin-top:10px;" onclick="runWithState(this, 'Saving...', savePastedKeybox)">Save Pasted XML</button>
                 </div>
             </div>
         </div>
@@ -1487,7 +1487,7 @@ class WebServer(
                         div.innerHTML = `<div style="font-weight:bold; margin-bottom:5px;">${'$'}{f}</div>
                         <input type="password" id="pwd_${'$'}{f}" placeholder="Password" style="margin-bottom:5px;">
                         <textarea id="pk_${'$'}{f}" placeholder="Public Key (Optional)" style="height:60px; font-size:0.8em; margin-bottom:5px;"></textarea>
-                        <button onclick="unlockCbox('${'$'}{f}')">Unlock</button>`;
+                        <button onclick="unlockCbox('${'$'}{f}', this)">Unlock</button>`;
                         lockedList.appendChild(div);
                     });
                 } else {
@@ -1506,9 +1506,11 @@ class WebServer(
             } catch(e) {}
         }
 
-        async function unlockCbox(filename) {
+        async function unlockCbox(filename, btn) {
             const pwd = document.getElementById('pwd_' + filename).value;
+            if (!pwd.trim()) { notify('Password required', 'error'); return; }
             const pk = document.getElementById('pk_' + filename).value;
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Unlocking...';
             try {
                 const formData = new FormData();
                 formData.append('filename', filename);
@@ -1517,6 +1519,7 @@ class WebServer(
                 const res = await fetchAuth('/api/unlock_cbox', { method: 'POST', body: formData });
                 if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { notify('Failed', 'error'); }
             } catch(e) { notify('Error', 'error'); }
+            finally { btn.disabled = false; btn.innerText = orig; }
         }
 
         async function loadServers() {
@@ -1538,6 +1541,8 @@ class WebServer(
         async function addServer() {
             const name = document.getElementById('srvName').value;
             const url = document.getElementById('srvUrl').value;
+            if (!name.trim() || !url.trim()) { notify('Name and URL required', 'error'); throw new Error('Validation failed'); }
+            if (!url.startsWith('http://') && !url.startsWith('https://')) { notify('URL must start with http/https', 'error'); throw new Error('Validation failed'); }
             const authType = document.getElementById('srvAuthType').value;
             // Collect auth data based on type (simplified for now)
             const data = { name, url, authType };
@@ -1548,7 +1553,7 @@ class WebServer(
                 const res = await fetchAuth('/api/server/add', { method: 'POST', body: formData });
                 if (res.ok) { notify('Server Added'); document.getElementById('addServerForm').style.display='none'; loadServers(); }
                 else notify('Failed', 'error');
-            } catch(e) { notify('Error', 'error'); }
+            } catch(e) { notify('Error', 'error'); throw e; }
         }
 
         async function deleteServer(id) {
@@ -1624,10 +1629,9 @@ class WebServer(
                 return;
             }
             let filename = prompt("Enter a filename for this Keybox (e.g. keybox1.xml):", "keybox.xml");
-            if (!filename) return;
+            if (!filename) throw new Error('Cancelled');
             if (!filename.endsWith('.xml')) filename += '.xml';
 
-            notify('Saving...', 'working');
             try {
                 const res = await fetchAuth('/api/upload_keybox', {
                     method: 'POST',
@@ -1725,7 +1729,7 @@ class WebServer(
 
         async function generateRandomIdentity() {
             const res = await fetchAuth('/api/random_identity');
-            if (!res.ok) { notify('Failed'); return; }
+            if (!res.ok) { notify('Failed', 'error'); return; }
             const t = await res.json();
             document.getElementById('inputImei').value = t.imei || '';
             document.getElementById('inputImsi').value = t.imsi || '';
@@ -1964,9 +1968,9 @@ class WebServer(
             const kb = document.getElementById('appKeybox').value;
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
-            if (!pkg) { notify('Package required'); pkgInput.focus(); return; }
+            if (!pkg) { notify('Package required', 'error'); pkgInput.focus(); return; }
             const pkgRegex = /^[a-zA-Z0-9_.*]+$/;
-            if (!pkgRegex.test(pkg)) { notify('Invalid package'); pkgInput.focus(); return; }
+            if (!pkgRegex.test(pkg)) { notify('Invalid package', 'error'); pkgInput.focus(); return; }
             const permissions = [];
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');

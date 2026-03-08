@@ -44,6 +44,8 @@ object KeyboxAutoCleaner {
         }
 
         if (revokedCount > 0) {
+            cleveres.tricky.cleverestech.CboxManager.refresh()
+            cleveres.tricky.cleverestech.Config.updateKeyBoxes()
             notifyUser(revokedCount)
         }
         Logger.i("AutoCleaner: Finished check. Revoked/Invalid files moved: $revokedCount")
