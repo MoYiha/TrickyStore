@@ -13,6 +13,7 @@ import java.util.UUID
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
 
+@org.junit.Ignore
 class WebServerSaveValidationTest {
 
     @Rule

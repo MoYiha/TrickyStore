@@ -36,6 +36,8 @@ private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
 private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
 
+var disableAuthForTest = false
+
 class WebServer(
     port: Int,
     private val configDir: File,
@@ -377,8 +379,7 @@ class WebServer(
         }
         if (authToken == null) authToken = params["token"]
 
-        val isTest = java.lang.Exception().stackTrace.any { it.className.contains("TestWorker") || it.className.contains("junit") }
-        if (!isTest && (authToken == null || !MessageDigest.isEqual(token.toByteArray(), authToken.toByteArray()))) {
+        if (!disableAuthForTest && (authToken == null || !MessageDigest.isEqual(token.toByteArray(), authToken.toByteArray()))) {
              return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
         }
 
@@ -2260,6 +2261,8 @@ class WebServer(
     }
 
     companion object {
+        @JvmStatic var disableAuthForTest = false
+
         fun isSafeHost(host: String?): Boolean {
             if (host == null) return false
             val h = host.split(":")[0].lowercase()

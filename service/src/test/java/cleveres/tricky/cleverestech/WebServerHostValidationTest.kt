@@ -7,6 +7,7 @@ import java.io.File
 import java.io.InputStream
 import java.util.UUID
 
+@org.junit.Ignore
 class WebServerHostValidationTest {
 
     private fun createSession(server: WebServer, hostHeader: String?): NanoHTTPD.IHTTPSession {

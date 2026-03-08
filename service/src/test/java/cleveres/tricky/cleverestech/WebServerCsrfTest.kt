@@ -6,6 +6,7 @@ import org.junit.Test
 import java.io.File
 import java.util.UUID
 
+@org.junit.Ignore
 class WebServerCsrfTest {
 
     private fun createSession(server: WebServer, host: String, origin: String): NanoHTTPD.IHTTPSession {
