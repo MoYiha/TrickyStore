@@ -28,11 +28,12 @@ object TelephonyInterceptor : BinderInterceptor() {
     private var triedCount = 0
     private var injected = false
 
+    private val secureRandom = java.security.SecureRandom()
+
     private fun generateFallbackImei(): String {
-        val random = java.util.Random()
         val sb = StringBuilder()
-        sb.append("35") // Standard TAC prefix
-        for (i in 0 until 12) sb.append(random.nextInt(10))
+        sb.append("35")
+        for (i in 0 until 12) sb.append(secureRandom.nextInt(10))
         val digits = sb.toString()
         var sum = 0
         for (i in digits.indices) {
@@ -45,19 +46,17 @@ object TelephonyInterceptor : BinderInterceptor() {
     }
 
     private fun generateFallbackImsi(): String {
-        val random = java.util.Random()
         val sb = StringBuilder()
-        sb.append("310") // US MCC
-        sb.append("260") // T-Mobile MNC
-        for (i in 0 until 9) sb.append(random.nextInt(10))
+        sb.append("310")
+        sb.append("260")
+        for (i in 0 until 9) sb.append(secureRandom.nextInt(10))
         return sb.toString()
     }
 
     private fun generateFallbackIccid(): String {
-        val random = java.util.Random()
         val sb = StringBuilder()
-        sb.append("8901") // Major industry identifier
-        for (i in 0 until 15) sb.append(random.nextInt(10))
+        sb.append("8901")
+        for (i in 0 until 15) sb.append(secureRandom.nextInt(10))
         return sb.toString()
     }
 

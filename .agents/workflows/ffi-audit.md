@@ -95,11 +95,23 @@ When `ATTESTATION_ID_IMEI` was not configured, `onPostTransact` returned `Skip`,
 ### TelephonyInterceptor Relative Path (Fixed 2026-03-08)
 `./inject` and `libcleverestricky.so` were relative paths. On real devices the daemon CWD is not the module dir. Fixed to absolute `/data/adb/modules/cleverestricky/`.
 
-### RKP Certificate Request Format (Open - Needs Fix)
-`CertHack.createCertificateRequestResponse()` outputs `[DeviceInfo, Challenge, ProtectedData, MacedPublicKeys]` but Android RKP spec requires `AuthenticatedRequest = [version, UdsCerts, DiceCertChain, SignedData<CsrPayload>]`. This causes STRONG integrity failures. The Rust `create_certificate_request_response()` also has wrong field order `[version: 3, keysToSign, challenge, deviceInfo]`.
+### RKP Certificate Request Format (Fixed 2026-03-08)
+Java `CertHack.createCertificateRequestResponse()` now outputs proper `AuthenticatedRequest = [1, UdsCerts, DiceCertChain, COSE_Sign1<[challenge, CsrPayload]>]` with `CsrPayload = [3, "keymint", DeviceInfo, KeysToSign]`. DiceCertChain includes UDS public key. The Rust implementation in `cose.rs` still has the old format and should be updated to match if Rust path is ever used.
 
-### BCC Not Integrated (Open - Needs Fix)
-`rust_generate_spoofed_bcc()` is called in `entry()` but result is freed immediately. BCC is never injected into attestation flow. Either wire it in or remove dead code.
+### DeviceInfoV3 (Fixed 2026-03-08)
+`createDeviceInfoCbor` now includes `system_patch_level`, `boot_patch_level`, `vendor_patch_level` as required by GMS for STRONG integrity.
+
+### TelephonyInterceptor Insecure PRNG (Fixed 2026-03-08)
+`java.util.Random` replaced with `java.security.SecureRandom` in all fallback identity generators.
+
+### DRM HAL Interception (Added 2026-03-08)
+`DrmInterceptor.kt` injects into Widevine DRM service process and intercepts security level queries. Transaction codes (17, 18) are estimated from AIDL; verify on real devices. Process name detection covers multiple Android versions.
+
+### BCC Not Integrated (Open - Low Priority)
+`rust_generate_spoofed_bcc()` is called in `entry()` but result is freed. DiceCertChain in Java RKP path now uses fresh UDS key. Rust BCC can be wired in later for a more complete DICE chain.
 
 ### Anti-Debug Exit Commented Out (Open - Investigate)
 `daemon/main.cpp` lines 89-91: `exit(1)` on `check_tracer_pid()` detection is commented out. The daemon continues running even when debugger is attached. Evaluate whether this is intentional (stealth) or a bug.
+
+### DRM Interceptor Transaction Codes (Open - Verify)
+`DrmInterceptor.kt` uses hardcoded transaction codes 17 (getPropertyString) and 18 (getPropertyByteArray). These are based on the AIDL `IDrm` interface ordering and may differ across Android versions. Need to verify on real Android 14/15/16 devices or extract from the actual AIDL stub.
