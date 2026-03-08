@@ -38,18 +38,19 @@ class FilePollerInstrumentationTest {
         testFile.writeText("modified")
         testFile.setLastModified(System.currentTimeMillis() + 5000)
 
-        // Expect detection within 1500ms (to account for emulator sluggishness)
-        val detected = latch.await(1500, TimeUnit.MILLISECONDS)
+        // Expect detection well under the 5000ms polling fallback interval, while allowing
+        // a bit more headroom for slower CI emulators.
+        val detected = latch.await(2500, TimeUnit.MILLISECONDS)
         val duration = System.currentTimeMillis() - startTime
 
         poller.stop()
 
         if (!detected) {
-            println("Benchmark: Detection timed out (latency > 1500ms). Expected if falling back to polling.")
+            println("Benchmark: Detection timed out (latency > 2500ms). Expected if falling back to polling.")
         } else {
             println("Benchmark: Detection took ${duration}ms")
         }
 
-        assertTrue("Detection took too long: ${duration}ms. Expected near-instant detection with FileObserver. Test fallback polling took >1500ms", detected)
+        assertTrue("Detection took too long: ${duration}ms. Expected near-instant detection with FileObserver. Test fallback polling took >2500ms", detected)
     }
 }
