@@ -1,6 +1,7 @@
 import android.databinding.tool.ext.capitalizeUS
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.apache.tools.ant.filters.ReplaceTokens
+import java.io.File
 import java.security.MessageDigest
 
 plugins {
@@ -30,6 +31,7 @@ android {
 
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                     "-DANDROID_ALLOW_UNDEFINED_SYMBOLS=ON",
+                    "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
                     "-DMODULE_NAME=$moduleId",
                     "-DCMAKE_CXX_STANDARD=23",
                     "-DCMAKE_C_STANDARD=23",
@@ -48,7 +50,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            version = "3.28.0+"
+            version = "3.22.1"
             path("src/main/cpp/CMakeLists.txt")
         }
     }
@@ -61,18 +63,44 @@ dependencies {
 evaluationDependsOn(":service")
 
 // Rust Build Integration
+val isWindowsHost = org.gradle.internal.os.OperatingSystem.current().isWindows
+
+fun commandExists(command: String): Boolean {
+    val pathEntries = System.getenv("PATH")
+        ?.split(File.pathSeparator)
+        ?.filter { it.isNotBlank() }
+        ?: return false
+
+    return if (isWindowsHost) {
+        val extensions = listOf(".exe", ".cmd", ".bat")
+        pathEntries.any { dir ->
+            extensions.any { ext -> File(dir, "$command$ext").isFile }
+        }
+    } else {
+        pathEntries.any { dir ->
+            val candidate = File(dir, command)
+            candidate.isFile && candidate.canExecute()
+        }
+    }
+}
 
 // Ensure cargo-ndk is installed
 tasks.register<Exec>("installCargoNdk") {
     group = "rust"
     description = "Installs cargo-ndk if not present"
-    commandLine("bash", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
+    onlyIf { commandExists("cargo") }
+    if (isWindowsHost) {
+        commandLine("cmd", "/c", "cargo ndk --version >NUL 2>&1 || cargo install cargo-ndk")
+    } else {
+        commandLine("sh", "-c", "cargo ndk --version >/dev/null 2>&1 || cargo install cargo-ndk")
+    }
 }
 
 // Ensure Rust Android targets are installed
 tasks.register<Exec>("installRustTargets") {
     group = "rust"
     description = "Installs Android Rust targets via rustup"
+    onlyIf { commandExists("rustup") }
     // We run rustup target add for all required targets.
     // Ideally we should check if they are installed, but `rustup target add` is idempotent and fast if already installed.
     commandLine(
@@ -90,6 +118,7 @@ tasks.register<Exec>("cargoBuild") {
     group = "rust"
     description = "Builds the Rust static library for all Android targets using cargo-ndk"
     workingDir = file("../rust/cbor-cose")
+    onlyIf { commandExists("cargo") && commandExists("rustup") }
 
     dependsOn("installRustTargets")
 

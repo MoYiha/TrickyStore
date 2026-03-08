@@ -356,7 +356,7 @@ object Config {
              }
              // Save last
              if (currentTemplate != null && currentProps != null) {
-                 newTemplates[currentTemplate!!] = currentProps!!
+                newTemplates[currentTemplate] = currentProps
              }
         }
         templates = newTemplates
@@ -1039,12 +1039,14 @@ object Config {
         return updatedEntry?.value ?: emptyArray()
     }
 
-    private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int) = kotlin.runCatching {
-        if (packages.isEmpty()) return false
-        val ps = getPackages(callingUid)
-        if (ps.isEmpty()) return false
-        ps.any { pkgName -> matchesPackage(pkgName, packages) }
-    }.onFailure { Logger.e("failed to get packages", it) }.getOrNull() ?: false
+    private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int): Boolean {
+        return kotlin.runCatching {
+            if (packages.isEmpty()) return@runCatching false
+            val ps = getPackages(callingUid)
+            if (ps.isEmpty()) return@runCatching false
+            ps.any { pkgName -> matchesPackage(pkgName, packages) }
+        }.onFailure { Logger.e("failed to get packages", it) }.getOrNull() ?: false
+    }
 
     fun needHack(callingUid: Int): Boolean {
         if (isTeeBroken) return false

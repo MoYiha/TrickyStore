@@ -53,7 +53,6 @@ class FilePoller(
                 }
                 observer.startWatching()
                 this.observer = observer
-                return
             }
         } catch (t: Throwable) {
             // Fallback to polling if FileObserver fails (e.g. on unit tests or unsupported environment)

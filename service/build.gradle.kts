@@ -87,6 +87,7 @@ android {
 
     testOptions {
         unitTests.all {
+            it.jvmArgs("-XX:+EnableDynamicAgentLoading")
             it.testLogging {
                 events = setOf(
                     org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT,
@@ -102,6 +103,13 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (name.contains("UnitTest", ignoreCase = true)) {
+        compilerOptions.allWarningsAsErrors.set(false)
+        compilerOptions.suppressWarnings.set(true)
     }
 }
 

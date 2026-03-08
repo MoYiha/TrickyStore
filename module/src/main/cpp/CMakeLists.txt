@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28...3.31)
+cmake_minimum_required(VERSION 3.22...3.31)
 project(cleverestricky)
 
 
@@ -17,7 +17,7 @@ endif()
 add_link_options(-Wl,--gc-sections)
 
 # Treat all warnings as errors for C/C++
-add_compile_options(-Werror -Wall -Wextra)
+add_compile_options(-Werror -Wall -Wextra -Wno-unused-parameter)
 
 
 add_library(elf_util STATIC elf_util/elf_util.cpp)

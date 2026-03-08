@@ -32,9 +32,6 @@
 -overloadaggressively
 -renamesourcefileattribute 'SourceFile'
 
-# Flatten package hierarchy
--flattenpackagehierarchy 'x'
-
 # Optimization
 -optimizationpasses 5
 -mergeinterfacesaggressively

@@ -69,6 +69,20 @@ class WebServer(
     private val fileLock = Any()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    private fun Map<String, *>.firstParam(name: String): String? {
+        val value = this[name] ?: return null
+        return when (value) {
+            is String -> value
+            is List<*> -> value.firstOrNull()?.toString()
+            else -> value.toString()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getParam(session: IHTTPSession, name: String): String? {
+        return session.parameters.firstParam(name) ?: session.parms[name]
+    }
+
     private fun isRateLimited(ip: String): Boolean {
         if (requestCounts.size > 1000) requestCounts.clear()
         val current = requestCounts.compute(ip) { _, v ->
@@ -333,7 +347,6 @@ class WebServer(
     private fun serveInternal(session: IHTTPSession): Response {
         val uri = session.uri
         val method = session.method
-        val params = session.parameters
         val headers = session.headers
 
         if (!isSafeHost(headers["host"])) return secureResponse(Response.Status.FORBIDDEN, "text/plain", "Invalid Host header")
@@ -374,7 +387,7 @@ class WebServer(
                 authToken = authHeader.substring(7)
             }
         }
-        if (authToken == null) authToken = params["token"]
+        if (authToken == null) authToken = getParam(session, "token")
 
         if (authToken == null || !MessageDigest.isEqual(token.toByteArray(), authToken.toByteArray())) {
              return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
@@ -448,9 +461,9 @@ class WebServer(
         if (uri == "/api/unlock_cbox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val password = session.parameters["password"]
-             val pubKey = session.parameters["public_key"]
+             val filename = getParam(session, "filename")
+             val password = getParam(session, "password")
+             val pubKey = getParam(session, "public_key")
 
              if (filename != null && password != null) {
                  if (CboxManager.unlock(filename, password, pubKey)) {
@@ -486,7 +499,7 @@ class WebServer(
         if (uri == "/api/server/add" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = session.parameters["data"]
+             val jsonStr = getParam(session, "data")
              if (jsonStr != null) {
                  try {
                      val obj = JSONObject(jsonStr)
@@ -519,7 +532,7 @@ class WebServer(
         if (uri == "/api/server/delete" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val id = session.parameters["id"]
+             val id = getParam(session, "id")
              if (id != null) {
                  ServerManager.removeServer(id)
                  Config.updateKeyBoxes()
@@ -531,7 +544,7 @@ class WebServer(
         if (uri == "/api/server/refresh" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val id = session.parameters["id"]
+             val id = getParam(session, "id")
              if (id != null) {
                  val s = ServerManager.getServers().find { it.id == id }
                  if (s != null) {
@@ -655,7 +668,7 @@ class WebServer(
         if (uri == "/api/app_config_structured" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = session.parameters["data"]
+             val jsonStr = getParam(session, "data")
              if (jsonStr != null) {
                  try {
                      val array = JSONArray(jsonStr)
@@ -701,7 +714,7 @@ class WebServer(
         }
 
         if (uri == "/api/file" && method == Method.GET) {
-            val filename = params["filename"]
+            val filename = getParam(session, "filename")
             if (filename != null && isValidFilename(filename)) {
                 if (filename == "keybox.xml") {
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Access denied")
@@ -714,8 +727,8 @@ class WebServer(
         if (uri == "/api/save" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val content = session.parameters["content"]
+             val filename = getParam(session, "filename")
+             val content = getParam(session, "content")
              if (filename != null && isValidFilename(filename) && content != null) {
                  if (validateContent(filename, content)) {
                      if (saveFile(filename, content)) {
@@ -731,8 +744,8 @@ class WebServer(
         if (uri == "/api/upload_keybox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
-             val content = session.parameters["content"] // Raw text content for XML
+             val filename = getParam(session, "filename")
+             val content = getParam(session, "content") // Raw text content for XML
              // For binary upload (CBOX/ZIP), we might need multipart or read raw body
              // Since WebUI uses multipart or simple body for text...
              // Wait, for binary files, we need better upload handling.
@@ -741,7 +754,7 @@ class WebServer(
              // NanoHTTPD's parseBody handles multipart and puts temp file path in map
              val tmpFilePath = map["file"]
              if (tmpFilePath != null) {
-                 val originalName = params["filename"] ?: "upload.bin"
+                 val originalName = getParam(session, "filename") ?: "upload.bin"
                  if (originalName.contains("..") || originalName.contains("/") || originalName.contains("\\")) {
                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
                  }
@@ -797,7 +810,7 @@ class WebServer(
         if (uri == "/api/delete_keybox" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val filename = session.parameters["filename"]
+             val filename = getParam(session, "filename")
              if (filename != null && isValidFilename(filename)) {
                  synchronized(fileLock) {
                      val keyboxDir = File(configDir, "keyboxes")
@@ -838,7 +851,7 @@ class WebServer(
         if (uri == "/api/apply_profile" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val profileName = session.parameters["profile"]
+             val profileName = getParam(session, "profile")
              if (profileName != null) {
                  synchronized(fileLock) {
                      try {
@@ -856,8 +869,8 @@ class WebServer(
         if (uri == "/api/toggle" && method == Method.POST) {
              val map = HashMap<String, String>()
              try { session.parseBody(map) } catch(e:Exception){}
-             val setting = session.parameters["setting"]
-             val value = session.parameters["value"]
+             val setting = getParam(session, "setting")
+             val value = getParam(session, "value")
              if (setting != null && value != null) {
                  if (toggleFile(setting, value.toBoolean())) return secureResponse(Response.Status.OK, "text/plain", "Toggled")
              }
