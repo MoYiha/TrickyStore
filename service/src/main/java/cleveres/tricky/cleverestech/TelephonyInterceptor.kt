@@ -2,12 +2,10 @@ package cleveres.tricky.cleverestech
 
 import android.os.IBinder
 import android.os.Parcel
-import android.os.Process
 import android.os.ServiceManager
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import com.android.internal.telephony.IPhoneSubInfo
 import java.io.File
-import kotlin.system.exitProcess
 
 object TelephonyInterceptor : BinderInterceptor() {
 
@@ -21,9 +19,47 @@ object TelephonyInterceptor : BinderInterceptor() {
     private val getIccSerialNumberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getIccSerialNumber")
     private val getIccSerialNumberForSubscriberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getIccSerialNumberForSubscriber")
 
+    private val getLine1NumberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getLine1Number")
+    private val getLine1NumberForSubscriberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getLine1NumberForSubscriber")
+
+    private val getMeidForSubscriberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getMeidForSubscriber")
+
     private lateinit var iphonesubinfo: IBinder
     private var triedCount = 0
     private var injected = false
+
+    private fun generateFallbackImei(): String {
+        val random = java.util.Random()
+        val sb = StringBuilder()
+        sb.append("35") // Standard TAC prefix
+        for (i in 0 until 12) sb.append(random.nextInt(10))
+        val digits = sb.toString()
+        var sum = 0
+        for (i in digits.indices) {
+            var d = digits[i] - '0'
+            if (i % 2 != 0) d *= 2
+            sum += d / 10 + d % 10
+        }
+        val checkDigit = (10 - sum % 10) % 10
+        return digits + checkDigit
+    }
+
+    private fun generateFallbackImsi(): String {
+        val random = java.util.Random()
+        val sb = StringBuilder()
+        sb.append("310") // US MCC
+        sb.append("260") // T-Mobile MNC
+        for (i in 0 until 9) sb.append(random.nextInt(10))
+        return sb.toString()
+    }
+
+    private fun generateFallbackIccid(): String {
+        val random = java.util.Random()
+        val sb = StringBuilder()
+        sb.append("8901") // Major industry identifier
+        for (i in 0 until 15) sb.append(random.nextInt(10))
+        return sb.toString()
+    }
 
     override fun onPostTransact(
         target: IBinder,
@@ -36,44 +72,46 @@ object TelephonyInterceptor : BinderInterceptor() {
         resultCode: Int
     ): Result {
         if (reply == null) return Skip
-
-        // Only intercept if we have valid configs and global spoofing is on or targeted
-        // For simplicity in this advanced feature, we stick to Global Mode or "System-wide" flag
-        // Assuming Config.needHack(callingUid) covers it.
-
         if (!Config.needHack(callingUid)) return Skip
 
-        // Read exception code
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
             return Skip
         }
 
-        val imei = Config.getBuildVar("ATTESTATION_ID_IMEI")
-        val imei2 = Config.getBuildVar("ATTESTATION_ID_IMEI2")
-        val imsi = Config.getBuildVar("ATTESTATION_ID_IMSI") // We need to add this to Config/RandomUtils
-        val iccid = Config.getBuildVar("ATTESTATION_ID_ICCID") // And this
+        val imei = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: generateFallbackImei()
+        val imei2 = Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: generateFallbackImei()
+        val imsi = Config.getBuildVar("ATTESTATION_ID_IMSI") ?: generateFallbackImsi()
+        val iccid = Config.getBuildVar("ATTESTATION_ID_ICCID") ?: generateFallbackIccid()
+        val meid = Config.getBuildVar("ATTESTATION_ID_MEID") ?: ""
+        val phoneNumber = Config.getBuildVar("ATTESTATION_ID_PHONE_NUMBER") ?: ""
 
         var spoofedVal: String? = null
 
-        if (code == getDeviceIdTransaction || code == getDeviceIdForPhoneTransaction || code == getImeiForSubscriberTransaction) {
-             // Simple heuristic: if requesting secondary phone, return imei2, else imei
-             // However, transaction args analysis is hard without unmarshalling.
-             // We'll just return the primary IMEI for now as a "Global" override.
-             spoofedVal = imei
-        } else if (code == getSubscriberIdTransaction || code == getSubscriberIdForSubscriberTransaction) {
-             spoofedVal = imsi
-        } else if (code == getIccSerialNumberTransaction || code == getIccSerialNumberForSubscriberTransaction) {
-             spoofedVal = iccid
+        when (code) {
+            getDeviceIdTransaction -> spoofedVal = imei
+            getDeviceIdForPhoneTransaction -> {
+                reply.setDataPosition(pos)
+                spoofedVal = imei
+            }
+            getImeiForSubscriberTransaction -> spoofedVal = imei
+            getSubscriberIdTransaction, getSubscriberIdForSubscriberTransaction -> spoofedVal = imsi
+            getIccSerialNumberTransaction, getIccSerialNumberForSubscriberTransaction -> spoofedVal = iccid
+            getLine1NumberTransaction, getLine1NumberForSubscriberTransaction -> {
+                spoofedVal = if (phoneNumber.isNotEmpty()) phoneNumber else ""
+            }
+            getMeidForSubscriberTransaction -> {
+                spoofedVal = if (meid.isNotEmpty()) meid else ""
+            }
         }
 
         if (spoofedVal != null) {
-             Logger.i("Intercepted Telephony: code=$code uid=$callingUid -> Spoofing $spoofedVal")
-             val p = Parcel.obtain()
-             p.writeNoException()
-             p.writeString(spoofedVal)
-             return OverrideReply(0, p)
+            Logger.i("Intercepted Telephony: code=$code uid=$callingUid -> Spoofing")
+            val p = Parcel.obtain()
+            p.writeNoException()
+            p.writeString(spoofedVal)
+            return OverrideReply(0, p)
         }
 
         return Skip
@@ -107,10 +145,13 @@ object TelephonyInterceptor : BinderInterceptor() {
         return null
     }
 
+    private fun getModulePath(): String {
+        return "/data/adb/modules/cleverestricky"
+    }
+
     fun tryRunTelephonyInterceptor(): Boolean {
         Logger.i("trying to register telephony interceptor ($triedCount) ...")
 
-        // "iphonesubinfo" is the standard service name for IPhoneSubInfo
         val b = ServiceManager.getService("iphonesubinfo")
         if (b == null) {
             Logger.e("iphonesubinfo service not found")
@@ -133,18 +174,17 @@ object TelephonyInterceptor : BinderInterceptor() {
                     return false
                 }
 
-                // Use the same injection binary and lib
+                val modulePath = getModulePath()
                 val p = Runtime.getRuntime().exec(
                     arrayOf(
-                        "./inject",
+                        "$modulePath/inject",
                         pid.toString(),
-                        "libcleverestricky.so",
+                        "$modulePath/libcleverestricky.so",
                         "entry"
                     )
                 )
                 if (p.waitFor() != 0) {
                     Logger.e("Telephony: failed to inject!")
-                    // Do not exitProcess here, as we are the main daemon and might be handling Keystore fine
                 } else {
                     Logger.i("Telephony: injected successfully")
                     injected = true

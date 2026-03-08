@@ -44,7 +44,7 @@ using namespace android;
 // Optimization: Use std::array<std::string_view> instead of
 // std::set<std::string> to avoid std::string construction (heap allocation) on
 // every property access check.
-static constexpr std::array<std::string_view, 36> g_target_properties = {
+static constexpr std::array<std::string_view, 52> g_target_properties = {
     "ro.boot.verifiedbootstate",
     "ro.boot.flash.locked",
     "ro.boot.veritymode",
@@ -80,7 +80,23 @@ static constexpr std::array<std::string_view, 36> g_target_properties = {
     "ro.vendor.build.fingerprint",
     "ro.odm.build.fingerprint",
     "ro.serialno",
-    "ro.boot.serialno"};
+    "ro.boot.serialno",
+    "persist.radio.imei",
+    "persist.radio.imei1",
+    "persist.radio.imei2",
+    "vendor.ril.imei",
+    "vendor.ril.imei1",
+    "vendor.ril.imei2",
+    "ro.ril.oem.imei",
+    "ro.ril.oem.imei1",
+    "ro.ril.oem.imei2",
+    "ro.netflix.bsp_rev",
+    "drm.service.enabled",
+    "ro.com.google.widevine.level",
+    "ro.crypto.state",
+    "ro.build.version.security_patch",
+    "ro.system.build.fingerprint",
+    "ro.build.version.base_os"};
 
 // Declare Original Function Pointer
 int (*original_system_property_get)(const char *name, char *value);

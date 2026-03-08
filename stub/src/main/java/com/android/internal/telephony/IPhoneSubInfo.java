@@ -35,4 +35,7 @@ public interface IPhoneSubInfo extends IInterface {
     String getSubscriberIdForSubscriber(int subId, String callingPackage);
     String getIccSerialNumber(String callingPackage);
     String getIccSerialNumberForSubscriber(int subId, String callingPackage);
+    String getLine1Number(String callingPackage, String callingFeatureId);
+    String getLine1NumberForSubscriber(int subId, String callingPackage, String callingFeatureId);
+    String getMeidForSubscriber(int subId, String callingPackage, String callingFeatureId);
 }

@@ -37,6 +37,7 @@ class FilePoller(
         if (isRunning) return
         isRunning = true
 
+        var observerActive = false
         try {
             val parent = file.parentFile
             if (parent != null && parent.exists()) {
@@ -53,10 +54,13 @@ class FilePoller(
                 }
                 observer.startWatching()
                 this.observer = observer
+                observerActive = true
             }
         } catch (t: Throwable) {
-            // Fallback to polling if FileObserver fails (e.g. on unit tests or unsupported environment)
+            observerActive = false
         }
+
+        if (observerActive) return
 
         scheduledFuture = scheduler.scheduleWithFixedDelay({
             if (!isRunning) return@scheduleWithFixedDelay // Double check
