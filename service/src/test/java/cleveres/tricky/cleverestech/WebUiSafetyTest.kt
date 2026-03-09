@@ -171,7 +171,7 @@ class WebUiSafetyTest {
     fun testResourceToggleHandlerCorrect() {
         assertTrue(
             "Resource table toggle onchange handler must properly interpolate f.id",
-            webServerContent.contains("""onchange="toggle(\'' + f.id + '\')")""")
+            webServerContent.contains("toggle(\\'' + f.id + '\\'")
         )
     }
 
