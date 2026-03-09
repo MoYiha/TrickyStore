@@ -48,10 +48,19 @@ class BootLogicSafetyTest {
     @Test
     fun testResetPropDoesNotUseShDashC() {
         // Verify the old vulnerable pattern is gone from resetProp
-        val lines = bootLogicContent.lines()
-        val resetPropStart = lines.indexOfFirst { it.contains("fun resetProp") }
-        assertTrue("resetProp function must exist", resetPropStart >= 0)
-        val resetPropBody = lines.subList(resetPropStart, minOf(resetPropStart + 10, lines.size)).joinToString("\n")
+        // Search the entire function body by finding the function and its matching brace
+        val funcStart = bootLogicContent.indexOf("fun resetProp")
+        assertTrue("resetProp function must exist", funcStart >= 0)
+        val funcBody = bootLogicContent.substring(funcStart)
+        // Extract up to the second closing brace (function close)
+        var braceCount = 0
+        var endIdx = 0
+        for (i in funcBody.indices) {
+            if (funcBody[i] == '{') braceCount++
+            if (funcBody[i] == '}') braceCount--
+            if (braceCount == 0 && i > 0) { endIdx = i; break }
+        }
+        val resetPropBody = funcBody.substring(0, endIdx + 1)
         assertFalse(
             "resetProp must NOT use exec(\"resetprop...\") via sh -c",
             resetPropBody.contains("exec(\"resetprop")

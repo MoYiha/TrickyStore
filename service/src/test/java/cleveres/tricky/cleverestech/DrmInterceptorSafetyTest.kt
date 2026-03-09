@@ -32,14 +32,19 @@ class DrmInterceptorSafetyTest {
         val serviceNotFoundIdx = lines.indexOfFirst { it.contains("DRM service not found") }
         assertTrue("Must have 'DRM service not found' log", serviceNotFoundIdx >= 0)
 
-        // Look for triedCount increment in the ~5 lines after the service-not-found log
-        val nearbyLines = lines.subList(
-            serviceNotFoundIdx,
-            minOf(serviceNotFoundIdx + 5, lines.size)
-        ).joinToString("\n")
+        // Search within the tryRunDrmInterceptor function body for the increment near the log
+        val functionStart = lines.indexOfFirst { it.contains("fun tryRunDrmInterceptor") }
+        assertTrue("tryRunDrmInterceptor function must exist", functionStart >= 0)
+        val functionBody = lines.subList(functionStart, lines.size).joinToString("\n")
+
+        // The increment must appear after "DRM service not found" and before the next return
+        val afterNotFound = drmContent.substring(drmContent.indexOf("DRM service not found"))
+        val nextReturn = afterNotFound.indexOf("return")
+        assertTrue("Must have return after service not found", nextReturn > 0)
+        val betweenLogAndReturn = afterNotFound.substring(0, nextReturn)
         assertTrue(
-            "triedCount must be incremented after DRM service not found to prevent infinite retry loop",
-            nearbyLines.contains("triedCount += 1") || nearbyLines.contains("triedCount++")
+            "triedCount must be incremented between 'DRM service not found' and 'return' to prevent infinite retry loop",
+            betweenLogAndReturn.contains("triedCount += 1") || betweenLogAndReturn.contains("triedCount++")
         )
     }
 

@@ -314,32 +314,38 @@ jobs:
 
       - name: "🛡️ Security — Check for shell injection patterns"
         run: |
-          ERRORS=0
-          # Scan for dangerous sh -c with string interpolation in Kotlin code
-          # Pattern: exec("... $variable ...") or exec("... ${expr} ...")
+          # Scan for dangerous sh -c with string interpolation in production Kotlin code
+          # Pattern: exec("cmd $variable") or arrayOf("sh", "-c", "cmd $var")
           # Safe pattern: Runtime.getRuntime().exec(arrayOf("cmd", arg1, arg2))
+          WARNINGS=0
           for f in $(find service/src/main/java -name "*.kt" 2>/dev/null); do
-            # Look for exec("sh", "-c", ...) or exec(arrayOf("sh", "-c", ...)) with interpolation
-            MATCHES=$(grep -n 'exec(".*\$' "$f" 2>/dev/null | grep -v '//' || true)
-            if [ -n "$MATCHES" ]; then
-              while IFS= read -r match; do
-                LINE_NUM=$(echo "$match" | cut -d: -f1)
+            # Find lines with exec() that contain dollar-sign interpolation
+            # Skip lines that are purely comments (start with //)
+            while IFS= read -r match; do
+              LINE_NUM=$(echo "$match" | cut -d: -f1)
+              LINE_CONTENT=$(echo "$match" | cut -d: -f2-)
+              # Skip pure comment lines
+              TRIMMED=$(echo "$LINE_CONTENT" | sed 's/^[[:space:]]*//')
+              if [[ "$TRIMMED" != //* ]]; then
                 echo "::warning file=$f,line=$LINE_NUM::Potential shell injection: exec() with string interpolation. Use array-based exec instead."
-              done <<< "$MATCHES"
-            fi
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            done < <(grep -n 'exec(".*\$' "$f" 2>/dev/null || true)
           done
-          echo "✅ Shell injection pattern scan complete"
+          echo "✅ Shell injection pattern scan complete (found $WARNINGS warnings)"
 
       - name: "🔌 Process — Check for stream leaks in Runtime.exec"
         run: |
-          # Processes created with Runtime.exec() must have their streams drained
-          # to prevent FD exhaustion (especially in retry loops)
+          # Files using Runtime.exec() in retry loops must drain process streams
+          # to prevent FD exhaustion. This check warns when exec is used without
+          # any stream handling in the same file.
           WARNINGS=0
           for f in $(find service/src/main/java -name "*.kt" 2>/dev/null); do
-            if grep -q 'Runtime.getRuntime().exec' "$f" 2>/dev/null; then
-              # Check if streams are being read
-              if grep -q 'Runtime.getRuntime().exec' "$f" && ! grep -q 'inputStream.readBytes\|inputStream.read\|inputStream.bufferedReader\|inputStream.close\|ProcessBuilder' "$f" 2>/dev/null; then
-                echo "::warning file=$f::Runtime.exec() without stream draining — potential FD leak in retry loops"
+            EXEC_COUNT=$(grep -c 'Runtime.getRuntime().exec' "$f" 2>/dev/null || echo "0")
+            if [ "$EXEC_COUNT" -gt 0 ]; then
+              STREAM_COUNT=$(grep -c 'inputStream\.\|errorStream\.\|ProcessBuilder' "$f" 2>/dev/null || echo "0")
+              if [ "$STREAM_COUNT" -eq 0 ]; then
+                echo "::warning file=$f::$EXEC_COUNT Runtime.exec() call(s) without any stream handling — potential FD leak"
                 WARNINGS=$((WARNINGS + 1))
               fi
             fi
