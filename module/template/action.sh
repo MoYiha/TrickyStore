@@ -5,9 +5,8 @@ HOST="127.0.0.1"
 # Wait up to 10 seconds so slower boots have time to finish binding the
 # loopback WebUI socket before the browser intent is fired.
 MAX_WAIT_SECONDS=10
-# FLAG_ACTIVITY_NEW_TASK is required because this intent is launched from the
-# module shell action, not from an Activity context.
-NEW_TASK_FLAG=0x10000000
+# FLAG_ACTIVITY_NEW_TASK (0x10000000) is required because this intent is
+# launched from the module shell action, not from an Activity context.
 
 if [ ! -f "$PORT_FILE" ]; then
   echo "! Web server port file not found. Is the module running?"
@@ -55,7 +54,7 @@ if [ "$READY" -ne 1 ]; then
 fi
 
 echo "- Opening WebUI at $URL"
-START_OUTPUT=$(am start -W -f "$NEW_TASK_FLAG" -a android.intent.action.VIEW -d "$URL" 2>&1)
+START_OUTPUT=$(am start -W -f 0x10000000 -a android.intent.action.VIEW -d "$URL" 2>&1)
 START_EXIT=$?
 echo "$START_OUTPUT"
 
@@ -67,6 +66,9 @@ case "$START_OUTPUT" in
     BROWSER_ERROR=0
     ;;
 esac
+
+# Activity manager can also report "unable to resolve Intent" when no browser
+# is available to handle the ACTION_VIEW launch.
 
 if [ "$START_EXIT" -ne 0 ]; then
   echo "! Failed to launch WebUI intent (exit $START_EXIT)"
