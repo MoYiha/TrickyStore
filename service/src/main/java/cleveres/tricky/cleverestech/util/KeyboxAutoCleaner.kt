@@ -11,6 +11,7 @@ object KeyboxAutoCleaner {
     private val keyboxDir = File(configDir, "keyboxes")
     private val revokedDir = File(keyboxDir, "revoked")
     private val toggleFile = File(configDir, "auto_keybox_check")
+    private val webPortFile = File(configDir, "web_port")
 
     fun start() {
         executor.scheduleAtFixedRate({
@@ -53,13 +54,45 @@ object KeyboxAutoCleaner {
 
     private fun notifyUser(count: Int) {
         try {
+            val url = readWebUiUrl()
+            Logger.d("AutoCleaner: Posting notification for WebUI at $url")
             // Post a high-priority, actionable notification
             val cmd = arrayOf(
-                "su", "-c", "cmd notification post -S bigtext -t CleveresTricky 'Keybox Revoked Alert' '$count keybox(es) were found to be revoked/invalid and have been disabled. Check WebUI!' -a 'android.intent.action.VIEW' -d 'http://localhost:5623'"
+                "su", "-c", "cmd notification post -S bigtext -t CleveresTricky 'Keybox Revoked Alert' '$count keybox(es) were found to be revoked/invalid and have been disabled. Check WebUI!' -a 'android.intent.action.VIEW' -d '$url'"
             )
-            Runtime.getRuntime().exec(cmd)
+            val process = Runtime.getRuntime().exec(cmd)
+            val stdout = process.inputStream.bufferedReader().use { it.readText().trim() }
+            val stderr = process.errorStream.bufferedReader().use { it.readText().trim() }
+            val exitCode = process.waitFor()
+            if (stdout.isNotBlank()) {
+                Logger.d("AutoCleaner: notification stdout: $stdout")
+            }
+            if (stderr.isNotBlank()) {
+                Logger.d("AutoCleaner: notification stderr: $stderr")
+            }
+            if (exitCode != 0) {
+                Logger.e("AutoCleaner: Failed to send notification (exit=$exitCode)")
+            }
         } catch (e: Exception) {
             Logger.e("AutoCleaner: Failed to send notification", e)
+        }
+    }
+
+    private fun readWebUiUrl(): String {
+        return try {
+            val raw = webPortFile.readText().trim()
+            val parts = raw.split('|', limit = 2)
+            val port = parts.getOrNull(0)?.toIntOrNull()
+            val token = parts.getOrNull(1)?.trim().orEmpty()
+            if (port == null || token.isBlank()) {
+                Logger.e("AutoCleaner: Invalid web_port content '$raw'")
+                "http://127.0.0.1:5623"
+            } else {
+                "http://127.0.0.1:$port/?token=$token"
+            }
+        } catch (e: Exception) {
+            Logger.e("AutoCleaner: Failed to read WebUI endpoint metadata", e)
+            "http://127.0.0.1:5623"
         }
     }
 }

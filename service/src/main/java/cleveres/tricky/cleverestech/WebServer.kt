@@ -12,8 +12,11 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.StringReader
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
@@ -37,7 +40,7 @@ private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
 
 class WebServer(
-    port: Int,
+    private val requestedPort: Int,
     private val configDir: File,
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
@@ -46,14 +49,41 @@ class WebServer(
             Logger.e("failed to set permissions for ${f.name}", t)
         }
     }
-) : NanoHTTPD("127.0.0.1", port) {
+) : NanoHTTPD("127.0.0.1", requestedPort) {
 
     override fun start(timeout: Int, daemon: Boolean) {
+        Logger.d("WebServer: Starting on 127.0.0.1:$requestedPort (timeout=$timeout daemon=$daemon)")
         try {
             super.start(timeout, daemon)
+            Logger.d("WebServer: NanoHTTPD start returned (alive=$isAlive port=$listeningPort)")
+            waitUntilListening()
+            Logger.d("WebServer: Readiness probe succeeded on 127.0.0.1:$listeningPort")
         } catch (e: Exception) {
             Logger.e("WebServer: Failed to start", e)
+            throw e
         }
+    }
+
+    private fun waitUntilListening(timeoutMs: Long = 5_000L, pollMs: Long = 100L) {
+        val port = listeningPort
+        if (port <= 0) {
+            throw IOException("WebServer: Invalid listening port $port after start")
+        }
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        var lastError: IOException? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress("127.0.0.1", port), 250)
+                }
+                return
+            } catch (e: IOException) {
+                lastError = e
+                Logger.d("WebServer: Waiting for 127.0.0.1:$port to accept connections (${e.message})")
+                Thread.sleep(pollMs)
+            }
+        }
+        throw IOException("WebServer: Timed out waiting for 127.0.0.1:$port to accept connections", lastError)
     }
 
     init { cleveres.tricky.cleverestech.util.LoggerConfig.disableNanoHttpdLogging() }

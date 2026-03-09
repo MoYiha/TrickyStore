@@ -20,15 +20,19 @@ fun main(args: Array<String>) {
     // Start Web Server
     try {
         val configDir = File("/data/adb/cleverestricky")
+        Logger.d("Main: Preparing WebUI config directory at ${configDir.absolutePath}")
         val server = WebServer(5623, configDir) // Fixed port 5623
+        Logger.d("Main: Starting WebUI server bootstrap on requested port 5623")
         server.start()
         val port = server.listeningPort
         val token = server.token
         Logger.i("Web server started on port $port")
+        Logger.d("Main: WebUI server is listening on 127.0.0.1:$port (tokenLength=${token.length})")
         val portFile = File(configDir, "web_port")
         // Secure directory before writing sensitive file
         try {
             SecureFile.mkdirs(configDir, 448) // 0700
+            Logger.d("Main: Ensured WebUI config directory permissions for ${configDir.absolutePath}")
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }
@@ -42,6 +46,7 @@ fun main(args: Array<String>) {
         }
 
         SecureFile.writeText(portFile, "$port|$token")
+        Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
     } catch (e: Exception) {
         Logger.e("Failed to start web server", e)
     }
