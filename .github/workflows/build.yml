@@ -52,7 +52,7 @@ jobs:
         run: |
           echo "=== Scanning for java.util.Random in production code ==="
           ERRORS=0
-          FILES=$(grep -rl "java\.util\.Random" --include="*.kt" --include="*.java" service/ module/ 2>/dev/null || true)
+          FILES=$(grep -rl "java\.util\.Random" --include="*.kt" --include="*.java" --exclude-dir="test" --exclude-dir="androidTest" service/ module/ 2>/dev/null || true)
           for f in $FILES; do
             LINES=$(grep -n "java\.util\.Random" "$f" | grep -iv "test" || true)
             if [ -n "$LINES" ]; then
