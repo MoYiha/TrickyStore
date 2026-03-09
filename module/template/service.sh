@@ -7,6 +7,8 @@ cd $MODDIR
 (
 FAIL_COUNT=0
 MAX_FAILS=5
+# Five minutes avoids repeated boot-time restart storms while still allowing
+# the daemon to recover later if the underlying failure is transient.
 BACKOFF_SECONDS=300
 
 while [ true ]; do

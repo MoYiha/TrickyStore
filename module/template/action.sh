@@ -2,7 +2,12 @@
 
 PORT_FILE="/data/adb/cleverestricky/web_port"
 HOST="127.0.0.1"
+# Wait up to 10 seconds so slower boots have time to finish binding the
+# loopback WebUI socket before the browser intent is fired.
 MAX_WAIT_SECONDS=10
+# FLAG_ACTIVITY_NEW_TASK is required because this intent is launched from the
+# module shell action, not from an Activity context.
+NEW_TASK_FLAG=0x10000000
 
 if [ ! -f "$PORT_FILE" ]; then
   echo "! Web server port file not found. Is the module running?"
@@ -25,6 +30,11 @@ case "$PORT" in
     ;;
 esac
 
+if [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+  echo "! WebUI port out of range: $PORT"
+  exit 1
+fi
+
 URL="http://$HOST:$PORT/?token=$TOKEN"
 
 echo "- Waiting for WebUI to listen on $HOST:$PORT"
@@ -45,27 +55,32 @@ if [ "$READY" -ne 1 ]; then
 fi
 
 echo "- Opening WebUI at $URL"
-START_OUTPUT=$(am start -W -f 0x10000000 -a android.intent.action.VIEW -d "$URL" 2>&1)
+START_OUTPUT=$(am start -W -f "$NEW_TASK_FLAG" -a android.intent.action.VIEW -d "$URL" 2>&1)
 START_EXIT=$?
 echo "$START_OUTPUT"
+
+case "$START_OUTPUT" in
+  *ActivityNotFoundException*|*unable\ to\ resolve\ Intent*)
+    BROWSER_ERROR=1
+    ;;
+  *)
+    BROWSER_ERROR=0
+    ;;
+esac
 
 if [ "$START_EXIT" -ne 0 ]; then
   echo "! Failed to launch WebUI intent (exit $START_EXIT)"
   log -t CleveresTricky "WebUI launch failed (exit $START_EXIT): $START_OUTPUT"
-  case "$START_OUTPUT" in
-    *ActivityNotFoundException*|*unable\ to\ resolve\ Intent*)
-      echo "! No browser is installed to handle the WebUI link."
-      ;;
-  esac
+  if [ "$BROWSER_ERROR" -eq 1 ]; then
+    echo "! No browser is installed to handle the WebUI link."
+  fi
   exit "$START_EXIT"
 fi
 
-case "$START_OUTPUT" in
-  *ActivityNotFoundException*|*unable\ to\ resolve\ Intent*)
-    echo "! No browser is installed to handle the WebUI link."
-    log -t CleveresTricky "WebUI launch failed: $START_OUTPUT"
-    exit 1
-    ;;
-esac
+if [ "$BROWSER_ERROR" -eq 1 ]; then
+  echo "! No browser is installed to handle the WebUI link."
+  log -t CleveresTricky "WebUI launch failed: $START_OUTPUT"
+  exit 1
+fi
 
 log -t CleveresTricky "WebUI launch intent started for $URL"

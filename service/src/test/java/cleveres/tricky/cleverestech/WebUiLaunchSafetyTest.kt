@@ -16,14 +16,18 @@ class WebUiLaunchSafetyTest {
     fun setup() {
         actionScriptContent = moduleTemplateFile("action.sh").readText()
         val workingDir = File(System.getProperty("user.dir")).absoluteFile
-        manifestContent = generateSequence(workingDir) { it.parentFile }
+        manifestContent = (
+            generateSequence(workingDir) { it.parentFile }
             .map { File(it, "service/src/main/AndroidManifest.xml") }
-            .first(File::exists)
-            .readText()
-        networkSecurityConfigContent = generateSequence(workingDir) { it.parentFile }
+            .firstOrNull(File::exists)
+            ?: error("Could not locate service/src/main/AndroidManifest.xml from ${workingDir.absolutePath}")
+        ).readText()
+        networkSecurityConfigContent = (
+            generateSequence(workingDir) { it.parentFile }
             .map { File(it, "service/src/main/res/xml/network_security_config.xml") }
-            .first(File::exists)
-            .readText()
+            .firstOrNull(File::exists)
+            ?: error("Could not locate service/src/main/res/xml/network_security_config.xml from ${workingDir.absolutePath}")
+        ).readText()
         webServerContent = serviceMainFile("WebServer.kt").readText()
     }
 

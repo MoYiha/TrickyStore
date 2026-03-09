@@ -279,13 +279,13 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
 
-            struct msghdr received_msg_hdr{};
-            if (read_proc(pid, remote_msghdr_ptr, &received_msg_hdr, sizeof(received_msg_hdr)) == sizeof(received_msg_hdr)) {
+            struct msghdr remote_msg_hdr_after_recv{};
+            if (read_proc(pid, remote_msghdr_ptr, &remote_msg_hdr_after_recv, sizeof(remote_msg_hdr_after_recv)) == sizeof(remote_msg_hdr_after_recv)) {
                 LOGD(
                     "recvmsg remote msghdr: controllen=%zu flags=0x%x iovlen=%zu",
-                    received_msg_hdr.msg_controllen,
-                    received_msg_hdr.msg_flags,
-                    received_msg_hdr.msg_iovlen
+                    remote_msg_hdr_after_recv.msg_controllen,
+                    remote_msg_hdr_after_recv.msg_flags,
+                    remote_msg_hdr_after_recv.msg_iovlen
                 );
             } else {
                 LOGW("Failed to read remote msghdr after recvmsg");

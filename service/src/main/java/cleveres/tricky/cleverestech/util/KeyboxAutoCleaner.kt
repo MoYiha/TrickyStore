@@ -1,11 +1,14 @@
 package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.Logger
+import cleveres.tricky.cleverestech.WEB_UI_LOOPBACK_HOST
+import cleveres.tricky.cleverestech.WEB_UI_PORT
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object KeyboxAutoCleaner {
+    private val WEB_UI_TOKEN_REGEX = Regex("^[A-Za-z0-9-]+$")
     private val executor = Executors.newSingleThreadScheduledExecutor()
     private val configDir = File("/data/adb/cleverestricky")
     private val keyboxDir = File(configDir, "keyboxes")
@@ -78,21 +81,27 @@ object KeyboxAutoCleaner {
         }
     }
 
+    /**
+     * Reads the `web_port` metadata file (`port|token`) and returns the tokenized WebUI URL.
+     *
+     * Falls back to the default loopback endpoint if the file is missing or malformed so the
+     * notification still points at the local WebUI for debugging.
+     */
     private fun readWebUiUrl(): String {
         return try {
             val raw = webPortFile.readText().trim()
             val parts = raw.split('|', limit = 2)
             val port = parts.getOrNull(0)?.toIntOrNull()
             val token = parts.getOrNull(1)?.trim().orEmpty()
-            if (port == null || token.isBlank()) {
+            if (port == null || port !in 1..65535 || token.isBlank() || !WEB_UI_TOKEN_REGEX.matches(token)) {
                 Logger.e("AutoCleaner: Invalid web_port content '$raw'")
-                "http://127.0.0.1:5623"
+                "http://$WEB_UI_LOOPBACK_HOST:$WEB_UI_PORT"
             } else {
-                "http://127.0.0.1:$port/?token=$token"
+                "http://$WEB_UI_LOOPBACK_HOST:$port/?token=$token"
             }
         } catch (e: Exception) {
             Logger.e("AutoCleaner: Failed to read WebUI endpoint metadata", e)
-            "http://127.0.0.1:5623"
+            "http://$WEB_UI_LOOPBACK_HOST:$WEB_UI_PORT"
         }
     }
 }
