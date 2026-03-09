@@ -101,6 +101,9 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
 
     // Read /proc/{pid}/task directory to find all threads
     if let Ok(entries) = fs::read_dir(format!("/proc/{}/task", pid)) {
+        let mut path_buf = format!("/proc/{}/task/", pid);
+        let base_len = path_buf.len();
+
         for entry in entries.flatten() {
             let file_name = entry.file_name();
             let bytes = file_name.as_bytes();
@@ -115,8 +118,9 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
                     }
 
                     // Check which syscall the thread is executing
-                    let syscall_path = format!("/proc/{}/task/{}/syscall", pid, tid);
-                    if let Ok(content) = fs::read_to_string(syscall_path) {
+                    path_buf.push_str(file_name_str);
+                    path_buf.push_str("/syscall");
+                    if let Ok(content) = fs::read_to_string(&path_buf) {
                         if let Some(syscall_nr_str) = content.split_whitespace().next() {
                             if let Ok(nr) = syscall_nr_str.parse::<i64>() {
                                 // SYS_ioctl constant varies by platform.
@@ -128,6 +132,7 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
                             }
                         }
                     }
+                    path_buf.truncate(base_len);
                 }
             }
         }
@@ -138,8 +143,12 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
 /// Read the `SigBlk` mask from `/proc/{pid}/task/{tid}/status`.
 /// Returns the mask as a u64, or None if reading/parsing fails.
 fn get_thread_blocked_signals(pid: libc::pid_t, tid: libc::pid_t) -> Option<u64> {
-    let status_path = format!("/proc/{}/task/{}/status", pid, tid);
-    let content = fs::read_to_string(status_path).ok()?;
+    use std::fmt::Write;
+    // We avoid allocating a string format for every status read by using a thread-local static buffer if possible, or just doing it inline but minimizing overhead.
+    // Given this isn't a tight loop, format is okay, but `String::with_capacity` is slightly better.
+    let mut status_path = String::with_capacity(64);
+    let _ = write!(status_path, "/proc/{}/task/{}/status", pid, tid);
+    let content = fs::read_to_string(&status_path).ok()?;
 
     for line in content.lines() {
         if line.starts_with("SigBlk:") {
