@@ -81,8 +81,18 @@ object SecureFile {
                 var bytesWritten = 0
                 while (bytesWritten < content.size) {
                     val w = runCatching { Os.write(fd, content, bytesWritten, content.size - bytesWritten) }.getOrElse { 0 }
-                    if (w <= 0) break // Should not happen unless error
+                    if (w <= 0) {
+                        Logger.e("SecureFile: Partial write to $path (wrote $bytesWritten/${content.size} bytes)")
+                        break
+                    }
                     bytesWritten += w
+                }
+
+                if (bytesWritten < content.size) {
+                    // Incomplete write — clean up temp file and throw
+                    runCatching { Os.close(fd); fd = null }
+                    runCatching { Os.remove(tmpPath) }
+                    throw java.io.IOException("SecureFile: Incomplete write to $path ($bytesWritten/${content.size} bytes)")
                 }
 
                 // Sync to verify write
@@ -138,8 +148,16 @@ object SecureFile {
                     var chunkWritten = 0
                     while (chunkWritten < bytesRead) {
                         val w = runCatching { Os.write(fd, buffer, chunkWritten, bytesRead - chunkWritten) }.getOrElse { 0 }
-                        if (w <= 0) break // Should not happen unless error
+                        if (w <= 0) {
+                            Logger.e("SecureFile: Partial stream write to $path")
+                            break
+                        }
                         chunkWritten += w
+                    }
+                    if (chunkWritten < bytesRead) {
+                        runCatching { Os.close(fd); fd = null }
+                        runCatching { Os.remove(tmpPath) }
+                        throw java.io.IOException("SecureFile: Incomplete stream write to $path")
                     }
                     totalBytesWritten += bytesRead
                 }

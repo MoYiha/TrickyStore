@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <cstdlib>
 #include <cstdio>
+#include <climits>
 #include <dlfcn.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -452,7 +453,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     auto pid_val = strtol(argv[1], nullptr, 10);
-    if (pid_val <= 0) {
+    if (pid_val <= 0 || pid_val > INT_MAX) {
         LOGF("Invalid PID: %s", argv[1]);
         return 1;
     }

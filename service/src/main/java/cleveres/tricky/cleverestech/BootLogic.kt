@@ -73,9 +73,8 @@ object BootLogic {
                     spFile.writeText(newPatch)
                     Logger.i("Updated security_patch.txt to $newPatch")
                     // Fix permissions
-                    spFile.setReadable(true, true) // 0600 effectively if owner only?
-                    // Runtime.exec("chmod 600 ...") might be safer to ensure correct perms
-                    exec("chmod 600 ${spFile.absolutePath}")
+                    // Fix permissions using array-based exec to avoid shell injection
+                    Runtime.getRuntime().exec(arrayOf("chmod", "600", spFile.absolutePath)).waitFor()
                 }
             }
         } catch (e: Exception) {
@@ -165,7 +164,7 @@ object BootLogic {
                         count++
                     } else {
                         // Try with shell if File.delete fails (e.g. read-only mount)
-                        exec("rm -f $path")
+                        Runtime.getRuntime().exec(arrayOf("rm", "-f", path)).waitFor()
                         if (!f.exists()) {
                              Logger.i("Deleted Magisk 32-bit binary via shell: $path")
                              count++
@@ -183,9 +182,7 @@ object BootLogic {
 
     private fun resetProp(name: String, value: String) {
         try {
-             // Check if already set to avoid spamming?
-             // But resetprop forces it.
-             exec("resetprop -n $name $value")
+             Runtime.getRuntime().exec(arrayOf("resetprop", "-n", name, value)).waitFor()
         } catch (e: Exception) {
             Logger.e("Failed to resetprop $name", e)
         }
