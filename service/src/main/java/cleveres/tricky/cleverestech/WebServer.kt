@@ -1082,12 +1082,21 @@ class WebServer(
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
         .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
         @media screen and (max-width: 600px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .content { padding: 12px; padding-bottom: 80px; }
+            .panel { padding: 14px; margin-bottom: 14px; }
+            h1 { font-size: 1.2em; margin: 15px 0; }
+            .tabs { gap: 0; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; padding: 0 4px; }
+            .tab { scroll-snap-align: start; padding: 12px 14px; font-size: 0.82em; }
+            .row { flex-wrap: wrap; gap: 8px; }
             .responsive-table thead { display: none; }
             .responsive-table tr { display: block; border: 1px solid var(--border); margin-bottom: 10px; border-radius: 8px; background: #1a1a1a; }
             .responsive-table td { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #333; padding: 12px; min-height: 40px; }
             .responsive-table td:last-child { border-bottom: none; }
             .responsive-table td::before { content: attr(data-label); color: #888; font-weight: 500; margin-right: 10px; min-width: 100px; display: inline-block; }
             .responsive-table td > div, .responsive-table td > span { text-align: right; flex: 1; word-break: break-word; }
+            .server-item { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .server-item > div:last-child { width: 100%; display: flex; justify-content: flex-end; }
         }
     </style>
 </head>
@@ -1470,7 +1479,7 @@ class WebServer(
         function handleTabNavigation(e, id) {
             if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                 e.preventDefault();
-                const tabs = ['dashboard', 'spoof', 'apps', 'keys', 'guide', 'editor'];
+                const tabs = ['dashboard', 'spoof', 'apps', 'keys', 'info', 'guide', 'editor'];
                 let idx = tabs.indexOf(id);
                 if (e.key === 'ArrowRight') idx = (idx + 1) % tabs.length;
                 else idx = (idx - 1 + tabs.length) % tabs.length;
@@ -2176,7 +2185,7 @@ class WebServer(
 
                 if (isToggleable) {
                     const isChecked = data[f.id] ? 'checked' : '';
-                    statusHtml = '<input type="checkbox" class="toggle" id="res_toggle_' + f.id + '" ' + isChecked + ' onchange="toggle(\' + f.id + \')">';
+                    statusHtml = '<input type="checkbox" class="toggle" id="res_toggle_' + f.id + '" ' + isChecked + ' onchange="toggle(\'' + f.id + '\')">';
                 } else {
                     statusHtml = '<span style="color:#888;">Info Only</span>';
                 }
