@@ -52,7 +52,7 @@ jobs:
         run: |
           echo "=== Scanning for java.util.Random in production code ==="
           ERRORS=0
-          FILES=$(grep -rl "java\.util\.Random" --include="*.kt" --include="*.java" service/ module/ 2>/dev/null || true)
+          FILES=$(grep -rl "java\.util\.Random" --include="*.kt" --include="*.java" --exclude-dir="test" --exclude-dir="androidTest" service/ module/ 2>/dev/null || true)
           for f in $FILES; do
             LINES=$(grep -n "java\.util\.Random" "$f" | grep -iv "test" || true)
             if [ -n "$LINES" ]; then
@@ -237,6 +237,120 @@ jobs:
           fi
 
           echo "✅ Daemon exit analysis complete (found $EXIT1_COUNT hard exit points)"
+
+      - name: "🔄 Interceptor — Check retry counter in DRM/Telephony interceptors"
+        run: |
+          ERRORS=0
+          # DrmInterceptor: triedCount must be incremented when service not found
+          # This prevents infinite retry loops that waste CPU
+          DRM_FILE="service/src/main/java/cleveres/tricky/cleverestech/DrmInterceptor.kt"
+          if [ -f "$DRM_FILE" ]; then
+            # Count triedCount increments — must be at least 2 (service-not-found + injection-failed)
+            INC_COUNT=$(grep -c 'triedCount += 1' "$DRM_FILE" 2>/dev/null || echo "0")
+            if [ "$INC_COUNT" -lt 2 ]; then
+              echo "::error file=$DRM_FILE::DrmInterceptor has only $INC_COUNT triedCount increments — needs at least 2 (service-not-found + injection-failed paths)"
+              ERRORS=$((ERRORS + 1))
+            fi
+            # Must have retry limit
+            if ! grep -q 'triedCount >= 3' "$DRM_FILE" 2>/dev/null; then
+              echo "::error file=$DRM_FILE::DrmInterceptor missing retry limit (triedCount >= 3)"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+
+          TEL_FILE="service/src/main/java/cleveres/tricky/cleverestech/TelephonyInterceptor.kt"
+          if [ -f "$TEL_FILE" ]; then
+            if ! grep -q 'triedCount >= 3' "$TEL_FILE" 2>/dev/null; then
+              echo "::error file=$TEL_FILE::TelephonyInterceptor missing retry limit"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Interceptor retry logic valid"
+
+      - name: "📝 SecureFile — Check write integrity"
+        run: |
+          ERRORS=0
+          SF_FILE="service/src/main/java/cleveres/tricky/cleverestech/util/SecureFile.kt"
+          if [ -f "$SF_FILE" ]; then
+            # Must detect partial writes (not silently succeed)
+            if ! grep -q 'Incomplete write\|Partial write' "$SF_FILE" 2>/dev/null; then
+              echo "::error file=$SF_FILE::SecureFile.writeBytes does not detect partial writes — silent data corruption risk"
+              ERRORS=$((ERRORS + 1))
+            fi
+            # Must use atomic rename
+            if ! grep -q 'Os.rename' "$SF_FILE" 2>/dev/null; then
+              echo "::error file=$SF_FILE::SecureFile missing Os.rename — non-atomic writes can corrupt config"
+              ERRORS=$((ERRORS + 1))
+            fi
+            # Must fsync before rename
+            if ! grep -q 'Os.fsync' "$SF_FILE" 2>/dev/null; then
+              echo "::error file=$SF_FILE::SecureFile missing Os.fsync — crash during write can lose data"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ SecureFile write integrity checks passed"
+
+      - name: "🔢 Injection — Check PID bounds validation"
+        run: |
+          ERRORS=0
+          INJECT_FILE="module/src/main/cpp/inject/main.cpp"
+          if [ -f "$INJECT_FILE" ]; then
+            # Must check for INT_MAX to prevent integer overflow
+            if ! grep -q 'INT_MAX' "$INJECT_FILE" 2>/dev/null; then
+              echo "::error file=$INJECT_FILE::PID validation missing INT_MAX check — potential injection into wrong process"
+              ERRORS=$((ERRORS + 1))
+            fi
+            # Must include climits for INT_MAX
+            if ! grep -q '<climits>' "$INJECT_FILE" 2>/dev/null; then
+              echo "::error file=$INJECT_FILE::Missing #include <climits> for INT_MAX"
+              ERRORS=$((ERRORS + 1))
+            fi
+          fi
+          if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+          echo "✅ Injection PID validation checks passed"
+
+      - name: "🛡️ Security — Check for shell injection patterns"
+        run: |
+          # Scan for dangerous sh -c with string interpolation in production Kotlin code
+          # Pattern: exec("cmd $variable") or arrayOf("sh", "-c", "cmd $var")
+          # Safe pattern: Runtime.getRuntime().exec(arrayOf("cmd", arg1, arg2))
+          WARNINGS=0
+          for f in $(find service/src/main/java -name "*.kt" 2>/dev/null); do
+            # Find lines with exec() that contain dollar-sign interpolation
+            # Skip lines that are purely comments (start with //)
+            while IFS= read -r match; do
+              LINE_NUM=$(echo "$match" | cut -d: -f1)
+              LINE_CONTENT=$(echo "$match" | cut -d: -f2-)
+              # Skip pure comment lines
+              TRIMMED=$(echo "$LINE_CONTENT" | sed 's/^[[:space:]]*//')
+              if [[ "$TRIMMED" != //* ]]; then
+                echo "::warning file=$f,line=$LINE_NUM::Potential shell injection: exec() with string interpolation. Use array-based exec instead."
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            done < <(grep -n 'exec(".*\$' "$f" 2>/dev/null || true)
+          done
+          echo "✅ Shell injection pattern scan complete (found $WARNINGS warnings)"
+
+      - name: "🔌 Process — Check for stream leaks in Runtime.exec"
+        run: |
+          # Files using Runtime.exec() in retry loops must drain process streams
+          # to prevent FD exhaustion. This check warns when exec is used without
+          # any stream handling in the same file.
+          WARNINGS=0
+          for f in $(find service/src/main/java -name "*.kt" 2>/dev/null); do
+            EXEC_COUNT=$(grep -c 'Runtime.getRuntime().exec' "$f" 2>/dev/null || echo "0")
+            if [ "$EXEC_COUNT" -gt 0 ]; then
+              STREAM_COUNT=$(grep -c 'inputStream\.\|errorStream\.\|ProcessBuilder' "$f" 2>/dev/null || echo "0")
+              if [ "$STREAM_COUNT" -eq 0 ]; then
+                echo "::warning file=$f::$EXEC_COUNT Runtime.exec() call(s) without any stream handling — potential FD leak"
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            fi
+          done
+          echo "✅ Process stream leak scan complete (found $WARNINGS warnings)"
 
   # ============================================================
   # Phase 2: Rust Tests (after safety check)

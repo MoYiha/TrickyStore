@@ -140,6 +140,7 @@ object DrmInterceptor : BinderInterceptor() {
         val b = findDrmService()
         if (b == null) {
             Logger.d("DRM service not found, will retry")
+            triedCount += 1
             return false
         }
 
@@ -168,6 +169,11 @@ object DrmInterceptor : BinderInterceptor() {
                         "entry"
                     )
                 )
+                try {
+                    // Drain streams to prevent FD exhaustion
+                    p.inputStream.readBytes()
+                    p.errorStream.readBytes()
+                } catch (_: Exception) {}
                 if (p.waitFor() != 0) {
                     Logger.e("DRM: failed to inject!")
                 } else {

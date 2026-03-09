@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <cstdlib>
 #include <cstdio>
+#include <climits>
 #include <dlfcn.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -193,7 +194,29 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
             
+            // recvmsg requires at least one iov entry with data for SCM_RIGHTS
+            char remote_iov_dummy = 0;
+            uintptr_t remote_iov_data_ptr = push_memory(pid, regs, &remote_iov_dummy, sizeof(remote_iov_dummy));
+            if (remote_iov_data_ptr == 0) {
+                LOGE("Failed to push iov dummy data to remote process");
+                close_remote_fd_func(remote_fd);
+                ptrace(PTRACE_DETACH, pid, 0, 0);
+                return false;
+            }
+            struct iovec remote_iov{};
+            remote_iov.iov_base = (void*) remote_iov_data_ptr;
+            remote_iov.iov_len = sizeof(remote_iov_dummy);
+            uintptr_t remote_iov_ptr = push_memory(pid, regs, &remote_iov, sizeof(remote_iov));
+            if (remote_iov_ptr == 0) {
+                LOGE("Failed to push iovec to remote process");
+                close_remote_fd_func(remote_fd);
+                ptrace(PTRACE_DETACH, pid, 0, 0);
+                return false;
+            }
+
             struct msghdr msg_hdr{};
+            msg_hdr.msg_iov = (struct iovec*) remote_iov_ptr;
+            msg_hdr.msg_iovlen = 1;
             msg_hdr.msg_control = (void*) remote_cmsg_buffer_ptr;
             msg_hdr.msg_controllen = sizeof(cmsg_buffer);
             uintptr_t remote_msghdr_ptr = push_memory(pid, regs, &msg_hdr, sizeof(msg_hdr));
@@ -219,6 +242,11 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             struct msghdr local_msg_hdr{};
             struct cmsghdr *local_cmsg;
             char local_cmsg_buffer[CMSG_SPACE(sizeof(int))];
+            // sendmsg requires at least one iov entry with data for SCM_RIGHTS
+            char local_iov_dummy = 0;
+            struct iovec local_iov = { &local_iov_dummy, sizeof(local_iov_dummy) };
+            local_msg_hdr.msg_iov = &local_iov;
+            local_msg_hdr.msg_iovlen = 1;
             local_msg_hdr.msg_control = local_cmsg_buffer;
             local_msg_hdr.msg_controllen = sizeof(local_cmsg_buffer);
             local_msg_hdr.msg_name = &sun_addr; // Use the same address struct (local copy)
@@ -261,7 +289,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             received_hdr_validation.msg_controllen = sizeof(cmsg_buffer);
 
             cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
-            if (received_cmsg == nullptr || received_cmsg->cmsg_len != CMSG_LEN(sizeof(int)) ||
+            if (received_cmsg == nullptr || received_cmsg->cmsg_len < CMSG_LEN(sizeof(int)) ||
                 received_cmsg->cmsg_level != SOL_SOCKET || received_cmsg->cmsg_type != SCM_RIGHTS) {
                 LOGE("Invalid cmsg received from remote process");
                 close_remote_fd_func(remote_fd);
@@ -425,7 +453,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     auto pid_val = strtol(argv[1], nullptr, 10);
-    if (pid_val <= 0) {
+    if (pid_val <= 0 || pid_val > INT_MAX) {
         LOGF("Invalid PID: %s", argv[1]);
         return 1;
     }
