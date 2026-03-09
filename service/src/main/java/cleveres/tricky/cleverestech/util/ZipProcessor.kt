@@ -28,24 +28,20 @@ object ZipProcessor {
             ZipInputStream(inputStream).use { zis ->
                 var entry = zis.nextEntry
                 while (entry != null) {
-                    if (!entry.isDirectory) {
-                        val name = entry.name
-                        // Check for directory traversal
-                        if (name.contains("..") || name.contains("/") || name.contains("\\")) {
-                            Logger.e("Zip entry contains directory traversal: $name")
-                            return null
-                        }
+                    val name = entry.name
+                    if (name.contains("..") || name.contains("/") || name.contains("\\")) {
+                        throw SecurityException("Zip entry contains directory traversal: $name")
+                    }
 
+                    if (!entry.isDirectory) {
                         // Read content with limits
                         val content = readEntry(zis)
                         if (content == null) {
-                            Logger.e("Zip entry too large: $name")
-                            return null
+                            throw SecurityException("Zip entry too large: $name")
                         }
                         totalSize += content.size
                         if (totalSize > MAX_TOTAL_SIZE) {
-                            Logger.e("Total zip size exceeded limit")
-                            return null
+                            throw SecurityException("Total zip size exceeded limit")
                         }
 
                         when {

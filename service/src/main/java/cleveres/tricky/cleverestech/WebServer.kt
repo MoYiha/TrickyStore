@@ -2396,6 +2396,8 @@ class WebServer(
                         if (!entry.isDirectory) {
                             SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
                         }
+                    } else {
+                        throw SecurityException("Zip entry path traversal detected via canonical path: $name")
                     }
                     zis.closeEntry()
                     entry = zis.nextEntry
