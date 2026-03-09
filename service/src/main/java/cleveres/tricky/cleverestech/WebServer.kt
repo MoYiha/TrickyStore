@@ -2265,7 +2265,7 @@ class WebServer(
             devFooter.style.backgroundColor = "var(--panel-bg)";
             devFooter.style.borderRadius = "var(--radius)";
             devFooter.style.border = "1px solid var(--accent)";
-            devFooter.innerHTML = `<span style="color:var(--accent); font-weight:bold;">BETA / DEV BUILD</span><br><br>Bu modül şu an geliştirme buildidir. Stable sürüm için lütfen <a href="https://github.com/tryigit/CleveresTricky/releases" style="color:var(--accent);" target="_blank">Stable Buildi (GitHub Releases)</a> indirin.`;
+            devFooter.innerHTML = `<span style="color:var(--accent); font-weight:bold;">BETA / DEV BUILD</span><br><br>This module is currently a development build. For the stable version, please download the <a href="https://github.com/tryigit/CleveresTricky/releases" style="color:var(--accent);" target="_blank">Stable Build (GitHub Releases)</a>.`;
             document.body.appendChild(devFooter);
         }
     </script>
