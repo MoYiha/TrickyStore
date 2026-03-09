@@ -138,15 +138,16 @@ object KeystoreInterceptor : BinderInterceptor() {
         if (bd == null) {
             // no binder hook, try inject
             if (triedCount >= 3) {
-                Logger.e("tried injection but still has no backdoor, exit")
-                exitProcess(1)
+                Logger.e("tried injection but still has no backdoor, will keep retrying without exiting daemon")
+                return false
             }
             if (!injected) {
                 Logger.i("trying to inject keystore ...")
                 val pid = findKeystore2Pid()
                 if (pid == null) {
-                    Logger.e("failed to find keystore2 pid! daemon exit")
-                    exitProcess(1)
+                    Logger.e("failed to find keystore2 pid! will retry")
+                    triedCount += 1
+                    return false
                 }
                 val p = Runtime.getRuntime().exec(
                     arrayOf(
@@ -156,11 +157,19 @@ object KeystoreInterceptor : BinderInterceptor() {
                         "entry"
                     )
                 )
-                // logD(p.inputStream.readBytes().decodeToString())
-                // logD(p.errorStream.readBytes().decodeToString())
-                if (p.waitFor() != 0) {
-                    Logger.e("failed to inject! daemon exit")
-                    exitProcess(1)
+                val stdout = p.inputStream.bufferedReader().use { it.readText().trim() }
+                val stderr = p.errorStream.bufferedReader().use { it.readText().trim() }
+                val exitCode = p.waitFor()
+                if (stdout.isNotBlank()) {
+                    Logger.d("keystore injector stdout: $stdout")
+                }
+                if (stderr.isNotBlank()) {
+                    Logger.d("keystore injector stderr: $stderr")
+                }
+                if (exitCode != 0) {
+                    Logger.e("failed to inject keystore (exit=$exitCode); will retry without exiting daemon")
+                    triedCount += 1
+                    return false
                 }
                 injected = true
             }

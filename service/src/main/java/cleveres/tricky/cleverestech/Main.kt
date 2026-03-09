@@ -7,6 +7,9 @@ import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.security.MessageDigest
 
+private const val CONFIG_DIR_MODE = 448
+private const val RKP_KEY_MODE = 384
+
 fun main(args: Array<String>) {
     Logger.i("Welcome to Service!")
     Verification.check()
@@ -20,15 +23,19 @@ fun main(args: Array<String>) {
     // Start Web Server
     try {
         val configDir = File("/data/adb/cleverestricky")
-        val server = WebServer(5623, configDir) // Fixed port 5623
+        Logger.d("Main: Preparing WebUI config directory at ${configDir.absolutePath}")
+        val server = WebServer(WEB_UI_PORT, configDir)
+        Logger.d("Main: Starting WebUI server bootstrap on requested port $WEB_UI_PORT")
         server.start()
         val port = server.listeningPort
         val token = server.token
         Logger.i("Web server started on port $port")
+        Logger.d("Main: WebUI server is listening on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
         val portFile = File(configDir, "web_port")
         // Secure directory before writing sensitive file
         try {
-            SecureFile.mkdirs(configDir, 448) // 0700
+            SecureFile.mkdirs(configDir, CONFIG_DIR_MODE) // 0700
+            Logger.d("Main: Ensured WebUI config directory permissions for ${configDir.absolutePath}")
         } catch (t: Throwable) {
             Logger.e("failed to set permissions for config dir", t)
         }
@@ -36,12 +43,13 @@ fun main(args: Array<String>) {
         // Initialize RKP Proxy and ensure key is accessible by system/interceptor
         try {
             LocalRkpProxy.getMacKey()
-            Os.chmod(LocalRkpProxy.KEY_FILE_PATH, 384) // 0600
+            Os.chmod(LocalRkpProxy.KEY_FILE_PATH, RKP_KEY_MODE) // 0600
         } catch (t: Throwable) {
             Logger.e("failed to init RKP permissions", t)
         }
 
         SecureFile.writeText(portFile, "$port|$token")
+        Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
     } catch (e: Exception) {
         Logger.e("Failed to start web server", e)
     }

@@ -237,6 +237,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
+            LOGD("recvmsg RPC armed: remote_fd=%d msghdr=%p flags=0x%x", remote_fd, (void*) remote_msghdr_ptr, MSG_WAITALL);
 
             // Prepare local msghdr for sendmsg
             struct msghdr local_msg_hdr{};
@@ -268,12 +269,26 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
 
-            if (remote_post_call(pid, regs, 0) == (uintptr_t)-1) {
+            uintptr_t recvmsg_result = remote_post_call(pid, regs, 0);
+            LOGD("recvmsg RPC returned %" PRIdPTR, (intptr_t) recvmsg_result);
+            if (recvmsg_result == (uintptr_t)-1) {
                 errno = get_remote_errno_val();
                 PLOGE("remote_post_call for recvmsg failed");
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
+            }
+
+            struct msghdr remote_msg_hdr_after_recv{};
+            if (read_proc(pid, remote_msghdr_ptr, &remote_msg_hdr_after_recv, sizeof(remote_msg_hdr_after_recv)) == sizeof(remote_msg_hdr_after_recv)) {
+                LOGD(
+                    "recvmsg remote msghdr: controllen=%zu flags=0x%x iovlen=%zu",
+                    remote_msg_hdr_after_recv.msg_controllen,
+                    remote_msg_hdr_after_recv.msg_flags,
+                    remote_msg_hdr_after_recv.msg_iovlen
+                );
+            } else {
+                LOGW("Failed to read remote msghdr after recvmsg");
             }
 
             if (read_proc(pid, remote_cmsg_buffer_ptr, &cmsg_buffer, sizeof(cmsg_buffer)) != sizeof(cmsg_buffer)) {
@@ -289,9 +304,19 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             received_hdr_validation.msg_controllen = sizeof(cmsg_buffer);
 
             cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
+            if (received_cmsg != nullptr) {
+                LOGD(
+                    "recvmsg cmsg details: len=%zu level=%d type=%d",
+                    (size_t) received_cmsg->cmsg_len,
+                    received_cmsg->cmsg_level,
+                    received_cmsg->cmsg_type
+                );
+            } else {
+                LOGD("recvmsg cmsg details: no control message present");
+            }
             if (received_cmsg == nullptr || received_cmsg->cmsg_len < CMSG_LEN(sizeof(int)) ||
                 received_cmsg->cmsg_level != SOL_SOCKET || received_cmsg->cmsg_type != SCM_RIGHTS) {
-                LOGE("Invalid cmsg received from remote process");
+                LOGE("Invalid cmsg received from remote process (recvmsg_ret=%" PRIdPTR ")", (intptr_t) recvmsg_result);
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;

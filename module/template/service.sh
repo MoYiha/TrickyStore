@@ -7,6 +7,9 @@ cd $MODDIR
 (
 FAIL_COUNT=0
 MAX_FAILS=5
+# Five minutes avoids repeated boot-time restart storms while still allowing
+# the daemon to recover later if the underlying failure is transient.
+BACKOFF_SECONDS=300
 
 while [ true ]; do
   chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/daemon"
@@ -16,8 +19,10 @@ while [ true ]; do
     FAIL_COUNT=$((FAIL_COUNT + 1))
     log -t CleveresTricky "Daemon exited with code $EXIT_CODE (attempt $FAIL_COUNT/$MAX_FAILS)"
     if [ $FAIL_COUNT -ge $MAX_FAILS ]; then
-      log -t CleveresTricky "Max retries reached, giving up"
-      exit 1
+      log -t CleveresTricky "Max retries reached, backing off for $BACKOFF_SECONDS seconds to avoid bootloop"
+      sleep "$BACKOFF_SECONDS"
+      FAIL_COUNT=0
+      continue
     fi
     sleep 10
   else

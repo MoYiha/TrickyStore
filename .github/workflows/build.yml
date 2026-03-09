@@ -121,7 +121,7 @@ jobs:
       - name: "📱 Real-World — Validate shell scripts"
         run: |
           ERRORS=0
-          for script in module/template/customize.sh module/template/service.sh module/template/post-fs-data.sh; do
+          for script in module/template/action.sh module/template/customize.sh module/template/service.sh module/template/post-fs-data.sh; do
             if [ -f "$script" ]; then
               if ! bash -n "$script" 2>/dev/null; then
                 echo "::error file=$script::Shell syntax error"
@@ -191,7 +191,13 @@ jobs:
             ERRORS=$((ERRORS + 1))
           fi
 
-          # 5. Verify daemon script exists and is a valid shell script
+          # 5. service.sh must not give up with a hard non-zero exit after MAX_FAILS
+          if grep -q 'Max retries reached, giving up' "$SERVICE_SH"; then
+            echo "::error file=$SERVICE_SH::service.sh still gives up after MAX_FAILS — this can trigger repeated boot-time failure loops"
+            ERRORS=$((ERRORS + 1))
+          fi
+
+          # 6. Verify daemon script exists and is a valid shell script
           DAEMON_SCRIPT="module/template/daemon"
           if [ ! -f "$DAEMON_SCRIPT" ]; then
             echo "::error::Missing daemon script: $DAEMON_SCRIPT"

@@ -12,8 +12,11 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.StringReader
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
@@ -35,9 +38,12 @@ private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
 private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
+private const val WEB_UI_READINESS_TIMEOUT_MS = 5_000L
+private const val WEB_UI_READINESS_POLL_MS = 100L
+private const val WEB_UI_READINESS_CONNECT_TIMEOUT_MS = 250
 
 class WebServer(
-    port: Int,
+    private val requestedPort: Int,
     private val configDir: File,
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
@@ -46,14 +52,50 @@ class WebServer(
             Logger.e("failed to set permissions for ${f.name}", t)
         }
     }
-) : NanoHTTPD("127.0.0.1", port) {
+) : NanoHTTPD(WEB_UI_LOOPBACK_HOST, requestedPort) {
 
     override fun start(timeout: Int, daemon: Boolean) {
+        Logger.d("WebServer: Starting on $WEB_UI_LOOPBACK_HOST:$requestedPort (timeout=$timeout daemon=$daemon)")
         try {
             super.start(timeout, daemon)
+            Logger.d("WebServer: NanoHTTPD start returned (alive=$isAlive port=$listeningPort)")
+            waitUntilListening()
+            Logger.d("WebServer: Readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:$listeningPort")
         } catch (e: Exception) {
             Logger.e("WebServer: Failed to start", e)
+            throw e
         }
+    }
+
+    /**
+     * Polls the loopback socket until the server accepts connections or the timeout elapses.
+     *
+     * @param timeoutMs total amount of time to wait for the loopback socket to accept connections
+     * @param pollMs delay between readiness probes while the server is still binding
+     */
+    private fun waitUntilListening(
+        timeoutMs: Long = WEB_UI_READINESS_TIMEOUT_MS,
+        pollMs: Long = WEB_UI_READINESS_POLL_MS
+    ) {
+        val port = listeningPort
+        if (port <= 0) {
+            throw IOException("WebServer: Invalid listening port $port after start")
+        }
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        var lastError: IOException? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                Socket().use { socket ->
+                    socket.connect(InetSocketAddress(WEB_UI_LOOPBACK_HOST, port), WEB_UI_READINESS_CONNECT_TIMEOUT_MS)
+                }
+                return
+            } catch (e: IOException) {
+                lastError = e
+                Logger.d("WebServer: Waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections (${e.message})")
+                Thread.sleep(pollMs)
+            }
+        }
+        throw IOException("WebServer: Timed out waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections", lastError)
     }
 
     init { cleveres.tricky.cleverestech.util.LoggerConfig.disableNanoHttpdLogging() }

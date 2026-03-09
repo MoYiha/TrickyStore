@@ -99,6 +99,22 @@ class InjectionCodeSafetyTest {
         )
     }
 
+    @Test
+    fun testLogsRecvmsgRpcReturnValue() {
+        assertTrue(
+            "Injection diagnostics must log recvmsg RPC return values for real-world debugging",
+            injectMainContent.contains("recvmsg RPC returned")
+        )
+    }
+
+    @Test
+    fun testLogsRecvmsgCmsgDetails() {
+        assertTrue(
+            "Injection diagnostics must log received cmsg details to debug Invalid cmsg failures",
+            injectMainContent.contains("recvmsg cmsg details")
+        )
+    }
+
     // ================================
     // Error handling & cleanup
     // ================================

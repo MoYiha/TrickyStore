@@ -23,6 +23,7 @@ class DaemonCrashResilienceTest {
 
     private lateinit var serviceShContent: String
     private lateinit var daemonContent: String
+    private lateinit var keystoreInterceptorContent: String
 
     @Before
     fun setup() {
@@ -35,6 +36,7 @@ class DaemonCrashResilienceTest {
 
         serviceShContent = moduleTemplateFile("service.sh").readText()
         daemonContent = moduleTemplateFile("daemon").readText()
+        keystoreInterceptorContent = serviceMainFile("KeystoreInterceptor.kt").readText()
     }
 
     // ============================
@@ -84,6 +86,25 @@ class DaemonCrashResilienceTest {
         assertTrue(
             "service.sh must increment FAIL_COUNT on non-zero exit to enable retries",
             serviceShContent.contains("FAIL_COUNT=\$((FAIL_COUNT + 1))")
+        )
+    }
+
+    @Test
+    fun testServiceShBacksOffInsteadOfExitingAfterMaxRetries() {
+        assertTrue(
+            "service.sh must back off after MAX_FAILS instead of exiting 1 and risking boot loops",
+            serviceShContent.contains("BACKOFF_SECONDS") &&
+                serviceShContent.contains("Max retries reached, backing off") &&
+                !serviceShContent.contains("Max retries reached, giving up")
+        )
+    }
+
+    @Test
+    fun testKeystoreInterceptorDoesNotHardExitOnInjectionFailure() {
+        assertTrue(
+            "KeystoreInterceptor must retry injection failures without exitProcess(1) to avoid daemon-driven boot loops",
+            keystoreInterceptorContent.contains("will retry without exiting daemon") &&
+                !keystoreInterceptorContent.contains("failed to inject! daemon exit")
         )
     }
 
