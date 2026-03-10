@@ -51,7 +51,7 @@ class WebServerClipboardTest {
         assertTrue("copyToClipboard signature invalid", html.contains("function copyToClipboard(text, msg, btn)"))
 
         // Verify success logic
-        assertTrue("Missing success logic", html.contains("btn.innerText = '✓ Copied'"))
+        assertTrue("Missing success logic", html.contains("btn.innerText = 'Copied'"))
         assertTrue("Missing timeout logic", html.contains("setTimeout(() => btn.innerHTML = originalHtml, 2000)"))
     }
 
@@ -67,13 +67,11 @@ class WebServerClipboardTest {
         val regex = Regex("copyToClipboard\\s*\\(\\s*'[^']+'\\s*,\\s*'[^']+'\\s*,\\s*this\\s*\\)")
         assertTrue("No clipboard call with 'this' found", regex.containsMatchIn(html))
 
-        // Check at least one specific one to be sure
-        val binancePart = "copyToClipboard('114574830', 'Copied Binance ID!', this)"
+        // Check at least one specific one to be sure (now in Donate tab)
+        val binancePart = "copyToClipboard('114574830','Copied Binance ID',this)"
         assertTrue("Binance button missing 'this'", html.contains(binancePart))
 
-        // Verify accessibility attributes and icons
-        assertTrue("Binance button missing title", html.contains("title=\"Click to copy ID\""))
-        assertTrue("Binance button missing aria-label", html.contains("aria-label=\"Copy Binance ID\""))
-        assertTrue("Buttons missing clipboard icon", html.contains("<span aria-hidden=\"true\">📋</span>"))
+        // Verify copy buttons use text instead of emojis
+        assertTrue("Copy buttons should use text labels", html.contains(">Copy</button>"))
     }
 }

@@ -93,14 +93,14 @@ class WebUiLabelFixTest {
     }
 
     @Test
-    fun testNotificationIconsUseHtmlEntities() {
+    fun testNotificationIconsUseTextLabels() {
         assertTrue(
-            "Success notification icon should use HTML entity &#10003; (checkmark) instead of emoji for cross-WebView compatibility",
-            webServerContent.contains("&#10003;")
+            "Success notification icon should use text label for cross-WebView compatibility",
+            webServerContent.contains("font-weight:bold;\">OK</span>")
         )
         assertTrue(
-            "Error notification icon should use HTML entity &#10005; (cross) instead of emoji for cross-WebView compatibility",
-            webServerContent.contains("&#10005;")
+            "Error notification icon should use text label for cross-WebView compatibility",
+            webServerContent.contains("font-weight:bold;\">X</span>")
         )
     }
 

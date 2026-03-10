@@ -212,7 +212,7 @@ class WebServer(
     }
 
     private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32", "spoof_build", "spoof_build_ps", "spoof_props", "spoof_provider", "spoof_signature", "spoof_sdk_ps")
+        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32", "spoof_build", "spoof_build_ps", "spoof_props", "spoof_provider", "spoof_signature", "spoof_sdk_ps", "spoof_location", "imei_global", "network_global")
     }
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
@@ -461,6 +461,9 @@ class WebServer(
             json.put("spoof_provider", fileExists("spoof_provider"))
             json.put("spoof_signature", fileExists("spoof_signature"))
             json.put("spoof_sdk_ps", fileExists("spoof_sdk_ps"))
+            json.put("spoof_location", fileExists("spoof_location"))
+            json.put("imei_global", fileExists("imei_global"))
+            json.put("network_global", fileExists("network_global"))
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
@@ -818,10 +821,11 @@ class WebServer(
                          return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
                      }
                      SecureFile.writeBytes(dest, bytes)
-                     // Trigger refresh
+                     // Trigger refresh and wait for completion
                      CboxManager.refresh()
-                     Config.updateKeyBoxes()
-                     return secureResponse(Response.Status.OK, "text/plain", "Uploaded")
+                     runBlocking { Config.updateKeyBoxes().join() }
+                     val count = CertHack.getKeyboxCount()
+                     return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                  }
              }
 
@@ -845,8 +849,9 @@ class WebServer(
                      }
                      try {
                          SecureFile.writeText(file, content)
-                         Config.updateKeyBoxes()
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
+                         runBlocking { Config.updateKeyBoxes().join() }
+                         val count = CertHack.getKeyboxCount()
+                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                      } catch (e: Exception) {
                          Logger.e("Failed to save keybox", e)
                          return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed: " + e.message)
@@ -927,6 +932,47 @@ class WebServer(
                  if (toggleFile(setting, value.toBoolean())) return secureResponse(Response.Status.OK, "text/plain", "Toggled")
              }
              return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+        }
+
+        if (uri == "/api/reset_environment" && method == Method.POST) {
+             try {
+                 synchronized(fileLock) {
+                     val imei = RandomUtils.generateLuhn(15)
+                     val serial = RandomUtils.generateRandomSerial(12)
+                     val wifiMac = RandomUtils.generateRandomMac()
+                     val btMac = RandomUtils.generateRandomMac()
+                     val imsi = RandomUtils.generateLuhn(15)
+                     val iccid = RandomUtils.generateLuhn(20)
+                     val spoofFile = File(configDir, "spoof_build_vars")
+                     if (spoofFile.exists()) {
+                         var content = spoofFile.readText()
+                         val replacements = mapOf(
+                             "ATTESTATION_ID_IMEI" to imei,
+                             "ATTESTATION_ID_SERIAL" to serial,
+                             "ATTESTATION_ID_WIFI_MAC" to wifiMac,
+                             "ATTESTATION_ID_BT_MAC" to btMac,
+                             "ATTESTATION_ID_IMSI" to imsi,
+                             "ATTESTATION_ID_ICCID" to iccid
+                         )
+                         for ((key, value) in replacements) {
+                             val regex = Regex("^$key=.*$", RegexOption.MULTILINE)
+                             content = if (regex.containsMatchIn(content)) {
+                                 content.replace(regex, "$key=$value")
+                             } else {
+                                 content.trimEnd() + "\n$key=$value"
+                             }
+                         }
+                         SecureFile.writeText(spoofFile, content)
+                     }
+                     val target = File(configDir, "target.txt")
+                     if (target.exists()) target.setLastModified(System.currentTimeMillis())
+                     runBlocking { Config.updateKeyBoxes().join() }
+                     return secureResponse(Response.Status.OK, "text/plain", "Environment Reset")
+                 }
+             } catch(e: Exception) {
+                 Logger.e("Failed to reset environment", e)
+                 return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+             }
         }
 
         if (uri == "/api/reload" && method == Method.POST) {
@@ -1153,7 +1199,7 @@ class WebServer(
     </style>
 </head>
 <body>
-    <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon">⚠️</div><span id="islandText">Notification</span></div></div>
+    <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon" style="color:var(--danger);font-weight:bold;font-size:1.2em;">!</div><span id="islandText">Notification</span></div></div>
     <h1>${getAppName()}</h1>
     <div class="tabs" role="tablist">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabNavigation(event, 'dashboard')">Dashboard</div>
@@ -1162,6 +1208,7 @@ class WebServer(
         <div class="tab" id="tab_keys" onclick="switchTab('keys')" role="tab" tabindex="-1" aria-selected="false" aria-controls="keys" onkeydown="handleTabNavigation(event, 'keys')">Keyboxes</div>
         <div class="tab" id="tab_info" onclick="switchTab('info')" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info & Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">Guide</div>
         <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
+        <div class="tab" id="tab_donate" onclick="switchTab('donate')" role="tab" tabindex="-1" aria-selected="false" aria-controls="donate" onkeydown="handleTabNavigation(event, 'donate')" style="margin-left:auto; color:var(--accent);">Donate</div>
     </div>
 
     <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
@@ -1198,6 +1245,10 @@ class WebServer(
             <div class="row"><label for="auto_patch_update">Auto Patch Update</label><input type="checkbox" class="toggle" id="auto_patch_update" onchange="toggle('auto_patch_update')"></div>
             <div class="row"><label for="random_on_boot">Randomize IMEI on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" onchange="toggle('random_on_boot')"></div>
             <div class="row"><label style="opacity:0.7;">Random Serial on Boot</label><div style="font-size:0.8em; color:var(--accent); border:1px solid var(--accent); padding:2px 8px; border-radius:4px;">Always Enabled (Required for Anti-Fingerprinting & Keybox Protection)</div></div>
+            <div class="section-header">Spoof Mode</div>
+            <div class="row"><label for="imei_global">IMEI Global (All Apps)</label><input type="checkbox" class="toggle" id="imei_global" onchange="toggle('imei_global')"></div>
+            <div class="row"><label for="network_global">Network Global (MAC/WiFi)</label><input type="checkbox" class="toggle" id="network_global" onchange="toggle('network_global')"></div>
+            <div style="font-size:0.8em; color:#888; margin-top:5px;">Per-feature global modes apply even without Global Mode enabled. Most features only affect apps in target.txt unless a global toggle is active.</div>
             <div class="section-header">Boot Properties</div>
             <div class="row"><label for="hide_sensitive_props">Hide Sensitive Props</label><input type="checkbox" class="toggle" id="hide_sensitive_props" onchange="toggle('hide_sensitive_props')"></div>
             <div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" onchange="toggle('spoof_region_cn')"></div>
@@ -1206,8 +1257,8 @@ class WebServer(
                 <div class="row"><span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span><button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button></div>
             </div>
         </div>
-        <div class="panel"><h3>Configuration Management</h3><div class="grid-2"><button onclick="backupConfig()">Export Settings (Secure)</button><button onclick="document.getElementById('restoreInput').click()">Import Settings (Secure)</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip"></div></div>
-        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a><div style="margin-top:15px;"><div class="section-header">Donate</div><div style="margin-top:5px;"><span style="color:#888; font-size:0.85em;">Binance ID: 114574830</span> <button onclick="copyToClipboard('114574830', 'Copied Binance ID!', this)" style="padding:2px 8px; font-size:0.8em;" title="Click to copy ID" aria-label="Copy Binance ID"><span aria-hidden="true">📋</span></button></div></div></div>
+        <div class="panel"><h3>Configuration Management</h3><div class="grid-2"><button onclick="backupConfig()">Export Settings (Secure)</button><button onclick="document.getElementById('restoreInput').click()">Import Settings (Secure)</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip"></div><div style="margin-top:10px;"><button onclick="runWithState(this, 'Resetting...', resetEnvironment)" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
+        <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a></div>
     </div>
 
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">
@@ -1236,7 +1287,7 @@ class WebServer(
             <select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"></select>
             <div id="templatePreview" style="background:var(--input-bg); border-radius:8px; padding:15px; margin-bottom:15px;">
                 <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
-                <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint"><span aria-hidden="true">📋</span></button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
+                <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
             <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="applySpoofing(this)">Apply Global</button></div>
         </div>
@@ -1259,6 +1310,26 @@ class WebServer(
             </div>
             <div style="margin-top:15px; text-align:right;"><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
         </div>
+        <div class="panel"><h3>Location Spoofing (Privacy Suite)</h3>
+            <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
+            <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Simulates GPS coordinates for target apps. Qualcomm and MediaTek devices supported.</div>
+            <div class="grid-2">
+                <div><label for="inputLatitude">Latitude</label><input type="text" id="inputLatitude" placeholder="41.0082" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lat')" aria-label="Latitude (-90 to 90)"></div>
+                <div><label for="inputLongitude">Longitude</label><input type="text" id="inputLongitude" placeholder="28.9784" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lng')" aria-label="Longitude (-180 to 180)"></div>
+            </div>
+            <div class="grid-2" style="margin-top:10px;">
+                <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal" aria-label="Altitude in meters"></div>
+                <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal" aria-label="GPS accuracy in meters"></div>
+            </div>
+            <div class="section-header" style="margin-top:15px;">Random Location Mode</div>
+            <div style="font-size:0.85em; color:#888; margin-bottom:10px;">Periodically changes location within a radius of the center coordinates above. Optimized for low CPU/RAM usage.</div>
+            <div class="row"><label for="chkLocationRandom">Enable Random Location</label><input type="checkbox" class="toggle" id="chkLocationRandom" aria-label="Enable random location changes"></div>
+            <div class="grid-2" style="margin-top:10px;">
+                <div><label for="inputLocationRadius">Radius (m)</label><input type="text" id="inputLocationRadius" placeholder="500" value="500" style="font-family:monospace;" inputmode="numeric" aria-label="Random location radius in meters"></div>
+                <div><label for="inputLocationInterval">Interval (sec)</label><input type="text" id="inputLocationInterval" placeholder="30" value="30" style="font-family:monospace;" inputmode="numeric" aria-label="Random location update interval in seconds"></div>
+            </div>
+            <div style="margin-top:15px;"><button onclick="applyLocationSpoof(this)" class="primary" style="width:100%;">Save Location Settings</button></div>
+        </div>
     </div>
 
     <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
@@ -1279,7 +1350,7 @@ class WebServer(
     <div id="keys" class="content" role="tabpanel" aria-labelledby="tab_keys">
         <div id="lockedSection" style="display:none;">
             <div class="panel" style="border-color:var(--danger);">
-                <h3 style="color:var(--danger);">🔐 Encrypted Keyboxes Detected</h3>
+                <h3 style="color:var(--danger);">Encrypted Keyboxes Detected</h3>
                 <div id="lockedList"></div>
             </div>
         </div>
@@ -1309,7 +1380,7 @@ class WebServer(
                 <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}">
                     <label for="kbFilename" style="display:none">Keybox File</label>
                     <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
-                    <div id="dropZoneContent"><div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
+                    <div id="dropZoneContent"><div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Upload ]</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
                 </div>
                 <div>
                     <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
@@ -1389,6 +1460,35 @@ class WebServer(
         </div>
     </div>
 
+    <div id="donate" class="content" role="tabpanel" aria-labelledby="tab_donate">
+        <div class="panel">
+            <h3>Support the Development</h3>
+            <p style="color:#888; margin-bottom:15px;">If you find this project helpful, consider supporting the development. Your contributions help maintain the project and develop new features.</p>
+        </div>
+        <div class="panel">
+            <h3>Crypto Addresses</h3>
+            <table class="responsive-table">
+                <thead><tr><th>Asset</th><th>Network</th><th>Address</th><th></th></tr></thead>
+                <tbody>
+                    <tr><td data-label="Asset"><strong>USDT</strong></td><td data-label="Network">TRC20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk</td><td><button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk','Copied USDT Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
+                    <tr><td data-label="Asset"><strong>XMR</strong></td><td data-label="Network">Monero</td><td data-label="Address" style="font-family:monospace; font-size:0.75em; word-break:break-all;">85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv</td><td><button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv','Copied XMR Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
+                    <tr><td data-label="Asset"><strong>USDT / USDC</strong></td><td data-label="Network">ERC20 / BEP20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b</td><td><button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b','Copied ERC20 Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="panel">
+            <h3>Platforms</h3>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div class="row"><span style="font-weight:bold;">Binance User ID</span><span style="font-family:monospace;">114574830 <button onclick="copyToClipboard('114574830','Copied Binance ID',this)" style="padding:2px 8px; font-size:0.8em; margin-left:5px;">Copy</button></span></div>
+                <div class="row"><span style="font-weight:bold;">PayPal</span><a href="https://www.paypal.me/tryigitx" target="_blank" style="color:var(--accent); text-decoration:none;">paypal.me/tryigitx</a></div>
+                <div class="row"><span style="font-weight:bold;">BuyMeACoffee</span><a href="https://buymeacoffee.com/yigitx" target="_blank" style="color:var(--accent); text-decoration:none;">buymeacoffee.com/yigitx</a></div>
+            </div>
+        </div>
+        <div class="panel" style="text-align:center;">
+            <p style="color:#888;">Thank you for your support!</p>
+        </div>
+    </div>
+
     <script>
         const baseUrl = '/api';
         const urlParams = new URLSearchParams(window.location.search);
@@ -1403,7 +1503,7 @@ class WebServer(
         function copyToClipboard(text, msg, btn) {
             const originalHtml = btn.innerHTML;
             navigator.clipboard.writeText(text).then(() => {
-                btn.innerText = '✓ Copied';
+                btn.innerText = 'Copied';
                 notify(msg);
                 setTimeout(() => btn.innerHTML = originalHtml, 2000);
             }).catch(() => { notify('Copy failed', 'error'); });
@@ -1416,9 +1516,9 @@ class WebServer(
             if (type === 'working') {
                 iconHtml = '<div class="spinner"></div>';
             } else if (type === 'error') {
-                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">&#10005;</span>';
+                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">X</span>';
             } else {
-                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">&#10003;</span>';
+                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">OK</span>';
             }
 
             // Escape HTML for message
@@ -1487,6 +1587,14 @@ class WebServer(
             } else if (type === 'alphanum') {
                 if (/^[a-zA-Z0-9]*${'$'}/.test(val)) isValid = true;
                 else msg = "Alphanumeric only";
+            } else if (type === 'lat') {
+                const num = parseFloat(val);
+                if (!isNaN(num) && num >= -90 && num <= 90) isValid = true;
+                else msg = "Must be -90 to 90";
+            } else if (type === 'lng') {
+                const num = parseFloat(val);
+                if (!isNaN(num) && num >= -180 && num <= 180) isValid = true;
+                else msg = "Must be -180 to 180";
             }
 
             if (isValid) {
@@ -1532,7 +1640,7 @@ class WebServer(
         function handleTabNavigation(e, id) {
             if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                 e.preventDefault();
-                const tabs = ['dashboard', 'spoof', 'apps', 'keys', 'info', 'guide', 'editor'];
+                const tabs = ['dashboard', 'spoof', 'apps', 'keys', 'info', 'guide', 'editor', 'donate'];
                 let idx = tabs.indexOf(id);
                 if (e.key === 'ArrowRight') idx = (idx + 1) % tabs.length;
                 else idx = (idx - 1 + tabs.length) % tabs.length;
@@ -1545,6 +1653,13 @@ class WebServer(
         // --- Keys Tab Logic ---
         async function loadKeyInfo() {
             loadKeyboxes(); // existing
+
+            // Refresh keybox count on dashboard
+            try {
+                const configRes = await fetchAuth(getAuthUrl('/api/config'));
+                const configData = await configRes.json();
+                document.getElementById('keyboxStatus').innerText = `${'$'}{configData.keybox_count} Keys Loaded`;
+            } catch(e) {}
 
             // Load CBOX Status
             try {
@@ -1666,7 +1781,7 @@ class WebServer(
 
                 // 2. Upload
                 const dz = document.getElementById('dropZoneContent');
-                dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px; color:var(--success);">📄</div>';
+                dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color:var(--success); font-weight:bold;">OK</div>';
                 document.getElementById('dropZone').style.borderColor = 'var(--success)';
 
                 const formData = new FormData();
@@ -1684,6 +1799,12 @@ class WebServer(
                     }
                     notify('Uploaded');
                     document.getElementById('kbContent').value = '';
+                    try {
+                        const body = await res.clone().json();
+                        if (body.keybox_count !== undefined) {
+                            document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
+                        }
+                    } catch(e) {}
                     loadKeyInfo();
                 } catch(e) { notify('Error', 'error'); } finally {
                     resetDropZone();
@@ -1693,7 +1814,7 @@ class WebServer(
 
         function resetDropZone() {
             const dz = document.getElementById('dropZoneContent');
-            dz.innerHTML = '<div style="font-size: 2em; margin-bottom: 10px;">📂</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
+            dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Upload ]</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
             document.getElementById('dropZone').style.borderColor = 'var(--border)';
         }
 
@@ -1718,6 +1839,12 @@ class WebServer(
                 } else {
                     notify('Saved Successfully');
                     document.getElementById('kbContent').value = '';
+                    try {
+                        const body = await res.clone().json();
+                        if (body.keybox_count !== undefined) {
+                            document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
+                        }
+                    } catch(e) {}
                     loadKeyInfo();
                 }
             } catch(e) {
@@ -1733,7 +1860,7 @@ class WebServer(
                 const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
                 console.log('[CleveresTricky] config loaded:', JSON.stringify({rkp_bypass: data.rkp_bypass, global_mode: data.global_mode, keybox_count: data.keybox_count, tee_broken_mode: data.tee_broken_mode}));
-                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32'].forEach(k => {
+                ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32', 'spoof_location', 'imei_global', 'network_global'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 determineActiveProfile(data);
@@ -1772,6 +1899,27 @@ class WebServer(
             loadKeyboxes();
             currentFile = document.getElementById('fileSelector').value;
             await loadFile();
+
+            // Load location settings from spoof_build_vars
+            try {
+                const locRes = await fetchAuth('/api/file?filename=spoof_build_vars');
+                if (locRes.ok) {
+                    const spoofContent = await locRes.text();
+                    const locMap = {};
+                    spoofContent.split('\n').forEach(line => {
+                        if (line.trim().startsWith('#') || !line.includes('=')) return;
+                        const parts = line.split('=');
+                        locMap[parts[0].trim()] = parts.slice(1).join('=').trim();
+                    });
+                    if (locMap['SPOOF_LATITUDE']) document.getElementById('inputLatitude').value = locMap['SPOOF_LATITUDE'];
+                    if (locMap['SPOOF_LONGITUDE']) document.getElementById('inputLongitude').value = locMap['SPOOF_LONGITUDE'];
+                    if (locMap['SPOOF_ALTITUDE']) document.getElementById('inputAltitude').value = locMap['SPOOF_ALTITUDE'];
+                    if (locMap['SPOOF_ACCURACY']) document.getElementById('inputAccuracy').value = locMap['SPOOF_ACCURACY'];
+                    if (locMap['SPOOF_LOCATION_RANDOM'] === 'true') document.getElementById('chkLocationRandom').checked = true;
+                    if (locMap['SPOOF_LOCATION_RADIUS']) document.getElementById('inputLocationRadius').value = locMap['SPOOF_LOCATION_RADIUS'];
+                    if (locMap['SPOOF_LOCATION_INTERVAL']) document.getElementById('inputLocationInterval').value = locMap['SPOOF_LOCATION_INTERVAL'];
+                }
+            } catch(e) { console.log('[CleveresTricky] Location settings load failed (expected if no file)'); }
         }
 
         async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
@@ -2092,9 +2240,9 @@ class WebServer(
         }
 
         function determineActiveProfile(data) {
-            const isGod = data.global_mode && data.rkp_bypass && !data.tee_broken_mode && data.random_on_boot && data.hide_sensitive_props && data.drm_fix;
-            const isDaily = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && data.hide_sensitive_props && !data.drm_fix;
-            const isMinimal = !data.global_mode && !data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && !data.hide_sensitive_props && !data.drm_fix;
+            const isGod = data.global_mode && data.rkp_bypass && !data.tee_broken_mode && data.random_on_boot && data.hide_sensitive_props && data.drm_fix && data.auto_patch_update && data.spoof_location;
+            const isDaily = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && data.hide_sensitive_props && !data.drm_fix && data.auto_patch_update;
+            const isMinimal = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && !data.hide_sensitive_props && !data.drm_fix && !data.auto_patch_update && !data.spoof_location;
 
             const select = document.getElementById('profileSelect');
             if (!select) return;
@@ -2106,6 +2254,77 @@ class WebServer(
 
         async function reloadConfig() {
             await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000);
+        }
+        async function resetEnvironment() {
+            if (!confirm('This will generate new random IMEI, Serial, MAC addresses and reload the configuration. Continue?')) return;
+            try {
+                const res = await fetchAuth('/api/reset_environment', { method: 'POST' });
+                if (res.ok) {
+                    notify('Environment Reset - New identity generated');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    const txt = await res.text();
+                    notify('Reset Failed: ' + txt, 'error');
+                }
+            } catch(e) { notify('Error', 'error'); }
+        }
+        async function applyLocationSpoof(btn) {
+            const lat = document.getElementById('inputLatitude').value.trim();
+            const lng = document.getElementById('inputLongitude').value.trim();
+            const alt = document.getElementById('inputAltitude').value.trim() || '0';
+            const acc = document.getElementById('inputAccuracy').value.trim() || '1.0';
+            if (!lat || !lng) { notify('Latitude and Longitude are required', 'error'); return; }
+            const latNum = parseFloat(lat);
+            const lngNum = parseFloat(lng);
+            if (isNaN(latNum) || latNum < -90 || latNum > 90) { notify('Invalid Latitude', 'error'); return; }
+            if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) { notify('Invalid Longitude', 'error'); return; }
+            const altNum = parseFloat(alt);
+            if (isNaN(altNum)) { notify('Invalid Altitude (must be numeric)', 'error'); return; }
+            const accNum = parseFloat(acc);
+            if (isNaN(accNum) || accNum <= 0) { notify('Invalid Accuracy (must be a positive number)', 'error'); return; }
+            const randomEnabled = document.getElementById('chkLocationRandom').checked;
+            const radius = document.getElementById('inputLocationRadius').value.trim() || '500';
+            const interval = document.getElementById('inputLocationInterval').value.trim() || '30';
+            const radiusNum = parseInt(radius, 10);
+            const intervalNum = parseInt(interval, 10);
+            if (randomEnabled && (isNaN(radiusNum) || radiusNum < 1 || radiusNum > 100000)) { notify('Radius must be 1-100000 meters', 'error'); return; }
+            if (randomEnabled && (isNaN(intervalNum) || intervalNum < 5 || intervalNum > 86400)) { notify('Interval must be 5-86400 seconds', 'error'); return; }
+            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
+            try {
+                let content = '';
+                try {
+                    const res = await fetchAuth('/api/file?filename=spoof_build_vars');
+                    if (res.ok) content = await res.text();
+                } catch(e) {}
+                const locationKeys = {
+                    'SPOOF_LATITUDE': lat,
+                    'SPOOF_LONGITUDE': lng,
+                    'SPOOF_ALTITUDE': alt,
+                    'SPOOF_ACCURACY': acc,
+                    'SPOOF_LOCATION_RANDOM': randomEnabled ? 'true' : 'false',
+                    'SPOOF_LOCATION_RADIUS': radius,
+                    'SPOOF_LOCATION_INTERVAL': interval
+                };
+                let lines = content.split('\n');
+                const updatedLines = [];
+                const processedKeys = new Set();
+                for (let line of lines) {
+                    if (line.trim().startsWith('#') || !line.includes('=')) { updatedLines.push(line); continue; }
+                    const key = line.split('=')[0].trim();
+                    if (locationKeys.hasOwnProperty(key)) { updatedLines.push(key + '=' + locationKeys[key]); processedKeys.add(key); }
+                    else { updatedLines.push(line); }
+                }
+                for (const [key, val] of Object.entries(locationKeys)) {
+                    if (!processedKeys.has(key)) updatedLines.push(key + '=' + val);
+                }
+                const saveRes = await fetchAuth('/api/save', {
+                    method: 'POST',
+                    body: new URLSearchParams({ filename: 'spoof_build_vars', content: updatedLines.join('\n') + '\n' })
+                });
+                if (saveRes.ok) notify('Location Settings Saved');
+                else notify('Save Failed', 'error');
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            finally { btn.disabled = false; btn.innerText = orig; }
         }
         async function backupConfig() { window.location.href = getAuthUrl('/api/backup') + '?token=' + token; }
         async function restoreConfig(input) {
@@ -2208,6 +2427,7 @@ class WebServer(
             if(translations['tab_info']) document.getElementById('tab_info').innerText = translations['tab_info'];
             if(translations['tab_guide']) document.getElementById('tab_guide').innerText = translations['tab_guide'];
             if(translations['tab_editor']) document.getElementById('tab_editor').innerText = translations['tab_editor'];
+            if(translations['tab_donate']) document.getElementById('tab_donate').innerText = translations['tab_donate'];
         }
 
         async function loadResourceUsage() {
@@ -2283,7 +2503,8 @@ class WebServer(
                 "tab_keys": "Keyboxes",
                 "tab_info": "Info & Resources",
                 "tab_guide": "Guide",
-                "tab_editor": "Editor"
+                "tab_editor": "Editor",
+                "tab_donate": "Donate"
             };
             const blob = new Blob([JSON.stringify(template, null, 2)], {type: "application/json"});
             const url = URL.createObjectURL(blob);
@@ -2422,7 +2643,7 @@ class WebServer(
         fun createBackupZip(configDir: File): ByteArray {
             val bos = ByteArrayOutputStream()
             ZipOutputStream(bos).use { zos ->
-                listOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "drm_fix", "global_mode", "tee_broken_mode", "rkp_bypass", "templates.json", "custom_templates").forEach { name ->
+                listOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "drm_fix", "global_mode", "tee_broken_mode", "rkp_bypass", "templates.json", "custom_templates", "spoof_location", "imei_global", "network_global").forEach { name ->
                     val f = File(configDir, name)
                     if (f.exists()) {
                         zos.putNextEntry(ZipEntry(name))

@@ -125,7 +125,7 @@ class WebServerPaletteTest {
         // 2. Verify processFile updates content
         assertTrue("processFile should update dropZoneContent",
             html.contains("const dz = document.getElementById('dropZoneContent');") &&
-            html.contains("dz.innerHTML = '<div style=\"font-size: 2em; margin-bottom: 10px; color:var(--success);\">📄</div>")
+            html.contains("dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color:var(--success); font-weight:bold;\">OK</div>")
         )
 
         // 3. Verify processFile updates border color
@@ -140,7 +140,7 @@ class WebServerPaletteTest {
 
         // 5. Verify resetDropZone restores default state
         assertTrue("resetDropZone should restore default content",
-            html.contains("dz.innerHTML = '<div style=\"font-size: 2em; margin-bottom: 10px;\">📂</div>")
+            html.contains("dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color: #888;\">[ Upload ]</div>")
         )
 
         // 6. Verify uploadKeybox calls resetDropZone
