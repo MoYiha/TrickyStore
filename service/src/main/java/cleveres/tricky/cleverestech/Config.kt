@@ -984,7 +984,7 @@ object Config {
                 Logger.e("target.txt file not found, please put it to $scope !")
             }
         } else {
-            Logger.i("Config.initialize: global mode active, target.txt loading deferred")
+            Logger.i("Config.initialize: global mode active, all apps targeted (target.txt used as exclusion list)")
             updateTargetPackages(File(root, TARGET_FILE))
         }
 
