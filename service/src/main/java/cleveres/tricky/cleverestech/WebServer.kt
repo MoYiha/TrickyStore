@@ -1722,8 +1722,8 @@ class WebServer(
                 div.className = 'server-item';
                 div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
                 <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
-                <button style="padding:4px 8px; margin-left:10px;" onclick="refreshServer('${'$'}{s.id}')">↻</button>
-                <button class="danger" style="padding:4px 8px; margin-left:5px;" onclick="deleteServer('${'$'}{s.id}')">×</button></div>`;
+                <button style="padding:4px 8px; margin-left:10px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
+                <button class="danger" style="padding:4px 8px; margin-left:5px;" onclick="deleteServer('${'$'}{s.id}')">Remove</button></div>`;
                 list.appendChild(div);
             });
         }
@@ -2182,7 +2182,7 @@ class WebServer(
             appRules.forEach((rule, idx) => {
                 if (filter && !rule.package.toLowerCase().includes(filter)) return;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">×</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
         }
