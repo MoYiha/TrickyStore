@@ -1303,8 +1303,9 @@ class WebServer(
                 </div>
                 <div>
                     <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
-                    <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em;" aria-label="Keybox XML Content"></textarea>
-                    <button id="saveKeyboxBtn" class="primary" style="width:100%; margin-top:10px;" onclick="runWithState(this, 'Saving...', savePastedKeybox)">Save Pasted XML</button>
+                    <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em; margin-bottom:10px;" aria-label="Keybox XML Content"></textarea>
+                    <input type="text" id="kbFilenameInput" placeholder="keybox.xml" style="margin-bottom:10px;">
+                    <button id="saveKeyboxBtn" class="primary" style="width:100%;" onclick="runWithState(this, 'Saving...', savePastedKeybox)">Save Pasted XML</button>
                 </div>
             </div>
         </div>
@@ -1692,8 +1693,8 @@ class WebServer(
                 notify('Please paste XML content first', 'error');
                 return;
             }
-            let filename = prompt("Enter a filename for this Keybox (e.g. keybox1.xml):", "keybox.xml");
-            if (!filename) throw new Error('Cancelled');
+            let filenameInput = document.getElementById('kbFilenameInput').value.trim();
+            let filename = filenameInput || 'keybox.xml';
             if (!filename.endsWith('.xml')) filename += '.xml';
 
             try {
