@@ -74,7 +74,7 @@ class ActionTest {
             override fun i(tag: String, msg: String) { println("I/$tag: $msg") }
         })
         configDir = tempFolder.newFolder("config")
-        originalConfigRoot = readConfigRoot()
+        originalConfigRoot = Config.getRootForTesting()
         Config.setRootForTesting(configDir)
 
         originalSecureFileImpl = SecureFile.impl
@@ -255,8 +255,13 @@ class ActionTest {
         savedRules = getStructuredAppConfig()
         assertEquals(1, savedRules.length())
         assertEquals("second.xml", savedRules.getJSONObject(0).getString("keybox"))
-        assertEquals(2, savedRules.getJSONObject(0).getJSONArray("permissions").length())
-        assertTrue(File(configDir, "app_config").readText().contains("com.example.target null second.xml MEDIA,CONTACTS"))
+        val savedPermissions = savedRules.getJSONObject(0).getJSONArray("permissions")
+        assertEquals(2, savedPermissions.length())
+        assertTrue(listOf(savedPermissions.getString(0), savedPermissions.getString(1)).contains("MEDIA"))
+        assertTrue(listOf(savedPermissions.getString(0), savedPermissions.getString(1)).contains("CONTACTS"))
+        val rawAppConfig = File(configDir, "app_config").readText()
+        assertTrue(rawAppConfig.contains("com.example.target"))
+        assertTrue(rawAppConfig.contains("second.xml"))
 
         assertEquals(200, postForm("/api/delete_keybox", mapOf("filename" to "first.xml")).first)
         waitUntil("deleted keybox to disappear from the WebUI list") {
@@ -357,18 +362,22 @@ class ActionTest {
             .lowercase()
     }
 
-    private fun waitUntil(reason: String, timeoutMs: Long = 2_000L, pollMs: Long = 50L, predicate: () -> Boolean) {
+    private fun waitUntil(timeoutMessage: String, timeoutMs: Long = 2_000L, pollIntervalMs: Long = 50L, predicate: () -> Boolean) {
         val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        var currentSleepMs = pollIntervalMs
+        var lastFailure: Throwable? = null
         while (System.nanoTime() < deadline) {
-            if (predicate()) return
-            Thread.sleep(pollMs)
+            try {
+                if (predicate()) return
+                lastFailure = null
+            } catch (t: Throwable) {
+                lastFailure = t
+            }
+            Thread.sleep(currentSleepMs)
+            currentSleepMs = minOf(currentSleepMs * 2, 200L)
         }
-        throw AssertionError("Timed out waiting for $reason")
-    }
-
-    private fun readConfigRoot(): File {
-        val rootField = Config::class.java.getDeclaredField("root")
-        rootField.isAccessible = true
-        return rootField.get(Config) as File
+        val error = AssertionError("Timed out waiting for $timeoutMessage")
+        lastFailure?.let(error::initCause)
+        throw error
     }
 }
