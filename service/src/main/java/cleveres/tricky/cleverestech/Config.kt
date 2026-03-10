@@ -179,9 +179,11 @@ object Config {
             Logger.i("Global mode is enabled, skipping updateTargetPackages execution.")
             return@runCatching
         }
+        Logger.d("updateTargetPackages: reading ${f?.absolutePath} (exists=${f?.exists()})")
         val (h, g) = if (f != null && f.exists()) {
             f.useLines { parsePackages(it, isTeeBrokenMode) }
         } else {
+            Logger.d("updateTargetPackages: target file missing or null, using empty package list")
             parsePackages(emptySequence(), isTeeBrokenMode)
         }
         targetState = TargetState(h, g)
@@ -203,10 +205,12 @@ object Config {
 
     fun updateKeyBoxes() = scope.launch {
         runCatching {
+            Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
             // 1. Legacy keybox.xml
             val legacyFile = File(root, KEYBOX_FILE)
+            Logger.d("updateKeyBoxes: checking legacy ${legacyFile.absolutePath} (exists=${legacyFile.exists()})")
             if (legacyFile.exists()) {
                 val currentModified = legacyFile.lastModified()
                 // Optimization: Cache parsed keybox.xml data in memory to avoid disk I/O
@@ -215,10 +219,11 @@ object Config {
                         cachedLegacyKeyboxes = CertHack.parseKeyboxXml(reader, KEYBOX_FILE)
                     }
                     lastKeyboxModified = currentModified
-                    Logger.i("Reloaded keybox.xml (modified: $currentModified)")
+                    Logger.i("Reloaded keybox.xml (modified: $currentModified, keys: ${cachedLegacyKeyboxes.size})")
                 }
                 allKeyboxes.addAll(cachedLegacyKeyboxes)
             } else {
+                Logger.d("updateKeyBoxes: legacy keybox.xml not found at ${legacyFile.absolutePath}")
                 cachedLegacyKeyboxes = emptyList()
                 lastKeyboxModified = 0
             }
@@ -226,6 +231,7 @@ object Config {
             // 2. Directory files (Plain XML)
             if (keyboxDir.exists() && keyboxDir.isDirectory) {
                 val files = keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
+                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files?.size ?: 0} xml files)")
                 val currentFiles = HashSet<String>()
 
                 files?.forEach { file ->
@@ -269,6 +275,7 @@ object Config {
             allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
 
             CertHack.setKeyboxes(allKeyboxes)
+            Logger.i("updateKeyBoxes: total ${allKeyboxes.size} keyboxes loaded and active")
 
             // Update poller for legacy file consistency
             keyboxPoller?.updateLastModified()
@@ -295,8 +302,12 @@ object Config {
     private fun updateSpoofSdkPs(f: File?) { isSpoofSdkPs = f?.exists() == true; Logger.i("Spoof Sdk PS is ${if (isSpoofSdkPs) "enabled" else "disabled"}") }
 
     private fun updateRkpBypass(f: File?) {
+        val previousValue = isRkpBypass
         isRkpBypass = f?.exists() == true
-        Logger.i("RKP bypass is ${if (isRkpBypass) "enabled" else "disabled"}")
+        Logger.i("RKP bypass is ${if (isRkpBypass) "enabled" else "disabled"} (file=${f?.absolutePath}, exists=${f?.exists()})")
+        if (previousValue != isRkpBypass) {
+            Logger.i("RKP bypass state changed: $previousValue -> $isRkpBypass")
+        }
     }
 
     @Volatile
@@ -933,6 +944,7 @@ object Config {
     }
 
     fun initialize() {
+        Logger.i("Config.initialize: starting (root=${root.absolutePath})")
         SecureFile.mkdirs(root, 448) // 0700
         SecureFile.mkdirs(keyboxDir, 448) // 0700
         DeviceKeyManager.initialize(root)
@@ -965,11 +977,15 @@ object Config {
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
+            Logger.d("Config.initialize: loading target.txt from ${scope.absolutePath} (exists=${scope.exists()})")
             if (scope.exists()) {
                 updateTargetPackages(scope)
             } else {
                 Logger.e("target.txt file not found, please put it to $scope !")
             }
+        } else {
+            Logger.i("Config.initialize: global mode active, all apps targeted (target.txt used as exclusion list)")
+            updateTargetPackages(File(root, TARGET_FILE))
         }
 
         updateKeyBoxes()
