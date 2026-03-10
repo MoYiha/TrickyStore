@@ -101,10 +101,11 @@ class DaemonCrashResilienceTest {
 
     @Test
     fun testKeystoreInterceptorDoesNotHardExitOnInjectionFailure() {
+        val normalizedContent = keystoreInterceptorContent.lowercase()
         assertTrue(
             "KeystoreInterceptor must retry injection failures without exitProcess(1) to avoid daemon-driven boot loops",
-            keystoreInterceptorContent.contains("will retry without exiting daemon") &&
-                !keystoreInterceptorContent.contains("failed to inject! daemon exit")
+            normalizedContent.contains("will keep retrying without exiting daemon") &&
+                !normalizedContent.contains("failed to inject! daemon exit")
         )
     }
 

@@ -845,6 +845,7 @@ class WebServer(
                      }
                      try {
                          SecureFile.writeText(file, content)
+                         Config.updateKeyBoxes()
                          return secureResponse(Response.Status.OK, "text/plain", "Saved")
                      } catch (e: Exception) {
                          Logger.e("Failed to save keybox", e)

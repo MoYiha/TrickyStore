@@ -725,6 +725,9 @@ object Config {
         root = newRoot
     }
 
+    @androidx.annotation.VisibleForTesting
+    fun getRootForTesting(): File = root
+
     @Volatile
     var keyboxSourceUrl: String? = null
 
