@@ -5,6 +5,7 @@ import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.BackupEncryptor
 import cleveres.tricky.cleverestech.util.CboxDecryptor
 import cleveres.tricky.cleverestech.util.ZipProcessor
 import fi.iki.elonen.NanoHTTPD
@@ -1024,13 +1025,30 @@ class WebServer(
 
         if (uri == "/api/backup" && method == Method.GET) {
             return try {
-                val zipBytes = createBackupZip(configDir)
+                val zipBytes = synchronized(fileLock) { createBackupZip(configDir) }
                 val response = newFixedLengthResponse(Response.Status.OK, "application/zip", ByteArrayInputStream(zipBytes), zipBytes.size.toLong())
                 response.addHeader("Content-Disposition", "attachment; filename=\"cleverestricky_backup.zip\"")
                 response
             } catch (e: Exception) {
                 Logger.e("Failed to create backup", e)
                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Backup failed")
+            }
+        }
+
+        if (uri == "/api/backup" && method == Method.POST) {
+            val map = HashMap<String, String>()
+            try { session.parseBody(map) } catch (e: Exception) { return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body") }
+            val password = getParam(session, "pw")
+            if (password.isNullOrBlank()) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Password required for encrypted backup")
+            return try {
+                val zipBytes = synchronized(fileLock) { createBackupZip(configDir) }
+                val encBytes = BackupEncryptor.encrypt(zipBytes, password)
+                val response = newFixedLengthResponse(Response.Status.OK, "application/octet-stream", ByteArrayInputStream(encBytes), encBytes.size.toLong())
+                response.addHeader("Content-Disposition", "attachment; filename=\"cleverestricky_backup.ctsb\"")
+                response
+            } catch (e: Exception) {
+                Logger.e("Failed to create encrypted backup", e)
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Encrypted backup failed")
             }
         }
 
@@ -1065,8 +1083,16 @@ class WebServer(
              if (tmpFilePath != null) {
                  val tmpFile = File(tmpFilePath)
                  return try {
+                     val uploadedBytes = tmpFile.readBytes()
+                     val zipStream: java.io.InputStream = if (BackupEncryptor.isEncryptedBackup(uploadedBytes)) {
+                         val pw = getParam(session, "pw")
+                         if (pw.isNullOrBlank()) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Password required for encrypted backup")
+                         ByteArrayInputStream(BackupEncryptor.decrypt(uploadedBytes, pw))
+                     } else {
+                         ByteArrayInputStream(uploadedBytes)
+                     }
                      synchronized(fileLock) {
-                         restoreBackupZip(configDir, tmpFile.inputStream())
+                         restoreBackupZip(configDir, zipStream)
                          val target = File(configDir, "target.txt")
                          if (target.exists()) target.setLastModified(System.currentTimeMillis())
                          secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
@@ -1257,7 +1283,7 @@ class WebServer(
                 <div class="row"><span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span><button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button></div>
             </div>
         </div>
-        <div class="panel"><h3>Configuration Management</h3><div class="grid-2"><button onclick="backupConfig()">Export Settings (Secure)</button><button onclick="document.getElementById('restoreInput').click()">Import Settings (Secure)</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip"></div><div style="margin-top:10px;"><button onclick="runWithState(this, 'Resetting...', resetEnvironment)" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
+        <div class="panel"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Encryption Password (optional - leave blank for unencrypted export)</label><input type="password" id="backupPw" placeholder="Leave blank to skip encryption"></div><div class="grid-2"><button onclick="backupConfig()">Export Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip,.ctsb"></div><div style="margin-top:10px;"><button onclick="runWithState(this, 'Resetting...', resetEnvironment)" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
         <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a></div>
     </div>
 
@@ -1337,12 +1363,12 @@ class WebServer(
             <h3>New Rule</h3>
             <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="pkgList"></datalist></div>
             <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="keyboxList"></datalist></div></div>
-            <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div></div>
+            <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div><div class="row"><input type="checkbox" id="permMicrophone" class="toggle"><label for="permMicrophone">Microphone</label></div></div>
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
         <div class="panel">
             <h3>Active Rules</h3><input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" style="width:100%; margin-bottom:10px;" aria-label="Filter rules">
-            <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th></th></tr></thead><tbody></tbody></table>
+            <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead><tbody></tbody></table>
             <div style="margin-top:15px; text-align:right;"><button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button></div>
         </div>
     </div>
@@ -2182,7 +2208,8 @@ class WebServer(
             appRules.forEach((rule, idx) => {
                 if (filter && !rule.package.toLowerCase().includes(filter)) return;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
         }
@@ -2193,14 +2220,18 @@ class WebServer(
             const kb = document.getElementById('appKeybox').value;
             const pContacts = document.getElementById('permContacts').checked;
             const pMedia = document.getElementById('permMedia').checked;
+            const pMicrophone = document.getElementById('permMicrophone').checked;
             if (!pkg) { notify('Package required', 'error'); pkgInput.focus(); return; }
             const pkgRegex = /^[a-zA-Z0-9_.*]+$/;
             if (!pkgRegex.test(pkg)) { notify('Invalid package', 'error'); pkgInput.focus(); return; }
             const permissions = [];
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');
+            if (pMicrophone) permissions.push('MICROPHONE');
             appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
-            renderAppTable(); pkgInput.value = ''; document.getElementById('appKeybox').value = ''; toggleAddButton(); pkgInput.focus(); notify('Rule Added');
+            renderAppTable(); pkgInput.value = ''; document.getElementById('appKeybox').value = '';
+            document.getElementById('permContacts').checked = false; document.getElementById('permMedia').checked = false; document.getElementById('permMicrophone').checked = false;
+            toggleAddButton(); pkgInput.focus(); notify('Rule Added');
         }
         function removeAppRule(idx) {
             if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?')) { appRules.splice(idx, 1); renderAppTable(); }
@@ -2326,14 +2357,36 @@ class WebServer(
             } catch(e) { notify('Error: ' + e.message, 'error'); }
             finally { btn.disabled = false; btn.innerText = orig; }
         }
-        async function backupConfig() { window.location.href = getAuthUrl('/api/backup') + '?token=' + token; }
+        async function backupConfig() {
+            const pw = document.getElementById('backupPw') ? document.getElementById('backupPw').value : '';
+            if (pw) {
+                notify('Creating encrypted backup...', 'working');
+                try {
+                    const formData = new FormData(); formData.append('pw', pw);
+                    const res = await fetchAuth(getAuthUrl('/api/backup'), { method: 'POST', body: formData });
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = url; a.download = 'cleverestricky_backup.ctsb'; a.click();
+                        URL.revokeObjectURL(url); notify('Encrypted backup saved');
+                    } else { notify('Backup failed', 'error'); }
+                } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } else {
+                window.location.href = getAuthUrl('/api/backup') + '?token=' + token;
+            }
+        }
         async function restoreConfig(input) {
             if (input.files && input.files[0]) {
-                const formData = new FormData(); formData.append('file', input.files[0]);
+                const file = input.files[0];
+                const isEncrypted = file.name.endsWith('.ctsb');
+                const pw = document.getElementById('backupPw') ? document.getElementById('backupPw').value : '';
+                if (isEncrypted && !pw) { notify('Enter password in the field above before importing an encrypted backup', 'error'); input.value = ''; return; }
+                const formData = new FormData(); formData.append('file', file);
+                if (pw) formData.append('pw', pw);
                 notify('Restoring...', 'working');
                 try {
                     const res = await fetchAuth(getAuthUrl('/api/restore'), { method: 'POST', body: formData });
-                    if (res.ok) { notify('Success'); setTimeout(() => window.location.reload(), 1000); } else notify('Failed', 'error');
+                    if (res.ok) { notify('Success'); setTimeout(() => window.location.reload(), 1000); } else notify('Failed: ' + await res.text(), 'error');
                 } catch (e) { notify('Error', 'error'); }
                 input.value = '';
             }
