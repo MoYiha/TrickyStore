@@ -18,6 +18,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.cert.X509Certificate
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.json.JSONArray
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
@@ -32,6 +33,7 @@ class ActionTest {
     private lateinit var configDir: File
     private lateinit var originalSecureFileImpl: SecureFileOperations
     private lateinit var originalConfigRoot: File
+    private val maxPollIntervalMs = 200L
 
     private val EC_KEY = "-----BEGIN EC PRIVATE KEY-----\n" +
             "MHcCAQEEIAcPs+YkQGT6EDkaEH6Z9StSR7mQuKnh49K0DVqB/ZxYoAoGCCqGSM49\n" +
@@ -257,8 +259,9 @@ class ActionTest {
         assertEquals("second.xml", savedRules.getJSONObject(0).getString("keybox"))
         val savedPermissions = savedRules.getJSONObject(0).getJSONArray("permissions")
         assertEquals(2, savedPermissions.length())
-        assertTrue(listOf(savedPermissions.getString(0), savedPermissions.getString(1)).contains("MEDIA"))
-        assertTrue(listOf(savedPermissions.getString(0), savedPermissions.getString(1)).contains("CONTACTS"))
+        val savedPermissionList = listOf(savedPermissions.getString(0), savedPermissions.getString(1))
+        assertTrue(savedPermissionList.contains("MEDIA"))
+        assertTrue(savedPermissionList.contains("CONTACTS"))
         val rawAppConfig = File(configDir, "app_config").readText()
         assertTrue(rawAppConfig.contains("com.example.target"))
         assertTrue(rawAppConfig.contains("second.xml"))
@@ -327,7 +330,7 @@ class ActionTest {
         val url = URL("http://localhost:${server.listeningPort}$path?token=${server.token}")
         val conn = url.openConnection() as HttpURLConnection
         val body = params.entries.joinToString("&") { (key, value) ->
-            "${URLEncoder.encode(key, StandardCharsets.UTF_8.name())}=${URLEncoder.encode(value, StandardCharsets.UTF_8.name())}"
+            "${URLEncoder.encode(key, StandardCharsets.UTF_8)}=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
         }
         conn.requestMethod = "POST"
         conn.doOutput = true
@@ -362,8 +365,8 @@ class ActionTest {
             .lowercase()
     }
 
-    private fun waitUntil(timeoutMessage: String, timeoutMs: Long = 2_000L, pollIntervalMs: Long = 50L, predicate: () -> Boolean) {
-        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+    private fun waitUntil(conditionDescription: String, timeoutMs: Long = 2_000L, pollIntervalMs: Long = 50L, predicate: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
         var currentSleepMs = pollIntervalMs
         var lastFailure: Throwable? = null
         while (System.nanoTime() < deadline) {
@@ -374,9 +377,9 @@ class ActionTest {
                 lastFailure = t
             }
             Thread.sleep(currentSleepMs)
-            currentSleepMs = minOf(currentSleepMs * 2, 200L)
+            currentSleepMs = minOf(currentSleepMs * 2, maxPollIntervalMs)
         }
-        val error = AssertionError("Timed out waiting for $timeoutMessage")
+        val error = AssertionError("Timed out waiting for $conditionDescription")
         lastFailure?.let(error::initCause)
         throw error
     }
