@@ -94,9 +94,13 @@ object RandomUtils {
         val dist = kotlin.math.sqrt(Random.nextDouble()) * radiusMeters
         val bearing = Random.nextDouble() * 2.0 * kotlin.math.PI
 
+        // Clamp latitude away from poles to avoid division by zero in longitude calculation
+        val safeLat = baseLat.coerceIn(-89.9, 89.9)
+
         // Convert to lat/lng offset (approximation, accurate within ~100km)
         val latOffset = (dist * kotlin.math.cos(bearing)) / earthRadius * (180.0 / kotlin.math.PI)
-        val lngOffset = (dist * kotlin.math.sin(bearing)) / (earthRadius * kotlin.math.cos(Math.toRadians(baseLat))) * (180.0 / kotlin.math.PI)
+        val cosLat = kotlin.math.cos(safeLat * kotlin.math.PI / 180.0)
+        val lngOffset = (dist * kotlin.math.sin(bearing)) / (earthRadius * cosLat) * (180.0 / kotlin.math.PI)
 
         val newLat = (baseLat + latOffset).coerceIn(-90.0, 90.0)
         val newLng = (baseLng + lngOffset).coerceIn(-180.0, 180.0)
