@@ -78,7 +78,7 @@ class WebUiSafetyTest {
 
     @Test
     fun testAllTabsInNavigationArray() {
-        val tabIds = listOf("dashboard", "spoof", "apps", "keys", "info", "guide", "editor")
+        val tabIds = listOf("dashboard", "spoof", "apps", "keys", "info", "guide", "editor", "donate")
         for (tabId in tabIds) {
             assertTrue(
                 "Tab '$tabId' must be present in handleTabNavigation tabs array for keyboard navigation",
@@ -91,7 +91,7 @@ class WebUiSafetyTest {
     fun testInfoTabInKeyboardNavigation() {
         assertTrue(
             "handleTabNavigation must include 'info' tab for complete keyboard navigation",
-            webServerContent.contains("'dashboard', 'spoof', 'apps', 'keys', 'info', 'guide', 'editor'")
+            webServerContent.contains("'dashboard', 'spoof', 'apps', 'keys', 'info', 'guide', 'editor', 'donate'")
         )
     }
 
