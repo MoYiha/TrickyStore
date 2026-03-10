@@ -176,27 +176,21 @@ class ActionTest {
             val results = JSONArray(response.second)
             assertEquals(2, results.length())
 
-            val byFilename = (0 until results.length()).associate { index ->
+            val resultsByFilename = (0 until results.length()).associate { index ->
                 results.getJSONObject(index).let { it.getString("filename") to it }
             }
 
-            assertEquals("VALID", byFilename.getValue("keybox.xml").getString("status"))
-            assertEquals("Active (1 keys)", byFilename.getValue("keybox.xml").getString("details"))
-            assertEquals("VALID", byFilename.getValue("stored.xml").getString("status"))
-            assertEquals("Active (1 keys)", byFilename.getValue("stored.xml").getString("details"))
+            assertEquals("VALID", resultsByFilename.getValue("keybox.xml").getString("status"))
+            assertEquals("Active (1 keys)", resultsByFilename.getValue("keybox.xml").getString("details"))
+            assertEquals("VALID", resultsByFilename.getValue("stored.xml").getString("status"))
+            assertEquals("Active (1 keys)", resultsByFilename.getValue("stored.xml").getString("details"))
         }
     }
 
     @Test
     fun testVerifyKeyboxesReportsRevokedStatus() {
         File(configDir, "keybox.xml").writeText(VALID_XML)
-        val revokedSerial = (CertHack.parseKeyboxXml(StringReader(VALID_XML))
-            .first()
-            .certificates()
-            .first() as X509Certificate)
-            .serialNumber
-            .toString(16)
-            .lowercase()
+        val revokedSerial = extractCertificateSerial(VALID_XML)
 
         Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
             mockedKeyboxVerifier.`when`<Set<String>> { KeyboxVerifier.fetchCrl() }.thenReturn(setOf(revokedSerial))
@@ -221,5 +215,15 @@ class ActionTest {
         val stream = if (responseCode >= 400) conn.errorStream else conn.inputStream
         val body = stream?.bufferedReader()?.readText().orEmpty()
         return responseCode to body
+    }
+
+    private fun extractCertificateSerial(xml: String): String {
+        return (CertHack.parseKeyboxXml(StringReader(xml))
+            .first()
+            .certificates()
+            .first() as X509Certificate)
+            .serialNumber
+            .toString(16)
+            .lowercase()
     }
 }
