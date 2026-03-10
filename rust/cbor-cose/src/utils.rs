@@ -100,8 +100,12 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
     let my_tid = unsafe { libc::gettid() };
 
     // Read /proc/{pid}/task directory to find all threads
-    if let Ok(entries) = fs::read_dir(format!("/proc/{}/task", pid)) {
-        let mut path_buf = format!("/proc/{}/task/", pid);
+    use std::fmt::Write;
+    let mut path_buf = String::with_capacity(128);
+    let _ = write!(path_buf, "/proc/{}/task", pid);
+
+    if let Ok(entries) = fs::read_dir(&path_buf) {
+        path_buf.push('/');
         let base_len = path_buf.len();
 
         for entry in entries.flatten() {
@@ -110,6 +114,7 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
             if bytes.starts_with(b".") {
                 continue;
             }
+            // Optimization: avoid string allocation from `OsStr`
             if let Ok(file_name_str) = std::str::from_utf8(bytes) {
                 if let Ok(tid) = file_name_str.parse::<libc::pid_t>() {
                     // Don't kick ourselves
