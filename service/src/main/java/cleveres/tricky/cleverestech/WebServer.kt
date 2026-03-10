@@ -1314,12 +1314,12 @@ class WebServer(
             <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
             <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Simulates GPS coordinates for target apps. Qualcomm and MediaTek devices supported.</div>
             <div class="grid-2">
-                <div><label for="inputLatitude">Latitude</label><input type="text" id="inputLatitude" placeholder="41.0082" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lat')"></div>
-                <div><label for="inputLongitude">Longitude</label><input type="text" id="inputLongitude" placeholder="28.9784" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lng')"></div>
+                <div><label for="inputLatitude">Latitude</label><input type="text" id="inputLatitude" placeholder="41.0082" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lat')" aria-label="Latitude (-90 to 90)"></div>
+                <div><label for="inputLongitude">Longitude</label><input type="text" id="inputLongitude" placeholder="28.9784" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lng')" aria-label="Longitude (-180 to 180)"></div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal"></div>
-                <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal"></div>
+                <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal" aria-label="Altitude in meters"></div>
+                <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal" aria-label="GPS accuracy in meters"></div>
             </div>
             <div style="margin-top:15px;"><button onclick="applyLocationSpoof(this)" class="primary" style="width:100%;">Save Location Settings</button></div>
         </div>
@@ -2250,6 +2250,10 @@ class WebServer(
             const lngNum = parseFloat(lng);
             if (isNaN(latNum) || latNum < -90 || latNum > 90) { notify('Invalid Latitude', 'error'); return; }
             if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) { notify('Invalid Longitude', 'error'); return; }
+            const altNum = parseFloat(alt);
+            if (isNaN(altNum)) { notify('Invalid Altitude (must be numeric)', 'error'); return; }
+            const accNum = parseFloat(acc);
+            if (isNaN(accNum) || accNum <= 0) { notify('Invalid Accuracy (must be a positive number)', 'error'); return; }
             const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
             try {
                 let content = '';
@@ -2277,7 +2281,7 @@ class WebServer(
                 }
                 const saveRes = await fetchAuth('/api/save', {
                     method: 'POST',
-                    body: new URLSearchParams({ filename: 'spoof_build_vars', content: updatedLines.join('\n') })
+                    body: new URLSearchParams({ filename: 'spoof_build_vars', content: updatedLines.join('\n') + '\n' })
                 });
                 if (saveRes.ok) notify('Location Settings Saved');
                 else notify('Save Failed', 'error');
