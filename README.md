@@ -41,7 +41,7 @@
 | **Randomize on Boot** | Fresh device identity (template + IMEI + Serial + MAC) every reboot |
 | **Dynamic Identity Mutation** | Anti-fingerprinting -- rotates root secrets every 24h |
 | **DRM ID Regeneration** | Reset Widevine device ID to bypass download limits |
-| **Location Spoofing** | Simulate GPS coordinates (latitude, longitude, altitude, accuracy) for target apps |
+| **Location Spoofing** | Simulate GPS coordinates with optional random location mode (auto-drift within radius) |
 | **MAC Address Spoofing** | WiFi and Bluetooth MAC address randomization |
 | **One-Click Reset** | Instantly regenerate all identities and refresh the environment |
 
@@ -150,12 +150,12 @@
 ```ini
 MANUFACTURER=Google
 MODEL=Pixel 8 Pro
-FINGERPRINT=google/husky_beta/husky:15/AP31.240617.009/12094726:user/release-keys
+FINGERPRINT=google/husky/husky:15/AP4A.250305.002/12737840:user/release-keys
 BRAND=google
-PRODUCT=husky_beta
+PRODUCT=husky
 DEVICE=husky
 RELEASE=15
-ID=AP31.240617.009
+ID=AP4A.250305.002
 SECURITY_PATCH=2025-03-05
 # Use a built-in template instead of manual values:
 # TEMPLATE=pixel8pro
@@ -165,6 +165,9 @@ SECURITY_PATCH=2025-03-05
 # SPOOF_LONGITUDE=28.9784
 # SPOOF_ALTITUDE=0
 # SPOOF_ACCURACY=1.0
+# SPOOF_LOCATION_RANDOM=false
+# SPOOF_LOCATION_RADIUS=500
+# SPOOF_LOCATION_INTERVAL=30
 ```
 
 <details>
@@ -176,12 +179,12 @@ SECURITY_PATCH=2025-03-05
 | `MODEL` | `Pixel 8 Pro` |
 | `FINGERPRINT` | `google/husky/husky:15/...` |
 | `BRAND` | `google` |
-| `PRODUCT` | `husky_beta` |
+| `PRODUCT` | `husky` |
 | `DEVICE` | `husky` |
 | `RELEASE` | `15` |
-| `ID` | `AP31.240617.009` |
-| `DISPLAY` | `AP31.240617.009` |
-| `INCREMENTAL` | `12094726` |
+| `ID` | `AP4A.250305.002` |
+| `DISPLAY` | `AP4A.250305.002` |
+| `INCREMENTAL` | `12737840` |
 | `TYPE` | `user` |
 | `TAGS` | `release-keys` |
 | `SECURITY_PATCH` | `2025-03-05` |
@@ -202,6 +205,9 @@ SECURITY_PATCH=2025-03-05
 | `SPOOF_LONGITUDE` | `28.9784` |
 | `SPOOF_ALTITUDE` | `0` |
 | `SPOOF_ACCURACY` | `1.0` |
+| `SPOOF_LOCATION_RANDOM` | `true` / `false` |
+| `SPOOF_LOCATION_RADIUS` | `500` (meters) |
+| `SPOOF_LOCATION_INTERVAL` | `30` (seconds) |
 
 </details>
 
