@@ -1321,6 +1321,13 @@ class WebServer(
                 <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal" aria-label="Altitude in meters"></div>
                 <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal" aria-label="GPS accuracy in meters"></div>
             </div>
+            <div class="section-header" style="margin-top:15px;">Random Location Mode</div>
+            <div style="font-size:0.85em; color:#888; margin-bottom:10px;">Periodically changes location within a radius of the center coordinates above. Optimized for low CPU/RAM usage.</div>
+            <div class="row"><label for="chkLocationRandom">Enable Random Location</label><input type="checkbox" class="toggle" id="chkLocationRandom" aria-label="Enable random location changes"></div>
+            <div class="grid-2" style="margin-top:10px;">
+                <div><label for="inputLocationRadius">Radius (m)</label><input type="text" id="inputLocationRadius" placeholder="500" value="500" style="font-family:monospace;" inputmode="numeric" aria-label="Random location radius in meters"></div>
+                <div><label for="inputLocationInterval">Interval (sec)</label><input type="text" id="inputLocationInterval" placeholder="30" value="30" style="font-family:monospace;" inputmode="numeric" aria-label="Random location update interval in seconds"></div>
+            </div>
             <div style="margin-top:15px;"><button onclick="applyLocationSpoof(this)" class="primary" style="width:100%;">Save Location Settings</button></div>
         </div>
     </div>
@@ -1892,6 +1899,27 @@ class WebServer(
             loadKeyboxes();
             currentFile = document.getElementById('fileSelector').value;
             await loadFile();
+
+            // Load location settings from spoof_build_vars
+            try {
+                const locRes = await fetchAuth('/api/file?filename=spoof_build_vars');
+                if (locRes.ok) {
+                    const spoofContent = await locRes.text();
+                    const locMap = {};
+                    spoofContent.split('\n').forEach(line => {
+                        if (line.trim().startsWith('#') || !line.includes('=')) return;
+                        const parts = line.split('=');
+                        locMap[parts[0].trim()] = parts.slice(1).join('=').trim();
+                    });
+                    if (locMap['SPOOF_LATITUDE']) document.getElementById('inputLatitude').value = locMap['SPOOF_LATITUDE'];
+                    if (locMap['SPOOF_LONGITUDE']) document.getElementById('inputLongitude').value = locMap['SPOOF_LONGITUDE'];
+                    if (locMap['SPOOF_ALTITUDE']) document.getElementById('inputAltitude').value = locMap['SPOOF_ALTITUDE'];
+                    if (locMap['SPOOF_ACCURACY']) document.getElementById('inputAccuracy').value = locMap['SPOOF_ACCURACY'];
+                    if (locMap['SPOOF_LOCATION_RANDOM'] === 'true') document.getElementById('chkLocationRandom').checked = true;
+                    if (locMap['SPOOF_LOCATION_RADIUS']) document.getElementById('inputLocationRadius').value = locMap['SPOOF_LOCATION_RADIUS'];
+                    if (locMap['SPOOF_LOCATION_INTERVAL']) document.getElementById('inputLocationInterval').value = locMap['SPOOF_LOCATION_INTERVAL'];
+                }
+            } catch(e) { console.log('[CleveresTricky] Location settings load failed (expected if no file)'); }
         }
 
         async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
@@ -2212,9 +2240,9 @@ class WebServer(
         }
 
         function determineActiveProfile(data) {
-            const isGod = data.global_mode && data.rkp_bypass && !data.tee_broken_mode && data.random_on_boot && data.hide_sensitive_props && data.drm_fix;
-            const isDaily = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && data.hide_sensitive_props && !data.drm_fix;
-            const isMinimal = !data.global_mode && !data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && !data.hide_sensitive_props && !data.drm_fix;
+            const isGod = data.global_mode && data.rkp_bypass && !data.tee_broken_mode && data.random_on_boot && data.hide_sensitive_props && data.drm_fix && data.auto_patch_update && data.spoof_location;
+            const isDaily = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && data.hide_sensitive_props && !data.drm_fix && data.auto_patch_update;
+            const isMinimal = !data.global_mode && data.rkp_bypass && !data.tee_broken_mode && !data.random_on_boot && !data.hide_sensitive_props && !data.drm_fix && !data.auto_patch_update && !data.spoof_location;
 
             const select = document.getElementById('profileSelect');
             if (!select) return;
@@ -2254,6 +2282,13 @@ class WebServer(
             if (isNaN(altNum)) { notify('Invalid Altitude (must be numeric)', 'error'); return; }
             const accNum = parseFloat(acc);
             if (isNaN(accNum) || accNum <= 0) { notify('Invalid Accuracy (must be a positive number)', 'error'); return; }
+            const randomEnabled = document.getElementById('chkLocationRandom').checked;
+            const radius = document.getElementById('inputLocationRadius').value.trim() || '500';
+            const interval = document.getElementById('inputLocationInterval').value.trim() || '30';
+            const radiusNum = parseInt(radius, 10);
+            const intervalNum = parseInt(interval, 10);
+            if (randomEnabled && (isNaN(radiusNum) || radiusNum < 1 || radiusNum > 100000)) { notify('Radius must be 1-100000 meters', 'error'); return; }
+            if (randomEnabled && (isNaN(intervalNum) || intervalNum < 5 || intervalNum > 86400)) { notify('Interval must be 5-86400 seconds', 'error'); return; }
             const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
             try {
                 let content = '';
@@ -2265,7 +2300,10 @@ class WebServer(
                     'SPOOF_LATITUDE': lat,
                     'SPOOF_LONGITUDE': lng,
                     'SPOOF_ALTITUDE': alt,
-                    'SPOOF_ACCURACY': acc
+                    'SPOOF_ACCURACY': acc,
+                    'SPOOF_LOCATION_RANDOM': randomEnabled ? 'true' : 'false',
+                    'SPOOF_LOCATION_RADIUS': radius,
+                    'SPOOF_LOCATION_INTERVAL': interval
                 };
                 let lines = content.split('\n');
                 const updatedLines = [];

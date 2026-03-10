@@ -715,6 +715,8 @@ object Config {
     private const val RANDOM_DRM_ON_BOOT_FILE = "random_drm_on_boot"
     private const val HIDE_SENSITIVE_PROPS_FILE = "hide_sensitive_props"
     private const val APPLY_PROFILE_FILE = "apply_profile"
+    private const val SPOOF_LOCATION_FILE = "spoof_location"
+    private const val AUTO_PATCH_UPDATE_FILE = "auto_patch_update"
     private var root = File(CONFIG_PATH)
     private val keyboxDir get() = File(root, KEYBOX_DIR)
 
@@ -767,6 +769,9 @@ object Config {
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
                 SecureFile.touch(File(root, HIDE_SENSITIVE_PROPS_FILE), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
+                SecureFile.touch(File(root, RANDOM_DRM_ON_BOOT_FILE), 384)
+                SecureFile.touch(File(root, AUTO_PATCH_UPDATE_FILE), 384)
+                SecureFile.touch(File(root, SPOOF_LOCATION_FILE), 384)
 
                 // Set DRM fix content
                 val drmContent = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
@@ -779,7 +784,10 @@ object Config {
                 File(root, RANDOM_ON_BOOT_FILE).delete()
                 SecureFile.touch(File(root, HIDE_SENSITIVE_PROPS_FILE), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
+                SecureFile.touch(File(root, AUTO_PATCH_UPDATE_FILE), 384)
                 File(root, DRM_FIX_FILE).delete()
+                File(root, RANDOM_DRM_ON_BOOT_FILE).delete()
+                File(root, SPOOF_LOCATION_FILE).delete()
             }
             "minimal" -> {
                 File(root, GLOBAL_MODE_FILE).delete()
@@ -789,6 +797,9 @@ object Config {
                 File(root, HIDE_SENSITIVE_PROPS_FILE).delete()
                 File(root, DRM_FIX_FILE).delete()
                 File(root, SPOOF_BUILD_VARS_FILE).delete()
+                File(root, RANDOM_DRM_ON_BOOT_FILE).delete()
+                File(root, AUTO_PATCH_UPDATE_FILE).delete()
+                File(root, SPOOF_LOCATION_FILE).delete()
             }
             "default" -> {
                 File(root, GLOBAL_MODE_FILE).delete()
@@ -798,6 +809,9 @@ object Config {
                 File(root, HIDE_SENSITIVE_PROPS_FILE).delete()
                 File(root, DRM_FIX_FILE).delete()
                 File(root, SPOOF_BUILD_VARS_FILE).delete()
+                File(root, RANDOM_DRM_ON_BOOT_FILE).delete()
+                File(root, AUTO_PATCH_UPDATE_FILE).delete()
+                File(root, SPOOF_LOCATION_FILE).delete()
             }
             else -> {
                 Logger.e("Unknown profile: $profileName")
@@ -881,6 +895,20 @@ object Config {
             sb.append("ATTESTATION_ID_BT_MAC=$btMac\n")
             sb.append("SIM_COUNTRY_ISO=$simIso\n")
             sb.append("SIM_OPERATOR_NAME=$simCarrier\n")
+
+            // Random location if enabled
+            if (File(root, SPOOF_LOCATION_FILE).exists()) {
+                val locationRandom = buildVars["SPOOF_LOCATION_RANDOM"]?.equals("true", ignoreCase = true) == true
+                if (locationRandom) {
+                    val baseLat = buildVars["SPOOF_LATITUDE"]?.toDoubleOrNull() ?: 0.0
+                    val baseLng = buildVars["SPOOF_LONGITUDE"]?.toDoubleOrNull() ?: 0.0
+                    val radius = buildVars["SPOOF_LOCATION_RADIUS"]?.toIntOrNull() ?: 500
+                    val randomLoc = RandomUtils.generateRandomLocationOffset(baseLat, baseLng, radius)
+                    sb.append("SPOOF_LATITUDE=${randomLoc.first}\n")
+                    sb.append("SPOOF_LONGITUDE=${randomLoc.second}\n")
+                    Logger.i("Random location set: ${randomLoc.first}, ${randomLoc.second} (radius: ${radius}m)")
+                }
+            }
 
             SecureFile.writeText(spoofFile, sb.toString())
             updateBuildVars(spoofFile)

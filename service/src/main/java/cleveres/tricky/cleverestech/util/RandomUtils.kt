@@ -78,4 +78,29 @@ object RandomUtils {
     fun generateRandomCarrier(): String {
         return CARRIERS.random()
     }
+
+    /**
+     * Generate a random location offset from a base point within a given radius.
+     * Uses uniform random distribution within a circle. CPU-friendly single-pass calculation.
+     * @param baseLat base latitude in degrees
+     * @param baseLng base longitude in degrees
+     * @param radiusMeters maximum distance from center in meters
+     * @return Pair(latitude, longitude) as formatted strings
+     */
+    fun generateRandomLocationOffset(baseLat: Double, baseLng: Double, radiusMeters: Int): Pair<String, String> {
+        // Earth's radius in meters
+        val earthRadius = 6_371_000.0
+        // Random distance (sqrt for uniform area distribution)
+        val dist = kotlin.math.sqrt(Random.nextDouble()) * radiusMeters
+        val bearing = Random.nextDouble() * 2.0 * kotlin.math.PI
+
+        // Convert to lat/lng offset (approximation, accurate within ~100km)
+        val latOffset = (dist * kotlin.math.cos(bearing)) / earthRadius * (180.0 / kotlin.math.PI)
+        val lngOffset = (dist * kotlin.math.sin(bearing)) / (earthRadius * kotlin.math.cos(Math.toRadians(baseLat))) * (180.0 / kotlin.math.PI)
+
+        val newLat = (baseLat + latOffset).coerceIn(-90.0, 90.0)
+        val newLng = (baseLng + lngOffset).coerceIn(-180.0, 180.0)
+
+        return Pair(String.format("%.6f", newLat), String.format("%.6f", newLng))
+    }
 }
