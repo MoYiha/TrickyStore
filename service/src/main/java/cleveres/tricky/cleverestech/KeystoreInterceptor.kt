@@ -132,23 +132,27 @@ object KeystoreInterceptor : BinderInterceptor() {
     }
 
     fun tryRunKeystoreInterceptor(): Boolean {
-        Logger.i("trying to register keystore interceptor ($triedCount) ...")
-        val b = ServiceManager.getService("android.system.keystore2.IKeystoreService/default") ?: return false
+        Logger.i("trying to register keystore interceptor (attempt=$triedCount) ...")
+        val b = ServiceManager.getService("android.system.keystore2.IKeystoreService/default") ?: run {
+            Logger.d("keystore2 service not yet available, will retry")
+            return false
+        }
         val bd = getBinderBackdoor(b)
         if (bd == null) {
             // no binder hook, try inject
             if (triedCount >= 3) {
-                Logger.e("tried injection but still has no backdoor, will keep retrying without exiting daemon")
+                Logger.e("tried injection $triedCount times but still has no backdoor, will keep retrying without exiting daemon")
                 return false
             }
             if (!injected) {
-                Logger.i("trying to inject keystore ...")
+                Logger.i("trying to inject keystore (no binder backdoor found) ...")
                 val pid = findKeystore2Pid()
                 if (pid == null) {
-                    Logger.e("failed to find keystore2 pid! will retry")
+                    Logger.e("failed to find keystore2 pid! will retry (attempt=$triedCount)")
                     triedCount += 1
                     return false
                 }
+                Logger.i("found keystore2 at pid=$pid, injecting libcleverestricky.so ...")
                 val p = Runtime.getRuntime().exec(
                     arrayOf(
                         "/data/adb/modules/cleverestricky/inject",
@@ -167,10 +171,11 @@ object KeystoreInterceptor : BinderInterceptor() {
                     Logger.d("keystore injector stderr: $stderr")
                 }
                 if (exitCode != 0) {
-                    Logger.e("failed to inject keystore (exit=$exitCode); will retry without exiting daemon")
+                    Logger.e("failed to inject keystore (exit=$exitCode, pid=$pid); possible conflict with another Zygisk/ptrace module. Will retry without exiting daemon")
                     triedCount += 1
                     return false
                 }
+                Logger.i("keystore injection succeeded for pid=$pid")
                 injected = true
             }
             triedCount += 1

@@ -31,12 +31,17 @@ using namespace std::string_literals;
 // zygote inject
 
 bool inject_library(int pid, const char *lib_path, const char* entry_name) {
-    LOGI("injecting %s and calling %s in %d", lib_path, entry_name, pid);
+    LOGI("injecting %s and calling %s in pid %d (target process)", lib_path, entry_name, pid);
     struct user_regs_struct regs{}, backup{};
     std::vector<lsplt::MapInfo> map;
 
     if (ptrace(PTRACE_ATTACH, pid, 0, 0) == -1) {
-        PLOGE("PTRACE_ATTACH failed");
+        if (errno == EPERM) {
+            LOGE("PTRACE_ATTACH failed with EPERM for pid %d: another module (Zygisk/ptrace) may already be attached. "
+                 "Ensure no conflicting modules (e.g., Play Integrity Fork) are hooking the same process.", pid);
+        } else {
+            PLOGE("PTRACE_ATTACH failed for pid %d", pid);
+        }
         return false; // Cannot proceed if attach fails
     }
     LOGD("PTRACE_ATTACH successful for pid %d", pid);

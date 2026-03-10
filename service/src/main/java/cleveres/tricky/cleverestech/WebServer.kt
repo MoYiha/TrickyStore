@@ -1339,15 +1339,6 @@ class WebServer(
                 * RAM estimates are approximate based on loaded objects.
             </div>
         </div>
-        <div class="panel">
-            <h3>Language Support</h3>
-            <p>The module is English-first, but supports community translations.</p>
-            <p>To add a language, place a <code>lang.json</code> file in <code>/data/adb/cleverestricky/</code>.</p>
-            <div class="grid-2">
-                <button onclick="downloadLangTemplate()">Download Template</button>
-                <button onclick="loadLanguage()">Reload Language File</button>
-            </div>
-        </div>
     </div>
     <div id="guide" class="content" role="tabpanel" aria-labelledby="tab_guide">
         <div class="panel">
@@ -1368,6 +1359,15 @@ class WebServer(
                 <li>Set a password and author name.</li>
                 <li>Share the .cbox file and Public Key with users.</li>
             </ul>
+        </div>
+        <div class="panel">
+            <h3>Language Support</h3>
+            <p>The module is English-first, but supports community translations.</p>
+            <p>To add a language, place a <code>lang.json</code> file in <code>/data/adb/cleverestricky/</code>.</p>
+            <div class="grid-2">
+                <button onclick="downloadLangTemplate()">Download Template</button>
+                <button onclick="loadLanguage()">Reload Language File</button>
+            </div>
         </div>
     </div>
 
@@ -1405,9 +1405,9 @@ class WebServer(
             if (type === 'working') {
                 iconHtml = '<div class="spinner"></div>';
             } else if (type === 'error') {
-                iconHtml = '<span class="island-icon">❌</span>';
+                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">&#10005;</span>';
             } else {
-                iconHtml = '<span class="island-icon">✅</span>';
+                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">&#10003;</span>';
             }
 
             // Escape HTML for message
@@ -1717,9 +1717,11 @@ class WebServer(
         // Rest of existing JS (simplified/merged)
         async function init() {
             if (!token) return;
+            console.log('[CleveresTricky] init: loading config...');
             try {
                 const res = await fetchAuth(getAuthUrl('/api/config'));
                 const data = await res.json();
+                console.log('[CleveresTricky] config loaded:', JSON.stringify({rkp_bypass: data.rkp_bypass, global_mode: data.global_mode, keybox_count: data.keybox_count, tee_broken_mode: data.tee_broken_mode}));
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32'].forEach(k => {
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
@@ -2120,14 +2122,20 @@ class WebServer(
                 }
             }
             currentFile = f;
+            console.log('[CleveresTricky] loadFile: loading', f);
             try {
                 const res = await fetchAuth('/api/file?filename=' + f);
                 if(res.ok) {
                     originalContent = await res.text();
                     editor.value = originalContent;
+                    console.log('[CleveresTricky] loadFile:', f, 'loaded (' + originalContent.length + ' bytes)');
                     updateSaveButtonState();
+                } else {
+                    console.log('[CleveresTricky] loadFile:', f, 'failed (status=' + res.status + ')');
                 }
-            } catch(e){}
+            } catch(e){
+                console.log('[CleveresTricky] loadFile:', f, 'error -', e.message);
+            }
         }
         async function handleSave(btn) {
              btn.disabled = true; btn.innerText = 'Saving...';
@@ -2156,15 +2164,19 @@ class WebServer(
 
         let translations = {};
         async function loadLanguage() {
+            console.log('[CleveresTricky] loadLanguage: fetching /api/language...');
             try {
                 const res = await fetchAuth('/api/language');
                 if (res.ok) {
                     translations = await res.json();
+                    console.log('[CleveresTricky] loadLanguage: loaded', Object.keys(translations).length, 'keys');
                     applyTranslations();
                     notify('Language Loaded');
+                } else {
+                    console.log('[CleveresTricky] loadLanguage: no language file (status=' + res.status + ')');
                 }
             } catch(e) {
-                // Silent fail
+                console.log('[CleveresTricky] loadLanguage: failed -', e.message);
             }
         }
 
@@ -2236,11 +2248,11 @@ class WebServer(
 
                 // Single row layout for responsive design
                 tr.innerHTML =
-                    '<td data-label="' + t('col_feature') + '"><div>' + f.name + '</div><div class="res-desc">' + f.desc + '</div></td>' +
-                    '<td data-label="' + t('col_status') + '">' + statusHtml + '</td>' +
-                    '<td data-label="' + t('col_ram') + '" style="font-family:monospace;">' + f.ram + '</td>' +
-                    '<td data-label="' + t('col_cpu') + '">' + f.cpu + '</td>' +
-                    '<td data-label="' + t('col_security') + '" style="color:' + secColor + '; font-weight:bold;">' + f.sec + '</td>';
+                    '<td data-label="' + t('col_feature', 'Feature') + '"><div>' + f.name + '</div><div class="res-desc">' + f.desc + '</div></td>' +
+                    '<td data-label="' + t('col_status', 'Status') + '">' + statusHtml + '</td>' +
+                    '<td data-label="' + t('col_ram', 'Est. RAM') + '" style="font-family:monospace;">' + f.ram + '</td>' +
+                    '<td data-label="' + t('col_cpu', 'Est. CPU') + '">' + f.cpu + '</td>' +
+                    '<td data-label="' + t('col_security', 'Security Impact') + '" style="color:' + secColor + '; font-weight:bold;">' + f.sec + '</td>';
 
                 tbody.appendChild(tr);
             });
