@@ -168,7 +168,7 @@ class ActionTest {
         File(keyboxesDir, "stored.xml").writeText(VALID_XML)
 
         Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
-            mockedKeyboxVerifier.`when`<Set<String>?> { KeyboxVerifier.fetchCrl() }.thenReturn(emptySet<String>())
+            mockedKeyboxVerifier.`when`<Set<String>> { KeyboxVerifier.fetchCrl() }.thenReturn(emptySet())
 
             val response = post("/api/verify_keyboxes")
             assertEquals(200, response.first)
@@ -176,13 +176,14 @@ class ActionTest {
             val results = JSONArray(response.second)
             assertEquals(2, results.length())
 
-            val byFilename = (0 until results.length())
-                .associateBy({ results.getJSONObject(it).getString("filename") }, { results.getJSONObject(it) })
+            val byFilename = (0 until results.length()).associate { index ->
+                results.getJSONObject(index).let { it.getString("filename") to it }
+            }
 
             assertEquals("VALID", byFilename.getValue("keybox.xml").getString("status"))
-            assertTrue(byFilename.getValue("keybox.xml").getString("details").contains("Active"))
+            assertEquals("Active (1 keys)", byFilename.getValue("keybox.xml").getString("details"))
             assertEquals("VALID", byFilename.getValue("stored.xml").getString("status"))
-            assertTrue(byFilename.getValue("stored.xml").getString("details").contains("Active"))
+            assertEquals("Active (1 keys)", byFilename.getValue("stored.xml").getString("details"))
         }
     }
 
@@ -198,7 +199,7 @@ class ActionTest {
             .lowercase()
 
         Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
-            mockedKeyboxVerifier.`when`<Set<String>?> { KeyboxVerifier.fetchCrl() }.thenReturn(setOf(revokedSerial))
+            mockedKeyboxVerifier.`when`<Set<String>> { KeyboxVerifier.fetchCrl() }.thenReturn(setOf(revokedSerial))
 
             val response = post("/api/verify_keyboxes")
             assertEquals(200, response.first)
