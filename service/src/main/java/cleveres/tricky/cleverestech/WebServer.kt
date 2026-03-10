@@ -188,6 +188,9 @@ class WebServer(
     }
 
     private fun fileExists(filename: String): Boolean {
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return false
+        }
         synchronized(fileLock) {
             val f = File(configDir, filename)
             return isSafePath(f) && f.exists()
@@ -214,6 +217,9 @@ class WebServer(
 
     private fun toggleFile(filename: String, enable: Boolean): Boolean {
         if (!isValidSetting(filename)) return false
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return false
+        }
         synchronized(fileLock) {
             val f = File(configDir, filename)
             return try {
@@ -854,6 +860,9 @@ class WebServer(
              try { session.parseBody(map) } catch(e:Exception){}
              val filename = getParam(session, "filename")
              if (filename != null && isValidFilename(filename)) {
+                 if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+                 }
                  synchronized(fileLock) {
                      val keyboxDir = File(configDir, "keyboxes")
                      val f = File(keyboxDir, filename)
