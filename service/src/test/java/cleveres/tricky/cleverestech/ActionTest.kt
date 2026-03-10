@@ -14,7 +14,11 @@ import java.io.File
 import java.io.StringReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.cert.X509Certificate
 import org.json.JSONObject
+import org.json.JSONArray
+import cleveres.tricky.cleverestech.util.KeyboxVerifier
+import org.mockito.Mockito
 
 class ActionTest {
 
@@ -155,5 +159,66 @@ class ActionTest {
         val savedFile = File(configDir, "target.txt")
         assertTrue("File should exist", savedFile.exists())
         assertEquals("File content mismatch", "TEST_CONTENT", savedFile.readText())
+    }
+
+    @Test
+    fun testVerifyKeyboxesIncludesLegacyAndStoredFiles() {
+        File(configDir, "keybox.xml").writeText(VALID_XML)
+        val keyboxesDir = File(configDir, "keyboxes").apply { mkdirs() }
+        File(keyboxesDir, "stored.xml").writeText(VALID_XML)
+
+        Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
+            mockedKeyboxVerifier.`when`<Set<String>?> { KeyboxVerifier.fetchCrl() }.thenReturn(emptySet<String>())
+
+            val response = post("/api/verify_keyboxes")
+            assertEquals(200, response.first)
+
+            val results = JSONArray(response.second)
+            assertEquals(2, results.length())
+
+            val byFilename = (0 until results.length())
+                .associateBy({ results.getJSONObject(it).getString("filename") }, { results.getJSONObject(it) })
+
+            assertEquals("VALID", byFilename.getValue("keybox.xml").getString("status"))
+            assertTrue(byFilename.getValue("keybox.xml").getString("details").contains("Active"))
+            assertEquals("VALID", byFilename.getValue("stored.xml").getString("status"))
+            assertTrue(byFilename.getValue("stored.xml").getString("details").contains("Active"))
+        }
+    }
+
+    @Test
+    fun testVerifyKeyboxesReportsRevokedStatus() {
+        File(configDir, "keybox.xml").writeText(VALID_XML)
+        val revokedSerial = (CertHack.parseKeyboxXml(StringReader(VALID_XML))
+            .first()
+            .certificates()
+            .first() as X509Certificate)
+            .serialNumber
+            .toString(16)
+            .lowercase()
+
+        Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
+            mockedKeyboxVerifier.`when`<Set<String>?> { KeyboxVerifier.fetchCrl() }.thenReturn(setOf(revokedSerial))
+
+            val response = post("/api/verify_keyboxes")
+            assertEquals(200, response.first)
+
+            val result = JSONArray(response.second).getJSONObject(0)
+            assertEquals("keybox.xml", result.getString("filename"))
+            assertEquals("REVOKED", result.getString("status"))
+            assertTrue(result.getString("details").contains(revokedSerial))
+        }
+    }
+
+    private fun post(path: String): Pair<Int, String> {
+        val url = URL("http://localhost:${server.listeningPort}$path?token=${server.token}")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.outputStream.close()
+        val responseCode = conn.responseCode
+        val stream = if (responseCode >= 400) conn.errorStream else conn.inputStream
+        val body = stream?.bufferedReader()?.readText().orEmpty()
+        return responseCode to body
     }
 }
