@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.json.JSONArray
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
-import org.mockito.Mockito
 
 class ActionTest {
 
@@ -176,24 +175,15 @@ class ActionTest {
         val keyboxesDir = File(configDir, "keyboxes").apply { mkdirs() }
         File(keyboxesDir, "stored.xml").writeText(VALID_XML)
 
-        Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
-            mockedKeyboxVerifier.`when`<Set<String>> { KeyboxVerifier.fetchCrl() }.thenReturn(emptySet())
+        val results = KeyboxVerifier.verify(configDir) { emptySet() }
+        assertEquals(2, results.size)
 
-            val response = post("/api/verify_keyboxes")
-            assertEquals(200, response.first)
+        val resultsByFilename = results.associateBy { it.filename }
 
-            val results = JSONArray(response.second)
-            assertEquals(2, results.length())
-
-            val resultsByFilename = (0 until results.length()).associate { index ->
-                results.getJSONObject(index).let { it.getString("filename") to it }
-            }
-
-            assertEquals("VALID", resultsByFilename.getValue("keybox.xml").getString("status"))
-            assertEquals("Active (1 keys)", resultsByFilename.getValue("keybox.xml").getString("details"))
-            assertEquals("VALID", resultsByFilename.getValue("stored.xml").getString("status"))
-            assertEquals("Active (1 keys)", resultsByFilename.getValue("stored.xml").getString("details"))
-        }
+        assertEquals(KeyboxVerifier.Status.VALID, resultsByFilename.getValue("keybox.xml").status)
+        assertEquals("Active (1 keys)", resultsByFilename.getValue("keybox.xml").details)
+        assertEquals(KeyboxVerifier.Status.VALID, resultsByFilename.getValue("stored.xml").status)
+        assertEquals("Active (1 keys)", resultsByFilename.getValue("stored.xml").details)
     }
 
     @Test
@@ -201,17 +191,10 @@ class ActionTest {
         File(configDir, "keybox.xml").writeText(VALID_XML)
         val revokedSerial = extractCertificateSerial(VALID_XML)
 
-        Mockito.mockStatic(KeyboxVerifier::class.java, Mockito.CALLS_REAL_METHODS).use { mockedKeyboxVerifier ->
-            mockedKeyboxVerifier.`when`<Set<String>> { KeyboxVerifier.fetchCrl() }.thenReturn(setOf(revokedSerial))
-
-            val response = post("/api/verify_keyboxes")
-            assertEquals(200, response.first)
-
-            val result = JSONArray(response.second).getJSONObject(0)
-            assertEquals("keybox.xml", result.getString("filename"))
-            assertEquals("REVOKED", result.getString("status"))
-            assertTrue(result.getString("details").contains(revokedSerial))
-        }
+        val result = KeyboxVerifier.verify(configDir) { setOf(revokedSerial) }.single()
+        assertEquals("keybox.xml", result.filename)
+        assertEquals(KeyboxVerifier.Status.REVOKED, result.status)
+        assertTrue(result.details.contains(revokedSerial))
     }
 
     @Test
