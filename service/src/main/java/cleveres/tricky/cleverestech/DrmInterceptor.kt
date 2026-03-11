@@ -103,7 +103,10 @@ object DrmInterceptor : BinderInterceptor() {
         }
     }
 
-    private fun handleGetPropertyString(reply: Parcel, callingUid: Int): Result {
+    private fun handleGetPropertyString(data: Parcel, reply: Parcel, callingUid: Int): Result {
+        val propertyName = readTrackedPropertyName(data)
+        if (propertyName != DrmOverrideLogic.SECURITY_LEVEL_PROPERTY) return Skip
+
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
@@ -135,7 +138,8 @@ object DrmInterceptor : BinderInterceptor() {
         return Skip
     }
 
-    private fun handleGetPropertyByteArray(reply: Parcel, callingUid: Int): Result {
+    private fun handleGetPropertyByteArray(data: Parcel, reply: Parcel, callingUid: Int): Result {
+        val propertyName = readTrackedPropertyName(data)
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
@@ -159,6 +163,21 @@ object DrmInterceptor : BinderInterceptor() {
         }
 
         return Skip
+    }
+
+    private fun readTrackedPropertyName(data: Parcel): String? {
+        val pos = data.dataPosition()
+        return try {
+            DrmOverrideLogic.findTrackedPropertyName(listOf(data.readString(), data.readString()))
+        } catch (_: Exception) {
+            null
+        } finally {
+            data.setDataPosition(pos)
+        }
+    }
+
+    private fun isRandomDrmOnBootEnabled(): Boolean {
+        return File(Config.getConfigRoot(), "random_drm_on_boot").exists()
     }
 
     private fun findDrmServicePid(): Int? {
