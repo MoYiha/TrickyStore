@@ -9,10 +9,9 @@ object RandomUtils {
 
     // Thread-local SecureRandom avoids contention and ensures crypto-strength randomness.
     // This is critical: IMEI, serial, MAC etc. must not be predictable or brute-forceable.
-    private val secureRandom: SecureRandom get() = threadLocalRandom.get()
-    private val threadLocalRandom = object : ThreadLocal<SecureRandom>() {
-        override fun initialValue(): SecureRandom = SecureRandom()
-    }
+    private val secureRandom: SecureRandom
+        get() = requireNotNull(threadLocalRandom.get()) { "ThreadLocal SecureRandom must not be null" }
+    private val threadLocalRandom = ThreadLocal.withInitial { SecureRandom() }
 
     // Simple list for random selection
     private val COUNTRIES = listOf("us", "uk", "de", "fr", "es", "it", "ca", "au", "jp", "kr", "cn", "in", "br", "ru")
