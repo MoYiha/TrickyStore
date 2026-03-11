@@ -30,6 +30,7 @@
 #include <binder/Parcel.h>
 #include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
@@ -136,7 +137,7 @@ bool OffsetCache::validateOffsets() const {
 
   // transaction_data must be at least 40 bytes on any arch
   if (transaction_data_size < 40 || transaction_data_size > 512) return false;
-  if (secctx_size < transaction_data_size) return false;
+  if (transaction_data_secctx_size < transaction_data_size) return false;
 
   // Offsets must be within the struct
   if (target_ptr_offset >= transaction_data_size) return false;
@@ -335,7 +336,7 @@ bool RuntimeOffsetDiscovery::analyzeProbeResult(const uint8_t *buf, size_t len,
       cache.heuristic_source = true;
       cache.valid = true;
       LOGI("Heuristic: discovered transaction_data_size=%zu from live probe",
-           payload_sz);
+           static_cast<size_t>(payload_sz));
       return true;
     }
 

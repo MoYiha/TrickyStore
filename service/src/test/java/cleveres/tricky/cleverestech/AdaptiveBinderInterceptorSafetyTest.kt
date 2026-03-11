@@ -419,4 +419,32 @@ class AdaptiveBinderInterceptorSafetyTest {
                 cppContent.contains("isValid") || cppContent.contains("sanity")
         )
     }
+
+    @Test
+    fun testSecctxValidationUsesCachedStructSizeField() {
+        assertTrue(
+            "Offset validation must compare against the cached transaction_data_secctx_size field",
+            cppContent.contains("transaction_data_secctx_size < transaction_data_size")
+        )
+        assertFalse(
+            "Offset validation must not reference an out-of-scope secctx_size local",
+            cppContent.contains("if (secctx_size < transaction_data_size)")
+        )
+    }
+
+    @Test
+    fun testPingProbeIncludesFcntlForOpenFlags() {
+        assertTrue(
+            "Binder probe must include <fcntl.h> when using O_RDWR/O_CLOEXEC flags",
+            cppContent.contains("#include <fcntl.h>")
+        )
+    }
+
+    @Test
+    fun testHeuristicTransactionSizeLogMatchesArgumentType() {
+        assertTrue(
+            "Heuristic transaction size log must cast payload size to size_t for %zu formatting",
+            cppContent.contains("static_cast<size_t>(payload_sz)")
+        )
+    }
 }
