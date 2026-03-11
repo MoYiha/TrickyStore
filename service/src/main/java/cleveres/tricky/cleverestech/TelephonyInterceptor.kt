@@ -91,10 +91,35 @@ object TelephonyInterceptor : BinderInterceptor() {
         when (code) {
             getDeviceIdTransaction -> spoofedVal = imei
             getDeviceIdForPhoneTransaction -> {
-                reply.setDataPosition(pos)
-                spoofedVal = imei
+                // Read phone index from the original request data to support dual-SIM
+                val dataPos = data.dataPosition()
+                try {
+                    data.setDataPosition(0)
+                    data.readString() // skip interface token
+                    val phoneId = data.readInt()
+                    spoofedVal = if (phoneId > 0) imei2 else imei
+                    Logger.i("Telephony: getDeviceIdForPhone phoneId=$phoneId -> ${if (phoneId > 0) "IMEI2" else "IMEI1"}")
+                } catch (e: Exception) {
+                    spoofedVal = imei
+                } finally {
+                    data.setDataPosition(dataPos)
+                }
             }
-            getImeiForSubscriberTransaction -> spoofedVal = imei
+            getImeiForSubscriberTransaction -> {
+                // Read subscription ID from the original request data
+                val dataPos = data.dataPosition()
+                try {
+                    data.setDataPosition(0)
+                    data.readString() // skip interface token
+                    val subId = data.readInt()
+                    spoofedVal = if (subId > 0) imei2 else imei
+                    Logger.i("Telephony: getImeiForSubscriber subId=$subId -> ${if (subId > 0) "IMEI2" else "IMEI1"}")
+                } catch (e: Exception) {
+                    spoofedVal = imei
+                } finally {
+                    data.setDataPosition(dataPos)
+                }
+            }
             getSubscriberIdTransaction, getSubscriberIdForSubscriberTransaction -> spoofedVal = imsi
             getIccSerialNumberTransaction, getIccSerialNumberForSubscriberTransaction -> spoofedVal = iccid
             getLine1NumberTransaction, getLine1NumberForSubscriberTransaction -> {
@@ -106,7 +131,7 @@ object TelephonyInterceptor : BinderInterceptor() {
         }
 
         if (spoofedVal != null) {
-            Logger.i("Intercepted Telephony: code=$code uid=$callingUid -> Spoofing")
+            Logger.i("Intercepted Telephony: code=$code uid=$callingUid pid=$callingPid -> Spoofed value (len=${spoofedVal.length})")
             val p = Parcel.obtain()
             p.writeNoException()
             p.writeString(spoofedVal)

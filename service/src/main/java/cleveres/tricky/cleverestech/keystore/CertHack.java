@@ -63,6 +63,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -121,7 +122,7 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
-    private static final Map<String, AtomicInteger> rotationCounters = new HashMap<>();
+    private static final Map<String, AtomicInteger> rotationCounters = new ConcurrentHashMap<>();
 
     static {
         rotationCounters.put(KeyProperties.KEY_ALGORITHM_EC, new AtomicInteger(0));
@@ -341,6 +342,10 @@ public final class CertHack {
             // Optimization: Use original encoded bytes to avoid copy/re-encoding
             X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
             Extension ext = leafHolder.getExtension(OID);
+            if (ext == null || ext.getExtnValue() == null) {
+                Logger.e("Attestation extension present but holder returned null — skipping hack");
+                return caList;
+            }
             ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
             ASN1Encodable[] encodables = sequence.toArray();
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
@@ -438,6 +443,11 @@ public final class CertHack {
                     .build(k.keyPair.getPrivate());
 
             byte[] verifiedBootKey = UtilKt.getBootKey();
+            if (verifiedBootKey == null) {
+                Logger.e("getBootKey() returned null, generating random 32-byte key");
+                verifiedBootKey = new byte[32];
+                new java.security.SecureRandom().nextBytes(verifiedBootKey);
+            }
             byte[] verifiedBootHash = null;
             try {
                 if (!(rootOfTrust instanceof ASN1Sequence r)) {

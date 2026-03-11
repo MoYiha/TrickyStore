@@ -19,7 +19,9 @@ object DeviceKeyManager {
     private const val TAG = "DeviceKeyManager"
 
     // Fallback if AndroidKeyStore is unavailable (e.g. some root environments)
+    @Volatile
     private var fallbackKey: SecretKey? = null
+    @Volatile
     private var useFallback = false
 
     @Volatile

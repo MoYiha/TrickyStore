@@ -993,13 +993,27 @@ class WebServer(
                  synchronized(fileLock) {
                      val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
                      dirs.forEach { path ->
-                         try { File(path).walkBottomUp().forEach { if (it.path != path) it.delete() } } catch (e: Exception) {}
+                         try {
+                             var cleaned = 0
+                             File(path).walkBottomUp().forEach {
+                                 if (it.path != path) {
+                                     if (!it.delete()) Logger.e("DRM reset: failed to delete ${it.path}")
+                                     else cleaned++
+                                 }
+                             }
+                             if (cleaned > 0) Logger.i("DRM reset: cleaned $cleaned files from $path")
+                         } catch (e: Exception) {
+                             Logger.e("DRM reset: failed to clean $path", e)
+                         }
                      }
                      val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                     try { p.inputStream.readBytes(); p.errorStream.readBytes() } catch (_: Exception) {}
                      p.waitFor()
+                     Logger.i("DRM ID regenerated successfully")
                      return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
                  }
              } catch(e: Exception) {
+                 Logger.e("DRM reset failed", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
@@ -1100,7 +1114,9 @@ class WebServer(
                  } catch (e: Exception) {
                      Logger.e("Failed to restore backup", e)
                      secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Restore failed: ${e.message}")
-                 } finally { try { tmpFile.delete() } catch(e: Exception) {} }
+                 } finally {
+                     if (!tmpFile.delete()) Logger.e("Failed to clean up temp file: ${tmpFile.absolutePath}")
+                 }
              }
              return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "No file uploaded")
         }
