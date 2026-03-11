@@ -43,6 +43,7 @@ Unlike traditional modules that apply static patches, CleveresTricky runs an alw
 | **Play Integrity DEVICE/STRONG** | Intercepts keystore at the Binder level and injects valid attestation chains |
 | **KeyMint 4.0 attestation** | Full support for the latest hardware attestation protocol |
 | **RKP (Remote Key Provisioning)** | Built-in local proxy generates RFC-compliant COSE/CBOR proofs signed with rotating secrets |
+| **Device Recall Protection** | Neutralizes Google's persistent 3-bit device recall by randomizing all device identity signals (see below) |
 | **Multi-keybox rotation** | Maintains a pool of keyboxes and rotates through them automatically (round-robin) |
 | **Encrypted keyboxes (.cbox)** | AES-256-GCM containers with hardware-backed key storage |
 | **Remote key servers** | Auto-fetches and validates keyboxes from configured community servers |
@@ -103,6 +104,7 @@ The module detects your chipset and uses the correct provisioning binary automat
 
 | Component | Description |
 |-----------|-------------|
+| **Adaptive Binder Interceptor** | Version-immune hook architecture that discovers kernel struct layouts at runtime (see below) |
 | **Stealth Daemon** | Runs as a disguised process. All property hiding happens in compiled code, not shell scripts. |
 | **Crash Recovery** | Automatic restart with exponential backoff (5 retries, 3 cycles, 5-minute cooldown) |
 | **SELinux Auto-Repair** | Contexts are verified and repaired before every daemon launch |
@@ -309,10 +311,65 @@ touch /data/adb/cleverestricky/imei_global
 touch /data/adb/cleverestricky/network_global
 ```
 
+### Play Integrity API Protection
+
+The module includes comprehensive countermeasures against **all** Play Integrity API verdict categories, as documented in Google's November 2025 update and the Device Recall beta (2026).
+
+```bash
+# Enable (also auto-enables when random_on_boot or random_drm_on_boot is active)
+touch /data/adb/cleverestricky/device_recall_protection
+
+# Disable
+rm /data/adb/cleverestricky/device_recall_protection
+```
+
+**Verdict categories covered:**
+
+| Verdict | Threat | Our Defense |
+|---------|--------|-------------|
+| **deviceIntegrity** | Detects rooted/uncertified/emulated devices | Spoofed build props, locked bootloader, verified boot state, security patch |
+| **appIntegrity** | Detects modified/unsigned APKs | Keystore interception injects valid attestation chains |
+| **accountDetails** | Checks Play Store license | Handled by legitimate Play Store installation |
+| **recentDeviceActivity** | Flags anomalous token request volume | Built-in rate limiter caps requests to avoid anomaly detection |
+| **deviceRecall** | 3 persistent bits per device surviving factory resets | All device identifiers (IMEI, serial, DRM ID, fingerprint) randomized to break association |
+| **appAccessRiskVerdict** | Detects overlay/screen-capture apps | Module runs as native daemon, not as overlay |
+| **playProtectVerdict** | Checks Play Protect malware scan status | Module is not flagged as malware (native process) |
+| **deviceAttributes** | Attested SDK version | SDK version spoofed to match legitimate device |
+| **Remediation dialogs** | GET_INTEGRITY, GET_STRONG_INTEGRITY, GET_LICENSED force re-verification | Dialog intent detection at Binder level |
+| **Platform key rotation** | Google rotating root certificates (Feb 2026) | Adaptive key handling via rotating keybox pool |
+
+**How identity randomization defeats Device Recall:**
+
+Device Recall needs a stable device identifier to associate the 3 persistent bits. When all identifiers are randomized (IMEI, serial, DRM ID, fingerprint, security patch), the device appears as a completely new device to Google's servers. The 3-year retention period becomes irrelevant because previous bits cannot be matched to the new identity.
+
+**Best practice:** Enable `random_on_boot` + `random_drm_on_boot` for maximum protection. This gives you a fresh device identity on every boot.
+
+### Adaptive Binder Interceptor
+
+The native Binder hook uses an **Adaptive Interception** architecture that is immune to Android version updates and kernel struct changes. Instead of hardcoding kernel struct layouts, it discovers them dynamically at runtime.
+
+**Strategy priority (automatic fallback):**
+
+| Priority | Strategy | When |
+|----------|----------|------|
+| 1 | **BTF Kernel Introspection** | Kernel 5.4+ with `CONFIG_DEBUG_INFO_BTF` -- reads `/sys/kernel/btf/vmlinux` for exact struct layouts |
+| 2 | **Runtime Heuristic Probing** | Sends a dummy `PING_TRANSACTION` at startup and analyzes the response to discover struct field positions |
+| 3 | **Static Fallback Database** | Known offset maps for Android 8 (API 26) through Android 15+ (API 35) across kernel 4.4 -- 6.6 |
+
+**Safety guarantees:**
+
+- All buffer accesses are **bounds-checked** before read/write
+- A **state-machine stream parser** processes binder commands without assuming fixed struct sizes
+- **SIGSEGV/SIGBUS-safe memory probing** prevents kernel panics on malformed data
+- No raw C-style struct casts -- all field access uses dynamically discovered offsets
+- Unknown/new fields are **skipped safely** instead of causing crashes
+
 ---
 
 ## Roadmap
 
+- [x] Adaptive Binder Interceptor (version-immune hook architecture)
+- [x] Play Integrity API Protection (all verdict categories + Device Recall)
 - [ ] Zygisk-less standalone mode
 - [ ] Enhanced KernelSU native integration
 - [ ] Advanced detection evasion independent of Zygisk injection
