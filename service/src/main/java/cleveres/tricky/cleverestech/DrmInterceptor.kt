@@ -101,7 +101,7 @@ object DrmInterceptor : BinderInterceptor() {
     }
 
     private fun isRandomDrmOnBootEnabled(): Boolean {
-        return File(Config.getRootForTesting(), "random_drm_on_boot").exists()
+        return File(Config.getConfigRoot(), "random_drm_on_boot").exists()
     }
 
     private fun findDrmServicePid(): Int? {
