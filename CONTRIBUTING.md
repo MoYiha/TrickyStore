@@ -19,6 +19,15 @@ When researching or developing for this module, please give priority to **Chines
 2.  Create a feature branch.
 3.  Submit a PR with a clear description of changes.
 
+
+### AI Agent Development Rules
+
+AI agents generating code or pull requests for CleveresTricky MUST strictly follow these principles:
+- **No Hardcoding:** Offsets, kernel structures, and static sizes must be resolved dynamically. Implement heuristic probing, BTF integration, or fallback matrices instead of relying on `sizeof()` or fixed offsets that will break in future Android updates.
+- **Deep Testing:** Superficial tests are not acceptable. API and Action tests must be deepened to prove code robustness. Write the tests first, then implement the code.
+- **Unbreakable Architecture:** Think thoroughly about how Android and kernel updates will impact the code. The module must be designed to adapt and remain immune to changes.
+- **International Standard:** Do not take the easy way out. Provide rigorous, robust, and world-class engineering solutions without skipping steps.
+
 ## Testing Requirements
 
 Every PR that adds or modifies a feature **must** include tests that verify the feature works correctly. This ensures the CI pipeline catches regressions early.

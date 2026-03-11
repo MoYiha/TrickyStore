@@ -366,6 +366,14 @@ The native Binder hook uses an **Adaptive Interception** architecture that is im
 
 ---
 
+## AI Agent Engineering Policies
+
+To ensure the long-term viability and unbreakability of this module, AI Agents contributing to this project must adhere to strict policies:
+- **No Hardcoding:** Offsets, sizes, and struct layouts must be discovered dynamically (e.g., via BTF or heuristic probing). No blind reliance on fixed values.
+- **Dynamic Adaptability:** The architecture must withstand kernel updates and Android version changes without crashing.
+- **Deep Testing:** Tests must cover edge cases deeply. Write tests before writing code.
+- **Robust Architectures:** No shortcuts or band-aid fixes. Provide serious, international-level engineering solutions.
+
 ## Roadmap
 
 - [x] Adaptive Binder Interceptor (version-immune hook architecture)

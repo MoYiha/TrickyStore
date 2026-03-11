@@ -104,3 +104,10 @@ Work is strictly considered "Done" only when:
 - Tests and checks are run (or explicitly marked as unrun).
 - All claims match the provided evidence.
 - Remaining risks are disclosed honestly and transparently.
+
+## 11. Strict Anti-Laziness Policies for AI Agents
+- **No Hardcoding:** You must never hardcode offsets, sizes, or layouts that might change in future Android or Kernel updates. You must build systems that dynamically adapt (e.g., using BTF, heuristic probing).
+- **No Fragile Fixes:** Do not provide band-aid fixes. You must think about the root cause and engineer a robust, unbreakable solution.
+- **Deep Testing Required:** Do not write superficial tests. You must deepen Action and API tests. You must prove the resilience of your code against edge cases.
+- **Think Long-Term:** Your solutions must be immune to future Google security updates and Android version changes. RKP, properties, and intercepts must be fully dynamic.
+- **International-Level Engineering:** The expected standard is rigorous, world-class software engineering. Do not skip steps, do not rush, and do not provide lazy implementations.
