@@ -161,6 +161,68 @@ class BootLogicSafetyTest {
         )
     }
 
+    @Test
+    fun testHidesOemUnlockSupported() {
+        assertTrue(
+            "Must hide ro.oem_unlock_supported as 0 (moved from post-fs-data.sh to daemon)",
+            bootLogicContent.contains("ro.oem_unlock_supported") &&
+            bootLogicContent.contains("\"0\"")
+        )
+    }
+
+    @Test
+    fun testHidesVendorBootState() {
+        assertTrue(
+            "Must hide vendor.boot.vbmeta.device_state as locked (moved from post-fs-data.sh to daemon)",
+            bootLogicContent.contains("vendor.boot.vbmeta.device_state") &&
+            bootLogicContent.contains("locked")
+        )
+    }
+
+    @Test
+    fun testHidesVendorVerifiedBoot() {
+        assertTrue(
+            "Must hide vendor.boot.verifiedbootstate as green",
+            bootLogicContent.contains("vendor.boot.verifiedbootstate") &&
+            bootLogicContent.contains("green")
+        )
+    }
+
+    @Test
+    fun testHidesSecurebootLockstate() {
+        assertTrue(
+            "Must hide ro.secureboot.lockstate as locked",
+            bootLogicContent.contains("ro.secureboot.lockstate") &&
+            bootLogicContent.contains("locked")
+        )
+    }
+
+    @Test
+    fun testHidesRealmeBootstate() {
+        assertTrue(
+            "Must hide Realme-specific ro.boot.realmebootstate as green",
+            bootLogicContent.contains("ro.boot.realmebootstate") &&
+            bootLogicContent.contains("green")
+        )
+    }
+
+    @Test
+    fun testHidesRealmeLockstate() {
+        assertTrue(
+            "Must hide Realme-specific ro.boot.realme.lockstate as 1",
+            bootLogicContent.contains("ro.boot.realme.lockstate") &&
+            bootLogicContent.contains("\"1\"")
+        )
+    }
+
+    @Test
+    fun testApplyPropertyHidingCalledOnRun() {
+        assertTrue(
+            "BootLogic.run() must call applyPropertyHiding to set props from daemon startup",
+            bootLogicContent.contains("applyPropertyHiding()")
+        )
+    }
+
     // ================================
     // Auto-patch update logic
     // ================================

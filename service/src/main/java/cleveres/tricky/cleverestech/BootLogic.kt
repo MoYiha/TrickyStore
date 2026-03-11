@@ -23,6 +23,11 @@ object BootLogic {
         Logger.i("Running BootLogic tasks...")
 
         try {
+            // Always apply property hiding on daemon start — this is the sole
+            // authority for property spoofing.  Shell-based resetprop was removed
+            // from post-fs-data.sh to avoid detection by integrity frameworks.
+            applyPropertyHiding()
+
             if (File(configDir, FILE_AUTO_PATCH).exists()) {
                 checkAutoPatch()
             }
@@ -40,6 +45,62 @@ object BootLogic {
 
         } catch (e: Exception) {
             Logger.e("BootLogic failed", e)
+        }
+    }
+
+    /**
+     * Core property hiding that always runs on daemon start.
+     *
+     * This replaces the resetprop calls that were previously in post-fs-data.sh.
+     * Moving them into the compiled daemon makes them far harder for Google's
+     * integrity framework to detect (shell scripts are trivially scannable,
+     * compiled code is not).
+     */
+    private fun applyPropertyHiding() {
+        try {
+            Logger.i("Applying core property hiding from daemon...")
+
+            // Verified boot & bootloader state
+            resetProp("ro.boot.verifiedbootstate", "green")
+            resetProp("ro.boot.flash.locked", "1")
+            resetProp("ro.boot.veritymode", "enforcing")
+            resetProp("ro.boot.vbmeta.device_state", "locked")
+            resetProp("ro.boot.warranty_bit", "0")
+            resetProp("ro.warranty_bit", "0")
+
+            // Security & debug flags
+            resetProp("ro.secure", "1")
+            resetProp("ro.debuggable", "0")
+            resetProp("ro.force.debuggable", "0")
+            resetProp("ro.adb.secure", "1")
+            resetProp("ro.build.type", "user")
+            resetProp("ro.build.tags", "release-keys")
+
+            // Vendor warranty bits
+            resetProp("ro.vendor.boot.warranty_bit", "0")
+            resetProp("ro.vendor.warranty_bit", "0")
+
+            // Vendor boot state
+            resetProp("vendor.boot.vbmeta.device_state", "locked")
+            resetProp("vendor.boot.verifiedbootstate", "green")
+
+            // OEM unlock / secure boot
+            resetProp("sys.oem_unlock_allowed", "0")
+            resetProp("ro.secureboot.lockstate", "locked")
+            resetProp("ro.oem_unlock_supported", "0")
+
+            // Realme specific
+            resetProp("ro.boot.realmebootstate", "green")
+            resetProp("ro.boot.realme.lockstate", "1")
+
+            // Bootmode hiding (recovery -> unknown)
+            hideBootMode("ro.bootmode")
+            hideBootMode("ro.boot.bootmode")
+            hideBootMode("vendor.boot.bootmode")
+
+            Logger.i("Core property hiding applied.")
+        } catch (e: Exception) {
+            Logger.e("Error in applyPropertyHiding", e)
         }
     }
 
