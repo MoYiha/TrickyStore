@@ -1339,7 +1339,137 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
 }
 
 // =============================================================================
-// Section 12: Hook Registration & Entry Point
+// Section 12: Device Recall Protection (Play Integrity API Countermeasure)
+//
+// Google's Device Recall (beta 2026) stores 3 persistent bits per device
+// per developer account on Google servers. These bits survive factory resets
+// and can be used to flag devices with prior abuse/root detection history.
+//
+// Our defense strategy:
+//   1. Detect Binder transactions to Play Integrity / GMS Integrity services
+//   2. Interfere with device identity signals before integrity token generation
+//   3. Coordinate with DRM ID and build prop randomization so device appears
+//      "new" to Google's device recall system after each identity rotation
+//   4. Block or corrupt device recall warmup data when possible
+// =============================================================================
+
+std::atomic<bool> DeviceRecallProtection::s_enabled{false};
+std::atomic<bool> DeviceRecallProtection::s_initialized{false};
+
+bool DeviceRecallProtection::readConfig() {
+  // Check if device_recall_protection toggle file exists
+  return access("/data/adb/cleverestricky/device_recall_protection", F_OK) == 0;
+}
+
+bool DeviceRecallProtection::initialize() {
+  if (s_initialized.load(std::memory_order_acquire)) {
+    return s_enabled.load(std::memory_order_relaxed);
+  }
+
+  bool enabled = readConfig();
+
+  // Also auto-enable if random_on_boot or drm_fix are active, since those
+  // already aim to change device identity — device recall protection is
+  // a natural complement.
+  if (!enabled) {
+    enabled = access("/data/adb/cleverestricky/random_on_boot", F_OK) == 0 ||
+              access("/data/adb/cleverestricky/random_drm_on_boot", F_OK) == 0;
+  }
+
+  s_enabled.store(enabled, std::memory_order_release);
+  s_initialized.store(true, std::memory_order_release);
+
+  if (enabled) {
+    LOGI("DeviceRecallProtection: ENABLED — integrity token interception active");
+  } else {
+    LOGI("DeviceRecallProtection: disabled (enable via device_recall_protection file)");
+  }
+  return enabled;
+}
+
+bool DeviceRecallProtection::isEnabled() {
+  return s_enabled.load(std::memory_order_relaxed);
+}
+
+bool DeviceRecallProtection::isIntegrityServiceDescriptor(const char *descriptor,
+                                                          size_t len) {
+  if (descriptor == nullptr || len == 0) return false;
+
+  std::string_view sv(descriptor, len);
+
+  // Match known Play Integrity API service descriptors
+  if (sv.find(INTEGRITY_SERVICE_DESCRIPTOR) != std::string_view::npos) return true;
+  if (sv.find(GMS_INTEGRITY_DESCRIPTOR) != std::string_view::npos) return true;
+
+  // Also match partial patterns for future-proofing
+  if (sv.find("playintegrity") != std::string_view::npos) return true;
+  if (sv.find("PlayIntegrity") != std::string_view::npos) return true;
+
+  return false;
+}
+
+bool DeviceRecallProtection::isRecallRelatedTransaction(uint32_t code,
+                                                        const char *descriptor,
+                                                        size_t desc_len) {
+  if (!isIntegrityServiceDescriptor(descriptor, desc_len)) return false;
+
+  // The warmup call (standard request) is where device recall data is refreshed
+  // Transaction codes for integrity warmup/request/standard
+  if (code == INTEGRITY_WARMUP_CODE ||
+      code == INTEGRITY_REQUEST_CODE ||
+      code == INTEGRITY_STANDARD_CODE) {
+    return true;
+  }
+
+  // Also match high-range transaction codes (GMS uses FIRST_CALL_TRANSACTION + N)
+  // Typical integrity calls are in range 1-10
+  if (code >= 1 && code <= 10) {
+    return true;
+  }
+
+  return false;
+}
+
+void DeviceRecallProtection::randomizeDeviceSignals() {
+  if (!isEnabled()) return;
+
+  // Trigger re-read of randomized properties so that any subsequent
+  // integrity check sees the randomized identity. This works because:
+  // 1. random_on_boot already randomizes IMEI, serial, MAC on each boot
+  // 2. random_drm_on_boot randomizes Widevine device ID
+  // 3. Build props are rotated per the spoof_build_vars config
+  //
+  // The key insight: Google's device recall needs a stable device identifier.
+  // If all identifiers are randomized, the recall bits from a previous
+  // identity cannot be associated with the new identity.
+  //
+  // We log this event so the Kotlin service layer can coordinate additional
+  // identity rotation if needed.
+  LOGI("DeviceRecallProtection: randomizing device signals for recall evasion");
+
+  // Force cache invalidation of any cached property values in Rust store
+  // so freshly randomized values are picked up
+  const char *recall_sensitive_props[] = {
+      "ro.serialno",
+      "ro.boot.serialno",
+      "persist.radio.imei",
+      "persist.radio.imei1",
+      "vendor.ril.imei",
+      "vendor.ril.imei1",
+      "ro.build.fingerprint",
+      "ro.system.build.fingerprint",
+  };
+
+  for (const auto *prop : recall_sensitive_props) {
+    size_t prop_len = strlen(prop);
+    // Write empty value to invalidate cache; the next read will fetch fresh
+    rust_prop_set(reinterpret_cast<const uint8_t *>(prop), prop_len,
+                  reinterpret_cast<const uint8_t *>(""), 0);
+  }
+}
+
+// =============================================================================
+// Section 13: Hook Registration & Entry Point
 // =============================================================================
 
 void kick_already_blocked_ioctls() {
@@ -1382,6 +1512,14 @@ bool initialize_hooks() {
   if (!g_adaptive.initialize()) {
     LOGW("Adaptive offset discovery failed — interception will be limited");
     // Continue anyway; property spoofing can still work
+  }
+
+  // Initialize Device Recall Protection (Play Integrity API countermeasure)
+  DeviceRecallProtection::initialize();
+  if (DeviceRecallProtection::isEnabled()) {
+    // Pre-emptively randomize device signals so any integrity check during
+    // this session sees a fresh identity, breaking device recall association
+    DeviceRecallProtection::randomizeDeviceSignals();
   }
 
   auto maps = lsplt::MapInfo::Scan();

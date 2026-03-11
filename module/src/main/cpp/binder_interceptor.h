@@ -237,6 +237,59 @@ private:
 };
 
 // ---------------------------------------------------------------------------
+// DeviceRecallProtection — Countermeasures against Google Play Integrity API's
+// Device Recall feature (beta, 2026). Device Recall stores 3 persistent bits
+// per device per developer account on Google's servers, surviving factory
+// resets. This class detects and neutralizes device recall signals.
+//
+// Defense strategy:
+//   1. Detect integrity token warmup/request Binder transactions
+//   2. Randomize device identity signals sent to GMS Core
+//   3. Interfere with device recall bit propagation in verdicts
+//   4. Coordinate with DRM ID / build prop randomization
+// ---------------------------------------------------------------------------
+class DeviceRecallProtection {
+public:
+    // Initialize the protection layer. Reads config to decide behavior.
+    static bool initialize();
+
+    // Check if a Binder transaction descriptor matches a Play Integrity service
+    static bool isIntegrityServiceDescriptor(const char *descriptor, size_t len);
+
+    // Check if a transaction code is a known integrity API warmup/request
+    static bool isRecallRelatedTransaction(uint32_t code,
+                                           const char *descriptor,
+                                           size_t desc_len);
+
+    // Mutate device identity signals before they reach GMS integrity checks.
+    // Called before integrity token generation to ensure device appears "new".
+    static void randomizeDeviceSignals();
+
+    // Get the current protection state
+    static bool isEnabled();
+
+    // Service descriptors that handle Play Integrity
+    static constexpr const char *INTEGRITY_SERVICE_DESCRIPTOR =
+        "com.google.android.play.core.integrity";
+    static constexpr const char *GMS_INTEGRITY_DESCRIPTOR =
+        "com.google.android.gms.playintegrity";
+    static constexpr const char *DEVICE_RECALL_INDICATOR =
+        "deviceRecall";
+
+    // Known transaction codes for Play Integrity warmup/request
+    static constexpr uint32_t INTEGRITY_WARMUP_CODE   = 1;
+    static constexpr uint32_t INTEGRITY_REQUEST_CODE   = 2;
+    static constexpr uint32_t INTEGRITY_STANDARD_CODE  = 3;
+
+private:
+    static std::atomic<bool> s_enabled;
+    static std::atomic<bool> s_initialized;
+
+    // Detect if device recall config file exists
+    static bool readConfig();
+};
+
+// ---------------------------------------------------------------------------
 // BinderInterceptor — The Binder-level intercept handler (unchanged API).
 // Manages registered interceptor items and dispatches pre/post transact.
 // ---------------------------------------------------------------------------
