@@ -374,6 +374,9 @@ public final class CertHack {
             }
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
+                // Skip non-tagged elements gracefully: some OEM implementations may inject
+                // unexpected element types. Silently skipping is safer than crashing the
+                // entire attestation chain for one malformed element.
                 if (!(asn1Encodable instanceof ASN1TaggedObject taggedObject)) {
                     Logger.e("Unexpected ASN1 element type in TEE enforced: " + asn1Encodable.getClass().getName());
                     continue;

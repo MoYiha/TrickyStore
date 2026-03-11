@@ -152,6 +152,7 @@ object LocalRkpProxy {
 
         // Verify 32-byte HMAC tag at the end of the structure.
         // CBOR encodes 32-byte bstr as: 0x58 (bstr, 1-byte length) 0x20 (32).
+        // tagLengthMarker could be negative for very small payloads, guarded by >= 1 check.
         val tagLengthMarker = macedKey.size - 33
         if (tagLengthMarker >= 1 && macedKey[tagLengthMarker] == 0x58.toByte()
             && macedKey[tagLengthMarker + 1] == 0x20.toByte()) {
