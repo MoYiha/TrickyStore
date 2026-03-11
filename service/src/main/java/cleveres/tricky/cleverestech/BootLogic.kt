@@ -231,8 +231,7 @@ object BootLogic {
      * but we still escape defensively as a security best practice.
      */
     private fun shellEscape(s: String): String {
-        // Wrap in single quotes; escape any embedded single quotes
-        return "'" + s.replace("'", "'\\''") + "'"
+        return "'${s.replace("'", "'\\''")}'"
     }
 
     private fun resetProp(name: String, value: String) {
