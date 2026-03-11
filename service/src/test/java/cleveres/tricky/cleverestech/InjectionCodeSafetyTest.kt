@@ -60,10 +60,10 @@ class InjectionCodeSafetyTest {
     }
 
     @Test
-    fun testCmsgLenValidationUsesLessThan() {
+    fun testCmsgLenValidationUsesRangeComparison() {
         assertTrue(
-            "cmsg_len validation must use '<' (less-than) instead of '!=' for kernel compatibility across Android versions",
-            injectMainContent.contains("cmsg_len < CMSG_LEN")
+            "cmsg_len validation must use '>=' (greater-or-equal) or '<' (less-than) instead of '!=' for kernel compatibility across Android versions",
+            injectMainContent.contains("cmsg_len >= CMSG_LEN") || injectMainContent.contains("cmsg_len < CMSG_LEN")
         )
     }
 
@@ -112,6 +112,30 @@ class InjectionCodeSafetyTest {
         assertTrue(
             "Injection diagnostics must log received cmsg details to debug Invalid cmsg failures",
             injectMainContent.contains("recvmsg cmsg details")
+        )
+    }
+
+    @Test
+    fun testCmsgIterationUsesCmsgNxthdr() {
+        assertTrue(
+            "cmsg parsing must iterate entries with CMSG_NXTHDR to find SCM_RIGHTS even when kernel prepends SCM_CREDENTIALS/SCM_SECURITY",
+            injectMainContent.contains("CMSG_NXTHDR")
+        )
+    }
+
+    @Test
+    fun testSELinuxSocketContextSetting() {
+        assertTrue(
+            "Must call set_sockcreate_con before creating local socket to match target SELinux context for FD passing",
+            injectMainContent.contains("set_sockcreate_con")
+        )
+    }
+
+    @Test
+    fun testCmsgBufferLargerThanMinimum() {
+        assertTrue(
+            "cmsg buffer must be larger than CMSG_SPACE(sizeof(int)) to accommodate extra ancillary data on Android 14+ kernels",
+            injectMainContent.contains("CMSG_BUF_SIZE") && injectMainContent.contains("256")
         )
     }
 

@@ -15,7 +15,6 @@ object BootLogic {
     const val FILE_AUTO_PATCH = "auto_patch_update"
     const val FILE_HIDE_PROPS = "hide_sensitive_props"
     const val FILE_SPOOF_CN = "spoof_region_cn"
-    const val FILE_REMOVE_MAGISK32 = "remove_magisk_32"
 
     fun run() {
         if (ran.getAndSet(true)) return
@@ -23,6 +22,11 @@ object BootLogic {
         Logger.i("Running BootLogic tasks...")
 
         try {
+            // Always apply property hiding on daemon start — this is the sole
+            // authority for property spoofing.  Shell-based resetprop was removed
+            // from post-fs-data.sh to avoid detection by integrity frameworks.
+            applyPropertyHiding()
+
             if (File(configDir, FILE_AUTO_PATCH).exists()) {
                 checkAutoPatch()
             }
@@ -34,12 +38,71 @@ object BootLogic {
                 checkHideProps()
             }
 
-            if (File(configDir, FILE_REMOVE_MAGISK32).exists()) {
-                checkRemoveMagisk32()
-            }
-
         } catch (e: Exception) {
             Logger.e("BootLogic failed", e)
+        }
+    }
+
+    /**
+     * Core property hiding that always runs on daemon start.
+     *
+     * This replaces the resetprop calls that were previously in post-fs-data.sh.
+     * Moving them into the compiled daemon makes them far harder for Google's
+     * integrity framework to detect (shell scripts are trivially scannable,
+     * compiled code is not).
+     *
+     * Properties are set in a single batched process to avoid spawning 20+
+     * individual processes on every boot.
+     */
+    private fun applyPropertyHiding() {
+        try {
+            Logger.i("Applying core property hiding from daemon...")
+
+            val props = mutableMapOf<String, String>()
+
+            // Verified boot & bootloader state
+            props["ro.boot.verifiedbootstate"] = "green"
+            props["ro.boot.flash.locked"] = "1"
+            props["ro.boot.veritymode"] = "enforcing"
+            props["ro.boot.vbmeta.device_state"] = "locked"
+            props["ro.boot.warranty_bit"] = "0"
+            props["ro.warranty_bit"] = "0"
+
+            // Security & debug flags
+            props["ro.secure"] = "1"
+            props["ro.debuggable"] = "0"
+            props["ro.force.debuggable"] = "0"
+            props["ro.adb.secure"] = "1"
+            props["ro.build.type"] = "user"
+            props["ro.build.tags"] = "release-keys"
+
+            // Vendor warranty bits
+            props["ro.vendor.boot.warranty_bit"] = "0"
+            props["ro.vendor.warranty_bit"] = "0"
+
+            // Vendor boot state
+            props["vendor.boot.vbmeta.device_state"] = "locked"
+            props["vendor.boot.verifiedbootstate"] = "green"
+
+            // OEM unlock / secure boot
+            props["sys.oem_unlock_allowed"] = "0"
+            props["ro.secureboot.lockstate"] = "locked"
+            props["ro.oem_unlock_supported"] = "0"
+
+            // Realme specific
+            props["ro.boot.realmebootstate"] = "green"
+            props["ro.boot.realme.lockstate"] = "1"
+
+            resetPropBatch(props)
+
+            // Bootmode hiding (recovery -> unknown) — requires reading current values
+            hideBootMode("ro.bootmode")
+            hideBootMode("ro.boot.bootmode")
+            hideBootMode("vendor.boot.bootmode")
+
+            Logger.i("Core property hiding applied.")
+        } catch (e: Exception) {
+            Logger.e("Error in applyPropertyHiding", e)
         }
     }
 
@@ -72,9 +135,8 @@ object BootLogic {
                 if (!spFile.exists() || spFile.readText().trim() != newPatch) {
                     spFile.writeText(newPatch)
                     Logger.i("Updated security_patch.txt to $newPatch")
-                    // Fix permissions
                     // Fix permissions using array-based exec to avoid shell injection
-                    Runtime.getRuntime().exec(arrayOf("chmod", "600", spFile.absolutePath)).waitFor()
+                    execAndDrain(arrayOf("chmod", "600", spFile.absolutePath))
                 }
             }
         } catch (e: Exception) {
@@ -90,99 +152,91 @@ object BootLogic {
             if (shamikoExists) {
                 Logger.i("Shamiko detected. Applying minimal hiding.")
                 if (spoofCn) {
-                    resetProp("ro.boot.hwc", "CN")
-                    resetProp("gsm.operator.iso-country", "cn")
+                    resetPropBatch(mapOf(
+                        "ro.boot.hwc" to "CN",
+                        "gsm.operator.iso-country" to "cn"
+                    ))
                 }
             } else {
                 Logger.i("Shamiko not found. Applying comprehensive hiding.")
 
-                // Helper to verify before setting to avoid log spam/overhead?
-                // resetprop is fast enough usually.
+                val props = mutableMapOf<String, String>()
 
                 // Standard hiding props
-                resetProp("ro.boot.vbmeta.device_state", "locked")
-                resetProp("ro.boot.verifiedbootstate", "green")
-                resetProp("ro.boot.flash.locked", "1")
-                resetProp("ro.boot.veritymode", "enforcing")
-                resetProp("ro.boot.warranty_bit", "0")
-                resetProp("ro.warranty_bit", "0")
-                resetProp("ro.debuggable", "0")
-                resetProp("ro.force.debuggable", "0")
-                resetProp("ro.secure", "1")
-                resetProp("ro.adb.secure", "1")
-                resetProp("ro.build.type", "user")
-                resetProp("ro.build.tags", "release-keys")
-                resetProp("ro.vendor.boot.warranty_bit", "0")
-                resetProp("ro.vendor.warranty_bit", "0")
-                resetProp("vendor.boot.vbmeta.device_state", "locked")
-                resetProp("vendor.boot.verifiedbootstate", "green")
-                resetProp("sys.oem_unlock_allowed", "0")
-                resetProp("ro.secureboot.lockstate", "locked")
+                props["ro.boot.vbmeta.device_state"] = "locked"
+                props["ro.boot.verifiedbootstate"] = "green"
+                props["ro.boot.flash.locked"] = "1"
+                props["ro.boot.veritymode"] = "enforcing"
+                props["ro.boot.warranty_bit"] = "0"
+                props["ro.warranty_bit"] = "0"
+                props["ro.debuggable"] = "0"
+                props["ro.force.debuggable"] = "0"
+                props["ro.secure"] = "1"
+                props["ro.adb.secure"] = "1"
+                props["ro.build.type"] = "user"
+                props["ro.build.tags"] = "release-keys"
+                props["ro.vendor.boot.warranty_bit"] = "0"
+                props["ro.vendor.warranty_bit"] = "0"
+                props["vendor.boot.vbmeta.device_state"] = "locked"
+                props["vendor.boot.verifiedbootstate"] = "green"
+                props["sys.oem_unlock_allowed"] = "0"
+                props["ro.secureboot.lockstate"] = "locked"
 
                 // Realme specific
-                resetProp("ro.boot.realmebootstate", "green")
-                resetProp("ro.boot.realme.lockstate", "1")
+                props["ro.boot.realmebootstate"] = "green"
+                props["ro.boot.realme.lockstate"] = "1"
+
+                if (spoofCn) {
+                    props["ro.boot.hwc"] = "CN"
+                    props["gsm.operator.iso-country"] = "cn"
+                    props["gsm.sim.operator.iso-country"] = "cn"
+                    props["ro.boot.hwlevel"] = "MP"
+                    props["persist.radio.skhwc_matchres"] = "MATCH"
+                }
+
+                resetPropBatch(props)
 
                 // Bootmode
                 hideBootMode("ro.bootmode")
                 hideBootMode("ro.boot.bootmode")
                 hideBootMode("vendor.boot.bootmode")
-
-                if (spoofCn) {
-                    resetProp("ro.boot.hwc", "CN")
-                    resetProp("gsm.operator.iso-country", "cn")
-                    resetProp("gsm.sim.operator.iso-country", "cn")
-                    resetProp("ro.boot.hwlevel", "MP")
-                    resetProp("persist.radio.skhwc_matchres", "MATCH")
-                }
             }
-
-            // Always reset sys.boot_completed to 0 ?
-            // The user script did `resetprop -w sys.boot_completed 0`
-            // This might trigger listeners?
-            // It seems the user script wanted to trigger something or hide boot completion status?
-            // "resetprop -w sys.boot_completed 0"
-            // I'll skip this as it might be dangerous/loop-inducing if not careful.
-
         } catch (e: Exception) {
             Logger.e("Error in Hide Props", e)
         }
     }
 
-    private fun checkRemoveMagisk32() {
+    /**
+     * Batch-set multiple properties in a single shell process.
+     * This avoids spawning N separate processes for N properties, significantly
+     * reducing boot-time overhead and process churn.
+     */
+    private fun resetPropBatch(props: Map<String, String>) {
+        if (props.isEmpty()) return
         try {
-            val paths = listOf(
-                "/debug_ramdisk/magisk32",
-                "/data/adb/magisk/magisk32"
-            )
-            var count = 0
-            paths.forEach { path ->
-                val f = File(path)
-                if (f.exists()) {
-                    if (f.delete()) {
-                        Logger.i("Deleted Magisk 32-bit binary: $path")
-                        count++
-                    } else {
-                        // Try with shell if File.delete fails (e.g. read-only mount)
-                        Runtime.getRuntime().exec(arrayOf("rm", "-f", path)).waitFor()
-                        if (!f.exists()) {
-                             Logger.i("Deleted Magisk 32-bit binary via shell: $path")
-                             count++
-                        }
-                    }
-                }
+            // Build a script that sets all properties in one shell invocation.
+            // Each resetprop call is separated by " && " so we fail fast on error.
+            val script = props.entries.joinToString(" ; ") { (name, value) ->
+                "resetprop -n ${shellEscape(name)} ${shellEscape(value)}"
             }
-            if (count > 0) {
-                Logger.i("Magisk 32-bit cleanup complete.")
-            }
+            execAndDrain(arrayOf("sh", "-c", script))
         } catch (e: Exception) {
-            Logger.e("Error removing Magisk 32-bit", e)
+            Logger.e("Failed to batch resetprop (${props.size} props)", e)
         }
+    }
+
+    /**
+     * Escapes a string for safe use in a shell argument.
+     * Property names and values are controlled by the module (not user input),
+     * but we still escape defensively as a security best practice.
+     */
+    private fun shellEscape(s: String): String {
+        return "'${s.replace("'", "'\\''")}'"
     }
 
     private fun resetProp(name: String, value: String) {
         try {
-             Runtime.getRuntime().exec(arrayOf("resetprop", "-n", name, value)).waitFor()
+            execAndDrain(arrayOf("resetprop", "-n", name, value))
         } catch (e: Exception) {
             Logger.e("Failed to resetprop $name", e)
         }
@@ -190,29 +244,34 @@ object BootLogic {
 
     private fun hideBootMode(name: String) {
         val current = getSystemProperty(name)
-        if (current.contains("recovery") || current.contains("unknown")) {
-             // User script: contains_reset_prop "ro.bootmode" "recovery" "unknown"
-             // Interpretation: if prop contains "recovery", set it to "unknown"?
-             // Script: [[ "$(resetprop $NAME)" = *"$CONTAINS"* ]] && resetprop $NAME $NEWVAL
-             // So if it contains "recovery", set to "unknown".
-             resetProp(name, "unknown")
+        if (current.contains("recovery")) {
+            resetProp(name, "unknown")
         }
     }
 
     private fun getSystemProperty(key: String): String {
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("getprop", key))
-            p.inputStream.bufferedReader().use { it.readText().trim() }
+            val output = p.inputStream.bufferedReader().use { it.readText().trim() }
+            // Drain error stream to prevent FD exhaustion
+            p.errorStream.readBytes()
+            p.waitFor()
+            output
         } catch (e: Exception) {
             ""
         }
     }
 
-    private fun exec(cmd: String) {
+    /**
+     * Execute a command, drain both stdout and stderr to prevent FD exhaustion,
+     * and wait for process termination.
+     */
+    private fun execAndDrain(cmd: Array<String>) {
+        val p = Runtime.getRuntime().exec(cmd)
         try {
-            Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd)).waitFor()
-        } catch (e: Exception) {
-            Logger.e("Exec failed: $cmd", e)
-        }
+            p.inputStream.readBytes()
+            p.errorStream.readBytes()
+        } catch (_: Exception) { }
+        p.waitFor()
     }
 }

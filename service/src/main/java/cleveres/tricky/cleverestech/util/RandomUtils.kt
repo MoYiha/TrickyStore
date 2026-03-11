@@ -1,11 +1,18 @@
 package cleveres.tricky.cleverestech.util
 
-import kotlin.random.Random
+import java.security.SecureRandom
 
 object RandomUtils {
 
     private const val CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     private const val HEX_POOL = "0123456789abcdef"
+
+    // Thread-local SecureRandom avoids contention and ensures crypto-strength randomness.
+    // This is critical: IMEI, serial, MAC etc. must not be predictable or brute-forceable.
+    private val secureRandom: SecureRandom get() = threadLocalRandom.get()
+    private val threadLocalRandom = object : ThreadLocal<SecureRandom>() {
+        override fun initialValue() = SecureRandom()
+    }
 
     // Simple list for random selection
     private val COUNTRIES = listOf("us", "uk", "de", "fr", "es", "it", "ca", "au", "jp", "kr", "cn", "in", "br", "ru")
@@ -15,16 +22,15 @@ object RandomUtils {
     )
 
     fun generateLuhn(length: Int, prefix: String = ""): String {
-        // Optimization: Use StringBuilder directly to avoid intermediate String and List allocations
+        val rng = secureRandom
         val sb = StringBuilder(length)
         sb.append(prefix)
         while (sb.length < length - 1) {
-            sb.append(Random.nextInt(10))
+            sb.append(rng.nextInt(10))
         }
 
         var sum = 0
         var isSecond = true
-        // Optimization: Iterate over characters in StringBuilder instead of converting to IntArray
         for (i in sb.length - 1 downTo 0) {
             var d = sb[i] - '0'
             if (isSecond) {
@@ -40,20 +46,20 @@ object RandomUtils {
     }
 
     fun generateRandomSerial(length: Int): String {
-        // Optimization: Use StringBuilder loop instead of map + joinToString
+        val rng = secureRandom
         val sb = StringBuilder(length)
         repeat(length) {
-            sb.append(CHAR_POOL[Random.nextInt(CHAR_POOL.length)])
+            sb.append(CHAR_POOL[rng.nextInt(CHAR_POOL.length)])
         }
         return sb.toString()
     }
 
     fun generateRandomMac(): String {
-        // Optimization: Use StringBuilder and manual hex formatting
+        val rng = secureRandom
         val sb = StringBuilder(17)
         for (i in 0 until 6) {
             if (i > 0) sb.append(':')
-            val b = Random.nextInt(256)
+            val b = rng.nextInt(256)
             val high = (b shr 4) and 0xF
             val low = b and 0xF
             sb.append(HEX_POOL[high])
@@ -63,20 +69,20 @@ object RandomUtils {
     }
 
     fun generateRandomAndroidId(): String {
-        // Optimization: Use StringBuilder loop
+        val rng = secureRandom
         val sb = StringBuilder(16)
         repeat(16) {
-            sb.append(HEX_POOL[Random.nextInt(HEX_POOL.length)])
+            sb.append(HEX_POOL[rng.nextInt(HEX_POOL.length)])
         }
         return sb.toString()
     }
 
     fun generateRandomSimIso(): String {
-        return COUNTRIES.random()
+        return COUNTRIES[secureRandom.nextInt(COUNTRIES.size)]
     }
 
     fun generateRandomCarrier(): String {
-        return CARRIERS.random()
+        return CARRIERS[secureRandom.nextInt(CARRIERS.size)]
     }
 
     /**
@@ -88,11 +94,11 @@ object RandomUtils {
      * @return Pair(latitude, longitude) as formatted strings
      */
     fun generateRandomLocationOffset(baseLat: Double, baseLng: Double, radiusMeters: Int): Pair<String, String> {
-        // Earth's radius in meters
+        val rng = secureRandom
         val earthRadius = 6_371_000.0
         // Random distance (sqrt for uniform area distribution)
-        val dist = kotlin.math.sqrt(Random.nextDouble()) * radiusMeters
-        val bearing = Random.nextDouble() * 2.0 * kotlin.math.PI
+        val dist = kotlin.math.sqrt(rng.nextDouble()) * radiusMeters
+        val bearing = rng.nextDouble() * 2.0 * kotlin.math.PI
 
         // Clamp latitude away from poles to avoid division by zero in longitude calculation
         val safeLat = baseLat.coerceIn(-89.9, 89.9)

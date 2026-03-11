@@ -20,6 +20,7 @@ interface SecureFileOperations {
 }
 
 object SecureFile {
+    @Volatile
     var impl: SecureFileOperations = DefaultSecureFileOperations()
     private val lock = ReentrantLock()
 

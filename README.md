@@ -2,7 +2,22 @@
 
 [![Build](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml/badge.svg)](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml)
 
-### Advanced Spoofing Module for Android
+### The Intelligent Android Security Module
+
+CleveresTricky is a self-managing root module that uses automated decision-making to keep your device passing integrity checks, rotating identities, and healing itself without manual intervention. It monitors, adapts, and corrects problems on its own.
+
+---
+
+## How It Works
+
+Unlike traditional modules that apply static patches, CleveresTricky runs an always-on daemon that makes real-time decisions:
+
+- **Self-Healing:** If SELinux contexts are lost after an OTA, the daemon detects and repairs them before every launch. No user action needed.
+- **Adaptive Key Rotation:** Cryptographic keys rotate automatically every 24 hours. If a key is revoked, the system detects it and switches to the next valid key without interruption.
+- **Automated Patch Sync:** When your security patch level falls behind (6+ months), the module updates it automatically to keep attestation passing.
+- **Crash Recovery:** If the daemon crashes, the service restarts it with exponential backoff, logging every event. After exhausting retries, it backs off to prevent boot storms.
+- **Live Configuration:** Changes to config files are detected instantly via FileObserver. No reboot needed.
+- **Stealth Execution:** Property hiding runs inside compiled daemon code, not scannable shell scripts. The process disguises itself to avoid detection by integrity frameworks.
 
 ---
 
@@ -10,94 +25,103 @@
 
 | Requirement | Details |
 |-------------|---------|
-| **Root Manager** | Magisk v26.0+ (with Zygisk enabled) or KernelSU v0.7.0+ (with Zygisk Next) |
-| **Android API** | Minimum SDK 31 (Android 12) |
-| **Architecture** | arm64-v8a, armeabi-v7a, x86_64, x86 |
-| **Platform** | Qualcomm (Snapdragon) or MediaTek (Dimensity/Helio) for TEE-level features |
-| **SELinux** | Enforcing (module handles policy via sepolicy.rule) |
-| **Zygisk** | Required (Magisk native Zygisk or Zygisk Next for KernelSU) |
+| **Root Manager** | Magisk v26.0+ (Zygisk enabled) or KernelSU v0.7.0+ (Zygisk Next) |
+| **Android** | 12 or newer (API 31+) |
+| **Architecture** | arm64-v8a, x86_64 |
+| **SELinux** | Enforcing (module manages its own policy) |
 
-> **Note:** IMEI provisioning and TEE attestation features require Qualcomm (`/dev/qseecom`) or MediaTek (`/dev/tee0`) hardware. Other SoCs can use all non-TEE features (property spoofing, keybox management, etc.).
+> **TEE features** (IMEI provisioning, hardware attestation) require Qualcomm or MediaTek hardware. All other features work on any SoC.
 
 ---
 
-## Key Features
+## Features
 
-### Keystore & Attestation
-| Feature | Description |
-|---------|-------------|
-| **Binder-level property spoofing** | Intercepts `__system_property_get` at native level, invisible to DroidGuard |
-| **KeyMint 4.0 support** | Full compatibility with modern hardware attestation |
-| **RKP Emulation** | Local proxy generates RFC-compliant COSE/CBOR proofs for STRONG integrity |
-| **Keybox Jukebox** | Multi-key rotation with automatic round-robin selection |
-| **Encrypted Keyboxes (.cbox)** | AES-256-GCM encrypted containers with hardware-backed caching |
-| **Remote Key Servers** | Auto-fetch and rotate keyboxes from community servers |
-| **Auto Revocation Check** | Checks keys against Google's CRL every 24h |
+### Pass Every Integrity Check
 
-### Privacy & Identity
-| Feature | Description |
-|---------|-------------|
-| **IMEI/Serial Changer** | System-wide IMEI, IMSI, ICCID, Serial spoofing via Binder (Qualcomm/MediaTek) |
-| **Randomize on Boot** | Fresh device identity (template + IMEI + Serial + MAC) every reboot |
-| **Dynamic Identity Mutation** | Anti-fingerprinting -- rotates root secrets every 24h |
-| **DRM ID Regeneration** | Reset Widevine device ID to bypass download limits |
-| **Location Spoofing** | Simulate GPS coordinates with optional random location mode (auto-drift within radius) |
-| **MAC Address Spoofing** | WiFi and Bluetooth MAC address randomization |
-| **One-Click Reset** | Instantly regenerate all identities and refresh the environment |
+| What it does | How |
+|--------------|-----|
+| **Play Integrity DEVICE/STRONG** | Intercepts keystore at the Binder level and injects valid attestation chains |
+| **KeyMint 4.0 attestation** | Full support for the latest hardware attestation protocol |
+| **RKP (Remote Key Provisioning)** | Built-in local proxy generates RFC-compliant COSE/CBOR proofs signed with rotating secrets |
+| **Multi-keybox rotation** | Maintains a pool of keyboxes and rotates through them automatically (round-robin) |
+| **Encrypted keyboxes (.cbox)** | AES-256-GCM containers with hardware-backed key storage |
+| **Remote key servers** | Auto-fetches and validates keyboxes from configured community servers |
+| **Automated revocation check** | Verifies keys against Google's CRL every 24 hours; switches to valid keys if revoked |
+
+### Complete Identity Control
+
+| What it does | How |
+|--------------|-----|
+| **IMEI / Serial / IMSI / ICCID** | System-wide spoofing via Binder interception (Qualcomm and MediaTek) |
+| **Randomize on boot** | Generates a fresh identity every reboot: IMEI (Luhn-valid), Serial, MAC, device template |
+| **Contact spoofing** | Per-app blank permissions for contacts, media, and microphone |
+| **DRM ID reset** | Regenerates Widevine device ID with one click |
+| **Location spoofing** | Simulates GPS coordinates with optional random drift within a configurable radius |
+| **MAC randomization** | WiFi and Bluetooth MAC addresses randomized per boot or on demand |
+
+### WebUI Dashboard
+
+Manage everything from your browser at `http://localhost:5623`:
+
+| Capability | Details |
+|------------|---------|
+| **Settings backup/restore** | Encrypted backup (.ctsb format, AES-256-GCM) with password protection. Upload to restore. |
+| **Keybox management** | Upload, delete, verify, and rotate keyboxes. Supports XML, .cbox encrypted containers |
+| **One-click profiles** | GodProfile, DailyUse, Minimal, Default -- each configures all toggles at once |
+| **Per-app rules** | Assign templates, keyboxes, and blank permissions per application |
+| **Live toggles** | Enable/disable features instantly without reboot |
+| **Multi-language** | Fully translatable UI via lang.json |
 
 ### Spoof Modes
-| Mode | Description |
+
+| Mode | What happens |
 |------|-------------|
-| **Target Only** (default) | Only apps listed in `target.txt` are affected by spoofing |
+| **Target Only** (default) | Only apps in `target.txt` see spoofed values |
 | **Global Mode** | All apps are spoofed; `target.txt` becomes an exclusion list |
-| **IMEI Global** | IMEI/modem spoofing applies to all apps, independent of Global Mode |
-| **Network Global** | WiFi/BT MAC spoofing applies to all apps, independent of Global Mode |
+| **IMEI Global** | IMEI/modem spoofing applies system-wide, independent of Global Mode |
+| **Network Global** | WiFi/BT MAC spoofing applies system-wide, independent of Global Mode |
 
-> Most features only affect apps in `target.txt` by default. Advanced features like IMEI changing have their own per-feature global toggles.
+### Device Templates
 
-### System Integration
-| Feature | Description |
-|---------|-------------|
-| **Device Templates** | Built-in profiles: `pixel8pro`, `pixel7pro`, `xiaomi14`, `s23ultra`, `oneplus11`, etc. |
-| **Per-App Spoofing** | Assign specific templates and keyboxes per application |
-| **AutoPIF** | Fetches latest Pixel Beta/Canary fingerprints from Google servers |
-| **WebUI Dashboard** | Full configuration, backup/restore, keybox management via browser |
-| **Security Patch Sync** | Customizable per-component patch levels with dynamic date support |
-| **DRM / Netflix Fix** | Widevine L1 spoof, encrypted state, streaming compatibility |
+Built-in profiles that set all Build properties at once:
 
-### Platform Support (Qualcomm / MediaTek)
+`pixel8pro` `pixel7pro` `pixel6` `xiaomi14` `s23ultra` `oneplus11` and more.
+
+Assign templates globally or per-app. The module applies the correct fingerprint, model, brand, security patch, and attestation IDs automatically.
+
+### Platform Auto-Detection
+
 | Feature | Qualcomm | MediaTek |
 |---------|----------|----------|
-| **TEE ID Attestation Provisioning** | `/dev/qseecom` or `/dev/smd` | `/dev/tee0` |
+| **TEE Attestation** | `/dev/qseecom` or `/dev/smd` | `/dev/tee0` |
 | **IMEI Provisioning** | `provision_device_ids` | `provision_device_ids_mtk` |
 | **Hardware Keystore** | Supported | Supported |
-| **Binder Interception** | arm64/x86_64 | arm64 |
 
-> Custom IMEI, Serial, and hardware identity provisioning is available for Qualcomm Snapdragon and MediaTek Dimensity/Helio chipsets. The module auto-detects the platform and uses the appropriate provisioning binary.
+The module detects your chipset and uses the correct provisioning binary automatically.
 
-### Architecture
-| Component | Technology |
-|-----------|-----------|
-| **Native Layer** | Rust FFI + C++ Binder interceptor (zero-copy, panic-safe) |
-| **Stealth Daemon** | `kworker` disguised process with anti-ptrace, memory sanitization |
-| **Service Layer** | Kotlin coroutine-based with FileObserver hot-reload |
-| **Build System** | Gradle + cargo-ndk + CMake (arm64, arm, x86, x86_64) |
-| **CI Pipeline** | Safety gate -> Rust tests -> Instrumentation tests -> Build & release |
+### Self-Managing Architecture
 
-### Integrity Levels
-- **MEETS_USE_BRAIN**
+| Component | Description |
+|-----------|-------------|
+| **Stealth Daemon** | Runs as a disguised process. All property hiding happens in compiled code, not shell scripts. |
+| **Crash Recovery** | Automatic restart with exponential backoff (5 retries, 3 cycles, 5-minute cooldown) |
+| **SELinux Auto-Repair** | Contexts are verified and repaired before every daemon launch |
+| **Hot Reload** | FileObserver detects config changes and applies them instantly |
+| **Detailed Logging** | Every decision, rotation, failure, and recovery is logged with context |
+| **Atomic File Writes** | Config writes use temp-file + rename to prevent corruption on power loss |
+| **Thread-Safe State** | All shared configuration uses volatile fields and concurrent data structures |
 
 ---
 
 ## Quick Start
 
-1. **Install** Flash the module ZIP from Magisk manager and reboot
-2. **Configure** Open WebUI at `http://localhost:5623` (port shown in module logs)
-3. **Add Keybox** *(optional)* Place `keybox.xml` at `/data/adb/cleverestricky/keybox.xml`
-4. **Enable RKP** *(for STRONG integrity)* `touch /data/adb/cleverestricky/rkp_bypass`
-5. **Set Targets** *(optional)* Add package names to `/data/adb/cleverestricky/target.txt`
+1. **Install** -- Flash the module ZIP from Magisk/KernelSU manager and reboot
+2. **Open WebUI** -- Navigate to `http://localhost:5623` in any browser
+3. **Add Keybox** *(optional)* -- Upload via WebUI or place at `/data/adb/cleverestricky/keybox.xml`
+4. **Enable RKP** *(for STRONG integrity)* -- Toggle in WebUI or `touch /data/adb/cleverestricky/rkp_bypass`
+5. **Set Targets** *(optional)* -- Add package names in WebUI or edit `/data/adb/cleverestricky/target.txt`
 
-> **Tip:** Configuration changes take effect immediately, no reboot needed.
+> Configuration changes take effect immediately. No reboot needed.
 
 ---
 
@@ -145,8 +169,6 @@
 
 ### Build Vars (`spoof_build_vars`)
 
-> Requires Zygisk or Zygisk Next
-
 ```ini
 MANUFACTURER=Google
 MODEL=Pixel 8 Pro
@@ -157,17 +179,8 @@ DEVICE=husky
 RELEASE=15
 ID=AP4A.250305.002
 SECURITY_PATCH=2025-03-05
-# Use a built-in template instead of manual values:
+# Or use a built-in template:
 # TEMPLATE=pixel8pro
-
-# Location Spoofing (requires spoof_location toggle)
-# SPOOF_LATITUDE=41.0082
-# SPOOF_LONGITUDE=28.9784
-# SPOOF_ALTITUDE=0
-# SPOOF_ACCURACY=1.0
-# SPOOF_LOCATION_RANDOM=false
-# SPOOF_LOCATION_RADIUS=500
-# SPOOF_LOCATION_INTERVAL=30
 ```
 
 <details>
@@ -259,49 +272,23 @@ touch /data/adb/cleverestricky/rkp_bypass
 rm /data/adb/cleverestricky/rkp_bypass
 ```
 
-The module uses a **Local RKP Proxy** that generates valid COSE/CBOR structures signed by a rotating root secret. The identity mutates every 24 hours to avoid fingerprint banning.
-
-### Custom RKP Keys (`remote_keys.xml`)
-
-```xml
-<RemoteKeyProvisioning>
-    <Keys>
-        <Key>
-            <PrivateKey format="pem">
------BEGIN EC PRIVATE KEY-----
-...
------END EC PRIVATE KEY-----
-            </PrivateKey>
-        </Key>
-    </Keys>
-    <HardwareInfo>
-        <RpcAuthorName>Google</RpcAuthorName>
-        <VersionNumber>3</VersionNumber>
-    </HardwareInfo>
-</RemoteKeyProvisioning>
-```
+The module runs a **Local RKP Proxy** that generates valid COSE/CBOR structures signed by a rotating root secret. The cryptographic identity mutates every 24 hours to prevent fingerprint-based banning.
 
 ### AutoPIF (Fingerprint Updates)
 
 ```bash
-# Manual execution
+# Manual
 sh /data/adb/modules/cleverestricky/autopif.sh
 
-# Specific device
-sh /data/adb/modules/cleverestricky/autopif.sh --device husky
-
-# Enable automatic (24h interval)
+# Automatic (24h interval)
 touch /data/adb/cleverestricky/auto_beta_fetch
 ```
 
-### DRM & Streaming Fix
+### DRM / Netflix Fix
 
-Enable via WebUI or shell:
 ```bash
 touch /data/adb/cleverestricky/drm_fix
 ```
-
-Overrides: `ro.netflix.bsp_rev=0`, `drm.service.enabled=true`, `ro.com.google.widevine.level=1`, `ro.crypto.state=encrypted`
 
 ### Randomize on Boot
 
@@ -309,36 +296,18 @@ Overrides: `ro.netflix.bsp_rev=0`, `drm.service.enabled=true`, `ro.com.google.wi
 touch /data/adb/cleverestricky/random_on_boot
 ```
 
-Generates fresh IMEI (Luhn-compliant), Serial, MAC addresses, and selects a random device template on every boot.
-
 ### Location Spoofing
 
-Enable via WebUI toggle or shell:
 ```bash
 touch /data/adb/cleverestricky/spoof_location
 ```
 
-Then set coordinates in `spoof_build_vars`:
-```ini
-SPOOF_LATITUDE=41.0082
-SPOOF_LONGITUDE=28.9784
-SPOOF_ALTITUDE=0
-SPOOF_ACCURACY=1.0
-```
-
-Location spoofing simulates GPS coordinates for target apps. Qualcomm and MediaTek devices are supported.
-
 ### Per-Feature Global Modes
 
 ```bash
-# IMEI/modem spoofing for ALL apps (not just target.txt)
 touch /data/adb/cleverestricky/imei_global
-
-# Network/MAC spoofing for ALL apps
 touch /data/adb/cleverestricky/network_global
 ```
-
-These toggles allow specific advanced features to apply system-wide without enabling full Global Mode.
 
 ---
 
@@ -347,8 +316,6 @@ These toggles allow specific advanced features to apply system-wide without enab
 - [ ] Zygisk-less standalone mode
 - [ ] Enhanced KernelSU native integration
 - [ ] Advanced detection evasion independent of Zygisk injection
-- [ ] Contact information spoofing
-- [ ] Full device state backup and restore
 
 ## Acknowledgements
 

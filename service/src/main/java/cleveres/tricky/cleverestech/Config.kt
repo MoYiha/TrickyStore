@@ -43,19 +43,28 @@ object Config {
 
     @Volatile
     private var targetState = TargetState(PackageTrie(), PackageTrie())
+    @Volatile
     private var isGlobalMode = false
+    @Volatile
     private var isTeeBrokenMode = false
     @Volatile
     private var isAutoTeeBroken = false
     private val isTeeBroken get() = isTeeBrokenMode || isAutoTeeBroken
     @Volatile
     private var moduleHash: ByteArray? = null
+    @Volatile
     private var isRkpBypass = false
+    @Volatile
     private var isSpoofBuild = true
+    @Volatile
     private var isSpoofBuildPs = true
+    @Volatile
     private var isSpoofProps = false
+    @Volatile
     private var isSpoofProvider = false
+    @Volatile
     private var isSpoofSignature = false
+    @Volatile
     private var isSpoofSdkPs = false
     @Volatile
     private var moduleHashFromVars: ByteArray? = null

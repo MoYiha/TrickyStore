@@ -7,15 +7,78 @@ import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
 import java.security.SecureRandom
 
+/**
+ * Intercepts DRM HAL Binder transactions to spoof Widevine security level and device ID.
+ *
+ * Supports both AIDL (Android 13+) and HIDL (Android 12) DRM service variants.
+ * Handles two transaction types:
+ *   - getPropertyString (17): Spoofs "securityLevel" from L3/L2 to L1
+ *   - getPropertyByteArray (18): Spoofs "deviceUniqueId" with random 32 bytes
+ *
+ * The interceptor uses cached state to avoid per-transaction file I/O
+ * and reuses a thread-local SecureRandom instance for performance.
+ */
 object DrmInterceptor : BinderInterceptor() {
 
-    private var drmBinder: IBinder? = null
-    private var triedCount = 0
-    private var injected = false
-    private val secureRandom = SecureRandom()
+    @Volatile private var drmBinder: IBinder? = null
+    @Volatile private var triedCount = 0
+    @Volatile private var injected = false
+
+    // Cached state to avoid file I/O on every transaction
+    @Volatile private var cachedRandomDrmOnBoot = false
+    @Volatile private var cachedDrmConfigTime = 0L
 
     private const val TRANSACTION_GET_PROPERTY_STRING = 17
     private const val TRANSACTION_GET_PROPERTY_BYTE_ARRAY = 18
+
+    // Cache refresh interval (60 seconds)
+    private const val CONFIG_CACHE_TTL_MS = 60_000L
+
+    // Thread-local SecureRandom to avoid contention and allocation per call
+    private val secureRandom: ThreadLocal<SecureRandom> = object : ThreadLocal<SecureRandom>() {
+        override fun initialValue() = SecureRandom()
+    }
+
+    // All known DRM HAL service names (AIDL + HIDL variants across Android 12-15+)
+    private val DRM_SERVICE_NAMES = listOf(
+        // AIDL (Android 13+)
+        "android.hardware.drm.IDrmFactory/widevine",
+        "android.hardware.drm.IDrmFactory/clearkey",
+        // Legacy AIDL
+        "drm.IDrmFactory/widevine",
+        // HIDL (Android 12)
+        "android.hardware.drm@1.4::ICryptoFactory/widevine",
+        "android.hardware.drm@1.3::ICryptoFactory/widevine",
+        // Media DRM server
+        "media.drm"
+    )
+
+    // All known DRM process names to find PID for injection
+    private val DRM_PROCESS_NAMES = listOf(
+        // AIDL service (Android 13+)
+        "android.hardware.drm-service.widevine",
+        "android.hardware.drm-service.clearkey",
+        // HIDL (Android 12-13)
+        "android.hardware.drm@1.4-service.widevine",
+        "android.hardware.drm@1.3-service.widevine",
+        "android.hardware.drm@1.2-service.widevine",
+        // Legacy media DRM
+        "mediadrmserver",
+        // Samsung/vendor variants
+        "vendor.samsung.hardware.drm-service.widevine"
+    )
+
+    /**
+     * Refreshes cached DRM config from filesystem.
+     * Called on a lazy schedule to minimize I/O on the hot path.
+     */
+    private fun refreshConfigCache() {
+        val now = System.currentTimeMillis()
+        if (now - cachedDrmConfigTime < CONFIG_CACHE_TTL_MS) return
+        cachedRandomDrmOnBoot = File("/data/adb/cleverestricky/random_drm_on_boot").exists()
+        cachedDrmConfigTime = now
+        Logger.d("DRM: Config cache refreshed (randomDrmOnBoot=$cachedRandomDrmOnBoot)")
+    }
 
     override fun onPostTransact(
         target: IBinder,
@@ -30,15 +93,14 @@ object DrmInterceptor : BinderInterceptor() {
         if (reply == null) return Skip
         if (!Config.isDrmFixEnabled()) return Skip
 
-        when (code) {
-            TRANSACTION_GET_PROPERTY_STRING -> {
-                return handleGetPropertyString(data, reply, callingUid)
-            }
-            TRANSACTION_GET_PROPERTY_BYTE_ARRAY -> {
-                return handleGetPropertyByteArray(data, reply, callingUid)
-            }
+        // Lazy refresh config cache to avoid per-transaction file I/O
+        refreshConfigCache()
+
+        return when (code) {
+            TRANSACTION_GET_PROPERTY_STRING -> handleGetPropertyString(reply, callingUid)
+            TRANSACTION_GET_PROPERTY_BYTE_ARRAY -> handleGetPropertyByteArray(reply, callingUid)
+            else -> Skip
         }
-        return Skip
     }
 
     private fun handleGetPropertyString(data: Parcel, reply: Parcel, callingUid: Int): Result {
@@ -50,19 +112,27 @@ object DrmInterceptor : BinderInterceptor() {
             reply.setDataPosition(pos)
             return Skip
         }
-        val originalValue = reply.readString() ?: return Skip
+        val originalValue = reply.readString()
+        if (originalValue == null) {
+            reply.setDataPosition(pos)
+            return Skip
+        }
 
-        val spoofedLevel = DrmOverrideLogic.spoofSecurityLevel(
-            propertyName,
-            originalValue,
-            Config.getBuildVar("ro.com.google.widevine.level")
-        )
-        if (spoofedLevel != null) {
-            Logger.i("DRM Intercept: Spoofing securityLevel $originalValue -> $spoofedLevel for uid=$callingUid")
+        // Spoof Widevine security level: L3/L2 -> L1 (or configured level)
+        if (originalValue == "L3" || originalValue == "L2") {
+            val targetLevel = Config.getBuildVar("ro.com.google.widevine.level") ?: "1"
+            val spoofedLevel = "L$targetLevel"
+            Logger.i("DRM: Spoofing securityLevel $originalValue -> $spoofedLevel for uid=$callingUid")
             val p = Parcel.obtain()
-            p.writeNoException()
-            p.writeString(spoofedLevel)
-            return OverrideReply(0, p)
+            try {
+                p.writeNoException()
+                p.writeString(spoofedLevel)
+                return OverrideReply(0, p)
+            } catch (e: Exception) {
+                p.recycle()
+                Logger.e("DRM: Failed to write spoofed security level", e)
+                return Skip
+            }
         }
 
         return Skip
@@ -76,14 +146,20 @@ object DrmInterceptor : BinderInterceptor() {
             return Skip
         }
 
-        if (DrmOverrideLogic.shouldSpoofDeviceUniqueId(propertyName, isRandomDrmOnBootEnabled())) {
+        if (cachedRandomDrmOnBoot) {
             val spoofedId = ByteArray(32)
-            secureRandom.nextBytes(spoofedId)
-            Logger.i("DRM Intercept: Spoofing deviceUniqueId for uid=$callingUid")
+            secureRandom.get().nextBytes(spoofedId)
+            Logger.i("DRM: Spoofing deviceUniqueId (32 bytes) for uid=$callingUid")
             val p = Parcel.obtain()
-            p.writeNoException()
-            p.writeByteArray(spoofedId)
-            return OverrideReply(0, p)
+            try {
+                p.writeNoException()
+                p.writeByteArray(spoofedId)
+                return OverrideReply(0, p)
+            } catch (e: Exception) {
+                p.recycle()
+                Logger.e("DRM: Failed to write spoofed device ID", e)
+                return Skip
+            }
         }
 
         return Skip
@@ -105,13 +181,6 @@ object DrmInterceptor : BinderInterceptor() {
     }
 
     private fun findDrmServicePid(): Int? {
-        val targetNames = listOf(
-            "android.hardware.drm-service.widevine",
-            "android.hardware.drm-service.clearkey",
-            "android.hardware.drm@1.4-service.widevine",
-            "android.hardware.drm@1.3-service.widevine",
-            "mediadrmserver"
-        )
         val proc = File("/proc")
         if (!proc.exists() || !proc.isDirectory) return null
 
@@ -129,8 +198,9 @@ object DrmInterceptor : BinderInterceptor() {
                             end++
                         }
                         val argv0 = String(cmdline, 0, end)
-                        for (target in targetNames) {
+                        for (target in DRM_PROCESS_NAMES) {
                             if (argv0 == target || argv0.endsWith("/$target")) {
+                                Logger.d("DRM: Found DRM process '$argv0' at PID $name")
                                 return name.toInt()
                             }
                         }
@@ -142,14 +212,12 @@ object DrmInterceptor : BinderInterceptor() {
     }
 
     private fun findDrmService(): IBinder? {
-        val serviceNames = listOf(
-            "drm.IDrmFactory/widevine",
-            "android.hardware.drm.IDrmFactory/widevine",
-            "media.drm"
-        )
-        for (name in serviceNames) {
+        for (name in DRM_SERVICE_NAMES) {
             val b = kotlin.runCatching { ServiceManager.getService(name) }.getOrNull()
-            if (b != null) return b
+            if (b != null) {
+                Logger.d("DRM: Found service via '$name'")
+                return b
+            }
         }
         return null
     }
@@ -157,11 +225,11 @@ object DrmInterceptor : BinderInterceptor() {
     fun tryRunDrmInterceptor(): Boolean {
         if (!Config.isDrmFixEnabled()) return false
 
-        Logger.i("trying to register DRM interceptor ($triedCount) ...")
+        Logger.i("DRM: Attempting registration (attempt=$triedCount, injected=$injected)")
 
         val b = findDrmService()
         if (b == null) {
-            Logger.d("DRM service not found, will retry")
+            Logger.d("DRM: Service not found, will retry")
             triedCount += 1
             return false
         }
@@ -169,20 +237,21 @@ object DrmInterceptor : BinderInterceptor() {
         val bd = getBinderBackdoor(b)
         if (bd == null) {
             if (triedCount >= 3) {
-                Logger.e("DRM: tried injection but still has no backdoor, skipping")
+                Logger.e("DRM: Exhausted $triedCount injection attempts, giving up")
                 return false
             }
 
             if (!injected) {
-                Logger.i("DRM: trying to inject DRM service process ...")
+                Logger.i("DRM: Backdoor not found, attempting injection into DRM process...")
                 val pid = findDrmServicePid()
                 if (pid == null) {
-                    Logger.e("DRM: failed to find DRM service pid!")
+                    Logger.e("DRM: Cannot find DRM service PID in /proc")
                     triedCount += 1
                     return false
                 }
 
                 val modulePath = "/data/adb/modules/cleverestricky"
+                Logger.d("DRM: Injecting PID=$pid with $modulePath/libcleverestricky.so")
                 val p = Runtime.getRuntime().exec(
                     arrayOf(
                         "$modulePath/inject",
@@ -196,10 +265,11 @@ object DrmInterceptor : BinderInterceptor() {
                     p.inputStream.readBytes()
                     p.errorStream.readBytes()
                 } catch (_: Exception) {}
-                if (p.waitFor() != 0) {
-                    Logger.e("DRM: failed to inject!")
+                val exitCode = p.waitFor()
+                if (exitCode != 0) {
+                    Logger.e("DRM: Injection failed (exit=$exitCode)")
                 } else {
-                    Logger.i("DRM: injected successfully")
+                    Logger.i("DRM: Injection succeeded for PID=$pid")
                     injected = true
                 }
             }
@@ -208,14 +278,18 @@ object DrmInterceptor : BinderInterceptor() {
         }
 
         drmBinder = b
-        Logger.i("register for DRM service!")
+        Logger.i("DRM: Binder interceptor registered successfully!")
         registerBinderInterceptor(bd, b, this)
         b.linkToDeath({
-            Logger.e("DRM service died! Resetting injection state.")
+            Logger.e("DRM: Service died — resetting state for re-injection")
             injected = false
             triedCount = 0
             drmBinder = null
+            cachedDrmConfigTime = 0 // Force config refresh on next transaction
         }, 0)
+
+        // Force initial config load
+        refreshConfigCache()
 
         return true
     }

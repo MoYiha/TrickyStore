@@ -9,7 +9,7 @@ import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
 import java.io.File
 import java.io.StringReader
 import java.security.KeyPair
-import kotlin.random.Random
+import java.security.SecureRandom
 
 object RemoteKeyManager {
     private const val TAG = "RemoteKeyManager"
@@ -116,8 +116,8 @@ object RemoteKeyManager {
 
     fun getKeyPair(): RkpKey? {
         if (keys.isEmpty()) return null
-        // Random rotation for smart evasion
-        return keys[Random.nextInt(keys.size)]
+        // Random rotation for smart evasion (SecureRandom for unpredictability)
+        return keys[SecureRandom().nextInt(keys.size)]
     }
 
     fun getHardwareInfo(): RpcHardwareInfo? {

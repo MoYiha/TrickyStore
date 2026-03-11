@@ -60,7 +60,11 @@ fun main(args: Array<String>) {
 
         if (!ksSuccess) {
             // Keystore is critical, so we loop until it's ready
-            Thread.sleep(1000)
+            try { Thread.sleep(1000) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Logger.i("Main: Keystore wait interrupted, shutting down")
+                return
+            }
             continue
         }
 
@@ -82,7 +86,11 @@ fun main(args: Array<String>) {
                 drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
             }
             LocalRkpProxy.checkAndRotate()
-            Thread.sleep(10000)
+            try { Thread.sleep(10000) } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Logger.i("Main: Poll loop interrupted, shutting down")
+                return
+            }
         }
     }
 }

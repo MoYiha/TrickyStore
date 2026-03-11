@@ -40,6 +40,14 @@ allow cleverestricky_daemon port:udp_socket name_bind;
 allow cleverestricky_daemon fwmarkd_socket:sock_file write;
 allow cleverestricky_daemon netd:unix_stream_socket connectto;
 
+# Allow cleverestricky_daemon to read /proc (findKeystore2Pid, findDrmServicePid, etc.)
+allow cleverestricky_daemon proc:dir { search read open getattr };
+allow cleverestricky_daemon proc:file { read open getattr };
+allow cleverestricky_daemon proc:lnk_file { read getattr };
+
+# Unix domain sockets for injection FD passing (abstract namespace SCM_RIGHTS)
+allow cleverestricky_daemon self:unix_dgram_socket { create bind getattr getopt setopt read write sendto };
+
 # Define a type for module files that need to be publicly readable (APKs, libs)
 type cleverestricky_public_file, file_type, data_file_type, mlstrustedobject;
 

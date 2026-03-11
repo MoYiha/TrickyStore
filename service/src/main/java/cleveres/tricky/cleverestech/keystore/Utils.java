@@ -43,6 +43,10 @@ public class Utils {
     public static Certificate[] getCertificateChain(KeyEntryResponse response) {
         if (response == null || response.metadata.certificate == null) return null;
         var leaf = toCertificate(response.metadata.certificate);
+        if (leaf == null) {
+            Log.w(TAG, "Failed to parse leaf certificate from keystore response");
+            return null;
+        }
         Certificate[] chain;
         if (response.metadata.certificateChain != null) {
             var certs = toCertificates(response.metadata.certificateChain);

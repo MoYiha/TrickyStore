@@ -63,6 +63,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
@@ -121,7 +122,7 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
-    private static final Map<String, AtomicInteger> rotationCounters = new HashMap<>();
+    private static final Map<String, AtomicInteger> rotationCounters = new ConcurrentHashMap<>();
 
     static {
         rotationCounters.put(KeyProperties.KEY_ALGORITHM_EC, new AtomicInteger(0));
@@ -238,6 +239,10 @@ public final class CertHack {
                     int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsElement.getText()));
 
                     List<XMLParser.Element> certificates = certChain.getChildren("Certificate");
+                    if (certificates.size() < numberOfCertificates) {
+                        Logger.e("Keybox XML declares " + numberOfCertificates + " certificates but only " + certificates.size() + " found, skipping");
+                        continue;
+                    }
                     LinkedList<Certificate> certificateChain = new LinkedList<>();
                     for (int j = 0; j < numberOfCertificates; j++) {
                         String certPem = certificates.get(j).getText();
@@ -341,6 +346,10 @@ public final class CertHack {
             // Optimization: Use original encoded bytes to avoid copy/re-encoding
             X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
             Extension ext = leafHolder.getExtension(OID);
+            if (ext == null || ext.getExtnValue() == null) {
+                Logger.e("Attestation extension present but holder returned null — skipping hack");
+                return caList;
+            }
             ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
             ASN1Encodable[] encodables = sequence.toArray();
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
@@ -365,7 +374,13 @@ public final class CertHack {
             }
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
-                ASN1TaggedObject taggedObject = (ASN1TaggedObject) asn1Encodable;
+                // Skip non-tagged elements gracefully: some OEM implementations may inject
+                // unexpected element types. Silently skipping is safer than crashing the
+                // entire attestation chain for one malformed element.
+                if (!(asn1Encodable instanceof ASN1TaggedObject taggedObject)) {
+                    Logger.e("Unexpected ASN1 element type in TEE enforced: " + asn1Encodable.getClass().getName());
+                    continue;
+                }
                 int tag = taggedObject.getTagNo();
                 if (tag == 704) {
                     rootOfTrust = taggedObject.getBaseObject().toASN1Primitive();
@@ -424,6 +439,9 @@ public final class CertHack {
             var k = list.get(idx);
 
             certificates = new LinkedList<>(k.certificates);
+            if (certificates.isEmpty()) {
+                throw new UnsupportedOperationException("Keybox has no certificates for algorithm " + leafAlgo);
+            }
             builder = new X509v3CertificateBuilder(
                     new X509CertificateHolder(
                             certificates.get(0).getEncoded()
@@ -438,6 +456,11 @@ public final class CertHack {
                     .build(k.keyPair.getPrivate());
 
             byte[] verifiedBootKey = UtilKt.getBootKey();
+            if (verifiedBootKey == null) {
+                Logger.e("getBootKey() returned null, generating random 32-byte key");
+                verifiedBootKey = new byte[32];
+                new java.security.SecureRandom().nextBytes(verifiedBootKey);
+            }
             byte[] verifiedBootHash = null;
             try {
                 if (!(rootOfTrust instanceof ASN1Sequence r)) {
