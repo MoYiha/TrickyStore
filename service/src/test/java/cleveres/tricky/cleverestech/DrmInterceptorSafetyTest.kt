@@ -156,6 +156,24 @@ class DrmInterceptorSafetyTest {
     }
 
     @Test
+    fun testReadsRequestedPropertyNameFromDataParcel() {
+        assertTrue(
+            "DRM interceptor must inspect the request Parcel so it only spoofs tracked DRM properties",
+            drmContent.contains("readTrackedPropertyName(data)") &&
+            drmContent.contains("data.readString()")
+        )
+    }
+
+    @Test
+    fun testTargetsSpecificDrmProperties() {
+        assertTrue(
+            "DRM interceptor must only target securityLevel and deviceUniqueId properties",
+            drmContent.contains("SECURITY_LEVEL_PROPERTY") &&
+            drmContent.contains("DEVICE_UNIQUE_ID_PROPERTY")
+        )
+    }
+
+    @Test
     fun testDrmIdIs32Bytes() {
         assertTrue(
             "Spoofed DRM device ID must be 32 bytes",

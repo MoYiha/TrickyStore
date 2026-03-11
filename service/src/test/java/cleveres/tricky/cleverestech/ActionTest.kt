@@ -75,7 +75,7 @@ class ActionTest {
             override fun i(tag: String, msg: String) { println("I/$tag: $msg") }
         })
         configDir = tempFolder.newFolder("config")
-        originalConfigRoot = Config.getRootForTesting()
+        originalConfigRoot = Config.getConfigRoot()
         Config.setRootForTesting(configDir)
 
         originalSecureFileImpl = SecureFile.impl
