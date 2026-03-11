@@ -35,9 +35,10 @@ object DrmInterceptor : BinderInterceptor() {
     private const val CONFIG_CACHE_TTL_MS = 60_000L
 
     // Thread-local SecureRandom to avoid contention and allocation per call
-    private val secureRandom: ThreadLocal<SecureRandom> = object : ThreadLocal<SecureRandom>() {
-        override fun initialValue() = SecureRandom()
-    }
+    private val secureRandom: ThreadLocal<SecureRandom> =
+        ThreadLocal.withInitial { SecureRandom() }
+    private val threadSecureRandom: SecureRandom
+        get() = requireNotNull(secureRandom.get()) { "ThreadLocal SecureRandom must not be null" }
 
     // All known DRM HAL service names (AIDL + HIDL variants across Android 12-15+)
     private val DRM_SERVICE_NAMES = listOf(
@@ -148,8 +149,7 @@ object DrmInterceptor : BinderInterceptor() {
         }
 
         val spoofedId = ByteArray(32)
-        val rng = secureRandom.get() ?: SecureRandom().also { secureRandom.set(it) }
-        rng.nextBytes(spoofedId)
+        threadSecureRandom.nextBytes(spoofedId)
         Logger.i("DRM: Spoofing deviceUniqueId (32 bytes) for uid=$callingUid")
         val p = Parcel.obtain()
         try {
