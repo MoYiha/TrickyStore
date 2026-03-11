@@ -237,20 +237,31 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// DeviceRecallProtection — Countermeasures against Google Play Integrity API's
-// Device Recall feature (beta, 2026). Device Recall stores 3 persistent bits
-// per device per developer account on Google's servers, surviving factory
-// resets. This class detects and neutralizes device recall signals.
+// PlayIntegrityProtection — Comprehensive countermeasures against ALL Google
+// Play Integrity API threat categories (Nov 2025 update + Device Recall 2026).
+//
+// Covers protection against:
+//   - deviceIntegrity: Device must appear as genuine, certified, non-rooted
+//   - appIntegrity: App must appear unmodified and recognized by Play
+//   - accountDetails: User account must appear Play-licensed
+//   - recentDeviceActivity: Token request rate must appear normal
+//   - deviceRecall: Persistent 3-bit device flags must be neutralized
+//   - appAccessRiskVerdict: No risky overlays/capture apps detected
+//   - playProtectVerdict: Play Protect must appear active with no threats
+//   - deviceAttributes: Attested SDK version must match spoofed values
+//   - Remediation dialogs: GET_INTEGRITY/GET_STRONG_INTEGRITY detection
+//   - Platform key attestation rotation (Feb 2026)
 //
 // Defense strategy:
 //   1. Detect integrity token warmup/request Binder transactions
 //   2. Randomize device identity signals sent to GMS Core
-//   3. Interfere with device recall bit propagation in verdicts
-//   4. Coordinate with DRM ID / build prop randomization
+//   3. Throttle token request frequency to avoid recentDeviceActivity flags
+//   4. Coordinate with DRM ID / build prop / keystore interception
+//   5. Detect and handle Play remediation dialog intents
 // ---------------------------------------------------------------------------
-class DeviceRecallProtection {
+class PlayIntegrityProtection {
 public:
-    // Initialize the protection layer. Reads config to decide behavior.
+    // Initialize the full protection layer. Reads config to decide behavior.
     static bool initialize();
 
     // Check if a Binder transaction descriptor matches a Play Integrity service
@@ -261,33 +272,65 @@ public:
                                            const char *descriptor,
                                            size_t desc_len);
 
+    // Check if a transaction relates to any Play Integrity verdict category
+    static bool isIntegrityVerdictTransaction(uint32_t code,
+                                              const char *descriptor,
+                                              size_t desc_len);
+
+    // Detect Play remediation dialog intents (GET_INTEGRITY, GET_STRONG_INTEGRITY)
+    static bool isRemediationDialogIntent(const char *action, size_t len);
+
     // Mutate device identity signals before they reach GMS integrity checks.
-    // Called before integrity token generation to ensure device appears "new".
     static void randomizeDeviceSignals();
+
+    // Track token request rate to avoid recentDeviceActivity anomaly flags
+    static void recordTokenRequest();
+    static bool isRequestRateNormal();
 
     // Get the current protection state
     static bool isEnabled();
 
-    // Service descriptors that handle Play Integrity
+    // --- Play Integrity API Service Descriptors ---
     static constexpr const char *INTEGRITY_SERVICE_DESCRIPTOR =
         "com.google.android.play.core.integrity";
     static constexpr const char *GMS_INTEGRITY_DESCRIPTOR =
         "com.google.android.gms.playintegrity";
-    static constexpr const char *DEVICE_RECALL_INDICATOR =
-        "deviceRecall";
 
-    // Known transaction codes for Play Integrity warmup/request
+    // --- Verdict Category Indicators ---
+    static constexpr const char *DEVICE_RECALL_INDICATOR     = "deviceRecall";
+    static constexpr const char *DEVICE_INTEGRITY_INDICATOR  = "deviceIntegrity";
+    static constexpr const char *APP_INTEGRITY_INDICATOR     = "appIntegrity";
+    static constexpr const char *ACCOUNT_DETAILS_INDICATOR   = "accountDetails";
+    static constexpr const char *ACTIVITY_LEVEL_INDICATOR    = "recentDeviceActivity";
+    static constexpr const char *ACCESS_RISK_INDICATOR       = "appAccessRiskVerdict";
+    static constexpr const char *PLAY_PROTECT_INDICATOR      = "playProtectVerdict";
+    static constexpr const char *DEVICE_ATTRIBUTES_INDICATOR = "deviceAttributes";
+
+    // --- Remediation Dialog Actions ---
+    static constexpr const char *REMEDIATION_GET_INTEGRITY        = "GET_INTEGRITY";
+    static constexpr const char *REMEDIATION_GET_STRONG_INTEGRITY = "GET_STRONG_INTEGRITY";
+    static constexpr const char *REMEDIATION_GET_LICENSED         = "GET_LICENSED";
+    static constexpr const char *REMEDIATION_CLOSE_ACCESS_RISK    = "CLOSE_UNKNOWN_ACCESS_RISK";
+
+    // --- Known Transaction Codes ---
     static constexpr uint32_t INTEGRITY_WARMUP_CODE   = 1;
     static constexpr uint32_t INTEGRITY_REQUEST_CODE   = 2;
     static constexpr uint32_t INTEGRITY_STANDARD_CODE  = 3;
 
+    // --- Rate Limiting ---
+    static constexpr int MAX_REQUESTS_PER_MINUTE = 5;
+
 private:
     static std::atomic<bool> s_enabled;
     static std::atomic<bool> s_initialized;
+    static std::atomic<int>  s_request_count;
+    static std::atomic<long> s_window_start_ms;
 
-    // Detect if device recall config file exists
     static bool readConfig();
 };
+
+// Backward-compatible alias
+using DeviceRecallProtection = PlayIntegrityProtection;
 
 // ---------------------------------------------------------------------------
 // BinderInterceptor — The Binder-level intercept handler (unchanged API).

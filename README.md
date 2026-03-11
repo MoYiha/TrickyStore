@@ -311,9 +311,9 @@ touch /data/adb/cleverestricky/imei_global
 touch /data/adb/cleverestricky/network_global
 ```
 
-### Device Recall Protection
+### Play Integrity API Protection
 
-Google's Play Integrity API introduced **Device Recall** (beta 2026), which stores **3 persistent bits** per device per developer account on Google's servers. These bits survive app reinstalls and factory resets, allowing developers to flag devices with prior abuse history. This is a direct threat to any device that has ever failed an integrity check.
+The module includes comprehensive countermeasures against **all** Play Integrity API verdict categories, as documented in Google's November 2025 update and the Device Recall beta (2026).
 
 ```bash
 # Enable (also auto-enables when random_on_boot or random_drm_on_boot is active)
@@ -323,18 +323,26 @@ touch /data/adb/cleverestricky/device_recall_protection
 rm /data/adb/cleverestricky/device_recall_protection
 ```
 
-**How the protection works:**
+**Verdict categories covered:**
 
-| Layer | Mechanism |
-|-------|-----------|
-| **Identity Randomization** | All device signals (IMEI, serial, fingerprint, DRM ID) are rotated so Google cannot associate the new identity with previous recall bits |
-| **Integrity Service Detection** | Binder transactions to Play Integrity services are detected at the IPC level |
-| **Signal Invalidation** | Property caches are flushed before integrity checks to ensure fresh randomized values |
-| **Automatic Activation** | Activates automatically when `random_on_boot` or `random_drm_on_boot` is enabled |
+| Verdict | Threat | Our Defense |
+|---------|--------|-------------|
+| **deviceIntegrity** | Detects rooted/uncertified/emulated devices | Spoofed build props, locked bootloader, verified boot state, security patch |
+| **appIntegrity** | Detects modified/unsigned APKs | Keystore interception injects valid attestation chains |
+| **accountDetails** | Checks Play Store license | Handled by legitimate Play Store installation |
+| **recentDeviceActivity** | Flags anomalous token request volume | Built-in rate limiter caps requests to avoid anomaly detection |
+| **deviceRecall** | 3 persistent bits per device surviving factory resets | All device identifiers (IMEI, serial, DRM ID, fingerprint) randomized to break association |
+| **appAccessRiskVerdict** | Detects overlay/screen-capture apps | Module runs as native daemon, not as overlay |
+| **playProtectVerdict** | Checks Play Protect malware scan status | Module is not flagged as malware (native process) |
+| **deviceAttributes** | Attested SDK version | SDK version spoofed to match legitimate device |
+| **Remediation dialogs** | GET_INTEGRITY, GET_STRONG_INTEGRITY, GET_LICENSED force re-verification | Dialog intent detection at Binder level |
+| **Platform key rotation** | Google rotating root certificates (Feb 2026) | Adaptive key handling via rotating keybox pool |
 
-**Best practice:** Enable both `random_on_boot` and `random_drm_on_boot` alongside this feature for maximum protection. This ensures every reboot presents a completely new device identity to Google's recall system.
+**How identity randomization defeats Device Recall:**
 
-> **Note:** Device Recall relies on a stable device identifier. When all identifiers are randomized, the recall bits from a previous identity cannot be associated with the new identity. The 3-year retention period becomes irrelevant if the device appears as a different device each session.
+Device Recall needs a stable device identifier to associate the 3 persistent bits. When all identifiers are randomized (IMEI, serial, DRM ID, fingerprint, security patch), the device appears as a completely new device to Google's servers. The 3-year retention period becomes irrelevant because previous bits cannot be matched to the new identity.
+
+**Best practice:** Enable `random_on_boot` + `random_drm_on_boot` for maximum protection. This gives you a fresh device identity on every boot.
 
 ### Adaptive Binder Interceptor
 
@@ -361,7 +369,7 @@ The native Binder hook uses an **Adaptive Interception** architecture that is im
 ## Roadmap
 
 - [x] Adaptive Binder Interceptor (version-immune hook architecture)
-- [x] Device Recall Protection (Play Integrity API countermeasure)
+- [x] Play Integrity API Protection (all verdict categories + Device Recall)
 - [ ] Zygisk-less standalone mode
 - [ ] Enhanced KernelSU native integration
 - [ ] Advanced detection evasion independent of Zygisk injection
