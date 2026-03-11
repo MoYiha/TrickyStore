@@ -11,7 +11,7 @@ object RandomUtils {
     // This is critical: IMEI, serial, MAC etc. must not be predictable or brute-forceable.
     private val secureRandom: SecureRandom get() = threadLocalRandom.get()
     private val threadLocalRandom = object : ThreadLocal<SecureRandom>() {
-        override fun initialValue() = SecureRandom()
+        override fun initialValue(): SecureRandom = SecureRandom()
     }
 
     // Simple list for random selection
