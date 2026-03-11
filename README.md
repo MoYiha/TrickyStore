@@ -347,8 +347,6 @@ These toggles allow specific advanced features to apply system-wide without enab
 - [ ] Zygisk-less standalone mode
 - [ ] Enhanced KernelSU native integration
 - [ ] Advanced detection evasion independent of Zygisk injection
-- [ ] Contact information spoofing
-- [ ] Full device state backup and restore
 
 ## Acknowledgements
 

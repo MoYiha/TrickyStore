@@ -22,6 +22,7 @@ object LocalRkpProxy {
     // Dynamic Root Secret
     // Loaded from file or generated randomly to ensure persistence across reboots but 
     // ability to rotate if caught.
+    @Volatile
     private var serverHmacKey: ByteArray = ByteArray(32)
 
     init {

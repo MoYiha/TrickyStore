@@ -38,7 +38,7 @@ class BootLogicSafetyTest {
 
     @Test
     fun testResetPropUsesArrayExec() {
-        // Bug fix: resetProp must use array-based exec to prevent shell injection
+        // Single-property resetProp must use array-based exec to prevent shell injection
         assertTrue(
             "resetProp must use array-based Runtime.exec (not sh -c) to prevent shell injection",
             bootLogicContent.contains("""arrayOf("resetprop", "-n", name, value)""")
@@ -47,12 +47,10 @@ class BootLogicSafetyTest {
 
     @Test
     fun testResetPropDoesNotUseShDashC() {
-        // Verify the old vulnerable pattern is gone from resetProp
-        // Search the entire function body by finding the function and its matching brace
-        val funcStart = bootLogicContent.indexOf("fun resetProp")
+        // Verify the single-property resetProp function does NOT use sh -c
+        val funcStart = bootLogicContent.indexOf("private fun resetProp(name: String, value: String)")
         assertTrue("resetProp function must exist", funcStart >= 0)
         val funcBody = bootLogicContent.substring(funcStart)
-        // Extract up to the second closing brace (function close)
         var braceCount = 0
         var endIdx = 0
         for (i in funcBody.indices) {
@@ -69,7 +67,6 @@ class BootLogicSafetyTest {
 
     @Test
     fun testChmodUsesArrayExec() {
-        // Bug fix: chmod must use array-based exec
         assertTrue(
             "chmod calls must use array-based exec, not sh -c string interpolation",
             bootLogicContent.contains("""arrayOf("chmod", "600",""")
@@ -77,11 +74,58 @@ class BootLogicSafetyTest {
     }
 
     @Test
-    fun testRmUsesArrayExec() {
-        // Bug fix: rm must use array-based exec
+    fun testBatchResetPropExists() {
+        // Performance: properties should be set in batch to avoid spawning 20+ processes
         assertTrue(
-            "rm calls must use array-based exec, not sh -c",
-            bootLogicContent.contains("""arrayOf("rm", "-f", path)""")
+            "BootLogic must use resetPropBatch for setting multiple properties at once",
+            bootLogicContent.contains("resetPropBatch")
+        )
+    }
+
+    @Test
+    fun testBatchResetPropUsesShellEscape() {
+        // Security: batched shell commands must escape values
+        assertTrue(
+            "resetPropBatch must use shellEscape to prevent injection in batched commands",
+            bootLogicContent.contains("shellEscape")
+        )
+    }
+
+    // ================================
+    // FD leak prevention
+    // ================================
+
+    @Test
+    fun testGetSystemPropertyDrainsErrorStream() {
+        // Bug fix: getSystemProperty must drain errorStream to prevent FD exhaustion
+        val funcStart = bootLogicContent.indexOf("fun getSystemProperty")
+        assertTrue("getSystemProperty function must exist", funcStart >= 0)
+        val funcBody = bootLogicContent.substring(funcStart, minOf(funcStart + 500, bootLogicContent.length))
+        assertTrue(
+            "getSystemProperty must drain errorStream to prevent FD exhaustion",
+            funcBody.contains("errorStream")
+        )
+    }
+
+    @Test
+    fun testGetSystemPropertyCallsWaitFor() {
+        val funcStart = bootLogicContent.indexOf("fun getSystemProperty")
+        assertTrue("getSystemProperty function must exist", funcStart >= 0)
+        val funcBody = bootLogicContent.substring(funcStart, minOf(funcStart + 500, bootLogicContent.length))
+        assertTrue(
+            "getSystemProperty must call waitFor() to avoid zombie processes",
+            funcBody.contains("waitFor()")
+        )
+    }
+
+    @Test
+    fun testExecAndDrainHelper() {
+        assertTrue(
+            "BootLogic must have execAndDrain helper that drains both streams and calls waitFor",
+            bootLogicContent.contains("fun execAndDrain") &&
+            bootLogicContent.contains("inputStream") &&
+            bootLogicContent.contains("errorStream") &&
+            bootLogicContent.contains("waitFor()")
         )
     }
 
@@ -252,26 +296,34 @@ class BootLogicSafetyTest {
     }
 
     // ================================
-    // Magisk 32-bit cleanup
+    // Magisk 32-bit cleanup REMOVED
     // ================================
+    // checkRemoveMagisk32 was removed in V2.2.6 because:
+    //   - Deleting other modules' binaries risks bootloops
+    //   - The module must not interfere with Magisk internals
+    //   - Arch-specific binaries are managed by the root manager
 
     @Test
-    fun testRemoveMagisk32ChecksFlagFile() {
-        assertTrue(
-            "Magisk32 removal must check FILE_REMOVE_MAGISK32 flag file",
+    fun testNoMagisk32Removal() {
+        assertFalse(
+            "BootLogic must NOT contain checkRemoveMagisk32 — deleting other modules' binaries risks bootloops",
+            bootLogicContent.contains("checkRemoveMagisk32")
+        )
+    }
+
+    @Test
+    fun testNoMagisk32FlagFile() {
+        assertFalse(
+            "BootLogic must NOT reference FILE_REMOVE_MAGISK32 — module must not interfere with Magisk internals",
             bootLogicContent.contains("FILE_REMOVE_MAGISK32")
         )
     }
 
     @Test
-    fun testRemoveMagisk32KnownPaths() {
-        assertTrue(
-            "Must check /debug_ramdisk/magisk32 path",
+    fun testNoDebugRamdiskPath() {
+        assertFalse(
+            "BootLogic must NOT contain /debug_ramdisk/magisk32 — must not delete root manager binaries",
             bootLogicContent.contains("/debug_ramdisk/magisk32")
-        )
-        assertTrue(
-            "Must check /data/adb/magisk/magisk32 path",
-            bootLogicContent.contains("/data/adb/magisk/magisk32")
         )
     }
 
