@@ -141,6 +141,7 @@ object DrmInterceptor : BinderInterceptor() {
 
     private fun handleGetPropertyByteArray(data: Parcel, reply: Parcel, callingUid: Int): Result {
         val propertyName = readTrackedPropertyName(data)
+        if (propertyName != DrmOverrideLogic.DEVICE_UNIQUE_ID_PROPERTY) return Skip
         if (!DrmOverrideLogic.shouldSpoofDeviceUniqueId(propertyName, cachedRandomDrmOnBoot)) return Skip
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
