@@ -254,7 +254,10 @@ object KeyboxVerifier {
 
     private fun checkFile(file: File, revokedSerials: Set<String>): Result {
         return try {
-            val keyboxes = file.reader().use { CertHack.parseKeyboxXml(it) }
+            val keyboxes = file.bufferedReader().use { reader ->
+                CertHack.parseKeyboxXml(reader)
+            }
+
             if (keyboxes.isEmpty()) {
                 return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
             }

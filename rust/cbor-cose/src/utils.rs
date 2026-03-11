@@ -125,14 +125,22 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
                     // Check which syscall the thread is executing
                     path_buf.push_str(file_name_str);
                     path_buf.push_str("/syscall");
-                    if let Ok(content) = fs::read_to_string(&path_buf) {
-                        if let Some(syscall_nr_str) = content.split_whitespace().next() {
-                            if let Ok(nr) = syscall_nr_str.parse::<i64>() {
-                                // SYS_ioctl constant varies by platform.
-                                // We cast to i64 to ensure comparison works safely.
-                                #[allow(clippy::unnecessary_cast)]
-                                if nr == libc::SYS_ioctl as i64 {
-                                    threads.push(tid);
+                    // Read into a reusable stack buffer if possible, to avoid string allocation.
+                    // The "syscall" file content is very small (e.g., "16 0x0...").
+                    let mut buf = [0u8; 64];
+                    if let Ok(mut file) = fs::File::open(&path_buf) {
+                        use std::io::Read;
+                        if let Ok(bytes_read) = file.read(&mut buf) {
+                            if let Ok(content_str) = std::str::from_utf8(&buf[..bytes_read]) {
+                                if let Some(syscall_nr_str) = content_str.split_whitespace().next() {
+                                    if let Ok(nr) = syscall_nr_str.parse::<i64>() {
+                                        // SYS_ioctl constant varies by platform.
+                                        // We cast to i64 to ensure comparison works safely.
+                                        #[allow(clippy::unnecessary_cast)]
+                                        if nr == libc::SYS_ioctl as i64 {
+                                            threads.push(tid);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -153,7 +161,11 @@ fn get_thread_blocked_signals(pid: libc::pid_t, tid: libc::pid_t) -> Option<u64>
     // Given this isn't a tight loop, format is okay, but `String::with_capacity` is slightly better.
     let mut status_path = String::with_capacity(64);
     let _ = write!(status_path, "/proc/{}/task/{}/status", pid, tid);
-    let content = fs::read_to_string(&status_path).ok()?;
+    let mut content = String::with_capacity(512);
+    if let Ok(mut file) = fs::File::open(&status_path) {
+        use std::io::Read;
+        let _ = file.read_to_string(&mut content);
+    }
 
     for line in content.lines() {
         if line.starts_with("SigBlk:") {
