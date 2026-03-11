@@ -99,7 +99,33 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
         // Scoped block for FD passing
         {
             // SELinux context setting - best effort, log if fails
+            // Read target process SELinux context and set as socket creation context
+            // so the local socket has a label compatible with the target for FD passing.
+            {
+                char target_con[256] = {};
+                char path_buf[64];
+                snprintf(path_buf, sizeof(path_buf), "/proc/%d/attr/current", pid);
+                int con_fd = open(path_buf, O_RDONLY | O_CLOEXEC);
+                if (con_fd >= 0) {
+                    ssize_t n = read(con_fd, target_con, sizeof(target_con) - 1);
+                    close(con_fd);
+                    if (n > 0) {
+                        target_con[n] = '\0';
+                        // Strip trailing newline if present
+                        if (n > 0 && target_con[n - 1] == '\n') target_con[n - 1] = '\0';
+                        if (!set_sockcreate_con(target_con)) {
+                            LOGW("Failed to set socket creation context to '%s' (non-fatal)", target_con);
+                        } else {
+                            LOGD("Set socket creation context to '%s'", target_con);
+                        }
+                    }
+                } else {
+                    LOGW("Could not read SELinux context for pid %d (non-fatal)", pid);
+                }
+            }
             UniqueFd local_socket = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+            // Reset socket creation context so subsequent sockets are not affected
+            set_sockcreate_con("");
             if (local_socket == -1) {
                 PLOGE("Failed to create local_socket");
                 ptrace(PTRACE_DETACH, pid, 0, 0);
@@ -190,7 +216,11 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
 
-            char cmsg_buffer[CMSG_SPACE(sizeof(int))] = {0};
+            // Use a large control buffer so SCM_RIGHTS is delivered even when
+            // the kernel prepends extra ancillary data (SCM_CREDENTIALS,
+            // SCM_SECURITY) on Android 14+ kernels with SO_PASSCRED/SO_PASSSEC.
+            constexpr size_t CMSG_BUF_SIZE = 256;
+            char cmsg_buffer[CMSG_BUF_SIZE] = {0};
             uintptr_t remote_cmsg_buffer_ptr = push_memory(pid, regs, &cmsg_buffer, sizeof(cmsg_buffer));
             if (remote_cmsg_buffer_ptr == 0) {
                 LOGE("Failed to push cmsg_buffer to remote process");
@@ -303,31 +333,38 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
             
-            // Re-construct msghdr with the local cmsg_buffer to interpret the received FD
+            // Re-construct msghdr with the local cmsg_buffer to interpret the received FD.
+            // Iterate through cmsg entries because SCM_RIGHTS may not be first
+            // (kernel can prepend SCM_CREDENTIALS / SCM_SECURITY).
             struct msghdr received_hdr_validation{};
             received_hdr_validation.msg_control = cmsg_buffer; // Use the buffer read from remote
             received_hdr_validation.msg_controllen = sizeof(cmsg_buffer);
 
-            cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
-            if (received_cmsg != nullptr) {
+            int received_fd = -1;
+            for (cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
+                 received_cmsg != nullptr;
+                 received_cmsg = CMSG_NXTHDR(&received_hdr_validation, received_cmsg)) {
                 LOGD(
                     "recvmsg cmsg details: len=%zu level=%d type=%d",
                     (size_t) received_cmsg->cmsg_len,
                     received_cmsg->cmsg_level,
                     received_cmsg->cmsg_type
                 );
-            } else {
-                LOGD("recvmsg cmsg details: no control message present");
+                if (received_cmsg->cmsg_level == SOL_SOCKET &&
+                    received_cmsg->cmsg_type == SCM_RIGHTS &&
+                    received_cmsg->cmsg_len >= CMSG_LEN(sizeof(int))) {
+                    received_fd = *(int*) CMSG_DATA(received_cmsg);
+                    break;
+                }
             }
-            if (received_cmsg == nullptr || received_cmsg->cmsg_len < CMSG_LEN(sizeof(int)) ||
-                received_cmsg->cmsg_level != SOL_SOCKET || received_cmsg->cmsg_type != SCM_RIGHTS) {
-                LOGE("Invalid cmsg received from remote process (recvmsg_ret=%" PRIdPTR ")", (intptr_t) recvmsg_result);
+            if (received_fd < 0) {
+                LOGE("SCM_RIGHTS not found in cmsg entries from remote process (recvmsg_ret=%" PRIdPTR ")", (intptr_t) recvmsg_result);
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
 
-            lib_fd = *(int*) CMSG_DATA(received_cmsg);
+            lib_fd = received_fd;
             LOGD("Received remote lib_fd: %d", lib_fd);
             close_remote_fd_func(remote_fd); // Close the socket FD on remote side
         } // End of FD passing scope
