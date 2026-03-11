@@ -102,7 +102,8 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             // Read target process SELinux context and set as socket creation context
             // so the local socket has a label compatible with the target for FD passing.
             {
-                char target_con[256] = {};
+                constexpr size_t SELINUX_CONTEXT_MAX_SIZE = 256;
+                char target_con[SELINUX_CONTEXT_MAX_SIZE] = {};
                 char path_buf[64];
                 snprintf(path_buf, sizeof(path_buf), "/proc/%d/attr/current", pid);
                 int con_fd = open(path_buf, O_RDONLY | O_CLOEXEC);

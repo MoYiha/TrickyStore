@@ -15,6 +15,7 @@ find "$MODDIR" -maxdepth 1 -name '*.so' -exec chcon u:object_r:cleverestricky_pu
 # Executables need to be executable by daemon
 [ -f "$MODDIR/inject" ] && chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/inject" 2>/dev/null
 [ -f "$MODDIR/daemon" ] && chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/daemon" 2>/dev/null
+[ -f "$MODDIR/provision_attestation.sh" ] && chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/provision_attestation.sh" 2>/dev/null
 
 # ===== Property Hiding =====
 # All property hiding (bootloader state, verified boot, debug flags, etc.)
@@ -26,6 +27,5 @@ find "$MODDIR" -maxdepth 1 -name '*.so' -exec chcon u:object_r:cleverestricky_pu
 
 # Dynamic TEE Attestation Provisioning (Fixes CSR code 20 without Keybox)
 if [ -f "$MODDIR/provision_attestation.sh" ]; then
-    chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/provision_attestation.sh" 2>/dev/null
     sh "$MODDIR/provision_attestation.sh" &
 fi
