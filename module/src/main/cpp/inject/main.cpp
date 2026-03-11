@@ -112,10 +112,10 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                     if (n > 0) {
                         target_con[n] = '\0';
                         // Strip trailing newline if present
-                        if (n > 0 && target_con[n - 1] == '\n') target_con[n - 1] = '\0';
-                        if (!set_sockcreate_con(target_con)) {
+                        if (target_con[n - 1] == '\n') target_con[n - 1] = '\0';
+                        if (target_con[0] != '\0' && !set_sockcreate_con(target_con)) {
                             LOGW("Failed to set socket creation context to '%s' (non-fatal)", target_con);
-                        } else {
+                        } else if (target_con[0] != '\0') {
                             LOGD("Set socket creation context to '%s'", target_con);
                         }
                     }
@@ -125,7 +125,9 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             }
             UniqueFd local_socket = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
             // Reset socket creation context so subsequent sockets are not affected
-            set_sockcreate_con("");
+            if (!set_sockcreate_con("")) {
+                LOGW("Failed to reset socket creation context (non-fatal)");
+            }
             if (local_socket == -1) {
                 PLOGE("Failed to create local_socket");
                 ptrace(PTRACE_DETACH, pid, 0, 0);
