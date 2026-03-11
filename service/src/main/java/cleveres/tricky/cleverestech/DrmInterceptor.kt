@@ -5,12 +5,14 @@ import android.os.Parcel
 import android.os.ServiceManager
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
+import java.security.SecureRandom
 
 object DrmInterceptor : BinderInterceptor() {
 
     private var drmBinder: IBinder? = null
     private var triedCount = 0
     private var injected = false
+    private val secureRandom = SecureRandom()
 
     private const val TRANSACTION_GET_PROPERTY_STRING = 17
     private const val TRANSACTION_GET_PROPERTY_BYTE_ARRAY = 18
@@ -30,16 +32,19 @@ object DrmInterceptor : BinderInterceptor() {
 
         when (code) {
             TRANSACTION_GET_PROPERTY_STRING -> {
-                return handleGetPropertyString(reply, callingUid)
+                return handleGetPropertyString(data, reply, callingUid)
             }
             TRANSACTION_GET_PROPERTY_BYTE_ARRAY -> {
-                return handleGetPropertyByteArray(reply, callingUid)
+                return handleGetPropertyByteArray(data, reply, callingUid)
             }
         }
         return Skip
     }
 
-    private fun handleGetPropertyString(reply: Parcel, callingUid: Int): Result {
+    private fun handleGetPropertyString(data: Parcel, reply: Parcel, callingUid: Int): Result {
+        val propertyName = readTrackedPropertyName(data)
+        if (propertyName != DrmOverrideLogic.SECURITY_LEVEL_PROPERTY) return Skip
+
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
@@ -47,10 +52,12 @@ object DrmInterceptor : BinderInterceptor() {
         }
         val originalValue = reply.readString() ?: return Skip
 
-        val securityLevel = Config.getBuildVar("ro.com.google.widevine.level") ?: "1"
-
-        if (originalValue == "L3" || originalValue == "L2") {
-            val spoofedLevel = "L$securityLevel"
+        val spoofedLevel = DrmOverrideLogic.spoofSecurityLevel(
+            propertyName,
+            originalValue,
+            Config.getBuildVar("ro.com.google.widevine.level")
+        )
+        if (spoofedLevel != null) {
             Logger.i("DRM Intercept: Spoofing securityLevel $originalValue -> $spoofedLevel for uid=$callingUid")
             val p = Parcel.obtain()
             p.writeNoException()
@@ -61,17 +68,17 @@ object DrmInterceptor : BinderInterceptor() {
         return Skip
     }
 
-    private fun handleGetPropertyByteArray(reply: Parcel, callingUid: Int): Result {
+    private fun handleGetPropertyByteArray(data: Parcel, reply: Parcel, callingUid: Int): Result {
+        val propertyName = readTrackedPropertyName(data)
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
             return Skip
         }
 
-        val randomDrmOnBoot = File("/data/adb/cleverestricky/random_drm_on_boot").exists()
-        if (randomDrmOnBoot) {
+        if (DrmOverrideLogic.shouldSpoofDeviceUniqueId(propertyName, isRandomDrmOnBootEnabled())) {
             val spoofedId = ByteArray(32)
-            java.security.SecureRandom().nextBytes(spoofedId)
+            secureRandom.nextBytes(spoofedId)
             Logger.i("DRM Intercept: Spoofing deviceUniqueId for uid=$callingUid")
             val p = Parcel.obtain()
             p.writeNoException()
@@ -80,6 +87,21 @@ object DrmInterceptor : BinderInterceptor() {
         }
 
         return Skip
+    }
+
+    private fun readTrackedPropertyName(data: Parcel): String? {
+        val pos = data.dataPosition()
+        return try {
+            DrmOverrideLogic.findTrackedPropertyName(listOf(data.readString(), data.readString()))
+        } catch (_: Exception) {
+            null
+        } finally {
+            data.setDataPosition(pos)
+        }
+    }
+
+    private fun isRandomDrmOnBootEnabled(): Boolean {
+        return File(Config.getRootForTesting(), "random_drm_on_boot").exists()
     }
 
     private fun findDrmServicePid(): Int? {
