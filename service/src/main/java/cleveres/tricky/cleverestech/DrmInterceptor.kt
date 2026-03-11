@@ -148,7 +148,8 @@ object DrmInterceptor : BinderInterceptor() {
         }
 
         val spoofedId = ByteArray(32)
-        secureRandom.get().nextBytes(spoofedId)
+        val rng = secureRandom.get() ?: SecureRandom().also { secureRandom.set(it) }
+        rng.nextBytes(spoofedId)
         Logger.i("DRM: Spoofing deviceUniqueId (32 bytes) for uid=$callingUid")
         val p = Parcel.obtain()
         try {
