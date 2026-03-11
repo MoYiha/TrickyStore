@@ -4,7 +4,7 @@
 
 ### The Intelligent Android Security Module
 
-CleveresTricky is a self-managing root module that uses automated decision-making to keep your device passing integrity checks, rotating identities, and healing itself without manual intervention. It monitors, adapts, and corrects problems on its own.
+CleveresTricky is a self-managing spoof root module that uses automated decision-making to keep your device passing integrity checks, rotating identities, and healing itself without manual intervention. It monitors, adapts, and corrects problems on its own.
 
 ---
 
