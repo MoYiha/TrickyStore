@@ -140,14 +140,18 @@ object LocalRkpProxy {
      * tag is exactly 32 bytes (HMAC-SHA256 output).
      */
     fun validateMacedPublicKey(macedKey: ByteArray): Boolean {
-        if (macedKey.size < 10) return false
-
-        if (macedKey[0] != 0x84.toByte()) {
-            Logger.e("LocalRkpProxy: Validation Failed - Not a valid COSE_Mac0 array (0x84)")
+        if (macedKey.size < 10) {
+            Logger.e("LocalRkpProxy: Validation Failed - MACed key too short (${macedKey.size} bytes)")
             return false
         }
 
-        val lastByte = macedKey[macedKey.size - 1]
+        if (macedKey[0] != 0x84.toByte()) {
+            Logger.e("LocalRkpProxy: Validation Failed - Not a valid COSE_Mac0 array (expected 0x84, got 0x${macedKey[0].toInt().and(0xFF).toString(16)})")
+            return false
+        }
+
+        // Verify 32-byte HMAC tag at the end of the structure.
+        // CBOR encodes 32-byte bstr as: 0x58 (bstr, 1-byte length) 0x20 (32).
         val tagLengthMarker = macedKey.size - 33
         if (tagLengthMarker >= 1 && macedKey[tagLengthMarker] == 0x58.toByte()
             && macedKey[tagLengthMarker + 1] == 0x20.toByte()) {
@@ -155,7 +159,8 @@ object LocalRkpProxy {
             return true
         }
 
-        Logger.d("LocalRkpProxy: Schema validation passed (basic)")
-        return true
+        // If 32-byte tag not found at expected position, the structure is malformed
+        Logger.e("LocalRkpProxy: Validation Failed - 32-byte HMAC tag not found at expected position (marker=$tagLengthMarker)")
+        return false
     }
 }

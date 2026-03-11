@@ -239,6 +239,10 @@ public final class CertHack {
                     int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsElement.getText()));
 
                     List<XMLParser.Element> certificates = certChain.getChildren("Certificate");
+                    if (certificates.size() < numberOfCertificates) {
+                        Logger.e("Keybox XML declares " + numberOfCertificates + " certificates but only " + certificates.size() + " found, skipping");
+                        continue;
+                    }
                     LinkedList<Certificate> certificateChain = new LinkedList<>();
                     for (int j = 0; j < numberOfCertificates; j++) {
                         String certPem = certificates.get(j).getText();
@@ -370,7 +374,10 @@ public final class CertHack {
             }
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
-                ASN1TaggedObject taggedObject = (ASN1TaggedObject) asn1Encodable;
+                if (!(asn1Encodable instanceof ASN1TaggedObject taggedObject)) {
+                    Logger.e("Unexpected ASN1 element type in TEE enforced: " + asn1Encodable.getClass().getName());
+                    continue;
+                }
                 int tag = taggedObject.getTagNo();
                 if (tag == 704) {
                     rootOfTrust = taggedObject.getBaseObject().toASN1Primitive();
@@ -429,6 +436,9 @@ public final class CertHack {
             var k = list.get(idx);
 
             certificates = new LinkedList<>(k.certificates);
+            if (certificates.isEmpty()) {
+                throw new UnsupportedOperationException("Keybox has no certificates for algorithm " + leafAlgo);
+            }
             builder = new X509v3CertificateBuilder(
                     new X509CertificateHolder(
                             certificates.get(0).getEncoded()

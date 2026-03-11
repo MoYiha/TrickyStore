@@ -179,6 +179,7 @@ object TelephonyInterceptor : BinderInterceptor() {
         val b = ServiceManager.getService("iphonesubinfo")
         if (b == null) {
             Logger.e("iphonesubinfo service not found")
+            triedCount += 1
             return false
         }
 

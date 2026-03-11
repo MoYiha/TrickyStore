@@ -193,4 +193,24 @@ class MainEntryPointSafetyTest {
             mainContent.contains("Thread.sleep(10000)")
         )
     }
+
+    // ================================
+    // InterruptedException handling
+    // ================================
+
+    @Test
+    fun testKeystoreSleepHandlesInterrupt() {
+        assertTrue(
+            "Thread.sleep in keystore retry loop must catch InterruptedException",
+            mainContent.contains("InterruptedException")
+        )
+    }
+
+    @Test
+    fun testInterruptSetsInterruptFlag() {
+        assertTrue(
+            "Must re-set interrupt flag via Thread.currentThread().interrupt() after catching InterruptedException",
+            mainContent.contains("Thread.currentThread().interrupt()")
+        )
+    }
 }

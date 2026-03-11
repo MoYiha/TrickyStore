@@ -55,24 +55,25 @@ object BackupEncryptor {
     }
 
     fun decrypt(data: ByteArray, password: String): ByteArray {
-        val dis = DataInputStream(ByteArrayInputStream(data))
-        val magic = ByteArray(4).also { dis.readFully(it) }
-        if (String(magic, Charsets.US_ASCII) != MAGIC) throw IOException("Not a CTSB encrypted backup")
-        val versionBytes = ByteArray(4).also { dis.readFully(it) }
-        val version = ByteBuffer.wrap(versionBytes).int
-        if (version != VERSION) throw IOException("Unsupported CTSB version: $version")
-        val salt = ByteArray(SALT_LENGTH).also { dis.readFully(it) }
-        val iv = ByteArray(IV_LENGTH).also { dis.readFully(it) }
-        val encryptedData = dis.readBytes()
+        DataInputStream(ByteArrayInputStream(data)).use { dis ->
+            val magic = ByteArray(4).also { dis.readFully(it) }
+            if (String(magic, Charsets.US_ASCII) != MAGIC) throw IOException("Not a CTSB encrypted backup")
+            val versionBytes = ByteArray(4).also { dis.readFully(it) }
+            val version = ByteBuffer.wrap(versionBytes).int
+            if (version != VERSION) throw IOException("Unsupported CTSB version: $version")
+            val salt = ByteArray(SALT_LENGTH).also { dis.readFully(it) }
+            val iv = ByteArray(IV_LENGTH).also { dis.readFully(it) }
+            val encryptedData = dis.readBytes()
 
-        val keyBytes = deriveKey(password, salt)
-        try {
-            val secretKey = SecretKeySpec(keyBytes, "AES")
-            val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
-            return cipher.doFinal(encryptedData)
-        } finally {
-            keyBytes.fill(0)
+            val keyBytes = deriveKey(password, salt)
+            try {
+                val secretKey = SecretKeySpec(keyBytes, "AES")
+                val cipher = Cipher.getInstance(AES_TRANSFORMATION)
+                cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
+                return cipher.doFinal(encryptedData)
+            } finally {
+                keyBytes.fill(0)
+            }
         }
     }
 
@@ -81,7 +82,12 @@ object BackupEncryptor {
 
     private fun deriveKey(password: String, salt: ByteArray): ByteArray {
         val factory = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM)
-        val spec = PBEKeySpec(password.toCharArray(), salt, ITERATION_COUNT, KEY_LENGTH)
-        return factory.generateSecret(spec).encoded
+        val passwordChars = password.toCharArray()
+        try {
+            val spec = PBEKeySpec(passwordChars, salt, ITERATION_COUNT, KEY_LENGTH)
+            return factory.generateSecret(spec).encoded
+        } finally {
+            passwordChars.fill('\u0000')
+        }
     }
 }
