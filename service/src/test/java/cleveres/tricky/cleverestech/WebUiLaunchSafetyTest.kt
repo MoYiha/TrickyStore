@@ -93,4 +93,17 @@ class WebUiLaunchSafetyTest {
                 webServerContent.contains("127.0.0.1")
         )
     }
+
+    @Test
+    fun testWebServerSourceContainsNoNonAsciiCharacters() {
+        val violations = webServerContent.lines().mapIndexedNotNull { index, line ->
+            val col = line.indexOfFirst { it.code > 127 }
+            if (col >= 0) "Line ${index + 1}, col ${col + 1}: U+${line[col].code.toString(16).uppercase().padStart(4, '0')} (${line[col]})"
+            else null
+        }
+        assertTrue(
+            "WebUI source must use only ASCII characters — no emojis or Unicode symbols allowed.\nViolations:\n${violations.joinToString("\n")}",
+            violations.isEmpty()
+        )
+    }
 }
