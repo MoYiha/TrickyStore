@@ -132,7 +132,8 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
                         use std::io::Read;
                         if let Ok(bytes_read) = file.read(&mut buf) {
                             if let Ok(content_str) = std::str::from_utf8(&buf[..bytes_read]) {
-                                if let Some(syscall_nr_str) = content_str.split_whitespace().next() {
+                                if let Some(syscall_nr_str) = content_str.split_whitespace().next()
+                                {
                                     if let Ok(nr) = syscall_nr_str.parse::<i64>() {
                                         // SYS_ioctl constant varies by platform.
                                         // We cast to i64 to ensure comparison works safely.
