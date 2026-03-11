@@ -97,8 +97,8 @@ object DrmInterceptor : BinderInterceptor() {
         refreshConfigCache()
 
         return when (code) {
-            TRANSACTION_GET_PROPERTY_STRING -> handleGetPropertyString(reply, callingUid)
-            TRANSACTION_GET_PROPERTY_BYTE_ARRAY -> handleGetPropertyByteArray(reply, callingUid)
+            TRANSACTION_GET_PROPERTY_STRING -> handleGetPropertyString(data, reply, callingUid)
+            TRANSACTION_GET_PROPERTY_BYTE_ARRAY -> handleGetPropertyByteArray(data, reply, callingUid)
             else -> Skip
         }
     }
@@ -140,29 +140,26 @@ object DrmInterceptor : BinderInterceptor() {
 
     private fun handleGetPropertyByteArray(data: Parcel, reply: Parcel, callingUid: Int): Result {
         val propertyName = readTrackedPropertyName(data)
+        if (!DrmOverrideLogic.shouldSpoofDeviceUniqueId(propertyName, cachedRandomDrmOnBoot)) return Skip
         val pos = reply.dataPosition()
         if (kotlin.runCatching { reply.readException() }.exceptionOrNull() != null) {
             reply.setDataPosition(pos)
             return Skip
         }
 
-        if (cachedRandomDrmOnBoot) {
-            val spoofedId = ByteArray(32)
-            secureRandom.get().nextBytes(spoofedId)
-            Logger.i("DRM: Spoofing deviceUniqueId (32 bytes) for uid=$callingUid")
-            val p = Parcel.obtain()
-            try {
-                p.writeNoException()
-                p.writeByteArray(spoofedId)
-                return OverrideReply(0, p)
-            } catch (e: Exception) {
-                p.recycle()
-                Logger.e("DRM: Failed to write spoofed device ID", e)
-                return Skip
-            }
+        val spoofedId = ByteArray(32)
+        secureRandom.get().nextBytes(spoofedId)
+        Logger.i("DRM: Spoofing deviceUniqueId (32 bytes) for uid=$callingUid")
+        val p = Parcel.obtain()
+        try {
+            p.writeNoException()
+            p.writeByteArray(spoofedId)
+            return OverrideReply(0, p)
+        } catch (e: Exception) {
+            p.recycle()
+            Logger.e("DRM: Failed to write spoofed device ID", e)
+            return Skip
         }
-
-        return Skip
     }
 
     private fun readTrackedPropertyName(data: Parcel): String? {

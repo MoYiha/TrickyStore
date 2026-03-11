@@ -373,6 +373,15 @@ class DrmInterceptorSafetyTest {
     }
 
     @Test
+    fun testDeviceUniqueIdSpoofingRequiresMatchingProperty() {
+        val handleMethod = extractMethod(drmContent, "handleGetPropertyByteArray")
+        assertTrue(
+            "DRM byte-array spoofing must only run for deviceUniqueId, not every byte-array DRM property",
+            handleMethod.contains("shouldSpoofDeviceUniqueId(propertyName, cachedRandomDrmOnBoot)")
+        )
+    }
+
+    @Test
     fun testDrmIdIs32Bytes() {
         assertTrue(
             "Spoofed DRM device ID must be 32 bytes",
