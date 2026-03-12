@@ -222,7 +222,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             // Use a large control buffer so SCM_RIGHTS is delivered even when
             // the kernel prepends extra ancillary data (SCM_CREDENTIALS,
             // SCM_SECURITY) on Android 14+ kernels with SO_PASSCRED/SO_PASSSEC.
-            constexpr size_t CMSG_BUF_SIZE = 256;
+            constexpr size_t CMSG_BUF_SIZE = 1024;
             char cmsg_buffer[CMSG_BUF_SIZE] = {0};
             uintptr_t remote_cmsg_buffer_ptr = push_memory(pid, regs, &cmsg_buffer, sizeof(cmsg_buffer));
             if (remote_cmsg_buffer_ptr == 0) {
@@ -326,7 +326,10 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                     remote_msg_hdr_after_recv.msg_iovlen
                 );
             } else {
-                LOGW("Failed to read remote msghdr after recvmsg");
+                LOGE("Failed to read remote msghdr after recvmsg");
+                close_remote_fd_func(remote_fd);
+                ptrace(PTRACE_DETACH, pid, 0, 0);
+                return false;
             }
 
             if (read_proc(pid, remote_cmsg_buffer_ptr, &cmsg_buffer, sizeof(cmsg_buffer)) != sizeof(cmsg_buffer)) {
@@ -341,12 +344,17 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             // (kernel can prepend SCM_CREDENTIALS / SCM_SECURITY).
             struct msghdr received_hdr_validation{};
             received_hdr_validation.msg_control = cmsg_buffer; // Use the buffer read from remote
-            received_hdr_validation.msg_controllen = sizeof(cmsg_buffer);
+            // Use the actual controllen returned by recvmsg so CMSG_NXTHDR doesn't read zeroed memory
+            received_hdr_validation.msg_controllen = remote_msg_hdr_after_recv.msg_controllen;
 
             int received_fd = -1;
             for (cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
                  received_cmsg != nullptr;
                  received_cmsg = CMSG_NXTHDR(&received_hdr_validation, received_cmsg)) {
+                if (received_cmsg->cmsg_len == 0) {
+                    LOGW("Received cmsg_len is 0, breaking to prevent infinite loop");
+                    break;
+                }
                 LOGD(
                     "recvmsg cmsg details: len=%zu level=%d type=%d",
                     (size_t) received_cmsg->cmsg_len,
