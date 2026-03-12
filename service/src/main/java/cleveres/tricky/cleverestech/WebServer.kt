@@ -1318,9 +1318,9 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>DRM / Streaming</h3>
-            <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:36px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
+            <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
             <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
-            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="padding:8px 16px; font-size:0.85em; min-height:36px;">Regenerate DRM ID</button></div>
+            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Regenerate DRM ID</button></div>
         </div>
         <div class="panel"><h3>Beta Profile Fetcher</h3><button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button></div>
         <div class="panel">
@@ -2111,13 +2111,19 @@ class WebServer(
         async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
 
         async function applySpoofing(btn) {
-             const inputs = ['inputImei', 'inputImsi', 'inputIccid', 'inputSerial', 'inputWifiMac', 'inputBtMac', 'inputSimIso'];
-             for (const id of inputs) {
+             const inputTypes = {
+                 'inputImei': 'luhn', 'inputImsi': 'imsi', 'inputIccid': 'luhn',
+                 'inputSerial': 'alphanum', 'inputWifiMac': 'mac', 'inputBtMac': 'mac', 'inputSimIso': 'iso'
+             };
+             for (const [id, type] of Object.entries(inputTypes)) {
                  const el = document.getElementById(id);
-                 if (el.value && el.classList.contains('invalid')) {
-                     notify('Invalid ' + id.replace('input', '').toUpperCase(), 'error');
-                     el.focus();
-                     return;
+                 if (el.value) {
+                     validateRealtime(el, type);
+                     if (el.classList.contains('invalid')) {
+                         notify('Invalid ' + id.replace('input', '').toUpperCase(), 'error');
+                         el.focus();
+                         return;
+                     }
                  }
              }
 
