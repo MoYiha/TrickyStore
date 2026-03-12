@@ -252,9 +252,14 @@ object BootLogic {
     private fun getSystemProperty(key: String): String {
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("getprop", key))
-            val output = p.inputStream.bufferedReader().use { it.readText().trim() }
-            // Drain error stream to prevent FD exhaustion
-            p.errorStream.readBytes()
+            val output = try {
+                p.inputStream.bufferedReader().use { it.readText().trim() }
+            } finally {
+                // Drain error stream to prevent FD exhaustion
+                try {
+                    p.errorStream.readBytes()
+                } catch (_: Exception) {}
+            }
             p.waitFor()
             output
         } catch (e: Exception) {
