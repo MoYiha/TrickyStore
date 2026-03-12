@@ -122,7 +122,7 @@ dependencies {
     testImplementation(project(":stub"))
     testImplementation("net.sf.kxml:kxml2:2.3.0")
     testImplementation("org.json:json:20251224")
-    testImplementation("org.mockito:mockito-core:5.22.0")
+    testImplementation("org.mockito:mockito-core:5.23.0")
     testImplementation("org.mockito:mockito-inline:5.2.0")
     testImplementation("net.bytebuddy:byte-buddy:1.18.7")
     testImplementation("net.bytebuddy:byte-buddy-agent:1.18.7")

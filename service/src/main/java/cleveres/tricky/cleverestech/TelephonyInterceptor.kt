@@ -141,17 +141,36 @@ object TelephonyInterceptor : BinderInterceptor() {
         return Skip
     }
 
+    private var cachedPhonePid: Int? = null
+
     private fun findPhoneProcessPid(): Int? {
+        val cachedPid = cachedPhonePid
+        if (cachedPid != null) {
+            kotlin.runCatching {
+                val cmdlineFile = File("/proc/$cachedPid/cmdline")
+                if (cmdlineFile.exists()) {
+                    val cmdline = cmdlineFile.readBytes()
+                    var end = 0
+                    while (end < cmdline.size && cmdline[end] != 0.toByte()) {
+                        end++
+                    }
+                    val argv0 = String(cmdline, 0, end)
+                    if (argv0 == "com.android.phone") {
+                        return cachedPid
+                    }
+                }
+            }
+            cachedPhonePid = null
+        }
+
         val proc = File("/proc")
         if (!proc.exists() || !proc.isDirectory) return null
 
-        val files = proc.listFiles() ?: return null
-        for (f in files) {
-            if (!f.isDirectory) continue
-            val name = f.name
-            if (name.all { it.isDigit() }) {
+        val pids = proc.list() ?: return null
+        for (pidStr in pids) {
+            if (pidStr.all { it.isDigit() }) {
                 kotlin.runCatching {
-                    val cmdlineFile = File(f, "cmdline")
+                    val cmdlineFile = File("/proc/$pidStr/cmdline")
                     if (cmdlineFile.exists()) {
                         val cmdline = cmdlineFile.readBytes()
                         var end = 0
@@ -160,7 +179,9 @@ object TelephonyInterceptor : BinderInterceptor() {
                         }
                         val argv0 = String(cmdline, 0, end)
                         if (argv0 == "com.android.phone") {
-                            return name.toInt()
+                            val pid = pidStr.toInt()
+                            cachedPhonePid = pid
+                            return pid
                         }
                     }
                 }

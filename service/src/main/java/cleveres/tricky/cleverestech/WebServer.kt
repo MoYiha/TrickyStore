@@ -955,14 +955,26 @@ class WebServer(
                              "ATTESTATION_ID_IMSI" to imsi,
                              "ATTESTATION_ID_ICCID" to iccid
                          )
-                         for ((key, value) in replacements) {
-                             val regex = Regex("^$key=.*$", RegexOption.MULTILINE)
-                             content = if (regex.containsMatchIn(content)) {
-                                 content.replace(regex, "$key=$value")
-                             } else {
-                                 content.trimEnd() + "\n$key=$value"
+                         val lines = content.lines().toMutableList()
+                         val foundKeys = mutableSetOf<String>()
+                         for (i in lines.indices) {
+                             val line = lines[i]
+                             val eqIdx = line.indexOf('=')
+                             if (eqIdx != -1) {
+                                 val key = line.substring(0, eqIdx)
+                                 if (replacements.containsKey(key)) {
+                                     lines[i] = "$key=${replacements[key]}"
+                                     foundKeys.add(key)
+                                 }
                              }
                          }
+                         for ((key, value) in replacements) {
+                             if (!foundKeys.contains(key)) {
+                                 lines.add("$key=$value")
+                             }
+                         }
+                         content = lines.joinToString("\n")
+
                          SecureFile.writeText(spoofFile, content)
                      }
                      val target = File(configDir, "target.txt")
