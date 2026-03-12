@@ -135,7 +135,7 @@ object BootLogic {
                 if (!spFile.exists() || spFile.readText().trim() != newPatch) {
                     spFile.writeText(newPatch)
                     Logger.i("Updated security_patch.txt to $newPatch")
-                    // Fix permissions using array-based exec to avoid shell injection
+                    // Set restrictive permissions using array-based exec to avoid shell injection
                     execAndDrain(arrayOf("chmod", "600", spFile.absolutePath))
                 }
             }
