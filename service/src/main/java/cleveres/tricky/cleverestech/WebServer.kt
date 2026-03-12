@@ -332,7 +332,7 @@ class WebServer(
     private fun getCpuUsagePercent(): Double {
         try {
             val selfStat = File("/proc/self/stat").readText().split(" ")
-            val sysStat = File("/proc/stat").readLines()[0].split(Regex("\\s+"))
+            val sysStat = File("/proc/stat").readLines()[0].split(WHITESPACE_REGEX)
 
             val uTime = selfStat[13].toLong()
             val sTime = selfStat[14].toLong()
@@ -364,7 +364,7 @@ class WebServer(
             File("/proc/self/status").useLines { lines ->
                 lines.forEach { line ->
                     if (line.startsWith("VmRSS:")) {
-                        val parts = line.split(Regex("\\s+"))
+                        val parts = line.split(WHITESPACE_REGEX)
                         if (parts.size >= 2) {
                             return parts[1].toLongOrNull() ?: 0L
                         }
