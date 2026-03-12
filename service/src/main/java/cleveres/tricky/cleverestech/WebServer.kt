@@ -112,18 +112,9 @@ class WebServer(
     private val fileLock = Any()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private fun Map<String, *>.firstParam(name: String): String? {
-        val value = this[name] ?: return null
-        return when (value) {
-            is String -> value
-            is List<*> -> value.firstOrNull()?.toString()
-            else -> value.toString()
-        }
-    }
-
     @Suppress("DEPRECATION")
     private fun getParam(session: IHTTPSession, name: String): String? {
-        return session.parameters.firstParam(name) ?: session.parms[name]
+        return session.parms[name]
     }
 
     private fun isRateLimited(ip: String): Boolean {
