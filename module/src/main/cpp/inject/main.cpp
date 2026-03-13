@@ -354,11 +354,13 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             struct msghdr received_hdr_validation{};
             received_hdr_validation.msg_control = cmsg_buffer; // Use the buffer read from remote
             // Use the actual controllen returned by recvmsg so CMSG_NXTHDR doesn't read zeroed memory
-            // Clamp to buffer size to prevent out-of-bounds reads
+            // Reject if controllen exceeds buffer size — indicates memory corruption or kernel bug
             size_t safe_controllen = remote_msg_hdr_after_recv.msg_controllen;
             if (safe_controllen > sizeof(cmsg_buffer)) {
-                LOGW("controllen %zu exceeds buffer size %zu, clamping", safe_controllen, sizeof(cmsg_buffer));
-                safe_controllen = sizeof(cmsg_buffer);
+                LOGE("controllen %zu exceeds buffer size %zu, aborting injection", safe_controllen, sizeof(cmsg_buffer));
+                close_remote_fd_func(remote_fd);
+                ptrace(PTRACE_DETACH, pid, 0, 0);
+                return false;
             }
             received_hdr_validation.msg_controllen = safe_controllen;
 
