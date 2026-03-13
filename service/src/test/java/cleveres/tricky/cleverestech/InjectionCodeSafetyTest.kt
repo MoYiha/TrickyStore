@@ -135,7 +135,24 @@ class InjectionCodeSafetyTest {
     fun testCmsgBufferLargerThanMinimum() {
         assertTrue(
             "cmsg buffer must be larger than CMSG_SPACE(sizeof(int)) to accommodate extra ancillary data on Android 14+ kernels",
-            injectMainContent.contains("CMSG_BUF_SIZE") && injectMainContent.contains("256")
+            injectMainContent.contains("CMSG_BUF_SIZE") && injectMainContent.contains("1024")
+        )
+    }
+
+    @Test
+    fun testMsgCtruncDetection() {
+        assertTrue(
+            "Injection must check for MSG_CTRUNC flag to detect control data truncation and fail fast",
+            injectMainContent.contains("MSG_CTRUNC")
+        )
+    }
+
+    @Test
+    fun testControllenSanityClamped() {
+        assertTrue(
+            "controllen from recvmsg must be clamped to buffer size to prevent out-of-bounds reads",
+            injectMainContent.contains("safe_controllen") &&
+                injectMainContent.contains("sizeof(cmsg_buffer)")
         )
     }
 

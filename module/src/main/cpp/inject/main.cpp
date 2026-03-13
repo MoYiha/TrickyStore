@@ -332,6 +332,15 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
 
+            if (remote_msg_hdr_after_recv.msg_flags & MSG_CTRUNC) {
+                LOGE("recvmsg MSG_CTRUNC: control data was truncated (controllen=%zu, buffer=%zu). "
+                     "Kernel ancillary data exceeded CMSG_BUF_SIZE.",
+                     remote_msg_hdr_after_recv.msg_controllen, sizeof(cmsg_buffer));
+                close_remote_fd_func(remote_fd);
+                ptrace(PTRACE_DETACH, pid, 0, 0);
+                return false;
+            }
+
             if (read_proc(pid, remote_cmsg_buffer_ptr, &cmsg_buffer, sizeof(cmsg_buffer)) != sizeof(cmsg_buffer)) {
                 LOGE("Failed to read cmsg_buffer from remote process");
                 close_remote_fd_func(remote_fd);
@@ -345,7 +354,13 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             struct msghdr received_hdr_validation{};
             received_hdr_validation.msg_control = cmsg_buffer; // Use the buffer read from remote
             // Use the actual controllen returned by recvmsg so CMSG_NXTHDR doesn't read zeroed memory
-            received_hdr_validation.msg_controllen = remote_msg_hdr_after_recv.msg_controllen;
+            // Clamp to buffer size to prevent out-of-bounds reads
+            size_t safe_controllen = remote_msg_hdr_after_recv.msg_controllen;
+            if (safe_controllen > sizeof(cmsg_buffer)) {
+                LOGW("controllen %zu exceeds buffer size %zu, clamping", safe_controllen, sizeof(cmsg_buffer));
+                safe_controllen = sizeof(cmsg_buffer);
+            }
+            received_hdr_validation.msg_controllen = safe_controllen;
 
             int received_fd = -1;
             for (cmsghdr *received_cmsg = CMSG_FIRSTHDR(&received_hdr_validation);
