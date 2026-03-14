@@ -186,7 +186,7 @@ class WebServerHtmlTest {
         // Verify JavaScript Logic
         assertTrue("Missing originalContent variable", html.contains("let originalContent = '';"))
         assertTrue("Missing dirty state check", html.contains("if (currentFile && editor.value !== originalContent)"))
-        assertTrue("Missing confirm dialog", html.contains("if (!confirm('You have unsaved changes. Discard them?'))"))
+        assertTrue("Missing notify alert", html.contains("notify('You have unsaved changes"))
         assertTrue("Missing updateSaveButtonState function", html.contains("function updateSaveButtonState()"))
         assertTrue("Missing visual indicator logic", html.contains("btn.innerText = 'Save *';"))
     }
