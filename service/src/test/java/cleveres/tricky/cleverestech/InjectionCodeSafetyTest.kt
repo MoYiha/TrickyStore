@@ -134,8 +134,8 @@ class InjectionCodeSafetyTest {
     @Test
     fun testCmsgBufferLargerThanMinimum() {
         assertTrue(
-            "cmsg buffer must be larger than CMSG_SPACE(sizeof(int)) to accommodate extra ancillary data on Android 14+ kernels",
-            injectMainContent.contains("CMSG_BUF_SIZE") && injectMainContent.contains("1024")
+            "cmsg buffer must be at least 64 KiB to accommodate extra ancillary data on Android 14+ / KernelSU-Next kernels",
+            injectMainContent.contains("CMSG_BUF_SIZE") && injectMainContent.contains("65536")
         )
     }
 
@@ -152,7 +152,26 @@ class InjectionCodeSafetyTest {
         assertTrue(
             "controllen from recvmsg must be clamped to buffer size to prevent out-of-bounds reads",
             injectMainContent.contains("safe_controllen") &&
-                injectMainContent.contains("sizeof(cmsg_buffer)")
+                injectMainContent.contains("CMSG_BUF_SIZE")
+        )
+    }
+
+    @Test
+    fun testCmsgBufferAllocatedViaMmap() {
+        assertTrue(
+            "cmsg control buffer must be allocated via remote mmap to avoid stack headroom issues",
+            injectMainContent.contains("mmap_addr") &&
+                injectMainContent.contains("MAP_PRIVATE") &&
+                injectMainContent.contains("MAP_ANONYMOUS")
+        )
+    }
+
+    @Test
+    fun testCmsgBufferFreedViaMunmap() {
+        assertTrue(
+            "mmap'd cmsg buffer must be released via munmap on all exit paths",
+            injectMainContent.contains("munmap_remote_cmsg") &&
+                injectMainContent.contains("munmap_addr")
         )
     }
 

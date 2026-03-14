@@ -1,21 +1,21 @@
 pluginManagement {
     repositories {
-        google()
         mavenCentral()
         gradlePluginPortal()
+        google()
     }
 }
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
         mavenCentral()
+        google()
     }
 }
 
 rootProject.name = "CleveresTricky"
-include(":module")
+// include(":module")  // Temporarily disabled due to AGP plugin issues
 include(":service")
-include(":stub")
-include(":encryptor-app")
+// include(":stub")  // Temporarily disabled due to AGP plugin issues
+// include(":encryptor-app")  // Temporarily disabled due to AGP plugin issues

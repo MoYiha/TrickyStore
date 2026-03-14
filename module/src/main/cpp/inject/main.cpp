@@ -144,10 +144,12 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             auto socket_addr = find_func_addr(local_map, map, "libc.so", "socket");
             auto bind_addr = find_func_addr(local_map, map, "libc.so", "bind");
             auto recvmsg_addr = find_func_addr(local_map, map, "libc.so", "recvmsg");
+            auto mmap_addr = find_func_addr(local_map, map, "libc.so", "mmap");
+            auto munmap_addr = find_func_addr(local_map, map, "libc.so", "munmap");
             auto errno_location_addr = find_func_addr(local_map, map, "libc.so", "__errno"); // Corrected name
 
-            if (!socket_addr || !bind_addr || !recvmsg_addr) {
-                LOGE("Failed to find socket/bind/recvmsg address in libc.so");
+            if (!socket_addr || !bind_addr || !recvmsg_addr || !mmap_addr || !munmap_addr) {
+                LOGE("Failed to find socket/bind/recvmsg/mmap/munmap address in libc.so");
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
@@ -219,24 +221,45 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 return false;
             }
 
-            // Use a large control buffer so SCM_RIGHTS is delivered even when
-            // the kernel prepends extra ancillary data (SCM_CREDENTIALS,
-            // SCM_SECURITY) on Android 14+ kernels with SO_PASSCRED/SO_PASSSEC.
-            constexpr size_t CMSG_BUF_SIZE = 1024;
-            char cmsg_buffer[CMSG_BUF_SIZE] = {0};
-            uintptr_t remote_cmsg_buffer_ptr = push_memory(pid, regs, &cmsg_buffer, sizeof(cmsg_buffer));
-            if (remote_cmsg_buffer_ptr == 0) {
-                LOGE("Failed to push cmsg_buffer to remote process");
+            // Allocate the control buffer in the remote process via mmap
+            // instead of pushing 64 KiB onto the remote stack, avoiding stack
+            // headroom issues (see issue #463).  64 KiB accommodates even the
+            // largest observed ancillary payloads on KernelSU-Next / Android 15.
+            constexpr size_t CMSG_BUF_SIZE = 65536;
+            args.clear();
+            args.push_back(0);                                    // addr   = NULL
+            args.push_back(CMSG_BUF_SIZE);                        // length
+            args.push_back(PROT_READ | PROT_WRITE);               // prot
+            args.push_back(MAP_PRIVATE | MAP_ANONYMOUS);          // flags
+            args.push_back(static_cast<uintptr_t>(-1));           // fd     = -1
+            args.push_back(0);                                    // offset
+            uintptr_t remote_cmsg_buffer_ptr = remote_call(pid, regs,
+                (uintptr_t) mmap_addr, 0, args);
+            if (remote_cmsg_buffer_ptr == 0 ||
+                remote_cmsg_buffer_ptr == static_cast<uintptr_t>(-1)) {
+                LOGE("remote mmap for cmsg buffer failed (returned %p)",
+                     (void*) remote_cmsg_buffer_ptr);
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
-            
+            LOGD("remote cmsg buffer mmap'd at %p (%zu bytes)",
+                 (void*) remote_cmsg_buffer_ptr, CMSG_BUF_SIZE);
+
+            // Helper to release the mmap'd buffer on all exit paths.
+            auto munmap_remote_cmsg = [&]() {
+                args.clear();
+                args.push_back(remote_cmsg_buffer_ptr);
+                args.push_back(CMSG_BUF_SIZE);
+                remote_call(pid, regs, (uintptr_t) munmap_addr, 0, args);
+            };
+
             // recvmsg requires at least one iov entry with data for SCM_RIGHTS
             char remote_iov_dummy = 0;
             uintptr_t remote_iov_data_ptr = push_memory(pid, regs, &remote_iov_dummy, sizeof(remote_iov_dummy));
             if (remote_iov_data_ptr == 0) {
                 LOGE("Failed to push iov dummy data to remote process");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -247,6 +270,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             uintptr_t remote_iov_ptr = push_memory(pid, regs, &remote_iov, sizeof(remote_iov));
             if (remote_iov_ptr == 0) {
                 LOGE("Failed to push iovec to remote process");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -256,10 +280,11 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             msg_hdr.msg_iov = (struct iovec*) remote_iov_ptr;
             msg_hdr.msg_iovlen = 1;
             msg_hdr.msg_control = (void*) remote_cmsg_buffer_ptr;
-            msg_hdr.msg_controllen = sizeof(cmsg_buffer);
+            msg_hdr.msg_controllen = CMSG_BUF_SIZE;
             uintptr_t remote_msghdr_ptr = push_memory(pid, regs, &msg_hdr, sizeof(msg_hdr));
             if (remote_msghdr_ptr == 0) {
                 LOGE("Failed to push msghdr to remote process");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -271,6 +296,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             args.push_back(MSG_WAITALL);
             if (!remote_pre_call(pid, regs, (uintptr_t) recvmsg_addr, 0, args)) {
                 LOGE("remote_pre_call for recvmsg failed");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -302,6 +328,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 // Attempt to cancel the remote recvmsg by stopping and detaching
                 // This is tricky; the remote process is already in the syscall.
                 // For now, just close and detach.
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0); // Detach after error
                 return false;
@@ -312,6 +339,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             if (recvmsg_result == (uintptr_t)-1) {
                 errno = get_remote_errno_val();
                 PLOGE("remote_post_call for recvmsg failed");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -327,6 +355,7 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
                 );
             } else {
                 LOGE("Failed to read remote msghdr after recvmsg");
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
@@ -335,33 +364,45 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             if (remote_msg_hdr_after_recv.msg_flags & MSG_CTRUNC) {
                 LOGE("recvmsg MSG_CTRUNC: control data was truncated (controllen=%zu, buffer=%zu). "
                      "Kernel ancillary data exceeded CMSG_BUF_SIZE.",
-                     remote_msg_hdr_after_recv.msg_controllen, sizeof(cmsg_buffer));
+                     remote_msg_hdr_after_recv.msg_controllen, CMSG_BUF_SIZE);
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
 
-            if (read_proc(pid, remote_cmsg_buffer_ptr, &cmsg_buffer, sizeof(cmsg_buffer)) != sizeof(cmsg_buffer)) {
-                LOGE("Failed to read cmsg_buffer from remote process");
+            // Determine how many control bytes the kernel actually wrote.
+            // Reject if controllen exceeds buffer size — indicates memory corruption or kernel bug.
+            size_t safe_controllen = remote_msg_hdr_after_recv.msg_controllen;
+            if (safe_controllen > CMSG_BUF_SIZE) {
+                LOGE("controllen %zu exceeds buffer size %zu, aborting injection", safe_controllen, CMSG_BUF_SIZE);
+                munmap_remote_cmsg();
                 close_remote_fd_func(remote_fd);
                 ptrace(PTRACE_DETACH, pid, 0, 0);
                 return false;
             }
-            
+
+            // Read only the used portion of the control buffer back from the
+            // remote process instead of the full CMSG_BUF_SIZE.
+            std::vector<char> cmsg_buffer(safe_controllen, 0);
+            if (safe_controllen > 0) {
+                if (read_proc(pid, remote_cmsg_buffer_ptr, cmsg_buffer.data(), safe_controllen) != (ssize_t) safe_controllen) {
+                    LOGE("Failed to read cmsg_buffer from remote process");
+                    munmap_remote_cmsg();
+                    close_remote_fd_func(remote_fd);
+                    ptrace(PTRACE_DETACH, pid, 0, 0);
+                    return false;
+                }
+            }
+
+            // The mmap'd buffer is no longer needed; free it now.
+            munmap_remote_cmsg();
+
             // Re-construct msghdr with the local cmsg_buffer to interpret the received FD.
             // Iterate through cmsg entries because SCM_RIGHTS may not be first
             // (kernel can prepend SCM_CREDENTIALS / SCM_SECURITY).
             struct msghdr received_hdr_validation{};
-            received_hdr_validation.msg_control = cmsg_buffer; // Use the buffer read from remote
-            // Use the actual controllen returned by recvmsg so CMSG_NXTHDR doesn't read zeroed memory
-            // Reject if controllen exceeds buffer size — indicates memory corruption or kernel bug
-            size_t safe_controllen = remote_msg_hdr_after_recv.msg_controllen;
-            if (safe_controllen > sizeof(cmsg_buffer)) {
-                LOGE("controllen %zu exceeds buffer size %zu, aborting injection", safe_controllen, sizeof(cmsg_buffer));
-                close_remote_fd_func(remote_fd);
-                ptrace(PTRACE_DETACH, pid, 0, 0);
-                return false;
-            }
+            received_hdr_validation.msg_control = cmsg_buffer.data();
             received_hdr_validation.msg_controllen = safe_controllen;
 
             int received_fd = -1;
