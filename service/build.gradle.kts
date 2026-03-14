@@ -1,10 +1,9 @@
+import android.databinding.tool.ext.capitalizeUS
 import org.jetbrains.kotlin.daemon.common.toHexString
 import java.security.MessageDigest
 
 plugins {
-    // alias(libs.plugins.agp.app)  // Disabled due to AGP plugin resolution issues
-    `java`
-    kotlin("jvm") version "2.3.10"
+    alias(libs.plugins.agp.app)
 }
 
 val moduleId: String by rootProject.extra
@@ -28,107 +27,83 @@ fun calculateChecksum(variantLowered: String): String {
     }
 }
 
-//android {
-//    namespace = "cleveres.tricky.cleverestech"
-//    compileSdk = 36
-//
-//    defaultConfig {
-//        applicationId = "cleveres.tricky.cleverestech"
-//        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-//    }
-//
-//
-//    signingConfigs {
-//        create("release") {
-//            if (project.hasProperty("RELEASE_KEYSTORE")) {
-//                storeFile = file(project.property("RELEASE_KEYSTORE") as String)
-//                storePassword = project.property("RELEASE_KEY_PASSWORD") as String
-//                keyAlias = project.property("RELEASE_KEY_ALIAS") as String
-//                keyPassword = project.property("RELEASE_KEY_PASSWORD") as String
-//            } else if (project.hasProperty("BETA_KEYSTORE")) {
-//                storeFile = file(project.property("BETA_KEYSTORE") as String)
-//                storePassword = project.property("BETA_KEY_PASSWORD") as String
-//                keyAlias = project.property("BETA_KEY_ALIAS") as String
-//                keyPassword = project.property("BETA_KEY_PASSWORD") as String
-//            }
-//        }
-//    }
-//
-//    buildTypes {
-//        release {
-//            isMinifyEnabled = true
-//            isShrinkResources = true
-//            proguardFiles(
-//                getDefaultProguardFile("proguard-android-optimize.txt"),
-//                "proguard-rules.pro"
-//            )
-//            signingConfig = signingConfigs.getByName(if (project.hasProperty("RELEASE_KEYSTORE") || project.hasProperty("BETA_KEYSTORE")) "release" else "debug")
-//        }
-//        forEach {
-//            val checksum = calculateChecksum(it.name)
-//            it.buildConfigField("String", "CHECKSUM", "\"$checksum\"")
-//        }
-//    }
-//
-//    packaging {
-//        resources {
-//            excludes += "META-INF/versions/**"
-//            excludes += "META-INF/DEPENDENCIES"
-//        }
-//    }
-//
-//    lint {
-//        checkReleaseBuilds = false
-//        abortOnError = true
-//    }
-//
-//    buildFeatures {
-//        buildConfig = true
-//    }
-//
-//    testOptions {
-//        unitTests.all {
-//            it.jvmArgs("-XX:+EnableDynamicAgentLoading")
-//            it.testLogging {
-//                events = setOf(
-//                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT,
-//                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR,
-//                    org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED
-//                )
-//                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-//            }
-//        }
-//    }
-//}
+android {
+    namespace = "cleveres.tricky.cleverestech"
+    compileSdk = 36
 
-// Configure source sets for non-Android project
-sourceSets {
-    main {
-        //java.srcDir("src/main/java")
-        //java.srcDir("src/main/kotlin")
-        resources.srcDir("src/main/res")
+    defaultConfig {
+        applicationId = "cleveres.tricky.cleverestech"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    test {
-        // Only compile InjectionCodeSafetyTest and TestProjectFiles
-        java {
-            srcDir("src/test/java")
-            include("**/InjectionCodeSafetyTest.kt", "**/TestProjectFiles.kt")
+
+
+    signingConfigs {
+        create("release") {
+            if (project.hasProperty("RELEASE_KEYSTORE")) {
+                storeFile = file(project.property("RELEASE_KEYSTORE") as String)
+                storePassword = project.property("RELEASE_KEY_PASSWORD") as String
+                keyAlias = project.property("RELEASE_KEY_ALIAS") as String
+                keyPassword = project.property("RELEASE_KEY_PASSWORD") as String
+            } else if (project.hasProperty("BETA_KEYSTORE")) {
+                storeFile = file(project.property("BETA_KEYSTORE") as String)
+                storePassword = project.property("BETA_KEY_PASSWORD") as String
+                keyAlias = project.property("BETA_KEY_ALIAS") as String
+                keyPassword = project.property("BETA_KEY_PASSWORD") as String
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName(if (project.hasProperty("RELEASE_KEYSTORE") || project.hasProperty("BETA_KEYSTORE")) "release" else "debug")
+        }
+        forEach {
+            val checksum = calculateChecksum(it.name)
+            it.buildConfigField("String", "CHECKSUM", "\"$checksum\"")
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += "META-INF/versions/**"
+            excludes += "META-INF/DEPENDENCIES"
+        }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = true
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    testOptions {
+        unitTests.all {
+            it.jvmArgs("-XX:+EnableDynamicAgentLoading")
+            it.testLogging {
+                events = setOf(
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_OUT,
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.STANDARD_ERROR,
+                    org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED
+                )
+                exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+            }
         }
     }
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
-
-tasks.named<JavaCompile>("compileJava") {
-    enabled = false
-}
-
-tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileKotlin") {
-    enabled = false
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("17"))
+    }
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
@@ -139,52 +114,55 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 }
 
 dependencies {
-    //compileOnly(project(":stub"))
-    //implementation(libs.annotation)
-    //implementation(libs.bcpkix.jdk18on)
-    //implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    compileOnly(project(":stub"))
+    implementation(libs.annotation)
+    implementation(libs.bcpkix.jdk18on)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation(libs.junit)
-    //testImplementation(project(":stub"))
+    testImplementation(project(":stub"))
     testImplementation("net.sf.kxml:kxml2:2.3.0")
     testImplementation("org.json:json:20251224")
     testImplementation("org.mockito:mockito-core:5.23.0")
     testImplementation("org.mockito:mockito-inline:5.2.0")
     testImplementation("net.bytebuddy:byte-buddy:1.18.7")
     testImplementation("net.bytebuddy:byte-buddy-agent:1.18.7")
-    implementation("org.json:json:20251224")
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    implementation(libs.nanohttpd)
 }
 
-//afterEvaluate {
-//    android.buildTypes.forEach { buildType ->
-//        val variantLowered = buildType.name.lowercase()
-//        val variantCapped = buildType.name.capitalizeUS()
-//        val pushTask = tasks.register<Task>("pushService$variantCapped") {
-//            group = "Service"
-//            dependsOn("assemble$variantCapped")
-//            doLast {
-//                ProcessBuilder(
-//                    "adb",
-//                    "push",
-//                    layout.buildDirectory.file("outputs/apk/$variantLowered/service-$variantLowered.apk")
-//                        .get().asFile.absolutePath,
-//                    "/data/local/tmp/service.apk"
-//                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
-//                ProcessBuilder(
-//                    "adb",
-//                    "shell",
-//                    "su",
-//                    "-c",
-//                    "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
-//                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
-//            }
-//        }
-//
-//        tasks.register<Task>("pushAndRestartService$variantCapped") {
-//            group = "Service"
-//            dependsOn(pushTask)
-//            doLast {
-//                ProcessBuilder("adb", "shell", "su", "-c", "setprop ctl.restart keystore2").inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
-//            }
-//        }
-//    }
-//}
+afterEvaluate {
+    android.buildTypes.forEach { buildType ->
+        val variantLowered = buildType.name.lowercase()
+        val variantCapped = buildType.name.capitalizeUS()
+        val pushTask = tasks.register<Task>("pushService$variantCapped") {
+            group = "Service"
+            dependsOn("assemble$variantCapped")
+            doLast {
+                ProcessBuilder(
+                    "adb",
+                    "push",
+                    layout.buildDirectory.file("outputs/apk/$variantLowered/service-$variantLowered.apk")
+                        .get().asFile.absolutePath,
+                    "/data/local/tmp/service.apk"
+                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
+                ProcessBuilder(
+                    "adb",
+                    "shell",
+                    "su",
+                    "-c",
+                    "rm /data/adb/modules/cleverestricky/service.apk; mv /data/local/tmp/service.apk /data/adb/modules/cleverestricky/"
+                ).inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
+            }
+        }
+
+        tasks.register<Task>("pushAndRestartService$variantCapped") {
+            group = "Service"
+            dependsOn(pushTask)
+            doLast {
+                ProcessBuilder("adb", "shell", "su", "-c", "setprop ctl.restart keystore2").inheritIO().start().waitFor().let { if (it != 0) throw GradleException("Command failed with exit code $it") }
+            }
+        }
+    }
+}

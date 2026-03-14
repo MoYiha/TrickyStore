@@ -1,11 +1,13 @@
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.LibraryExtension
 import org.gradle.api.GradleException
 import java.io.ByteArrayOutputStream
 
-//plugins {
-//    alias(libs.plugins.agp.app) apply false
-//    alias(libs.plugins.jetbrains.kotlin.android) apply false
-//    alias(libs.plugins.android.library) apply false
-//}
+plugins {
+    alias(libs.plugins.agp.app) apply false
+    alias(libs.plugins.jetbrains.kotlin.android) apply false
+    alias(libs.plugins.android.library) apply false
+}
 
 fun String.execute(currentWorkingDir: File = file("./")): String {
     val byteOut = ByteArrayOutputStream()
@@ -47,20 +49,48 @@ tasks.register("Delete", Delete::class) {
 }
 
 fun Project.configureBaseExtension() {
-    // Disabled due to AGP plugin resolution issues
-    // extensions.findByType(ApplicationExtension::class)?.run {
-    //     ...
-    // }
-    // extensions.findByType(LibraryExtension::class)?.run {
-    //     ...
-    // }
+    extensions.findByType(ApplicationExtension::class)?.run {
+        namespace = "cleveres.tricky.cleverestech"
+        compileSdk = androidCompileSdkVersion
+        ndkVersion = androidCompileNdkVersion
+        buildToolsVersion = androidBuildToolsVersion
+
+        defaultConfig {
+            minSdk = androidMinSdkVersion
+            targetSdk = androidCompileSdkVersion
+            versionCode = verCode
+            versionName = verName
+        }
+
+        compileOptions {
+            sourceCompatibility = androidSourceCompatibility
+            targetCompatibility = androidTargetCompatibility
+        }
+    }
+
+    extensions.findByType(LibraryExtension::class)?.run {
+        namespace = "cleveres.tricky.cleverestech"
+        compileSdk = androidCompileSdkVersion
+        ndkVersion = androidCompileNdkVersion
+        buildToolsVersion = androidBuildToolsVersion
+
+        defaultConfig {
+            minSdk = androidMinSdkVersion
+        }
+
+        lint {
+            checkReleaseBuilds = false
+            abortOnError = true
+        }
+
+        compileOptions {
+            sourceCompatibility = androidSourceCompatibility
+            targetCompatibility = androidTargetCompatibility
+        }
+    }
 }
 
-
 subprojects {
-    // Configuration disabled due to AGP plugin resolution issues
-    // Will be re-enabled once AGP plugins are properly resolved
-    /*
     plugins.withId("com.android.application") {
         configureBaseExtension()
     }
@@ -83,5 +113,4 @@ subprojects {
     tasks.withType<JavaCompile>().configureEach {
         options.compilerArgs.addAll(listOf("-Werror", "-Xlint:all", "-Xlint:-options", "-Xlint:-path", "-Xlint:-rawtypes", "-Xlint:-unchecked", "-Xlint:-this-escape"))
     }
-    */
 }
