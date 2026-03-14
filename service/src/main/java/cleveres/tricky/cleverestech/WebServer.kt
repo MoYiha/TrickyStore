@@ -1380,8 +1380,8 @@ class WebServer(
     <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
         <div class="panel">
             <h3>New Rule</h3>
-            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="pkgList"></datalist></div>
-            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" onkeydown="if(event.key==='Enter') addAppRule()"><datalist id="keyboxList"></datalist></div></div>
+            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><datalist id="pkgList"></datalist></div>
+            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><datalist id="keyboxList"></datalist></div></div>
             <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div><div class="row"><input type="checkbox" id="permMicrophone" class="toggle"><label for="permMicrophone">Microphone</label></div></div>
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
@@ -1429,8 +1429,8 @@ class WebServer(
                 </div>
                 <div>
                     <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
-                    <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em; margin-bottom:10px;" aria-label="Keybox XML Content"></textarea>
-                    <input type="text" id="kbFilenameInput" placeholder="keybox.xml" style="margin-bottom:10px;">
+                    <textarea id="kbContent" placeholder="Paste Keybox XML Content Here" style="height:100px; font-family:monospace; font-size:0.8em; margin-bottom:10px;" aria-label="Keybox XML Content" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+                    <input type="text" id="kbFilenameInput" placeholder="keybox.xml" style="margin-bottom:10px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
                     <button id="saveKeyboxBtn" class="primary" style="width:100%;" onclick="runWithState(this, 'Saving...', savePastedKeybox)">Save Pasted XML</button>
                 </div>
             </div>
@@ -1501,7 +1501,7 @@ class WebServer(
     <div id="editor" class="content" role="tabpanel" aria-labelledby="tab_editor">
         <div class="panel">
             <div class="row"><select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit"><option value="target.txt">target.txt</option><option value="security_patch.txt">security_patch.txt</option><option value="spoof_build_vars">spoof_build_vars</option><option value="app_config">app_config</option><option value="drm_fix">drm_fix</option></select><button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button></div>
-            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" oninput="updateSaveButtonState()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}"></textarea>
+            <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" oninput="updateSaveButtonState()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
         </div>
     </div>
 
@@ -1536,6 +1536,8 @@ class WebServer(
 
     <script>
         const baseUrl = '/api';
+        let editorUnsavedBypass = false;
+
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
         function getAuthUrl(path) { return path; }
@@ -2432,11 +2434,14 @@ class WebServer(
             const f = document.getElementById('fileSelector').value;
             const editor = document.getElementById('fileEditor');
             if (currentFile && editor.value !== originalContent) {
-                if (!confirm('You have unsaved changes. Discard them?')) {
+                if (!editorUnsavedBypass) {
+                    notify('You have unsaved changes. Select file again to discard.', 'error');
+                    editorUnsavedBypass = true;
                     document.getElementById('fileSelector').value = currentFile;
                     return;
                 }
             }
+            editorUnsavedBypass = false;
             currentFile = f;
             console.log('[CleveresTricky] loadFile: loading', f);
             try {
@@ -2462,6 +2467,7 @@ class WebServer(
                  if (res.ok) {
                      notify('File Saved');
                      originalContent = content;
+                     editorUnsavedBypass = false;
                      updateSaveButtonState();
                  } else { notify('Save Failed: ' + txt, 'error'); }
              } finally { btn.disabled = false; updateSaveButtonState(); }
@@ -2471,6 +2477,7 @@ class WebServer(
             const btn = document.getElementById('saveBtn');
             if (currentFile && editor.value !== originalContent) {
                 btn.innerText = 'Save *';
+                editorUnsavedBypass = false;
             } else {
                 btn.innerText = 'Save';
             }
