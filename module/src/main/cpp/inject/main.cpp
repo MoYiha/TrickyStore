@@ -372,8 +372,8 @@ bool inject_library(int pid, const char *lib_path, const char* entry_name) {
             }
 
             // Determine how many control bytes the kernel actually wrote.
-            // Reject if controllen exceeds buffer size — indicates memory corruption or kernel bug.
             size_t safe_controllen = remote_msg_hdr_after_recv.msg_controllen;
+            // Reject if controllen exceeds buffer size — indicates memory corruption or kernel bug.
             if (safe_controllen > CMSG_BUF_SIZE) {
                 LOGE("controllen %zu exceeds buffer size %zu, aborting injection", safe_controllen, CMSG_BUF_SIZE);
                 munmap_remote_cmsg();
