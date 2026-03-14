@@ -21,6 +21,9 @@ pub fn kick_already_blocked_ioctls() {
     // Candidate signals to try. We use a slice to iterate easily.
     let signals = [libc::SIGWINCH, libc::SIGURG];
 
+    let mut status_path = String::with_capacity(64);
+    let mut content = String::with_capacity(512);
+
     for &sig in &signals {
         if target_threads.is_empty() {
             break;
@@ -61,7 +64,8 @@ pub fn kick_already_blocked_ioctls() {
             // Check if signal is blocked by the thread.
             // Signals are 1-indexed. Bit 0 corresponds to signal 1.
             // So mask bit (sig - 1) corresponds to signal `sig`.
-            let blocked_mask = get_thread_blocked_signals(pid, tid).unwrap_or(0);
+            let blocked_mask =
+                get_thread_blocked_signals(pid, tid, &mut status_path, &mut content).unwrap_or(0);
             let is_blocked = (blocked_mask & (1u64 << (sig - 1))) != 0;
 
             if !is_blocked {
@@ -156,16 +160,20 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
 
 /// Read the `SigBlk` mask from `/proc/{pid}/task/{tid}/status`.
 /// Returns the mask as a u64, or None if reading/parsing fails.
-fn get_thread_blocked_signals(pid: libc::pid_t, tid: libc::pid_t) -> Option<u64> {
+fn get_thread_blocked_signals(
+    pid: libc::pid_t,
+    tid: libc::pid_t,
+    status_path: &mut String,
+    content: &mut String,
+) -> Option<u64> {
     use std::fmt::Write;
-    // We avoid allocating a string format for every status read by using a thread-local static buffer if possible, or just doing it inline but minimizing overhead.
-    // Given this isn't a tight loop, format is okay, but `String::with_capacity` is slightly better.
-    let mut status_path = String::with_capacity(64);
+    status_path.clear();
     let _ = write!(status_path, "/proc/{}/task/{}/status", pid, tid);
-    let mut content = String::with_capacity(512);
-    if let Ok(mut file) = fs::File::open(&status_path) {
+
+    content.clear();
+    if let Ok(mut file) = fs::File::open(status_path.as_str()) {
         use std::io::Read;
-        let _ = file.read_to_string(&mut content);
+        let _ = file.read_to_string(content);
     }
 
     for line in content.lines() {
