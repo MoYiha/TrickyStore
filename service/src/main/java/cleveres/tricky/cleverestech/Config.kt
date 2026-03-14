@@ -326,6 +326,9 @@ object Config {
     @Volatile
     private var attestationIds: Map<String, ByteArray> = emptyMap()
 
+    // Cache string to ByteArray conversions to prevent massive allocations during attestation requests
+    private val stringToBytesCache = ConcurrentHashMap<String, ByteArray>()
+
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
 
     fun getAttestationId(tag: String, uid: Int): ByteArray? {
@@ -336,8 +339,8 @@ object Config {
         // 2. Smart Fallback (Build Var via Template or Global)
         // This leverages getBuildVar which handles "Smart Property Mapping" for templates
         // and falls back to global build vars.
-        val value = getBuildVar(tag, uid)
-        return value?.toByteArray(Charsets.UTF_8)
+        val value = getBuildVar(tag, uid) ?: return null
+        return stringToBytesCache.getOrPut(value) { value.toByteArray(Charsets.UTF_8) }
     }
 
     @Volatile
@@ -1163,6 +1166,7 @@ object Config {
         targetState = TargetState(PackageTrie(), PackageTrie())
         buildVars = emptyMap()
         attestationIds = emptyMap()
+        stringToBytesCache.clear()
         templates = emptyMap()
         templateKeyCache.clear()
         moduleHash = null
