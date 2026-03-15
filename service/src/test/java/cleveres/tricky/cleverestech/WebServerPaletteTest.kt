@@ -83,9 +83,9 @@ class WebServerPaletteTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // 1. Verify removeAppRule has confirmation
-        assertTrue("removeAppRule should contain confirm dialog",
-            html.contains("if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?'))")
+        // 1. Verify removeAppRule has confirmation via requireConfirm
+        assertTrue("removeAppRule should trigger requireConfirm dialog",
+            html.contains("requireConfirm(this, () => removeAppRule(\${idx}), 'Confirm Remove')")
         )
 
         // 2. Verify saveAppConfig checks response status

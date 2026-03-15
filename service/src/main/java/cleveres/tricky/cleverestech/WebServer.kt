@@ -1223,6 +1223,7 @@ class WebServer(
         input.valid { border-color: var(--success); }
         input.invalid { border-color: var(--danger); }
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
+        button.confirm-active { background: var(--danger) !important; color: #fff !important; font-weight: bold; border-color: var(--danger) !important; }
         .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
         @media screen and (max-width: 600px) {
             .grid-2 { grid-template-columns: 1fr; }
@@ -1271,12 +1272,13 @@ class WebServer(
         <div class="panel">
             <h3>Quick Profile</h3>
             <div class="row">
-                <select id="profileSelect" onchange="applyProfile(this.value)" style="width: 100%;">
+                <select id="profileSelect" style="flex: 1; margin-right: 10px; min-height: 44px; padding: 12px 14px; background: var(--input-bg); border: 1px solid var(--border); color: #fff; border-radius: 6px;">
                     <option value="">Select a Profile...</option>
                     <option value="GodProfile">God Mode (Max Spoofing)</option>
                     <option value="DailyUse">Daily Use (Standard Spoofing)</option>
                     <option value="Minimal">Minimal (Clean state)</option>
                 </select>
+                <button onclick="requireConfirm(this, () => applyProfile(document.getElementById('profileSelect').value), 'Confirm Apply')" style="min-height: 44px;">Apply</button>
             </div>
             <div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
         </div>
@@ -1302,7 +1304,7 @@ class WebServer(
                 <div class="row"><span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span><button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button></div>
             </div>
         </div>
-        <div class="panel"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Encryption Password (optional - leave blank for unencrypted export)</label><input type="password" id="backupPw" placeholder="Leave blank to skip encryption"></div><div class="grid-2"><button onclick="backupConfig()">Export Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip,.ctsb"></div><div style="margin-top:10px;"><button onclick="runWithState(this, 'Resetting...', resetEnvironment)" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
+        <div class="panel"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Encryption Password (optional - leave blank for unencrypted export)</label><input type="password" id="backupPw" placeholder="Leave blank to skip encryption"></div><div class="grid-2"><button onclick="backupConfig()">Export Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip,.ctsb"></div><div style="margin-top:10px;"><button onclick="requireConfirm(this, () => resetEnvironment(), 'Confirm Reset')" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
         <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a></div>
     </div>
 
@@ -1323,7 +1325,7 @@ class WebServer(
             <h3>DRM / Streaming</h3>
             <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
             <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
-            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="runWithState(this, 'Regenerating...', resetDrmId)" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Regenerate DRM ID</button></div>
+            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="requireConfirm(this, () => resetDrmId(), 'Confirm Regen')" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Regenerate DRM ID</button></div>
         </div>
         <div class="panel"><h3>Beta Profile Fetcher</h3><button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button></div>
         <div class="panel">
@@ -1537,6 +1539,46 @@ class WebServer(
     <script>
         const baseUrl = '/api';
         let editorUnsavedBypass = false;
+
+        function requireConfirm(btn, action, confirmText = 'Click again to confirm') {
+            if (btn.dataset.confirming === "true") {
+                btn.dataset.confirming = "false";
+                btn.innerText = btn.dataset.origText;
+                btn.classList.remove('confirm-active');
+                action();
+            } else {
+                btn.dataset.origText = btn.innerText;
+                btn.dataset.confirming = "true";
+                btn.innerText = confirmText;
+                btn.classList.add('confirm-active');
+
+                const timeoutId = setTimeout(() => resetConfirm(btn), 3000);
+                btn.dataset.confirmTimeout = timeoutId;
+
+                const abortHandler = (e) => {
+                    if (e.target !== btn) {
+                        resetConfirm(btn);
+                        document.removeEventListener('click', abortHandler);
+                        document.removeEventListener('input', abortHandler);
+                    }
+                };
+                setTimeout(() => {
+                    if (btn.dataset.confirming === "true") {
+                        document.addEventListener('click', abortHandler);
+                        document.addEventListener('input', abortHandler);
+                    }
+                }, 50);
+            }
+        }
+
+        function resetConfirm(btn) {
+            if (btn.dataset.confirming === "true") {
+                btn.dataset.confirming = "false";
+                btn.innerText = btn.dataset.origText;
+                btn.classList.remove('confirm-active');
+                if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
+            }
+        }
 
         const urlParams = new URLSearchParams(window.location.search);
         const token = urlParams.get('token');
@@ -1794,7 +1836,6 @@ class WebServer(
         }
 
         async function deleteServer(id) {
-            if(!confirm('Delete server?')) return;
             try {
                 const formData = new FormData();
                 formData.append('id', id);
@@ -1977,7 +2018,7 @@ class WebServer(
             loadFile();
         }
         async function resetDrmId() {
-            if (!confirm('This will delete downloaded DRM licenses and reset the device ID for streaming apps. Continue?')) return;
+            notify('Regenerating...', 'working');
             try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM ID Reset'); } catch(e) { notify('Failed', 'error'); }
         }
         async function fetchBeta() {
@@ -2238,7 +2279,7 @@ class WebServer(
                 matchCount++;
                 const tr = document.createElement('tr');
                 const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button class="danger" onclick="removeAppRule(${'$'}{idx})" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button class="danger" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
 
@@ -2269,7 +2310,7 @@ class WebServer(
             toggleAddButton(); pkgInput.focus(); notify('Rule Added');
         }
         function removeAppRule(idx) {
-            if (confirm('Are you sure you want to remove this rule for ' + appRules[idx].package + '?')) { appRules.splice(idx, 1); renderAppTable(); }
+            appRules.splice(idx, 1); renderAppTable();
         }
         async function saveAppConfig() {
             const res = await fetchAuth(getAuthUrl('/api/app_config_structured'), { method: 'POST', body: new URLSearchParams({ data: JSON.stringify(appRules) }) });
@@ -2322,7 +2363,7 @@ class WebServer(
             await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000);
         }
         async function resetEnvironment() {
-            if (!confirm('This will generate new random IMEI, Serial, MAC addresses and reload the configuration. Continue?')) return;
+            notify('Resetting...', 'working');
             try {
                 const res = await fetchAuth('/api/reset_environment', { method: 'POST' });
                 if (res.ok) {
