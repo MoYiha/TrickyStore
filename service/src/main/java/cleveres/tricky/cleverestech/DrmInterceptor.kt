@@ -179,17 +179,38 @@ object DrmInterceptor : BinderInterceptor() {
         return File(Config.getConfigRoot(), "random_drm_on_boot").exists()
     }
 
+    private var cachedDrmPid: Int? = null
+
     private fun findDrmServicePid(): Int? {
+        val cachedPid = cachedDrmPid
+        if (cachedPid != null) {
+            kotlin.runCatching {
+                val cmdlineFile = File("/proc/$cachedPid/cmdline")
+                if (cmdlineFile.exists()) {
+                    val cmdline = cmdlineFile.readBytes()
+                    var end = 0
+                    while (end < cmdline.size && cmdline[end] != 0.toByte()) {
+                        end++
+                    }
+                    val argv0 = String(cmdline, 0, end)
+                    for (target in DRM_PROCESS_NAMES) {
+                        if (argv0 == target || argv0.endsWith("/$target")) {
+                            return cachedPid
+                        }
+                    }
+                }
+            }
+            cachedDrmPid = null
+        }
+
         val proc = File("/proc")
         if (!proc.exists() || !proc.isDirectory) return null
 
-        val files = proc.listFiles() ?: return null
-        for (f in files) {
-            if (!f.isDirectory) continue
-            val name = f.name
-            if (name.all { it.isDigit() }) {
+        val pids = proc.list() ?: return null
+        for (pidStr in pids) {
+            if (pidStr.all { it.isDigit() }) {
                 kotlin.runCatching {
-                    val cmdlineFile = File(f, "cmdline")
+                    val cmdlineFile = File("/proc/$pidStr/cmdline")
                     if (cmdlineFile.exists()) {
                         val cmdline = cmdlineFile.readBytes()
                         var end = 0
@@ -199,8 +220,10 @@ object DrmInterceptor : BinderInterceptor() {
                         val argv0 = String(cmdline, 0, end)
                         for (target in DRM_PROCESS_NAMES) {
                             if (argv0 == target || argv0.endsWith("/$target")) {
-                                Logger.d("DRM: Found DRM process '$argv0' at PID $name")
-                                return name.toInt()
+                                val pid = pidStr.toInt()
+                                cachedDrmPid = pid
+                                Logger.d("DRM: Found DRM process '$argv0' at PID $pid")
+                                return pid
                             }
                         }
                     }
