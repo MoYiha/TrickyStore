@@ -184,15 +184,22 @@ object DrmInterceptor : BinderInterceptor() {
     private fun findDrmServicePid(): Int? {
         val cachedPid = cachedDrmPid
         if (cachedPid != null) {
+            val buf = ByteArray(1024)
             kotlin.runCatching {
                 val cmdlineFile = File("/proc/$cachedPid/cmdline")
                 if (cmdlineFile.exists()) {
-                    val cmdline = cmdlineFile.readBytes()
+                    val stream = java.io.FileInputStream(cmdlineFile)
+                    val length = try {
+                        stream.read(buf)
+                    } finally {
+                        stream.close()
+                    }
+                    if (length <= 0) return@runCatching
                     var end = 0
-                    while (end < cmdline.size && cmdline[end] != 0.toByte()) {
+                    while (end < length && buf[end] != 0.toByte()) {
                         end++
                     }
-                    val argv0 = String(cmdline, 0, end)
+                    val argv0 = String(buf, 0, end)
                     for (target in DRM_PROCESS_NAMES) {
                         if (argv0 == target || argv0.endsWith("/$target")) {
                             return cachedPid
@@ -207,17 +214,24 @@ object DrmInterceptor : BinderInterceptor() {
         if (!proc.exists() || !proc.isDirectory) return null
 
         val pids = proc.list() ?: return null
+        val buf = ByteArray(1024)
         for (pidStr in pids) {
             if (pidStr.all { it.isDigit() }) {
                 kotlin.runCatching {
                     val cmdlineFile = File("/proc/$pidStr/cmdline")
                     if (cmdlineFile.exists()) {
-                        val cmdline = cmdlineFile.readBytes()
+                        val stream = java.io.FileInputStream(cmdlineFile)
+                        val length = try {
+                            stream.read(buf)
+                        } finally {
+                            stream.close()
+                        }
+                        if (length <= 0) return@runCatching
                         var end = 0
-                        while (end < cmdline.size && cmdline[end] != 0.toByte()) {
+                        while (end < length && buf[end] != 0.toByte()) {
                             end++
                         }
-                        val argv0 = String(cmdline, 0, end)
+                        val argv0 = String(buf, 0, end)
                         for (target in DRM_PROCESS_NAMES) {
                             if (argv0 == target || argv0.endsWith("/$target")) {
                                 val pid = pidStr.toInt()
