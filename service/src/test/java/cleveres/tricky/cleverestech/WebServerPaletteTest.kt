@@ -88,6 +88,11 @@ class WebServerPaletteTest {
             html.contains("requireConfirm(this, () => removeAppRule(\${idx}), 'Confirm Remove')")
         )
 
+        // 1.5. Verify deleteKeybox has confirmation via requireConfirm
+        assertTrue("deleteKeybox should trigger requireConfirm dialog",
+            html.contains("requireConfirm(this, () => deleteKeybox('\${k}'), 'Confirm Delete')")
+        )
+
         // 2. Verify saveAppConfig checks response status
         assertTrue("saveAppConfig should check res.ok",
             html.contains("if (res.ok) {") && html.contains("notify('App Config Saved');") && html.contains("notify('Save Failed: ' + txt, 'error');")

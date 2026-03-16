@@ -1278,7 +1278,7 @@ class WebServer(
                     <option value="DailyUse">Daily Use (Standard Spoofing)</option>
                     <option value="Minimal">Minimal (Clean state)</option>
                 </select>
-                <button onclick="requireConfirm(this, () => applyProfile(document.getElementById('profileSelect').value), 'Confirm Apply')" style="min-height: 44px;">Apply</button>
+                <button onclick="requireConfirm(this, () => applyProfile(document.getElementById('profileSelect').value), 'Confirm Apply', async () => { const res = await fetchAuth(getAuthUrl('/api/config')); const data = await res.json(); determineActiveProfile(data); })" style="min-height: 44px;">Apply</button>
             </div>
             <div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
         </div>
@@ -1540,17 +1540,20 @@ class WebServer(
         const baseUrl = '/api';
         let editorUnsavedBypass = false;
 
-        function requireConfirm(btn, action, confirmText = 'Click again to confirm') {
+        function requireConfirm(btn, action, confirmText = 'Click again to confirm', onCancel = null) {
             if (btn.dataset.confirming === "true") {
                 btn.dataset.confirming = "false";
                 btn.innerText = btn.dataset.origText;
                 btn.classList.remove('confirm-active');
+                // Execute and clear cancel function
+                if (btn._onCancel) delete btn._onCancel;
                 action();
             } else {
                 btn.dataset.origText = btn.innerText;
                 btn.dataset.confirming = "true";
                 btn.innerText = confirmText;
                 btn.classList.add('confirm-active');
+                if (onCancel) btn._onCancel = onCancel;
 
                 const timeoutId = setTimeout(() => resetConfirm(btn), 3000);
                 btn.dataset.confirmTimeout = timeoutId;
@@ -1577,6 +1580,10 @@ class WebServer(
                 btn.innerText = btn.dataset.origText;
                 btn.classList.remove('confirm-active');
                 if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
+                if (btn._onCancel) {
+                    btn._onCancel();
+                    delete btn._onCancel;
+                }
             }
         }
 
@@ -2126,7 +2133,7 @@ class WebServer(
                     list.innerHTML = '';
                     keys.forEach(k => {
                         const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                        div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="deleteKeybox('${'$'}{k}')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
+                        div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
                         list.appendChild(div);
                     });
                     const dl = document.getElementById('keyboxList');
@@ -2136,7 +2143,6 @@ class WebServer(
         }
 
         async function deleteKeybox(filename) {
-            if (!confirm(`Are you sure you want to delete ${'$'}{filename}?`)) return;
             notify('Deleting...', 'working');
             try {
                 const formData = new URLSearchParams();
@@ -2324,13 +2330,6 @@ class WebServer(
 
         async function applyProfile(profileName) {
             if (!profileName) return;
-            if (!confirm(`Apply the ${"$"}{profileName} profile? This will change your current settings.`)) {
-                // Reset select if cancelled
-                const res = await fetchAuth(getAuthUrl('/api/config'));
-                const data = await res.json();
-                determineActiveProfile(data);
-                return;
-            }
             try {
                 const formData = new URLSearchParams();
                 formData.append('profile', profileName);
