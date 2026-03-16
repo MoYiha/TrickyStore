@@ -34,3 +34,4 @@ encryptor-app/build/
 module/build/
 service/build/
 stub/build/
+node_modules/
