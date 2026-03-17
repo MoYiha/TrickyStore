@@ -1819,7 +1819,7 @@ class WebServer(
                 div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
                 <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
                 <button style="padding:4px 8px; margin-left:10px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
-                <button class="danger" style="padding:4px 8px; margin-left:5px;" onclick="deleteServer('${'$'}{s.id}')">Remove</button></div>`;
+                <button class="danger" style="padding:4px 8px; margin-left:5px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
                 list.appendChild(div);
             });
         }
