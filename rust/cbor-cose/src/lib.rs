@@ -17,6 +17,7 @@ pub mod bcc;
 pub mod cbor;
 pub mod cose;
 pub mod ffi;
+pub mod binder_parser;
 pub mod fingerprint;
 pub mod properties;
 pub mod utils;

@@ -556,6 +556,43 @@ bool BinderStreamParser::parse(uintptr_t buffer, size_t consumed,
     return false;
   }
 
+  // Prefer the memory-safe Rust parser; fall back to C++ state machine if it
+  // reports failure.
+  RustOffsetCacheView rust_cache{
+      cache.target_ptr_offset,     cache.cookie_offset,
+      cache.code_offset,           cache.flags_offset,
+      cache.sender_pid_offset,     cache.sender_euid_offset,
+      cache.data_size_offset,      cache.data_ptr_offset,
+      cache.transaction_data_size, cache.transaction_data_secctx_size,
+      true};
+
+  std::vector<RustParsedTransaction> rust_txns(max_txns);
+  size_t rust_count = 0;
+  if (rust_parse_binder_stream(reinterpret_cast<const uint8_t *>(buffer),
+                               consumed, buffer_size, &rust_cache,
+                               rust_txns.data(), max_txns, &rust_count)) {
+    for (size_t i = 0; i < rust_count && i < max_txns; ++i) {
+      const auto &rt = rust_txns[i];
+      ParsedTransaction &txn = out_txns[i];
+      txn.target_ptr = rt.target_ptr;
+      txn.cookie = rt.cookie;
+      txn.code = rt.code;
+      txn.flags = rt.flags;
+      txn.sender_pid = rt.sender_pid;
+      txn.sender_euid = rt.sender_euid;
+      txn.data_size = rt.data_size;
+      txn.data_buffer = rt.data_buffer;
+      txn.cmd = rt.cmd;
+      txn.raw_ptr = rt.raw_ptr;
+      txn.raw_size = rt.raw_size;
+      txn.valid = rt.valid;
+    }
+    out_txn_count = rust_count;
+    if (out_txn_count > 0) {
+      return true;
+    }
+  }
+
   // Parser state machine
   ParserState state = ParserState::PARSE_CMD;
   size_t pos = 0;
