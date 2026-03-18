@@ -25,7 +25,7 @@ use crate::cose;
 /// 3. `len` * `size_of::<T>()` does not overflow `isize::MAX`.
 ///
 /// Returns `None` if validation fails, or `Some(slice)` if successful.
-unsafe fn validate_slice_args<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+pub(crate) unsafe fn validate_slice_args<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
     if len == 0 {
         return Some(&[]);
     }

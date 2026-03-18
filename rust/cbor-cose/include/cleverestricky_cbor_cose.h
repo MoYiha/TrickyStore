@@ -29,6 +29,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -197,6 +198,44 @@ RustBuffer rust_prop_get(const uint8_t *name_ptr, size_t name_len);
  * Set a spoofed property in the thread-safe Rust cache.
  */
 void rust_prop_set(const uint8_t *name_ptr, size_t name_len, const uint8_t *value_ptr, size_t value_len);
+
+/* ==== Binder Stream Parser (Rust) ==== */
+typedef struct {
+    size_t target_ptr_offset;
+    size_t cookie_offset;
+    size_t code_offset;
+    size_t flags_offset;
+    size_t sender_pid_offset;
+    size_t sender_euid_offset;
+    size_t data_size_offset;
+    size_t data_ptr_offset;
+    size_t transaction_data_size;
+    size_t transaction_data_secctx_size;
+    bool   valid;
+} RustOffsetCacheView;
+
+typedef struct {
+    uintptr_t target_ptr;
+    uintptr_t cookie;
+    uint32_t  code;
+    uint32_t  flags;
+    int32_t   sender_pid;
+    uint32_t  sender_euid;
+    uint64_t  data_size;
+    uintptr_t data_buffer;
+    uint32_t  cmd;
+    uintptr_t raw_ptr;
+    size_t    raw_size;
+    bool      valid;
+} RustParsedTransaction;
+
+bool rust_parse_binder_stream(const uint8_t *buffer_ptr,
+                              size_t consumed,
+                              size_t buffer_size,
+                              const RustOffsetCacheView *cache,
+                              RustParsedTransaction *out_txns,
+                              size_t max_txns,
+                              size_t *out_txn_count);
 
 #ifdef __cplusplus
 }

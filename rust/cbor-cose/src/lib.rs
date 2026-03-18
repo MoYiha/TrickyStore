@@ -14,6 +14,7 @@
 //! exposed in the [`ffi`] module for all CBOR encoding and COSE operations.
 
 pub mod bcc;
+pub mod binder_parser;
 pub mod cbor;
 pub mod cose;
 pub mod ffi;
