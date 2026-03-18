@@ -180,9 +180,7 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                 txn.data_buffer = v;
             }
 
-            unsafe {
-                std::ptr::write(out_txns.add(*out_txn_count), txn);
-            }
+            std::ptr::write(out_txns.add(*out_txn_count), txn);
             *out_txn_count += 1;
         }
 

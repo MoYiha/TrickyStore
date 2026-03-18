@@ -19,6 +19,9 @@
 // Define a stealthy process name
 #define DAEMON_NAME "kworker/u0:0-events"
 
+constexpr int EXIT_DEBUGGER_DETECTED = 1;
+constexpr int EXIT_PTRACE_ERROR = 2;
+
 void hide_process_name() {
   // Set process name to look like a kernel worker thread
   if (prctl(PR_SET_NAME, DAEMON_NAME, 0, 0, 0) != 0) {
@@ -63,7 +66,8 @@ bool check_ptrace_traceme() {
     // Child: attempt ptrace on itself. If another debugger is attached this
     // will fail with EPERM/EBUSY. Exit codes are used by the parent.
     if (ptrace(PTRACE_TRACEME, 0, 0, 0) == -1) {
-      _exit((errno == EPERM || errno == EBUSY) ? 1 : 2);
+      _exit((errno == EPERM || errno == EBUSY) ? EXIT_DEBUGGER_DETECTED
+                                               : EXIT_PTRACE_ERROR);
     }
     // Detach and report success
     ptrace(PTRACE_DETACH, 0, 0, 0);
@@ -81,7 +85,7 @@ bool check_ptrace_traceme() {
     return false;
   }
 
-  if (WIFEXITED(status) && WEXITSTATUS(status) == 1) {
+  if (WIFEXITED(status) && WEXITSTATUS(status) == EXIT_DEBUGGER_DETECTED) {
     LOGE("Debugger detected! ptrace(PTRACE_TRACEME) failed in child");
     return true;
   }
