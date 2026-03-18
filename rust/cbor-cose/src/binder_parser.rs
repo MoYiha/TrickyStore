@@ -84,6 +84,17 @@ const BINDER_TYPE: u32 = b'r' as u32;
 const TRANSACTION_NR: u32 = 2;
 
 #[no_mangle]
+/// Parse a binder ioctl stream and extract transactions into the provided output slice.
+///
+/// # Safety
+/// - `buffer_ptr` must point to `buffer_size` readable bytes and remain valid for the call.
+/// - `consumed` must not exceed `buffer_size`.
+/// - `cache_ptr` must be non-null, point to a valid [`RustOffsetCacheView`] populated from
+///   trusted C++ offsets, and remain valid for the duration of the call.
+/// - `out_txns` must either be null (to skip writes) or point to a slice of length
+///   `max_txns` with properly aligned [`RustParsedTransaction`] storage.
+/// - `out_txn_count` must be non-null and writable.
+/// - All pointers must satisfy Rust's aliasing rules for the duration of this call.
 pub unsafe extern "C" fn rust_parse_binder_stream(
     buffer_ptr: *const u8,
     consumed: usize,
