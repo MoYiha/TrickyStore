@@ -1010,7 +1010,7 @@ class WebServer(
                          }
                      }
                      val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
-                     try { p.inputStream.readBytes(); p.errorStream.readBytes() } catch (_: Exception) {}
+                     try { p.inputStream.readBytes() } catch (_: Exception) {} finally { try { p.errorStream.readBytes() } catch (_: Exception) {} }
                      p.waitFor()
                      Logger.i("DRM ID regenerated successfully")
                      return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")

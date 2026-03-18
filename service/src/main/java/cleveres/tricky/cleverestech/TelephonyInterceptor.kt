@@ -244,10 +244,11 @@ object TelephonyInterceptor : BinderInterceptor() {
                     )
                 )
                 try {
-                    // Drain streams to prevent FD exhaustion
                     p.inputStream.readBytes()
-                    p.errorStream.readBytes()
                 } catch (_: Exception) {}
+                finally {
+                    try { p.errorStream.readBytes() } catch (_: Exception) {}
+                }
                 if (p.waitFor() != 0) {
                     Logger.e("Telephony: failed to inject!")
                 } else {

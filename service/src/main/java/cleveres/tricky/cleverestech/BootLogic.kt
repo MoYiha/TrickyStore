@@ -274,9 +274,11 @@ object BootLogic {
     private fun execAndDrain(cmd: Array<String>) {
         val p = Runtime.getRuntime().exec(cmd)
         try {
-            p.inputStream.readBytes()
-            p.errorStream.readBytes()
-        } catch (_: Exception) { }
+                    p.inputStream.readBytes()
+                } catch (_: Exception) {}
+                finally {
+                    try { p.errorStream.readBytes() } catch (_: Exception) {}
+                }
         p.waitFor()
     }
 }

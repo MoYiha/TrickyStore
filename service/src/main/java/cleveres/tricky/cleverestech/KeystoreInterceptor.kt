@@ -107,7 +107,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         // Optimization: Try native pidof first to avoid expensive N+1 /proc enumeration
         kotlin.runCatching {
             val p = Runtime.getRuntime().exec(arrayOf("pidof", "keystore2"))
-            val stdout = p.inputStream.bufferedReader().use { it.readText().trim() }
+            val stdout = try { p.inputStream.bufferedReader().use { it.readText().trim() } } finally { try { p.errorStream.readBytes() } catch (_: Exception) {} }
             p.waitFor()
             if (stdout.isNotEmpty()) {
                 return stdout.substringBefore(' ').toIntOrNull()
@@ -177,8 +177,12 @@ object KeystoreInterceptor : BinderInterceptor() {
                         "entry"
                     )
                 )
-                val stdout = p.inputStream.bufferedReader().use { it.readText().trim() }
-                val stderr = p.errorStream.bufferedReader().use { it.readText().trim() }
+                var stderr = ""
+                val stdout = try {
+                    p.inputStream.bufferedReader().use { it.readText().trim() }
+                } finally {
+                    try { stderr = p.errorStream.bufferedReader().use { it.readText().trim() } } catch (_: Exception) {}
+                }
                 val exitCode = p.waitFor()
                 if (stdout.isNotBlank()) {
                     Logger.d("keystore injector stdout: $stdout")

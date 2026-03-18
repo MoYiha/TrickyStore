@@ -297,10 +297,11 @@ object DrmInterceptor : BinderInterceptor() {
                     )
                 )
                 try {
-                    // Drain streams to prevent FD exhaustion
                     p.inputStream.readBytes()
-                    p.errorStream.readBytes()
                 } catch (_: Exception) {}
+                finally {
+                    try { p.errorStream.readBytes() } catch (_: Exception) {}
+                }
                 val exitCode = p.waitFor()
                 if (exitCode != 0) {
                     Logger.e("DRM: Injection failed (exit=$exitCode)")
