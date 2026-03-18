@@ -9,12 +9,14 @@ import androidx.annotation.Nullable;
 public interface IKeystoreSecurityLevel extends IInterface {
     String DESCRIPTOR = "android.system.keystore2.IKeystoreSecurityLevel";
 
+    CreateOperationResponse createOperation(KeyDescriptor key, KeyParameter[] operationParameters, boolean forced);
+
     KeyMetadata generateKey(KeyDescriptor key, @Nullable KeyDescriptor attestationKey,
                             KeyParameter[] params, int flags, byte[] entropy);
 
     class Stub {
         public static IKeystoreSecurityLevel asInterface(IBinder b) {
-            throw new RuntimeException();
+            throw new RuntimeException("");
         }
     }
 }

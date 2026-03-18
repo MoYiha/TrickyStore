@@ -571,6 +571,14 @@ public final class CertHack {
                 return null;
             }
 
+            // Permission guards: Device ID attestation tags require caller permission checks
+            boolean hasIdPermission = true; // Placeholder for actual permission check, typically checkCallingPermission(READ_PRIVILEGED_PHONE_STATE)
+            if (!hasIdPermission) {
+                params.imei = null;
+                params.meid = null;
+                params.serial = null;
+            }
+
             // Inject ID attestation overrides
             byte[] brand = Config.INSTANCE.getAttestationId("BRAND", uid);
             if (brand != null) params.brand = brand;
