@@ -1184,7 +1184,7 @@ class WebServer(
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h3 { margin-top: 0; font-weight: 500; color: var(--accent); font-size: 1.1em; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 15px; }
-        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; min-height: 30px; }
+        .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; min-height: 44px; }
         .row.wrap { flex-wrap: wrap; }
         label { font-size: 0.9em; color: #BBB; cursor: pointer; }
         input[type="text"], input[type="password"], textarea, select { background: var(--input-bg); border: 1px solid var(--border); color: #fff; padding: 12px 14px; border-radius: 6px; width: 100%; box-sizing: border-box; font-family: inherit; transition: border-color 0.2s; font-size: 0.95em; min-height: 44px; }
@@ -1278,7 +1278,7 @@ class WebServer(
                     <option value="DailyUse">Daily Use (Standard Spoofing)</option>
                     <option value="Minimal">Minimal (Clean state)</option>
                 </select>
-                <button onclick="requireConfirm(this, () => applyProfile(document.getElementById('profileSelect').value), 'Confirm Apply', async () => { const res = await fetchAuth(getAuthUrl('/api/config')); const data = await res.json(); determineActiveProfile(data); })" style="min-height: 44px;">Apply</button>
+                <button onclick="const sel = document.getElementById('profileSelect').value; if(!sel) { notify('Please select a profile first', 'error'); return; } requireConfirm(this, () => applyProfile(sel), 'Confirm Apply', async () => { const res = await fetchAuth(getAuthUrl('/api/config')); const data = await res.json(); determineActiveProfile(data); })" style="min-height: 44px;">Apply</button>
             </div>
             <div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
         </div>
@@ -1382,7 +1382,7 @@ class WebServer(
     <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
         <div class="panel">
             <h3>New Rule</h3>
-            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Package Name" oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><datalist id="pkgList"></datalist></div>
+            <div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Type to search packages..." oninput="toggleAddButton()" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><datalist id="pkgList"></datalist></div>
             <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><datalist id="keyboxList"></datalist></div></div>
             <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div><div class="row"><input type="checkbox" id="permMicrophone" class="toggle"><label for="permMicrophone">Microphone</label></div></div>
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
@@ -1417,7 +1417,10 @@ class WebServer(
                     <option value="API_KEY">API Key</option>
                 </select>
                 <div id="authFields"></div>
-                <button onclick="runWithState(this, 'Saving...', addServer)" class="primary">Save Server</button>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button onclick="runWithState(this, 'Saving...', addServer)" class="primary" style="flex: 1;">Save Server</button>
+                    <button onclick="document.getElementById('addServerForm').style.display='none'" style="flex: 1;">Cancel</button>
+                </div>
             </div>
         </div>
 
@@ -1612,7 +1615,7 @@ class WebServer(
             if (type === 'working') {
                 iconHtml = '<div class="spinner"></div>';
             } else if (type === 'error') {
-                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">X</span>';
+                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">!</span>';
             } else {
                 iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">OK</span>';
             }
@@ -2517,9 +2520,11 @@ class WebServer(
             const btn = document.getElementById('saveBtn');
             if (currentFile && editor.value !== originalContent) {
                 btn.innerText = 'Save *';
+                btn.classList.add('primary');
                 editorUnsavedBypass = false;
             } else {
                 btn.innerText = 'Save';
+                btn.classList.remove('primary');
             }
         }
 

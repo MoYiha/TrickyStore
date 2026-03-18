@@ -100,7 +100,7 @@ class WebUiLabelFixTest {
         )
         assertTrue(
             "Error notification icon should use text label for cross-WebView compatibility",
-            webServerContent.contains("font-weight:bold;\">X</span>")
+            webServerContent.contains("font-weight:bold;font-size:1.2em;\">!</div>")
         )
     }
 
