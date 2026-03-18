@@ -1,0 +1,1 @@
+./gradlew :service:testDebugUnitTest
