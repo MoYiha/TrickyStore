@@ -1615,9 +1615,9 @@ class WebServer(
             if (type === 'working') {
                 iconHtml = '<div class="spinner"></div>';
             } else if (type === 'error') {
-                iconHtml = '';
+                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">!</span>';
             } else {
-                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">OK </span>';
+                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">OK</span>';
             }
 
             // Escape HTML for message
