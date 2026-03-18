@@ -132,7 +132,10 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
             return *out_txn_count > 0;
         }
 
-        if _ioc_dir(cmd) == IOC_READ && _ioc_type(cmd) == BINDER_TYPE && _ioc_nr(cmd) == TRANSACTION_NR {
+        if _ioc_dir(cmd) == IOC_READ
+            && _ioc_type(cmd) == BINDER_TYPE
+            && _ioc_nr(cmd) == TRANSACTION_NR
+        {
             if *out_txn_count >= max_txns || out_txns.is_null() {
                 pos += payload_sz;
                 remaining -= payload_sz;
