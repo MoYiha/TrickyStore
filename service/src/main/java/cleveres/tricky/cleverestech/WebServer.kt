@@ -331,11 +331,25 @@ class WebServer(
 
     private fun getCpuUsagePercent(): Double {
         try {
-            val selfStat = File("/proc/self/stat").readText().split(" ")
-            val sysStat = File("/proc/stat").readLines()[0].split(WHITESPACE_REGEX)
+            val statBuffer = ByteArray(8192)
+            val selfStatLine = java.io.FileInputStream("/proc/self/stat").use { fis ->
+                val read = fis.read(statBuffer)
+                if (read > 0) String(statBuffer, 0, read) else ""
+            }
+            val selfStat = selfStatLine.split(" ")
 
-            val uTime = selfStat[13].toLong()
-            val sTime = selfStat[14].toLong()
+            val sysStatLine = java.io.FileInputStream("/proc/stat").use { fis ->
+                val read = fis.read(statBuffer)
+                var lineEnd = 0
+                while (lineEnd < read && statBuffer[lineEnd] != '\n'.code.toByte()) {
+                    lineEnd++
+                }
+                if (read > 0) String(statBuffer, 0, lineEnd) else ""
+            }
+            val sysStat = sysStatLine.split(WHITESPACE_REGEX)
+
+            val uTime = selfStat.getOrNull(13)?.toLongOrNull() ?: 0L
+            val sTime = selfStat.getOrNull(14)?.toLongOrNull() ?: 0L
             val procTime = uTime + sTime
 
             var totalTime = 0L

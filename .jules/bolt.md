@@ -43,3 +43,7 @@
 ## 2026-06-18 - [Expensive Date Formatting in Hot Paths]
 **Learning:** `Config.getPatchLevel` was re-calculating dynamic patch dates (e.g., "today") on every call, involving `Instant`, `ZoneId`, `LocalDate`, `String.format` (3x), and regex replacement. This is heavy for a method called during key attestation. Caching the calculated `Int` result for 1 hour yielded a ~3x-7x speedup.
 **Action:** Cache the result of expensive date/time dependent calculations (like dynamic configuration templates) for a reasonable TTL to avoid redundant object allocation and formatting overhead in hot paths.
+
+## 2024-03-19 - [Repeated Allocations in /proc Parsing]
+**Learning:** `WebServer.getCpuUsagePercent` was reading `/proc/self/stat` and `/proc/stat` using `File.readText().split(Regex)`. `readText` allocates a `String` for the entire file (which for `/proc/stat` can be large) and `split` creates multiple objects. This adds unnecessary memory pressure for a simple stats read.
+**Action:** Use a pre-allocated `ByteArray` and `FileInputStream.read()` to process just the first line without loading the entire file into a `String`.
