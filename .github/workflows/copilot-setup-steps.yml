@@ -1,0 +1,35 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Ensure base refs exist for diff operations
+        run: |
+          git fetch --no-tags --prune origin "+refs/heads/*:refs/remotes/origin/*" || true
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Prime Gradle dependencies for Copilot sessions
+        run: |
+          ./gradlew --no-daemon :service:help :module:help || true
