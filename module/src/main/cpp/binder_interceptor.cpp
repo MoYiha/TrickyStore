@@ -1175,7 +1175,7 @@ int new_ioctl(int fd, unsigned long request, ...) {
                      ->attemptIncStrong(nullptr)) {
         auto b = (BBinder *)txn.cookie;
         auto wb = wp<BBinder>::fromExisting(b);
-        if (gBinderInterceptor->needIntercept(wb)) {
+        if (gBinderInterceptor->shouldIntercept(wb, txn.code)) {
           tti.code = txn.code;
           tti.target = wb;
           need_intercept = true;
@@ -1203,9 +1203,12 @@ int new_ioctl(int fd, unsigned long request, ...) {
 // Section 11: BinderInterceptor Methods (preserved from original)
 // =============================================================================
 
-bool BinderInterceptor::needIntercept(const wp<BBinder> &target) {
+bool BinderInterceptor::shouldIntercept(const wp<BBinder> &target, uint32_t code) {
   ReadGuard g{lock};
-  return items.find(target) != items.end();
+  auto it = items.find(target);
+  if (it == items.end()) return false;
+  const auto &codes = it->second.filtered_codes;
+  return codes.empty() || std::find(codes.begin(), codes.end(), code) != codes.end();
 }
 
 status_t BinderInterceptor::onTransact(uint32_t code,
@@ -1222,6 +1225,18 @@ status_t BinderInterceptor::onTransact(uint32_t code,
     if (data.readStrongBinder(&interceptor) != OK) {
       return BAD_VALUE;
     }
+    std::vector<uint32_t> codes;
+    int32_t code_count = 0;
+    if (data.dataAvail() >= sizeof(int32_t) && data.readInt32(&code_count) == OK && code_count > 0) {
+        codes.reserve(code_count);
+        for (int32_t i = 0; i < code_count; i++) {
+            uint32_t c = 0;
+            if (data.readUint32(&c) == OK) codes.push_back(c);
+        }
+        LOGI("Interceptor registered for binder %p with %zu filtered codes", target.get(), codes.size());
+    } else {
+        LOGI("Interceptor registered for binder %p (all codes)", target.get());
+    }
     {
       WriteGuard wg{lock};
       wp<IBinder> t = target;
@@ -1237,6 +1252,7 @@ status_t BinderInterceptor::onTransact(uint32_t code,
                                          IBinder::FLAG_ONEWAY);
       }
       it->second.interceptor = interceptor;
+      it->second.filtered_codes = std::move(codes);
       return OK;
     }
   } else if (code == UNREGISTER_INTERCEPTOR) {

@@ -218,12 +218,13 @@ object KeystoreInterceptor : BinderInterceptor() {
 
         keystore = b
         Logger.i("register for Keystore $keystore!")
-        registerBinderInterceptor(bd, b, this)
+        val interceptedCodes = intArrayOf(getKeyEntryTransaction)
+        registerBinderInterceptor(bd, b, this, interceptedCodes)
         keystore.linkToDeath(Killer, 0)
         if (tee != null) {
             Logger.i("register for TEE SecurityLevel $tee!")
             val interceptor = SecurityLevelInterceptor(tee, SecurityLevel.TRUSTED_ENVIRONMENT)
-            registerBinderInterceptor(bd, tee.asBinder(), interceptor)
+            registerBinderInterceptor(bd, tee.asBinder(), interceptor, SecurityLevelInterceptor.INTERCEPTED_CODES)
             teeInterceptor = interceptor
         } else {
             Logger.i("no TEE SecurityLevel found!")
@@ -231,7 +232,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         if (strongBox != null) {
             Logger.i("register for StrongBox SecurityLevel $strongBox!")
             val interceptor = SecurityLevelInterceptor(strongBox, SecurityLevel.STRONGBOX)
-            registerBinderInterceptor(bd, strongBox.asBinder(), interceptor)
+            registerBinderInterceptor(bd, strongBox.asBinder(), interceptor, SecurityLevelInterceptor.INTERCEPTED_CODES)
             strongBoxInterceptor = interceptor
         } else {
             Logger.i("no StrongBox SecurityLevel found!")
@@ -243,7 +244,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             if (rkp != null) {
                 Logger.i("register for RemotelyProvisionedComponent!")
                 val interceptor = RkpInterceptor(rkp, SecurityLevel.TRUSTED_ENVIRONMENT)
-                registerBinderInterceptor(bd, rkp.asBinder(), interceptor)
+                registerBinderInterceptor(bd, rkp.asBinder(), interceptor, RkpInterceptor.INTERCEPTED_CODES)
                 rkpInterceptor = interceptor
             } else {
                 Logger.i("no RemotelyProvisionedComponent found (RKP bypass enabled but HAL not available)")

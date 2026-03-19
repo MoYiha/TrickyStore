@@ -32,6 +32,12 @@ class RkpInterceptor(
             getTransactCode(IRemotelyProvisionedComponent.Stub::class.java, "generateCertificateRequest")
         private val generateCertificateRequestV2Transaction = 
             getTransactCode(IRemotelyProvisionedComponent.Stub::class.java, "generateCertificateRequestV2")
+
+        val INTERCEPTED_CODES = intArrayOf(
+            generateEcdsaP256KeyPairTransaction,
+            generateCertificateRequestTransaction,
+            generateCertificateRequestV2Transaction
+        )
         
         // we cache generated keys so they can be reused in cert requests
         private val keyPairCache = KeyCache<Int, KeyPairInfo>(100)

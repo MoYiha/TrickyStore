@@ -32,12 +32,14 @@ open class BinderInterceptor : Binder() {
             }
         }
 
-        fun registerBinderInterceptor(backdoor: IBinder, target: IBinder, interceptor: BinderInterceptor) {
+        fun registerBinderInterceptor(backdoor: IBinder, target: IBinder, interceptor: BinderInterceptor, filteredCodes: IntArray = intArrayOf()) {
             val data = Parcel.obtain()
             val reply = Parcel.obtain()
             try {
                 data.writeStrongBinder(target)
                 data.writeStrongBinder(interceptor)
+                data.writeInt(filteredCodes.size)
+                for (code in filteredCodes) data.writeInt(code)
                 // The C++ BinderInterceptor's onTransact will expect code 1 for REGISTER_INTERCEPTOR
                 backdoor.transact(1, data, reply, 0)
             } finally {
