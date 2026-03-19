@@ -457,7 +457,7 @@ jobs:
           script: |
             adb install -r KeyAttestation.apk
             adb logcat -c
-            adb shell am start -n io.github.vvb2060.keyattestation/.MainActivity
+            adb shell am start -n io.github.vvb2060.keyattestation/.home.HomeActivity
             sleep 15
             adb logcat -d | grep -i "attestation" || true
             ./gradlew connectedCheck
