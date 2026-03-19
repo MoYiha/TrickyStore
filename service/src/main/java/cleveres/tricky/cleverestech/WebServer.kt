@@ -1408,8 +1408,8 @@ class WebServer(
             <button onclick="document.getElementById('addServerForm').style.display='block'" class="primary" style="width:100%">+ Add Server</button>
 
             <div id="addServerForm" style="display:none; margin-top:15px; border-top:1px solid var(--border); padding-top:15px;">
-                <input type="text" id="srvName" placeholder="Name" style="margin-bottom:5px;">
-                <input type="text" id="srvUrl" placeholder="URL (HTTPS)" style="margin-bottom:5px;">
+                <input type="text" id="srvName" placeholder="Name" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                <input type="text" id="srvUrl" placeholder="URL (HTTPS)" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
                 <select id="srvAuthType" style="margin-bottom:5px;">
                     <option value="NONE">No Auth</option>
                     <option value="BEARER">Bearer Token</option>
@@ -1442,6 +1442,7 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>Stored Keyboxes</h3>
+            <input type="search" id="keyboxFilter" placeholder="Filter keyboxes..." oninput="renderKeyboxes()" style="width:100%; margin-bottom:10px;" aria-label="Filter keyboxes">
             <div id="storedKeyboxesList" style="max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="panel">
@@ -2127,22 +2128,46 @@ class WebServer(
             }
         }
 
+        let cachedKeyboxes = [];
         async function loadKeyboxes() {
             try {
                 const res = await fetchAuth('/api/keyboxes');
                 if (res.ok) {
-                    const keys = await res.json();
-                    const list = document.getElementById('storedKeyboxesList');
-                    list.innerHTML = '';
-                    keys.forEach(k => {
-                        const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                        div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
-                        list.appendChild(div);
-                    });
+                    cachedKeyboxes = await res.json();
+                    renderKeyboxes();
                     const dl = document.getElementById('keyboxList');
-                    if (dl) { dl.innerHTML = ''; keys.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
+                    if (dl) { dl.innerHTML = ''; cachedKeyboxes.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
                 }
             } catch(e) {}
+        }
+
+        function renderKeyboxes() {
+            const list = document.getElementById('storedKeyboxesList');
+            const filterInput = document.getElementById('keyboxFilter');
+            const filterText = filterInput ? filterInput.value.toLowerCase() : '';
+            if (!list) return;
+            list.innerHTML = '';
+            let matchCount = 0;
+
+            cachedKeyboxes.forEach(k => {
+                if (filterText && !k.toLowerCase().includes(filterText)) return;
+                matchCount++;
+                const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
+                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
+                list.appendChild(div);
+            });
+
+            if (filterText && matchCount === 0) {
+                 const div = document.createElement('div');
+                 div.style.padding = '10px'; div.style.textAlign = 'center'; div.style.color = '#666';
+                 div.innerHTML = 'No keyboxes match your filter. <button onclick="document.getElementById(\'keyboxFilter\').value=\'\'; renderKeyboxes()" style="margin-left:10px; padding:4px 8px; font-size:0.85em;">Clear Filter</button>';
+                 list.appendChild(div);
+            } else if (cachedKeyboxes.length === 0) {
+                 const div = document.createElement('div');
+                 div.style.padding = '10px'; div.style.textAlign = 'center'; div.style.color = '#666';
+                 div.innerText = 'No keyboxes stored.';
+                 list.appendChild(div);
+            }
         }
 
         async function deleteKeybox(filename) {
