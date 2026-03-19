@@ -442,6 +442,9 @@ jobs:
         with:
           packages: ''
 
+      - name: Download KeyAttestation APK
+        run: wget -q https://github.com/vvb2060/KeyAttestation/releases/download/v1.8.4/KeyAttestation-v1.8.4.apk -O KeyAttestation.apk
+
       - name: Run Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -451,7 +454,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew connectedCheck
+          script: |
+            adb install -r KeyAttestation.apk
+            adb logcat -c
+            adb shell am start -n io.github.vvb2060.keyattestation/.home.HomeActivity
+            sleep 15
+            adb logcat -d | grep -i "attestation" || true
+            ./gradlew connectedCheck
           emulator-boot-timeout: 1200
         env:
           ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: 60
