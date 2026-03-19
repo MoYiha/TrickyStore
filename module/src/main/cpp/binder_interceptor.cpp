@@ -1240,10 +1240,8 @@ status_t BinderInterceptor::onTransact(uint32_t code,
     {
       WriteGuard wg{lock};
       wp<IBinder> t = target;
-      auto it = items.find(t);
-      if (it == items.end()) {
-        auto result = items.insert({t, InterceptItem{}});
-        it = result.first;
+      auto [it, inserted] = items.try_emplace(t);
+      if (inserted) {
         it->second.target = t;
       } else if (it->second.interceptor != nullptr &&
                  it->second.interceptor != interceptor) {
