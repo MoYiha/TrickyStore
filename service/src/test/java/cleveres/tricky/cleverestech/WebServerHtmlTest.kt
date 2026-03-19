@@ -179,7 +179,7 @@ class WebServerHtmlTest {
         val html = conn.inputStream.bufferedReader().readText()
 
         // Verify HTML Attributes
-        assertTrue("Missing oninput handler", html.contains("oninput=\"updateSaveButtonState()\""))
+        assertTrue("Missing oninput handler", html.contains("oninput=\"editorUnsavedBypass = false; updateSaveButtonState()\""))
         assertTrue("Missing handleSave in onkeydown", html.contains("handleSave(document.getElementById('saveBtn'))"))
         assertTrue("Missing handleSave in onclick", html.contains("onclick=\"handleSave(this)\""))
 

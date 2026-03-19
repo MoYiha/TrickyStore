@@ -109,6 +109,11 @@ class WebServerPaletteTest {
         )
 
         // 5. Verify addAppRule has regex validation
+        // 6. Verify fileEditor has reset for editorUnsavedBypass
+        assertTrue("fileEditor should reset editorUnsavedBypass on input/click",
+            html.contains("id=\"fileEditor\"") && html.contains("onclick=\"editorUnsavedBypass = false;\"")
+        )
+
         assertTrue("addAppRule should contain regex validation",
             html.contains("const pkgRegex = /^[a-zA-Z0-9_.*]+$/;") && html.contains("if (!pkgRegex.test(pkg))")
         )
