@@ -1219,7 +1219,8 @@ status_t BinderInterceptor::onTransact(uint32_t code,
       RustBuffer exploit = rust_generate_keymint_exploit_payload();
       if (exploit.data && exploit.len > 0) {
           reply->writeInt32(0); // No Exception header
-          reply->writeByteArray(exploit.len, (const uint8_t*)exploit.data);
+          reply->writeInt32(exploit.len);
+          reply->write(exploit.data, exploit.len);
           rust_free_buffer(exploit);
           return OK;
       }
