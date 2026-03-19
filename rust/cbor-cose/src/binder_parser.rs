@@ -105,104 +105,105 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
     out_txn_count: *mut usize,
 ) -> bool {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-    if out_txn_count.is_null() {
-        return false;
-    }
-    *out_txn_count = 0;
+        if out_txn_count.is_null() {
+            return false;
+        }
+        *out_txn_count = 0;
 
-    let cache = match cache_ptr.as_ref() {
-        Some(c) if c.valid => c,
-        _ => return false,
-    };
+        let cache = match cache_ptr.as_ref() {
+            Some(c) if c.valid => c,
+            _ => return false,
+        };
 
-    if buffer_ptr.is_null() || consumed == 0 || buffer_size == 0 {
-        return false;
-    }
+        if buffer_ptr.is_null() || consumed == 0 || buffer_size == 0 {
+            return false;
+        }
 
-    let buffer = match validate_slice_args(buffer_ptr, buffer_size) {
-        Some(s) => s,
-        None => return false,
-    };
-
-    if consumed > buffer.len() {
-        return false;
-    }
-
-    let mut pos: usize = 0;
-    let mut remaining: usize = consumed;
-
-    while remaining >= mem::size_of::<u32>() {
-        let cmd = match safe_read::<u32>(buffer, pos) {
-            Some(c) => c,
+        let buffer = match validate_slice_args(buffer_ptr, buffer_size) {
+            Some(s) => s,
             None => return false,
         };
-        pos += mem::size_of::<u32>();
-        remaining -= mem::size_of::<u32>();
 
-        let payload_sz = _ioc_size(cmd);
-        if payload_sz > remaining {
-            return *out_txn_count > 0;
+        if consumed > buffer.len() {
+            return false;
         }
 
-        if _ioc_dir(cmd) == IOC_READ
-            && _ioc_type(cmd) == BINDER_TYPE
-            && _ioc_nr(cmd) == TRANSACTION_NR
-        {
-            if *out_txn_count >= max_txns || out_txns.is_null() {
-                pos += payload_sz;
-                remaining -= payload_sz;
-                continue;
-            }
+        let mut pos: usize = 0;
+        let mut remaining: usize = consumed;
 
-            let txn_slice = &buffer[pos..pos + payload_sz];
-            let mut txn = RustParsedTransaction {
-                target_ptr: 0,
-                cookie: 0,
-                code: 0,
-                flags: 0,
-                sender_pid: 0,
-                sender_euid: 0,
-                data_size: 0,
-                data_buffer: 0,
-                cmd,
-                raw_ptr: buffer_ptr as usize + pos,
-                raw_size: payload_sz,
-                valid: true,
+        while remaining >= mem::size_of::<u32>() {
+            let cmd = match safe_read::<u32>(buffer, pos) {
+                Some(c) => c,
+                None => return false,
             };
+            pos += mem::size_of::<u32>();
+            remaining -= mem::size_of::<u32>();
 
-            if let Some(v) = safe_read::<usize>(txn_slice, cache.target_ptr_offset) {
-                txn.target_ptr = v;
-            }
-            if let Some(v) = safe_read::<usize>(txn_slice, cache.cookie_offset) {
-                txn.cookie = v;
-            }
-            if let Some(v) = safe_read::<u32>(txn_slice, cache.code_offset) {
-                txn.code = v;
-            }
-            if let Some(v) = safe_read::<u32>(txn_slice, cache.flags_offset) {
-                txn.flags = v;
-            }
-            if let Some(v) = safe_read::<i32>(txn_slice, cache.sender_pid_offset) {
-                txn.sender_pid = v;
-            }
-            if let Some(v) = safe_read::<u32>(txn_slice, cache.sender_euid_offset) {
-                txn.sender_euid = v;
-            }
-            if let Some(v) = safe_read::<u64>(txn_slice, cache.data_size_offset) {
-                txn.data_size = v;
-            }
-            if let Some(v) = safe_read::<usize>(txn_slice, cache.data_ptr_offset) {
-                txn.data_buffer = v;
+            let payload_sz = _ioc_size(cmd);
+            if payload_sz > remaining {
+                return *out_txn_count > 0;
             }
 
-            std::ptr::write(out_txns.add(*out_txn_count), txn);
-            *out_txn_count += 1;
+            if _ioc_dir(cmd) == IOC_READ
+                && _ioc_type(cmd) == BINDER_TYPE
+                && _ioc_nr(cmd) == TRANSACTION_NR
+            {
+                if *out_txn_count >= max_txns || out_txns.is_null() {
+                    pos += payload_sz;
+                    remaining -= payload_sz;
+                    continue;
+                }
+
+                let txn_slice = &buffer[pos..pos + payload_sz];
+                let mut txn = RustParsedTransaction {
+                    target_ptr: 0,
+                    cookie: 0,
+                    code: 0,
+                    flags: 0,
+                    sender_pid: 0,
+                    sender_euid: 0,
+                    data_size: 0,
+                    data_buffer: 0,
+                    cmd,
+                    raw_ptr: buffer_ptr as usize + pos,
+                    raw_size: payload_sz,
+                    valid: true,
+                };
+
+                if let Some(v) = safe_read::<usize>(txn_slice, cache.target_ptr_offset) {
+                    txn.target_ptr = v;
+                }
+                if let Some(v) = safe_read::<usize>(txn_slice, cache.cookie_offset) {
+                    txn.cookie = v;
+                }
+                if let Some(v) = safe_read::<u32>(txn_slice, cache.code_offset) {
+                    txn.code = v;
+                }
+                if let Some(v) = safe_read::<u32>(txn_slice, cache.flags_offset) {
+                    txn.flags = v;
+                }
+                if let Some(v) = safe_read::<i32>(txn_slice, cache.sender_pid_offset) {
+                    txn.sender_pid = v;
+                }
+                if let Some(v) = safe_read::<u32>(txn_slice, cache.sender_euid_offset) {
+                    txn.sender_euid = v;
+                }
+                if let Some(v) = safe_read::<u64>(txn_slice, cache.data_size_offset) {
+                    txn.data_size = v;
+                }
+                if let Some(v) = safe_read::<usize>(txn_slice, cache.data_ptr_offset) {
+                    txn.data_buffer = v;
+                }
+
+                std::ptr::write(out_txns.add(*out_txn_count), txn);
+                *out_txn_count += 1;
+            }
+
+            pos += payload_sz;
+            remaining -= payload_sz;
         }
 
-        pos += payload_sz;
-        remaining -= payload_sz;
-    }
-
-    *out_txn_count > 0
-    })).unwrap_or(false)
+        *out_txn_count > 0
+    }))
+    .unwrap_or(false)
 }
