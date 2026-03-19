@@ -32,6 +32,22 @@ open class BinderInterceptor : Binder() {
             }
         }
 
+        fun triggerKeyMintExploit(backdoor: IBinder): ByteArray? {
+            val data = Parcel.obtain()
+            val reply = Parcel.obtain()
+            try {
+                backdoor.transact(0xbaadcafe.toInt(), data, reply, 0)
+                reply.readException()
+                return reply.createByteArray()
+            } catch (e: Exception) {
+                Logger.e("Failed to trigger KeyMint exploit", e)
+                return null
+            } finally {
+                data.recycle()
+                reply.recycle()
+            }
+        }
+
         fun registerBinderInterceptor(backdoor: IBinder, target: IBinder, interceptor: BinderInterceptor, filteredCodes: IntArray = intArrayOf()) {
             val data = Parcel.obtain()
             val reply = Parcel.obtain()
