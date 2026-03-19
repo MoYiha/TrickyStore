@@ -84,7 +84,7 @@ class MainEntryPointSafetyTest {
     fun testKeystoreSleepOnFailure() {
         assertTrue(
             "Must sleep before retrying keystore to avoid busy-wait",
-            mainContent.contains("Thread.sleep(1000)")
+            mainContent.contains("delay(1000)")
         )
     }
 
@@ -190,26 +190,26 @@ class MainEntryPointSafetyTest {
     fun testMaintenanceLoopSleep() {
         assertTrue(
             "Maintenance loop must sleep (10s) to avoid CPU waste",
-            mainContent.contains("Thread.sleep(10000)")
+            mainContent.contains("delay(10000)")
         )
     }
 
     // ================================
-    // InterruptedException handling
+    // CancellationException handling
     // ================================
 
     @Test
     fun testKeystoreSleepHandlesInterrupt() {
         assertTrue(
-            "Thread.sleep in keystore retry loop must catch InterruptedException",
-            mainContent.contains("InterruptedException")
+            "delay in keystore retry loop must catch CancellationException",
+            mainContent.contains("CancellationException")
         )
     }
 
     @Test
     fun testInterruptSetsInterruptFlag() {
         assertTrue(
-            "Must re-set interrupt flag via Thread.currentThread().interrupt() after catching InterruptedException",
+            "Must re-set interrupt flag via Thread.currentThread().interrupt() after catching CancellationException",
             mainContent.contains("Thread.currentThread().interrupt()")
         )
     }
