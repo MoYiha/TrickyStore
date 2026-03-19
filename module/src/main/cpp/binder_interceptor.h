@@ -354,7 +354,7 @@ public:
 
     bool handleIntercept(sp<BBinder> target, uint32_t code, const Parcel &data,
                          Parcel *reply, uint32_t flags, status_t &result);
-    bool needIntercept(const wp<BBinder>& target);
+    bool shouldIntercept(const wp<BBinder>& target, uint32_t code);
 
     status_t onTransact(uint32_t code, const android::Parcel &data,
                         android::Parcel *reply, uint32_t flags) override;
@@ -380,6 +380,7 @@ private:
     struct InterceptItem {
         wp<IBinder> target{};
         sp<IBinder> interceptor;
+        std::vector<uint32_t> filtered_codes;
     };
 
     using RwLock = std::shared_mutex;

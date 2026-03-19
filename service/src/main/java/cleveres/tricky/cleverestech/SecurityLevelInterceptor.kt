@@ -33,6 +33,8 @@ class SecurityLevelInterceptor(
             getTransactCode(IKeystoreSecurityLevel.Stub::class.java, "generateKey")
         private val createOperationTransaction =
             getTransactCode(IKeystoreSecurityLevel.Stub::class.java, "createOperation")
+
+        val INTERCEPTED_CODES = intArrayOf(generateKeyTransaction, createOperationTransaction)
         private val keys = KeyCache<Key, Info>(1000)
 
         // Concurrent op tracking
@@ -161,8 +163,10 @@ class SecurityLevelInterceptor(
                             Logger.e("attest key not found in cache: ${attestationKeyDescriptor.alias}, falling back to root")
                         }
                     }
+                    val startNanos = System.nanoTime()
                     val pair = CertHack.generateKeyPair(callingUid, keyDescriptor, kgp, issuerKeyPair, issuerChain)
                         ?: return@runCatching
+                    cleveres.tricky.cleverestech.util.TeeLatencySimulator.simulateGenerateKeyDelay(kgp.algorithm, System.nanoTime() - startNanos)
                     val response = buildResponse(pair.second, kgp, keyDescriptor, callingUid)
                     keys[Key(callingUid, keyDescriptor.alias)] = Info(pair.first, response)
                     val p = Parcel.obtain()
