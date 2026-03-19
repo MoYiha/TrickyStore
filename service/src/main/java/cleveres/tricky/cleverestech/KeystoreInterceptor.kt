@@ -104,17 +104,8 @@ object KeystoreInterceptor : BinderInterceptor() {
     private var injected = false
 
     private fun findKeystore2Pid(): Int? {
-        // Optimization: Try native pidof first to avoid expensive N+1 /proc enumeration
-        kotlin.runCatching {
-            val p = Runtime.getRuntime().exec(arrayOf("pidof", "keystore2"))
-            val stdout = try { p.inputStream.bufferedReader().use { it.readText().trim() } } finally { try { p.errorStream.readBytes() } catch (_: Exception) {} }
-            p.waitFor()
-            if (stdout.isNotEmpty()) {
-                return stdout.substringBefore(' ').toIntOrNull()
-            }
-        }
-
-        // Fallback: Optimized directory listing to prevent N+1 File allocations
+        // Optimized directory listing to prevent N+1 File allocations.
+        // Process spawning (like pidof) is avoided due to high overhead.
         val proc = java.io.File("/proc")
         if (!proc.exists() || !proc.isDirectory) return null
 
