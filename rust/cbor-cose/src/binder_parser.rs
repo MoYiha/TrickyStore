@@ -104,6 +104,7 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
     max_txns: usize,
     out_txn_count: *mut usize,
 ) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
     if out_txn_count.is_null() {
         return false;
     }
@@ -203,4 +204,5 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
     }
 
     *out_txn_count > 0
+    })).unwrap_or(false)
 }
