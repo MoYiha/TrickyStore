@@ -12,6 +12,10 @@ import java.security.cert.Certificate
 import java.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 
 class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkClient()) {
 
@@ -79,14 +83,23 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
             if (content.trimStart().startsWith("<")) {
                 keyboxes.addAll(CertHack.parseKeyboxXml(content.reader(), "harvested_direct.xml"))
             } else {
-                content.lines().forEach { line ->
-                    if (line.isNotBlank() && !line.startsWith("#")) {
-                        val url = line.trim()
-                        val xml = networkClient.fetch(url)
-                        if (xml != null) {
-                            keyboxes.addAll(CertHack.parseKeyboxXml(xml.reader(), "harvested_${url.hashCode()}.xml"))
+                runBlocking(Dispatchers.IO) {
+                    val deferreds = content.lines()
+                        .filter { it.isNotBlank() && !it.startsWith("#") }
+                        .map { line ->
+                            async {
+                                val url = line.trim()
+                                val xml = networkClient.fetch(url)
+                                if (xml != null) {
+                                    CertHack.parseKeyboxXml(xml.reader(), "harvested_${url.hashCode()}.xml")
+                                } else {
+                                    emptyList()
+                                }
+                            }
                         }
-                    }
+
+                    val results = deferreds.awaitAll()
+                    results.forEach { keyboxes.addAll(it) }
                 }
             }
 
