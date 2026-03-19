@@ -6,6 +6,7 @@ import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.*
 
 private const val CONFIG_DIR_MODE = 448
 private const val RKP_KEY_MODE = 384
@@ -54,42 +55,68 @@ fun main(args: Array<String>) {
         Logger.e("Failed to start web server", e)
     }
 
-    while (true) {
-        val ksSuccess = KeystoreInterceptor.tryRunKeystoreInterceptor()
-        val telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
-
-        if (!ksSuccess) {
-            // Keystore is critical, so we loop until it's ready
-            try { Thread.sleep(1000) } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                Logger.i("Main: Keystore wait interrupted, shutting down")
-                return
-            }
-            continue
-        }
-
-        // Telephony is optional/advanced, but we should try to keep it alive
-        // Since injecting into com.android.phone might take time to start up
-        if (!telSuccess) {
-             Logger.d("Telephony interceptor not ready yet")
-        }
-
-        Config.initialize()
-        BootLogic.run()
-
-        var drmRegistered = false
+    runBlocking {
         while (true) {
-            if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
-                 Logger.d("Retrying Telephony Interceptor injection...")
+            var ksSuccess = false
+            var telSuccess = false
+
+            // Launch concurrent polling for both interceptors to improve startup time
+            val ksJob = launch(Dispatchers.IO) { ksSuccess = KeystoreInterceptor.tryRunKeystoreInterceptor() }
+            val telJob = launch(Dispatchers.IO) { telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor() }
+
+            ksJob.join()
+            telJob.join()
+
+            if (!ksSuccess) {
+                // Keystore is critical, so we loop until it's ready
+                try {
+                    delay(1000)
+                } catch (_: CancellationException) {
+                    Thread.currentThread().interrupt()
+                    Logger.i("Main: Keystore wait interrupted, shutting down")
+                    return@runBlocking
+                }
+                continue
             }
-            if (!drmRegistered) {
-                drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
+
+            // Telephony is optional/advanced, but we should try to keep it alive
+            // Since injecting into com.android.phone might take time to start up
+            if (!telSuccess) {
+                 Logger.d("Telephony interceptor not ready yet")
             }
-            LocalRkpProxy.checkAndRotate()
-            try { Thread.sleep(10000) } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                Logger.i("Main: Poll loop interrupted, shutting down")
-                return
+
+            Config.initialize()
+            BootLogic.run()
+
+            var drmRegistered = false
+            while (true) {
+                val telRetryJob = launch(Dispatchers.IO) {
+                    if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
+                        Logger.d("Retrying Telephony Interceptor injection...")
+                    }
+                }
+
+                val drmRetryJob = launch(Dispatchers.IO) {
+                    if (!drmRegistered) {
+                        drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
+                    }
+                }
+
+                val rkpJob = launch(Dispatchers.IO) {
+                    LocalRkpProxy.checkAndRotate()
+                }
+
+                telRetryJob.join()
+                drmRetryJob.join()
+                rkpJob.join()
+
+                try {
+                    delay(10000)
+                } catch (_: CancellationException) {
+                    Thread.currentThread().interrupt()
+                    Logger.i("Main: Poll loop interrupted, shutting down")
+                    return@runBlocking
+                }
             }
         }
     }
