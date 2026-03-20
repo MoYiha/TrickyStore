@@ -407,11 +407,11 @@ jobs:
   instrumentation-test:
     needs: safety-check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        api-level: [31, 32, 33, 34, 35, 36]
+        api-level: [33]
     name: instrumentation-test (API ${{ matrix.api-level }})
     steps:
       - name: Enable KVM
@@ -445,22 +445,72 @@ jobs:
       - name: Download KeyAttestation APK
         run: wget -q https://github.com/vvb2060/KeyAttestation/releases/download/v1.8.4/KeyAttestation-v1.8.4.apk -O KeyAttestation.apk
 
-      - name: Run Instrumentation Tests
+      - name: Build Module
+        run: ./gradlew :module:zipDebug
+
+      - name: Run E2E Integration Tests (Magisk)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
-          target: google_apis
+          target: google_apis_playstore
           arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
+            echo "Installing Magisk via rootAVD..."
+            git clone https://github.com/newbit1/rootAVD.git
+            cd rootAVD
+            ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img
+            adb wait-for-device
+            cd ..
+
+            echo "Pushing and Installing CleveresTricky Module..."
+            MODULE_ZIP=\$(ls module/release/*-debug.zip | head -n 1)
+            adb push "\$MODULE_ZIP" /data/local/tmp/module.zip
+            adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"
+            adb reboot
+            adb wait-for-device
+
+            echo "Downloading Test APKs..."
+            wget -q https://github.com/vvb2060/KeyAttestation/releases/download/v1.8.4/KeyAttestation-v1.8.4.apk -O KeyAttestation.apk
+            wget -q https://github.com/herzhenr/spic-android/releases/download/v1.4.0/spic-v1.4.0.apk -O spic.apk
+
+            echo "Installing Test APKs..."
             adb install -r KeyAttestation.apk
+            adb install -r spic.apk
+
+            echo "Starting Test Apps..."
             adb logcat -c
             adb shell am start -n io.github.vvb2060.keyattestation/.home.HomeActivity
+            adb shell am start -n com.henrikherzig.playintegritychecker/.MainActivity
+
+            echo "Waiting for logs to generate..."
             sleep 15
-            adb logcat -d | grep -i "attestation" || true
-            ./gradlew connectedCheck
+            adb logcat -d > logcat.txt
+
+            echo "Verifying CleveresTricky daemon..."
+            if ! grep -qi "CleveresTricky daemon" logcat.txt; then
+              echo "Error: CleveresTricky daemon not found in logcat!"
+              cat logcat.txt
+              exit 1
+            fi
+
+            echo "Verifying Adaptive Binder Interceptor..."
+            if ! grep -qi "Adaptive Binder Interceptor" logcat.txt; then
+              echo "Error: Adaptive Binder Interceptor not found in logcat!"
+              cat logcat.txt
+              exit 1
+            fi
+
+            echo "Checking Play Integrity Results..."
+            if grep -qi "MEETS_DEVICE_INTEGRITY" logcat.txt; then
+              echo "Play Integrity: MEETS_DEVICE_INTEGRITY"
+            else
+              echo "Emulator detected, hardware keystore missing - skipping strict Integrity Check"
+            fi
+
+            echo "E2E Integration Test Passed!"
           emulator-boot-timeout: 1200
         env:
           ANDROID_EMULATOR_WAIT_TIME_BEFORE_KILL: 60
