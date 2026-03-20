@@ -46,6 +46,7 @@
 #include <cstdio>
 #include <map>
 #include <mutex>
+#include <limits>
 #include <queue>
 #include <setjmp.h>
 #include <shared_mutex>
@@ -1216,12 +1217,29 @@ status_t BinderInterceptor::onTransact(uint32_t code,
                                        android::Parcel *reply, uint32_t flags) {
   if (code == 0xbaadcafe) {
       LOGI("🔥 God-Mode Evolution: Triggering Rust KeyMint Exploit via 0xbaadcafe");
+      if (reply == nullptr) {
+          LOGE("Missing reply parcel for exploit transaction");
+          return BAD_VALUE;
+      }
       RustBuffer exploit = rust_generate_keymint_exploit_payload();
       if (exploit.data && exploit.len > 0) {
-          reply->writeInt32(0); // No Exception header
-          reply->writeInt32(exploit.len);
-          reply->write(exploit.data, exploit.len);
+          if (exploit.len > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+              LOGE("Exploit payload too large: %zu", exploit.len);
+              rust_free_buffer(exploit);
+              return BAD_VALUE;
+          }
+          status_t status = reply->writeNoException();
+          if (status == OK) {
+              status = reply->writeInt32(static_cast<int32_t>(exploit.len));
+          }
+          if (status == OK) {
+              status = reply->write(exploit.data, exploit.len);
+          }
           rust_free_buffer(exploit);
+          if (status != OK) {
+              LOGE("Failed to write exploit payload to reply: %d", status);
+              return status;
+          }
           return OK;
       }
       return BAD_VALUE;
