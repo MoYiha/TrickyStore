@@ -23,10 +23,6 @@ const DEFAULT_FP_URL: &str =
 struct FingerprintCache {
     /// Map of device codename → fingerprint string.
     entries: AHashMap<String, String>,
-    /// URL the fingerprints were fetched from (diagnostic metadata).
-    source_url: String,
-    /// Timestamp (seconds since epoch) of last successful fetch (diagnostic metadata).
-    fetched_at: u64,
 }
 
 /// Parse a fingerprint list from raw text.
@@ -100,15 +96,8 @@ pub fn fetch_fingerprints(url: Option<&str>) -> Result<usize, String> {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
     let cache = FingerprintCache {
         entries,
-        source_url: url.to_string(),
-        fetched_at: now,
     };
 
     if let Ok(mut guard) = CACHE.write() {
@@ -174,15 +163,8 @@ pub fn inject_fingerprints(data: &str) -> usize {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
     let cache = FingerprintCache {
         entries,
-        source_url: "manual".to_string(),
-        fetched_at: now,
     };
 
     if let Ok(mut guard) = CACHE.write() {
