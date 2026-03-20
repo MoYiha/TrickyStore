@@ -460,6 +460,7 @@ jobs:
           script: |
             echo "Installing Magisk via rootAVD..."
             git clone https://github.com/newbit1/rootAVD.git
+            rm -rf rootAVD/.git
             cd rootAVD
             ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img
             adb wait-for-device
