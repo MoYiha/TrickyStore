@@ -40,7 +40,7 @@ echo "- Waiting for WebUI to listen on $HOST:$PORT"
 READY=0
 ATTEMPT=0
 while [ "$ATTEMPT" -lt "$MAX_WAIT_SECONDS" ]; do
-  if toybox nc -z "$HOST" "$PORT" >/dev/null 2>&1; then
+  if timeout 1 toybox nc -z "$HOST" "$PORT" >/dev/null 2>&1; then
     READY=1
     break
   fi
