@@ -96,9 +96,7 @@ pub fn fetch_fingerprints(url: Option<&str>) -> Result<usize, String> {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-    let cache = FingerprintCache {
-        entries,
-    };
+    let cache = FingerprintCache { entries };
 
     if let Ok(mut guard) = CACHE.write() {
         *guard = Some(cache);
@@ -163,9 +161,7 @@ pub fn inject_fingerprints(data: &str) -> usize {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
-    let cache = FingerprintCache {
-        entries,
-    };
+    let cache = FingerprintCache { entries };
 
     if let Ok(mut guard) = CACHE.write() {
         *guard = Some(cache);
