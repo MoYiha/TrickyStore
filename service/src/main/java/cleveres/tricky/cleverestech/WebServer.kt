@@ -332,29 +332,49 @@ class WebServer(
     private fun getCpuUsagePercent(): Double {
         try {
             val statBuffer = ByteArray(8192)
-            val selfStatLine = java.io.FileInputStream("/proc/self/stat").use { fis ->
+            var uTime = 0L
+            var sTime = 0L
+            java.io.FileInputStream("/proc/self/stat").use { fis ->
                 val read = fis.read(statBuffer)
-                if (read > 0) String(statBuffer, 0, read) else ""
-            }
-            val selfStat = selfStatLine.split(" ")
-
-            val sysStatLine = java.io.FileInputStream("/proc/stat").use { fis ->
-                val read = fis.read(statBuffer)
-                var lineEnd = 0
-                while (lineEnd < read && statBuffer[lineEnd] != '\n'.code.toByte()) {
-                    lineEnd++
+                if (read > 0) {
+                    var pos = 0
+                    var spaceCount = 0
+                    while (pos < read && spaceCount < 15) {
+                        if (statBuffer[pos] == ' '.code.toByte()) {
+                            spaceCount++
+                        } else if (spaceCount == 13) {
+                            uTime = uTime * 10 + (statBuffer[pos] - '0'.code.toByte())
+                        } else if (spaceCount == 14) {
+                            sTime = sTime * 10 + (statBuffer[pos] - '0'.code.toByte())
+                        }
+                        pos++
+                    }
                 }
-                if (read > 0) String(statBuffer, 0, lineEnd) else ""
             }
-            val sysStat = sysStatLine.split(WHITESPACE_REGEX)
-
-            val uTime = selfStat.getOrNull(13)?.toLongOrNull() ?: 0L
-            val sTime = selfStat.getOrNull(14)?.toLongOrNull() ?: 0L
             val procTime = uTime + sTime
 
             var totalTime = 0L
-            for (i in 1 until sysStat.size) {
-                totalTime += sysStat[i].toLongOrNull() ?: 0L
+            java.io.FileInputStream("/proc/stat").use { fis ->
+                val read = fis.read(statBuffer)
+                if (read > 0) {
+                    var pos = 0
+                    // skip "cpu" prefix
+                    while (pos < read && statBuffer[pos] != ' '.code.toByte() && statBuffer[pos] != '\n'.code.toByte()) {
+                        pos++
+                    }
+                    while (pos < read && statBuffer[pos] != '\n'.code.toByte()) {
+                        while (pos < read && statBuffer[pos] == ' '.code.toByte()) {
+                            pos++
+                        }
+                        if (pos >= read || statBuffer[pos] == '\n'.code.toByte()) break
+                        var currentVal = 0L
+                        while (pos < read && statBuffer[pos] >= '0'.code.toByte() && statBuffer[pos] <= '9'.code.toByte()) {
+                            currentVal = currentVal * 10 + (statBuffer[pos] - '0'.code.toByte())
+                            pos++
+                        }
+                        totalTime += currentVal
+                    }
+                }
             }
 
             if (lastSysTime > 0 && totalTime > lastSysTime) {
@@ -375,13 +395,38 @@ class WebServer(
 
     private fun getRamUsageKb(): Long {
         try {
-            File("/proc/self/status").useLines { lines ->
-                lines.forEach { line ->
-                    if (line.startsWith("VmRSS:")) {
-                        val parts = line.split(WHITESPACE_REGEX)
-                        if (parts.size >= 2) {
-                            return parts[1].toLongOrNull() ?: 0L
+            val buffer = ByteArray(8192)
+            java.io.FileInputStream("/proc/self/status").use { fis ->
+                val read = fis.read(buffer)
+                if (read > 0) {
+                    var pos = 0
+                    while (pos < read) {
+                        // Check if line starts with "VmRSS:"
+                        if (pos + 6 < read &&
+                            buffer[pos] == 'V'.code.toByte() &&
+                            buffer[pos+1] == 'm'.code.toByte() &&
+                            buffer[pos+2] == 'R'.code.toByte() &&
+                            buffer[pos+3] == 'S'.code.toByte() &&
+                            buffer[pos+4] == 'S'.code.toByte() &&
+                            buffer[pos+5] == ':'.code.toByte()
+                        ) {
+                            pos += 6
+                            // Skip spaces
+                            while (pos < read && (buffer[pos] == ' '.code.toByte() || buffer[pos] == '\t'.code.toByte())) {
+                                pos++
+                            }
+                            var kb = 0L
+                            while (pos < read && buffer[pos] >= '0'.code.toByte() && buffer[pos] <= '9'.code.toByte()) {
+                                kb = kb * 10 + (buffer[pos] - '0'.code.toByte())
+                                pos++
+                            }
+                            return kb
                         }
+                        // Skip to next line
+                        while (pos < read && buffer[pos] != '\n'.code.toByte()) {
+                            pos++
+                        }
+                        pos++
                     }
                 }
             }
