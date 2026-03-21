@@ -1284,6 +1284,10 @@ class WebServer(
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
         button.confirm-active { background: var(--danger) !important; color: #fff !important; font-weight: bold; border-color: var(--danger) !important; }
         .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
+        .search-container { position: relative; margin-bottom: 10px; }
+        .search-container input[type="search"] { width: 100%; padding-right: 30px; }
+        .clear-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #888; font-size: 1.2em; padding: 0; min-height: auto; width: auto; cursor: pointer; display: none; touch-action: manipulation; }
+        .clear-btn:hover { color: #fff; background: transparent; }
         @media screen and (max-width: 600px) {
             .grid-2 { grid-template-columns: 1fr; }
             .content { padding: 12px; padding-bottom: 80px; }
@@ -1447,7 +1451,7 @@ class WebServer(
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
         <div class="panel">
-            <h3>Active Rules</h3><input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" style="width:100%; margin-bottom:10px;" aria-label="Filter rules">
+            <h3>Active Rules</h3><div class="search-container"><input type="search" id="appFilter" placeholder="Filter active rules by package name..." oninput="renderAppTable()" aria-label="Filter rules" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('appFilter').value=''; renderAppTable();" class="clear-btn" id="clearAppFilterBtn" aria-label="Clear filter">&times;</button></div>
             <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead><tbody></tbody></table>
             <div style="margin-top:15px; text-align:right;"><button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button></div>
         </div>
@@ -1508,7 +1512,7 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>Stored Keyboxes</h3>
-            <input type="search" id="keyboxFilter" placeholder="Filter keyboxes..." oninput="renderKeyboxes()" style="width:100%; margin-bottom:10px;" aria-label="Filter keyboxes">
+            <div class="search-container"><input type="search" id="keyboxFilter" placeholder="Filter keyboxes by name..." oninput="renderKeyboxes()" aria-label="Filter keyboxes" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('keyboxFilter').value=''; renderKeyboxes();" class="clear-btn" id="clearKeyboxFilterBtn" aria-label="Clear filter">&times;</button></div>
             <div id="storedKeyboxesList" style="max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="panel">
@@ -2213,6 +2217,8 @@ class WebServer(
         function renderKeyboxes() {
             const list = document.getElementById('storedKeyboxesList');
             const filterInput = document.getElementById('keyboxFilter');
+            const clearBtn = document.getElementById('clearKeyboxFilterBtn');
+            if (clearBtn) clearBtn.style.display = (filterInput && filterInput.value) ? 'block' : 'none';
             const filterText = filterInput ? filterInput.value.toLowerCase() : '';
             if (!list) return;
             list.innerHTML = '';
@@ -2370,7 +2376,10 @@ class WebServer(
             renderAppTable();
         }
         function renderAppTable() {
-            const filter = document.getElementById('appFilter') ? document.getElementById('appFilter').value.toLowerCase() : '';
+            const filterInput = document.getElementById('appFilter');
+            const clearBtn = document.getElementById('clearAppFilterBtn');
+            if (clearBtn) clearBtn.style.display = (filterInput && filterInput.value) ? 'block' : 'none';
+            const filter = filterInput ? filterInput.value.toLowerCase() : '';
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
             if (appRules.length === 0) {
