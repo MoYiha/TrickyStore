@@ -25,10 +25,15 @@ object TelephonyInterceptor : BinderInterceptor() {
     private val getMeidForSubscriberTransaction = getTransactCode(IPhoneSubInfo.Stub::class.java, "getMeidForSubscriber")
 
     private lateinit var iphonesubinfo: IBinder
-    private var triedCount = 0
-    private var injected = false
+    @Volatile private var triedCount = 0
+    @Volatile private var injected = false
 
     private val secureRandom = java.security.SecureRandom()
+
+    private val fallbackImei by lazy { generateFallbackImei() }
+    private val fallbackImei2 by lazy { generateFallbackImei() }
+    private val fallbackImsi by lazy { generateFallbackImsi() }
+    private val fallbackIccid by lazy { generateFallbackIccid() }
 
     private fun generateFallbackImei(): String {
         val sb = StringBuilder()
@@ -79,10 +84,10 @@ object TelephonyInterceptor : BinderInterceptor() {
             return Skip
         }
 
-        val imei = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: generateFallbackImei()
-        val imei2 = Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: generateFallbackImei()
-        val imsi = Config.getBuildVar("ATTESTATION_ID_IMSI") ?: generateFallbackImsi()
-        val iccid = Config.getBuildVar("ATTESTATION_ID_ICCID") ?: generateFallbackIccid()
+        val imei = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
+        val imei2 = Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: fallbackImei2
+        val imsi = Config.getBuildVar("ATTESTATION_ID_IMSI") ?: fallbackImsi
+        val iccid = Config.getBuildVar("ATTESTATION_ID_ICCID") ?: fallbackIccid
         val meid = Config.getBuildVar("ATTESTATION_ID_MEID") ?: ""
         val phoneNumber = Config.getBuildVar("ATTESTATION_ID_PHONE_NUMBER") ?: ""
 
@@ -141,7 +146,7 @@ object TelephonyInterceptor : BinderInterceptor() {
         return Skip
     }
 
-    private var cachedPhonePid: Int? = null
+    @Volatile private var cachedPhonePid: Int? = null
 
     private fun findPhoneProcessPid(): Int? {
         val cachedPid = cachedPhonePid

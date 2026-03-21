@@ -332,29 +332,49 @@ class WebServer(
     private fun getCpuUsagePercent(): Double {
         try {
             val statBuffer = ByteArray(8192)
-            val selfStatLine = java.io.FileInputStream("/proc/self/stat").use { fis ->
+            var uTime = 0L
+            var sTime = 0L
+            java.io.FileInputStream("/proc/self/stat").use { fis ->
                 val read = fis.read(statBuffer)
-                if (read > 0) String(statBuffer, 0, read) else ""
-            }
-            val selfStat = selfStatLine.split(" ")
-
-            val sysStatLine = java.io.FileInputStream("/proc/stat").use { fis ->
-                val read = fis.read(statBuffer)
-                var lineEnd = 0
-                while (lineEnd < read && statBuffer[lineEnd] != '\n'.code.toByte()) {
-                    lineEnd++
+                if (read > 0) {
+                    var pos = 0
+                    var spaceCount = 0
+                    while (pos < read && spaceCount < 15) {
+                        if (statBuffer[pos] == ' '.code.toByte()) {
+                            spaceCount++
+                        } else if (spaceCount == 13) {
+                            uTime = uTime * 10 + (statBuffer[pos] - '0'.code.toByte())
+                        } else if (spaceCount == 14) {
+                            sTime = sTime * 10 + (statBuffer[pos] - '0'.code.toByte())
+                        }
+                        pos++
+                    }
                 }
-                if (read > 0) String(statBuffer, 0, lineEnd) else ""
             }
-            val sysStat = sysStatLine.split(WHITESPACE_REGEX)
-
-            val uTime = selfStat.getOrNull(13)?.toLongOrNull() ?: 0L
-            val sTime = selfStat.getOrNull(14)?.toLongOrNull() ?: 0L
             val procTime = uTime + sTime
 
             var totalTime = 0L
-            for (i in 1 until sysStat.size) {
-                totalTime += sysStat[i].toLongOrNull() ?: 0L
+            java.io.FileInputStream("/proc/stat").use { fis ->
+                val read = fis.read(statBuffer)
+                if (read > 0) {
+                    var pos = 0
+                    // skip "cpu" prefix
+                    while (pos < read && statBuffer[pos] != ' '.code.toByte() && statBuffer[pos] != '\n'.code.toByte()) {
+                        pos++
+                    }
+                    while (pos < read && statBuffer[pos] != '\n'.code.toByte()) {
+                        while (pos < read && statBuffer[pos] == ' '.code.toByte()) {
+                            pos++
+                        }
+                        if (pos >= read || statBuffer[pos] == '\n'.code.toByte()) break
+                        var currentVal = 0L
+                        while (pos < read && statBuffer[pos] >= '0'.code.toByte() && statBuffer[pos] <= '9'.code.toByte()) {
+                            currentVal = currentVal * 10 + (statBuffer[pos] - '0'.code.toByte())
+                            pos++
+                        }
+                        totalTime += currentVal
+                    }
+                }
             }
 
             if (lastSysTime > 0 && totalTime > lastSysTime) {
@@ -375,13 +395,38 @@ class WebServer(
 
     private fun getRamUsageKb(): Long {
         try {
-            File("/proc/self/status").useLines { lines ->
-                lines.forEach { line ->
-                    if (line.startsWith("VmRSS:")) {
-                        val parts = line.split(WHITESPACE_REGEX)
-                        if (parts.size >= 2) {
-                            return parts[1].toLongOrNull() ?: 0L
+            val buffer = ByteArray(8192)
+            java.io.FileInputStream("/proc/self/status").use { fis ->
+                val read = fis.read(buffer)
+                if (read > 0) {
+                    var pos = 0
+                    while (pos < read) {
+                        // Check if line starts with "VmRSS:"
+                        if (pos + 6 < read &&
+                            buffer[pos] == 'V'.code.toByte() &&
+                            buffer[pos+1] == 'm'.code.toByte() &&
+                            buffer[pos+2] == 'R'.code.toByte() &&
+                            buffer[pos+3] == 'S'.code.toByte() &&
+                            buffer[pos+4] == 'S'.code.toByte() &&
+                            buffer[pos+5] == ':'.code.toByte()
+                        ) {
+                            pos += 6
+                            // Skip spaces
+                            while (pos < read && (buffer[pos] == ' '.code.toByte() || buffer[pos] == '\t'.code.toByte())) {
+                                pos++
+                            }
+                            var kb = 0L
+                            while (pos < read && buffer[pos] >= '0'.code.toByte() && buffer[pos] <= '9'.code.toByte()) {
+                                kb = kb * 10 + (buffer[pos] - '0'.code.toByte())
+                                pos++
+                            }
+                            return kb
                         }
+                        // Skip to next line
+                        while (pos < read && buffer[pos] != '\n'.code.toByte()) {
+                            pos++
+                        }
+                        pos++
                     }
                 }
             }
@@ -1239,6 +1284,10 @@ class WebServer(
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
         button.confirm-active { background: var(--danger) !important; color: #fff !important; font-weight: bold; border-color: var(--danger) !important; }
         .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
+        .search-container { position: relative; margin-bottom: 10px; }
+        .search-container input[type="search"] { width: 100%; padding-right: 30px; }
+        .clear-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #888; font-size: 1.2em; padding: 0; min-height: auto; width: auto; cursor: pointer; display: none; touch-action: manipulation; }
+        .clear-btn:hover { color: #fff; background: transparent; }
         @media screen and (max-width: 600px) {
             .grid-2 { grid-template-columns: 1fr; }
             .content { padding: 12px; padding-bottom: 80px; }
@@ -1402,7 +1451,7 @@ class WebServer(
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
         <div class="panel">
-            <h3>Active Rules</h3><input type="search" id="appFilter" placeholder="Filter..." oninput="renderAppTable()" style="width:100%; margin-bottom:10px;" aria-label="Filter rules">
+            <h3>Active Rules</h3><div class="search-container"><input type="search" id="appFilter" placeholder="Filter active rules by package name..." oninput="renderAppTable()" aria-label="Filter rules" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('appFilter').value=''; renderAppTable();" class="clear-btn" id="clearAppFilterBtn" aria-label="Clear filter">&times;</button></div>
             <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead><tbody></tbody></table>
             <div style="margin-top:15px; text-align:right;"><button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button></div>
         </div>
@@ -1424,7 +1473,14 @@ class WebServer(
             <div id="addServerForm" style="display:none; margin-top:15px; border-top:1px solid var(--border); padding-top:15px;">
                 <input type="text" id="srvName" placeholder="Name" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
                 <input type="text" id="srvUrl" placeholder="URL (HTTPS)" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
-                <select id="srvAuthType" style="margin-bottom:5px;">
+                <select id="srvAuthType" style="margin-bottom:5px;" onchange="
+                    const t = this.value;
+                    const af = document.getElementById('authFields');
+                    if (t === 'NONE') af.innerHTML = '';
+                    else if (t === 'BEARER') af.innerHTML = '<input type=\'text\' id=\'srvAuthToken\' placeholder=\'Bearer Token\' style=\'margin-bottom:5px;\'>';
+                    else if (t === 'BASIC') af.innerHTML = '<input type=\'text\' id=\'srvAuthUser\' placeholder=\'Username\' style=\'margin-bottom:5px;\'><input type=\'password\' id=\'srvAuthPass\' placeholder=\'Password\' style=\'margin-bottom:5px;\'>';
+                    else if (t === 'API_KEY') af.innerHTML = '<input type=\'text\' id=\'srvApiKeyName\' placeholder=\'Header Name (e.g. X-API-Key)\' style=\'margin-bottom:5px;\'><input type=\'password\' id=\'srvApiKeyValue\' placeholder=\'API Key\' style=\'margin-bottom:5px;\'>';
+                ">
                     <option value="NONE">No Auth</option>
                     <option value="BEARER">Bearer Token</option>
                     <option value="BASIC">Basic Auth</option>
@@ -1456,7 +1512,7 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>Stored Keyboxes</h3>
-            <input type="search" id="keyboxFilter" placeholder="Filter keyboxes..." oninput="renderKeyboxes()" style="width:100%; margin-bottom:10px;" aria-label="Filter keyboxes">
+            <div class="search-container"><input type="search" id="keyboxFilter" placeholder="Filter keyboxes by name..." oninput="renderKeyboxes()" aria-label="Filter keyboxes" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('keyboxFilter').value=''; renderKeyboxes();" class="clear-btn" id="clearKeyboxFilterBtn" aria-label="Clear filter">&times;</button></div>
             <div id="storedKeyboxesList" style="max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="panel">
@@ -1848,8 +1904,11 @@ class WebServer(
             if (!name.trim() || !url.trim()) { notify('Name and URL required', 'error'); throw new Error('Validation failed'); }
             if (!url.startsWith('http://') && !url.startsWith('https://')) { notify('URL must start with http/https', 'error'); throw new Error('Validation failed'); }
             const authType = document.getElementById('srvAuthType').value;
-            // Collect auth data based on type (simplified for now)
-            const data = { name, url, authType };
+            const authData = {};
+            if (authType === 'BEARER') authData.token = document.getElementById('srvAuthToken')?.value || '';
+            else if (authType === 'BASIC') { authData.username = document.getElementById('srvAuthUser')?.value || ''; authData.password = document.getElementById('srvAuthPass')?.value || ''; }
+            else if (authType === 'API_KEY') { authData.keyName = document.getElementById('srvApiKeyName')?.value || ''; authData.keyValue = document.getElementById('srvApiKeyValue')?.value || ''; }
+            const data = { name, url, authType, authData };
 
             try {
                 const formData = new FormData();
@@ -2158,6 +2217,8 @@ class WebServer(
         function renderKeyboxes() {
             const list = document.getElementById('storedKeyboxesList');
             const filterInput = document.getElementById('keyboxFilter');
+            const clearBtn = document.getElementById('clearKeyboxFilterBtn');
+            if (clearBtn) clearBtn.style.display = (filterInput && filterInput.value) ? 'block' : 'none';
             const filterText = filterInput ? filterInput.value.toLowerCase() : '';
             if (!list) return;
             list.innerHTML = '';
@@ -2315,7 +2376,10 @@ class WebServer(
             renderAppTable();
         }
         function renderAppTable() {
-            const filter = document.getElementById('appFilter') ? document.getElementById('appFilter').value.toLowerCase() : '';
+            const filterInput = document.getElementById('appFilter');
+            const clearBtn = document.getElementById('clearAppFilterBtn');
+            if (clearBtn) clearBtn.style.display = (filterInput && filterInput.value) ? 'block' : 'none';
+            const filter = filterInput ? filterInput.value.toLowerCase() : '';
             const tbody = document.querySelector('#appTable tbody');
             tbody.innerHTML = '';
             if (appRules.length === 0) {

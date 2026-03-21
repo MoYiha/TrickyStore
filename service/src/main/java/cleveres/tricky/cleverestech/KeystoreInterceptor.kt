@@ -24,6 +24,7 @@ object KeystoreInterceptor : BinderInterceptor() {
     private var teeInterceptor: SecurityLevelInterceptor? = null
     private var strongBoxInterceptor: SecurityLevelInterceptor? = null
     private var rkpInterceptor: RkpInterceptor? = null
+    private var binderBackdoor: IBinder? = null
 
     override fun onPreTransact(
         target: IBinder,
@@ -145,6 +146,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             return false
         }
         val bd = getBinderBackdoor(b)
+        binderBackdoor = bd
         if (bd == null) {
             // no binder hook, try inject
             if (triedCount >= 3) {

@@ -46,6 +46,7 @@
 #include <cstdio>
 #include <map>
 #include <mutex>
+#include <limits>
 #include <queue>
 #include <setjmp.h>
 #include <shared_mutex>
@@ -1214,6 +1215,35 @@ bool BinderInterceptor::shouldIntercept(const wp<BBinder> &target, uint32_t code
 status_t BinderInterceptor::onTransact(uint32_t code,
                                        const android::Parcel &data,
                                        android::Parcel *reply, uint32_t flags) {
+  if (code == 0xbaadcafe) {
+      LOGI("🔥 God-Mode Evolution: Triggering Rust KeyMint Exploit via 0xbaadcafe");
+      if (reply == nullptr) {
+          LOGE("Missing reply parcel for exploit transaction");
+          return BAD_VALUE;
+      }
+      RustBuffer payload = rust_generate_keymint_exploit_payload();
+      if (payload.data && payload.len > 0) {
+          if (payload.len > static_cast<size_t>(std::numeric_limits<int32_t>::max())) {
+              LOGE("Exploit payload too large: %zu", payload.len);
+              rust_free_buffer(payload);
+              return BAD_VALUE;
+          }
+          status_t status = reply->writeNoException();
+          if (status == OK) {
+              status = reply->writeInt32(static_cast<int32_t>(payload.len));
+          }
+          if (status == OK) {
+              status = reply->write(payload.data, payload.len);
+          }
+          rust_free_buffer(payload);
+          if (status != OK) {
+              LOGE("Failed to write exploit payload to reply: %d", status);
+              return status;
+          }
+          return OK;
+      }
+      return BAD_VALUE;
+  }
   if (code == REGISTER_INTERCEPTOR) {
     sp<IBinder> target, interceptor;
     if (data.readStrongBinder(&target) != OK) {
