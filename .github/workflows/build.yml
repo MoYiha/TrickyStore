@@ -461,14 +461,12 @@ jobs:
             echo "Installing Magisk via rootAVD..."
             git clone https://github.com/newbit1/rootAVD.git
             rm -rf rootAVD/.git
-            cd rootAVD
-            ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img
+            (cd rootAVD && ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img)
             adb wait-for-device
-            cd ..
 
             echo "Pushing and Installing CleveresTricky Module..."
-            MODULE_ZIP=\$(ls module/release/*-debug.zip | head -n 1)
-            adb push "\$MODULE_ZIP" /data/local/tmp/module.zip
+            MODULE_ZIP=$(ls module/release/*-debug.zip | head -n 1)
+            adb push "$MODULE_ZIP" /data/local/tmp/module.zip
             adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"
             adb reboot
             adb wait-for-device
