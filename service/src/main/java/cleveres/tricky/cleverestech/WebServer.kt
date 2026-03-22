@@ -1403,20 +1403,20 @@ class WebServer(
         </div>
         <div class="panel"><h3>System-Wide Spoofing (Global Hardware)</h3>
             <div class="section-header">Modem</div><div class="grid-2">
-                <div><label for="inputImei">IMEI</label><input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')"></div>
-                <div><label for="inputImsi">IMSI</label><input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'imsi')"></div>
+                <div><label for="inputImei">IMEI</label><input type="text" id="inputImei" placeholder="35..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputImsi">IMSI</label><input type="text" id="inputImsi" placeholder="310..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'imsi')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                <div><label for="inputIccid">ICCID</label><input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')"></div>
-                <div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'alphanum')"></div>
+                <div><label for="inputIccid">ICCID</label><input type="text" id="inputIccid" placeholder="89..." style="font-family:monospace;" inputmode="numeric" oninput="validateRealtime(this, 'luhn')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Alphanumeric..." style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'alphanum')" spellcheck="false" autocomplete="off" autocorrect="off"></div>
             </div>
             <div class="section-header">Network</div><div class="grid-2">
-                <div><label for="inputWifiMac">WiFi MAC</label><input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')"></div>
-                <div><label for="inputBtMac">BT MAC</label><input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')"></div>
+                <div><label for="inputWifiMac">WiFi MAC</label><input type="text" id="inputWifiMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')" spellcheck="false" autocomplete="off" autocorrect="off"></div>
+                <div><label for="inputBtMac">BT MAC</label><input type="text" id="inputBtMac" placeholder="00:11:22:33:44:55" style="font-family:monospace;" autocapitalize="characters" oninput="validateRealtime(this, 'mac')" spellcheck="false" autocomplete="off" autocorrect="off"></div>
             </div>
             <div class="section-header">Operator</div><div class="grid-2">
-                <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')"></div>
-                <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator"></div>
+                <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
             <div style="margin-top:15px; text-align:right;"><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
         </div>
@@ -1424,19 +1424,19 @@ class WebServer(
             <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
             <div style="font-size:0.85em; color:#888; margin-bottom:15px;">Simulates GPS coordinates for target apps. Qualcomm and MediaTek devices supported.</div>
             <div class="grid-2">
-                <div><label for="inputLatitude">Latitude</label><input type="text" id="inputLatitude" placeholder="41.0082" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lat')" aria-label="Latitude (-90 to 90)"></div>
-                <div><label for="inputLongitude">Longitude</label><input type="text" id="inputLongitude" placeholder="28.9784" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lng')" aria-label="Longitude (-180 to 180)"></div>
+                <div><label for="inputLatitude">Latitude</label><input type="text" id="inputLatitude" placeholder="41.0082" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lat')" aria-label="Latitude (-90 to 90)" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputLongitude">Longitude</label><input type="text" id="inputLongitude" placeholder="28.9784" style="font-family:monospace;" inputmode="decimal" oninput="validateRealtime(this, 'lng')" aria-label="Longitude (-180 to 180)" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
             <div class="grid-2" style="margin-top:10px;">
-                <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal" aria-label="Altitude in meters"></div>
-                <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal" aria-label="GPS accuracy in meters"></div>
+                <div><label for="inputAltitude">Altitude (m)</label><input type="text" id="inputAltitude" placeholder="0" style="font-family:monospace;" inputmode="decimal" aria-label="Altitude in meters" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputAccuracy">Accuracy (m)</label><input type="text" id="inputAccuracy" placeholder="1.0" style="font-family:monospace;" inputmode="decimal" aria-label="GPS accuracy in meters" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
             <div class="section-header" style="margin-top:15px;">Random Location Mode</div>
             <div style="font-size:0.85em; color:#888; margin-bottom:10px;">Periodically changes location within a radius of the center coordinates above. Optimized for low CPU/RAM usage.</div>
             <div class="row"><label for="chkLocationRandom">Enable Random Location</label><input type="checkbox" class="toggle" id="chkLocationRandom" aria-label="Enable random location changes"></div>
             <div class="grid-2" style="margin-top:10px;">
-                <div><label for="inputLocationRadius">Radius (m)</label><input type="text" id="inputLocationRadius" placeholder="500" value="500" style="font-family:monospace;" inputmode="numeric" aria-label="Random location radius in meters"></div>
-                <div><label for="inputLocationInterval">Interval (sec)</label><input type="text" id="inputLocationInterval" placeholder="30" value="30" style="font-family:monospace;" inputmode="numeric" aria-label="Random location update interval in seconds"></div>
+                <div><label for="inputLocationRadius">Radius (m)</label><input type="text" id="inputLocationRadius" placeholder="500" value="500" style="font-family:monospace;" inputmode="numeric" aria-label="Random location radius in meters" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+                <div><label for="inputLocationInterval">Interval (sec)</label><input type="text" id="inputLocationInterval" placeholder="30" value="30" style="font-family:monospace;" inputmode="numeric" aria-label="Random location update interval in seconds" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
             <div style="margin-top:15px;"><button onclick="applyLocationSpoof(this)" class="primary" style="width:100%;">Save Location Settings</button></div>
         </div>
@@ -1477,9 +1477,9 @@ class WebServer(
                     const t = this.value;
                     const af = document.getElementById('authFields');
                     if (t === 'NONE') af.innerHTML = '';
-                    else if (t === 'BEARER') af.innerHTML = '<input type=\'text\' id=\'srvAuthToken\' placeholder=\'Bearer Token\' style=\'margin-bottom:5px;\'>';
-                    else if (t === 'BASIC') af.innerHTML = '<input type=\'text\' id=\'srvAuthUser\' placeholder=\'Username\' style=\'margin-bottom:5px;\'><input type=\'password\' id=\'srvAuthPass\' placeholder=\'Password\' style=\'margin-bottom:5px;\'>';
-                    else if (t === 'API_KEY') af.innerHTML = '<input type=\'text\' id=\'srvApiKeyName\' placeholder=\'Header Name (e.g. X-API-Key)\' style=\'margin-bottom:5px;\'><input type=\'password\' id=\'srvApiKeyValue\' placeholder=\'API Key\' style=\'margin-bottom:5px;\'>';
+                    else if (t === 'BEARER') af.innerHTML = '<input type=\'text\' id=\'srvAuthToken\' placeholder=\'Bearer Token\' style=\'margin-bottom:5px;\' spellcheck=\'false\' autocomplete=\'off\' autocorrect=\'off\' autocapitalize=\'off\'>';
+                    else if (t === 'BASIC') af.innerHTML = '<input type=\'text\' id=\'srvAuthUser\' placeholder=\'Username\' style=\'margin-bottom:5px;\' spellcheck=\'false\' autocomplete=\'off\' autocorrect=\'off\' autocapitalize=\'off\'><input type=\'password\' id=\'srvAuthPass\' placeholder=\'Password\' style=\'margin-bottom:5px;\'>';
+                    else if (t === 'API_KEY') af.innerHTML = '<input type=\'text\' id=\'srvApiKeyName\' placeholder=\'Header Name (e.g. X-API-Key)\' style=\'margin-bottom:5px;\' spellcheck=\'false\' autocomplete=\'off\' autocorrect=\'off\' autocapitalize=\'off\'><input type=\'password\' id=\'srvApiKeyValue\' placeholder=\'API Key\' style=\'margin-bottom:5px;\'>';
                 ">
                     <option value="NONE">No Auth</option>
                     <option value="BEARER">Bearer Token</option>
@@ -1489,7 +1489,7 @@ class WebServer(
                 <div id="authFields"></div>
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                     <button onclick="runWithState(this, 'Saving...', addServer)" class="primary" style="flex: 1;">Save Server</button>
-                    <button onclick="document.getElementById('addServerForm').style.display='none'" style="flex: 1;">Cancel</button>
+                    <button onclick="document.getElementById('addServerForm').style.display='none'; document.getElementById('srvName').value=''; document.getElementById('srvUrl').value=''; document.getElementById('srvAuthType').value='NONE'; document.getElementById('authFields').innerHTML='';" style="flex: 1;">Cancel</button>
                 </div>
             </div>
         </div>
@@ -1887,6 +1887,9 @@ class WebServer(
             const servers = await res.json();
             const list = document.getElementById('serverList');
             list.innerHTML = '';
+            if (servers.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding:15px; color:#666;">No servers configured. Add one below to fetch keyboxes automatically.</div>';
+            }
             servers.forEach(s => {
                 const div = document.createElement('div');
                 div.className = 'server-item';
@@ -1914,7 +1917,7 @@ class WebServer(
                 const formData = new FormData();
                 formData.append('data', JSON.stringify(data));
                 const res = await fetchAuth('/api/server/add', { method: 'POST', body: formData });
-                if (res.ok) { notify('Server Added'); document.getElementById('addServerForm').style.display='none'; loadServers(); }
+                if (res.ok) { notify('Server Added'); document.getElementById('addServerForm').style.display='none'; document.getElementById('srvName').value=''; document.getElementById('srvUrl').value=''; document.getElementById('srvAuthType').value='NONE'; document.getElementById('authFields').innerHTML=''; loadServers(); }
                 else notify('Failed', 'error');
             } catch(e) { notify('Error', 'error'); throw e; }
         }
