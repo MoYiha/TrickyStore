@@ -100,22 +100,52 @@ val keyMintVersion by lazy {
     }
 }
 
-fun String.convertPatchLevel(long: Boolean) = kotlin.runCatching {
-    if (contains("-")) {
-        val l = split("-")
-        if (long) l[0].toInt() * 10000 + l[1].toInt() * 100 + l[2].toInt()
-        else l[0].toInt() * 100 + l[1].toInt()
-    } else {
-        val year = substring(0, 4).toInt()
-        val month = substring(4, 6).toInt()
-        if (long) {
-            val day = if (length >= 8) substring(6, 8).toInt() else 1
+fun String.convertPatchLevel(long: Boolean): Int {
+    try {
+        var year = 0
+        var month = 0
+        var day = 0
+        var currentPart = 0
+        var partIndex = 0
+
+        for (i in indices) {
+            val c = this[i]
+            if (c == '-') {
+                if (partIndex == 0) year = currentPart
+                else if (partIndex == 1) month = currentPart
+                currentPart = 0
+                partIndex++
+            } else if (c in '0'..'9') {
+                currentPart = currentPart * 10 + (c - '0')
+            }
+        }
+
+        if (partIndex == 0) {
+            // No dashes, parse fixed positions: YYYYMM or YYYYMMDD
+            if (length >= 6) {
+                year = (this[0] - '0') * 1000 + (this[1] - '0') * 100 + (this[2] - '0') * 10 + (this[3] - '0')
+                month = (this[4] - '0') * 10 + (this[5] - '0')
+                day = if (length >= 8) (this[6] - '0') * 10 + (this[7] - '0') else 1
+            } else {
+                return if (long) 20240101 else 202401
+            }
+        } else {
+            if (partIndex == 0) year = currentPart
+            else if (partIndex == 1) month = currentPart
+            else if (partIndex == 2) day = currentPart
+            if (day == 0) day = 1
+        }
+
+        return if (long) {
             year * 10000 + month * 100 + day
         } else {
             year * 100 + month
         }
+    } catch (e: Exception) {
+        Logger.e("invalid patch level $this !", e)
+        return if (long) 20240101 else 202401
     }
-}.onFailure { Logger.e("invalid patch level $this !", it) }.getOrDefault(if (long) 20240101 else 202401)
+}
 
 fun IPackageManager.getPackageInfoCompat(name: String, flags: Long, userId: Int) =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
