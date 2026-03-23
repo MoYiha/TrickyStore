@@ -465,8 +465,7 @@ jobs:
             adb wait-for-device
 
             echo "Pushing and Installing CleveresTricky Module..."
-            MODULE_ZIP=$(ls module/release/*-debug.zip | head -n 1)
-            adb push "$MODULE_ZIP" /data/local/tmp/module.zip
+            adb push "$(ls module/release/*-debug.zip | head -n 1)" /data/local/tmp/module.zip
             adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"
             adb reboot
             adb wait-for-device
