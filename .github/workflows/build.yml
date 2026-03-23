@@ -466,7 +466,10 @@ jobs:
 
             echo "Pushing and Installing CleveresTricky Module..."
             adb push "$(ls module/release/*-debug.zip | head -n 1)" /data/local/tmp/module.zip
-            adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"
+            if ! adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"; then
+              echo "su not available, retrying magisk install directly..."
+              adb shell "magisk --install-module /data/local/tmp/module.zip"
+            fi
             adb reboot
             adb wait-for-device
 
