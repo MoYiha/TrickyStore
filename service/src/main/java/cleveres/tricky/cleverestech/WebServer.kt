@@ -1418,7 +1418,7 @@ class WebServer(
                 <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
                 <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
-            <div style="margin-top:15px; text-align:right;"><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
+            <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;"><button type="button" onclick="clearSpoofingInputs()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
         </div>
         <div class="panel"><h3>Location Spoofing (Privacy Suite)</h3>
             <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
@@ -2121,8 +2121,7 @@ class WebServer(
             const t = JSON.parse(sel.selectedOptions[0].dataset.json);
             document.getElementById('pModel').innerText = t.model; document.getElementById('pManuf').innerText = t.manufacturer; document.getElementById('pFing').innerText = t.fingerprint;
             if (!sel.dataset.lockExtras) {
-                document.getElementById('inputImei').value = '';
-                document.getElementById('inputSerial').value = '';
+                clearSpoofingInputs();
             }
             delete sel.dataset.lockExtras;
         }
@@ -2264,6 +2263,18 @@ class WebServer(
             } catch (e) {
                 notify('Error', 'error');
             }
+        }
+
+        function clearSpoofingInputs() {
+            ['inputImei', 'inputImsi', 'inputIccid', 'inputSerial', 'inputWifiMac', 'inputBtMac', 'inputSimIso', 'inputSimOp'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.value = '';
+                    el.classList.remove('valid', 'invalid');
+                    const next = el.nextElementSibling;
+                    if (next && next.classList.contains('error-msg')) next.remove();
+                }
+            });
         }
 
         async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
