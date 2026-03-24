@@ -29,7 +29,7 @@ rand = "0.8"
 serial_test = "2.0"
 
 [profile.release]
-lto = "off"
+lto = "fat"
 codegen-units = 1
 strip = true
 opt-level = "z"
