@@ -1576,7 +1576,7 @@ class WebServer(
 
     <div id="editor" class="content" role="tabpanel" aria-labelledby="tab_editor">
         <div class="panel">
-            <div class="row"><select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit"><option value="target.txt">target.txt</option><option value="security_patch.txt">security_patch.txt</option><option value="spoof_build_vars">spoof_build_vars</option><option value="app_config">app_config</option><option value="drm_fix">drm_fix</option></select><button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button></div>
+            <div class="row"><select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit"><option value="target.txt">target.txt</option><option value="security_patch.txt">security_patch.txt</option><option value="spoof_build_vars">spoof_build_vars</option><option value="app_config">app_config</option><option value="drm_fix">drm_fix</option></select><button id="revertBtn" class="danger" onclick="revertEditor()" style="display:none; margin-right:10px;" title="Revert Changes">Revert</button><button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button></div>
             <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" onclick="editorUnsavedBypass = false;" oninput="editorUnsavedBypass = false; updateSaveButtonState()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
         </div>
     </div>
@@ -2635,13 +2635,24 @@ class WebServer(
         function updateSaveButtonState() {
             const editor = document.getElementById('fileEditor');
             const btn = document.getElementById('saveBtn');
+            const revertBtn = document.getElementById('revertBtn');
             if (currentFile && editor.value !== originalContent) {
                 btn.innerText = 'Save *';
                 btn.classList.add('primary');
+                if (revertBtn) revertBtn.style.display = 'inline-block';
                 editorUnsavedBypass = false;
             } else {
                 btn.innerText = 'Save';
                 btn.classList.remove('primary');
+                if (revertBtn) revertBtn.style.display = 'none';
+            }
+        }
+        function revertEditor() {
+            const editor = document.getElementById('fileEditor');
+            if (originalContent !== undefined) {
+                editor.value = originalContent;
+                updateSaveButtonState();
+                notify('Changes reverted');
             }
         }
 
