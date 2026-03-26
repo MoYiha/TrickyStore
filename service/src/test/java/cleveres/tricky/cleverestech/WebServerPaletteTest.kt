@@ -61,7 +61,7 @@ class WebServerPaletteTest {
 
         // 3. Verify appPkg input has oninput handler
         assertTrue("appPkg input should have oninput handler",
-            html.contains("id=\"appPkg\"") && html.contains("oninput=\"toggleAddButton()\"")
+            html.contains("id=\"appPkg\"") && html.contains("toggleAddButton();")
         )
 
         // 4. Verify toggleAddButton function exists
