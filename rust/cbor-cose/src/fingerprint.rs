@@ -22,7 +22,7 @@ const DEFAULT_FP_URL: &str =
 #[allow(dead_code)]
 struct FingerprintCache {
     /// Map of device codename → fingerprint string.
-    entries: AHashMap<String, String>,
+    entries: AHashMap<Box<str>, Box<str>>,
 }
 
 /// Parse a fingerprint list from raw text.
@@ -91,9 +91,9 @@ pub fn fetch_fingerprints(url: Option<&str>) -> Result<usize, String> {
     let entries_ref = parse_fingerprints(body);
     let count = entries_ref.len();
 
-    let entries: AHashMap<String, String> = entries_ref
+    let entries: AHashMap<Box<str>, Box<str>> = entries_ref
         .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .map(|(k, v)| (Box::from(k), Box::from(v)))
         .collect();
 
     let cache = FingerprintCache { entries };
@@ -120,7 +120,7 @@ where
 {
     let guard = CACHE.read().ok()?;
     let cache = guard.as_ref()?;
-    cache.entries.get(device).map(|s| f(s.as_str()))
+    cache.entries.get(device).map(|s| f(s.as_ref()))
 }
 
 /// Get all cached fingerprints as a list of `"device=fingerprint"` lines.
@@ -156,9 +156,9 @@ pub fn inject_fingerprints(data: &str) -> usize {
     let entries_ref = parse_fingerprints(data);
     let count = entries_ref.len();
 
-    let entries: AHashMap<String, String> = entries_ref
+    let entries: AHashMap<Box<str>, Box<str>> = entries_ref
         .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .map(|(k, v)| (Box::from(k), Box::from(v)))
         .collect();
 
     let cache = FingerprintCache { entries };
