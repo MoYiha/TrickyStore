@@ -1,14 +1,14 @@
 use ahash::AHashMap;
 use std::sync::RwLock;
 
-static PROPERTIES: RwLock<Option<AHashMap<String, String>>> = RwLock::new(None);
+static PROPERTIES: RwLock<Option<AHashMap<Box<str>, Box<str>>>> = RwLock::new(None);
 
 pub fn get_property<R, F: FnOnce(&str) -> R>(name: &str, f: F) -> Option<R> {
     // Avoid panics inside Zygote
     if let Ok(cache) = PROPERTIES.read() {
         cache
             .as_ref()
-            .and_then(|c| c.get(name).map(|s| f(s.as_str())))
+            .and_then(|c| c.get(name).map(|s| f(s.as_ref())))
     } else {
         None
     }
@@ -17,7 +17,7 @@ pub fn get_property<R, F: FnOnce(&str) -> R>(name: &str, f: F) -> Option<R> {
 pub fn set_property(name: &str, value: &str) {
     if let Ok(mut cache) = PROPERTIES.write() {
         let map = cache.get_or_insert_with(AHashMap::new);
-        map.insert(name.to_string(), value.to_string());
+        map.insert(Box::from(name), Box::from(value));
     }
 }
 
