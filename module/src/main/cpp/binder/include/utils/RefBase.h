@@ -118,7 +118,12 @@ inline bool operator _op_ (const U* o) const {                   \
         virtual void            onLastStrongRef(const void* id);
         // Only called in OBJECT_LIFETIME_WEAK case.  Returns true if OK to promote to
         // strong reference. May have side effects if it returns true.
-        virtual bool            onIncStrongAttempted(const void* id);
+        //! Flags for onIncStrongAttempted()
+        enum {
+            FIRST_INC_STRONG = 0x0001
+        };
+
+        virtual bool            onIncStrongAttempted(uint32_t flags, const void* id);
 
     private:
         friend class weakref_type;
