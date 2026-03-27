@@ -1613,6 +1613,8 @@ class WebServer(
     <script>
         const baseUrl = '/api';
         let editorUnsavedBypass = false;
+        let currentFile = '';
+        let originalContent = '';
 
         function requireConfirm(btn, action, confirmText = 'Click again to confirm', onCancel = null) {
             if (btn.dataset.confirming === "true") {
@@ -1791,6 +1793,17 @@ class WebServer(
              try { await task(); } finally { btn.disabled = false; btn.innerText = orig; }
         }
         function switchTab(id) {
+            const editor = document.getElementById('fileEditor');
+            if (currentFile && editor && editor.value !== originalContent) {
+                if (!editorUnsavedBypass) {
+                    notify('You have unsaved changes. Click tab again to discard.', 'error');
+                    editorUnsavedBypass = true;
+                    return;
+                }
+                editor.value = originalContent;
+                updateSaveButtonState();
+            }
+            editorUnsavedBypass = false;
             document.querySelectorAll('.tab').forEach(t => {
                 t.classList.remove('active');
                 t.setAttribute('aria-selected', 'false');
@@ -2587,9 +2600,6 @@ class WebServer(
             }
         }
 
-        let currentFile = '';
-        let originalContent = '';
-
         async function loadFile() {
             const f = document.getElementById('fileSelector').value;
             const editor = document.getElementById('fileEditor');
@@ -2813,6 +2823,14 @@ class WebServer(
             document.getElementById('kbFilePicker').files = files; // Sync with input
             loadFileContent(document.getElementById('kbFilePicker'));
         }
+
+        window.addEventListener('beforeunload', function (e) {
+            const editor = document.getElementById('fileEditor');
+            if (currentFile && editor && editor.value !== originalContent) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
 
         loadLanguage();
         init();
