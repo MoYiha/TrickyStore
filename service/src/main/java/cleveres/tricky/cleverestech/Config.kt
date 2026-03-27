@@ -120,42 +120,67 @@ object Config {
         return result
     }
 
-    private val SPLIT_REGEX = Regex("\\s+")
-
     private fun updateAppConfigs(f: File?) = runCatching {
         val newConfigs = PackageTrie<AppSpoofConfig>()
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
-                    val parts = line.trim().split(SPLIT_REGEX)
-                    if (parts.isNotEmpty()) {
-                        val pkg = parts[0]
-                        var template: String? = null
-                        var keybox: String? = null
-                        val permissions = HashSet<String>()
+                    val trimmed = line.trim()
+                    if (trimmed.isEmpty()) return@forEach
 
-                        if (parts.size > 1 && parts[1] != "null") template = parts[1].lowercase()
-                        if (parts.size > 2 && parts[2] != "null") keybox = parts[2]
-                        if (parts.size > 3 && parts[3] != "null") {
-                            val permStr = parts[3]
-                            var start = 0
-                            val len = permStr.length
-                            while (start < len) {
-                                var end = permStr.indexOf(',', start)
-                                if (end == -1) {
-                                    end = len
+                    // OPTIMIZATION: Replaced String.split(Regex) with manual index-based parsing
+                    // to avoid intermediate List and String allocations during high-frequency file reads.
+                    val len = trimmed.length
+                    var idx = 0
+
+                    // parse pkg
+                    var start = idx
+                    while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                    val pkg = trimmed.substring(start, idx)
+
+                    var template: String? = null
+                    var keybox: String? = null
+                    val permissions = HashSet<String>()
+
+                    // parse template
+                    while (idx < len && trimmed[idx].isWhitespace()) idx++
+                    if (idx < len) {
+                        start = idx
+                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                        val tStr = trimmed.substring(start, idx)
+                        if (tStr != "null") template = tStr.lowercase()
+
+                        // parse keybox
+                        while (idx < len && trimmed[idx].isWhitespace()) idx++
+                        if (idx < len) {
+                            start = idx
+                            while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                            val kStr = trimmed.substring(start, idx)
+                            if (kStr != "null") keybox = kStr
+
+                            // parse permissions
+                            while (idx < len && trimmed[idx].isWhitespace()) idx++
+                            if (idx < len) {
+                                start = idx
+                                while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                val permStr = trimmed.substring(start, idx)
+                                if (permStr != "null") {
+                                    var pStart = 0
+                                    val pLen = permStr.length
+                                    while (pStart < pLen) {
+                                        var pEnd = permStr.indexOf(',', pStart)
+                                        if (pEnd == -1) pEnd = pLen
+                                        val part = permStr.substring(pStart, pEnd)
+                                        if (part.isNotBlank()) permissions.add(part.trim())
+                                        pStart = pEnd + 1
+                                    }
                                 }
-                                val part = permStr.substring(start, end)
-                                if (part.isNotBlank()) {
-                                    permissions.add(part.trim())
-                                }
-                                start = end + 1
                             }
                         }
+                    }
 
-                        if (template != null || keybox != null || permissions.isNotEmpty()) {
-                            newConfigs.add(pkg, AppSpoofConfig(template, keybox, permissions))
-                        }
+                    if (template != null || keybox != null || permissions.isNotEmpty()) {
+                        newConfigs.add(pkg, AppSpoofConfig(template, keybox, permissions))
                     }
                 }
             }
@@ -372,9 +397,10 @@ object Config {
                          // Extend existing or create new
                          currentProps = newTemplates[currentTemplate]?.toMutableMap() ?: HashMap()
                      } else if (currentTemplate != null) {
-                         val parts = l.split("=", limit = 2)
-                         if (parts.size == 2) {
-                             currentProps?.put(parts[0].trim(), parts[1].trim())
+                         // OPTIMIZATION: Replaced split("=", limit = 2) with indexOf('=') to avoid array allocations
+                         val eqIdx = l.indexOf('=')
+                         if (eqIdx != -1) {
+                             currentProps?.put(l.substring(0, eqIdx).trim(), l.substring(eqIdx + 1).trim())
                          }
                      }
                  }
@@ -519,9 +545,9 @@ object Config {
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
-                    val parts = line.split("=", limit = 2)
-                    if (parts.size == 2) {
-                        newVars[parts[0].trim()] = parts[1].trim()
+                    val eqIdx = line.indexOf('=')
+                    if (eqIdx != -1) {
+                        newVars[line.substring(0, eqIdx).trim()] = line.substring(eqIdx + 1).trim()
                     }
                 }
             }
@@ -539,10 +565,10 @@ object Config {
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
-                    val parts = line.split("=", limit = 2)
-                    if (parts.size == 2) {
-                        val key = parts[0].trim()
-                        val value = parts[1].trim()
+                    val eqIdx = line.indexOf('=')
+                    if (eqIdx != -1) {
+                        val key = line.substring(0, eqIdx).trim()
+                        val value = line.substring(eqIdx + 1).trim()
                         if (key == "TEMPLATE") {
                             templates[value.lowercase()]?.let { newVars.putAll(it) }
                         } else {
@@ -654,10 +680,10 @@ object Config {
         f?.useLines { lines ->
             lines.forEach { line ->
                 if (line.isNotBlank() && !line.startsWith("#")) {
-                    val parts = line.split("=", limit = 2)
-                    if (parts.size == 2) {
-                        val key = parts[0].trim()
-                        val value = parts[1].trim()
+                    val eqIdx = line.indexOf('=')
+                    if (eqIdx != -1) {
+                        val key = line.substring(0, eqIdx).trim()
+                        val value = line.substring(eqIdx + 1).trim()
                         val preCalc = if (value.contains("today", ignoreCase = true) ||
                                           value.contains("YYYY") ||
                                           value.contains("MM") ||
@@ -667,9 +693,9 @@ object Config {
                             runCatching { value.convertPatchLevel(false) }.getOrNull() ?: value
                         }
                         newPatch[key] = preCalc ?: value
-                    } else if (parts.size == 1) {
+                    } else {
                          // Assume it's the default if it looks like a date or keyword
-                         val value = parts[0].trim()
+                         val value = line.trim()
                          val preCalc = if (value.contains("today", ignoreCase = true) ||
                                           value.contains("YYYY") ||
                                           value.contains("MM") ||
