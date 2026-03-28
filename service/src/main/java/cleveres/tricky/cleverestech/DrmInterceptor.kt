@@ -6,6 +6,10 @@ import android.os.ServiceManager
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
 import java.security.SecureRandom
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Intercepts DRM HAL Binder transactions to spoof Widevine security level and device ID.
@@ -214,34 +218,46 @@ object DrmInterceptor : BinderInterceptor() {
         if (!proc.exists() || !proc.isDirectory) return null
 
         val pids = proc.list() ?: return null
-        val buf = ByteArray(1024)
-        for (pidStr in pids) {
-            if (pidStr.all { it.isDigit() }) {
-                kotlin.runCatching {
-                    val cmdlineFile = File("/proc/$pidStr/cmdline")
-                    if (cmdlineFile.exists()) {
-                        val stream = java.io.FileInputStream(cmdlineFile)
-                        val length = try {
-                            stream.read(buf)
-                        } finally {
-                            stream.close()
-                        }
-                        if (length <= 0) return@runCatching
-                        var end = 0
-                        while (end < length && buf[end] != 0.toByte()) {
-                            end++
-                        }
-                        val argv0 = String(buf, 0, end)
-                        for (target in DRM_PROCESS_NAMES) {
-                            if (argv0 == target || argv0.endsWith("/$target")) {
-                                val pid = pidStr.toInt()
-                                cachedDrmPid = pid
-                                Logger.d("DRM: Found DRM process '$argv0' at PID $pid")
-                                return pid
+
+        val validPids = pids.filter { it.all { c -> c.isDigit() } }
+
+        for (chunk in validPids.chunked(20)) {
+            val foundPid = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                chunk.map { pidStr ->
+                    async {
+                        val buf = ByteArray(1024)
+                        kotlin.runCatching {
+                            val cmdlineFile = File("/proc/$pidStr/cmdline")
+                            if (cmdlineFile.exists()) {
+                                val stream = java.io.FileInputStream(cmdlineFile)
+                                val length = try {
+                                    stream.read(buf)
+                                } finally {
+                                    stream.close()
+                                }
+                                if (length > 0) {
+                                    var end = 0
+                                    while (end < length && buf[end] != 0.toByte()) {
+                                        end++
+                                    }
+                                    val argv0 = String(buf, 0, end)
+                                    for (target in DRM_PROCESS_NAMES) {
+                                        if (argv0 == target || argv0.endsWith("/$target")) {
+                                            val pid = pidStr.toInt()
+                                            Logger.d("DRM: Found DRM process '$argv0' at PID $pid")
+                                            return@runCatching pid
+                                        }
+                                    }
+                                }
                             }
-                        }
+                            null
+                        }.getOrNull()
                     }
-                }
+                }.awaitAll().firstNotNullOfOrNull { it }
+            }
+            if (foundPid != null) {
+                cachedDrmPid = foundPid
+                return foundPid
             }
         }
         return null
