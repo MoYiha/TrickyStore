@@ -2418,7 +2418,7 @@ class WebServer(
                 matchCount++;
                 const tr = document.createElement('tr');
                 const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button class="danger" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:4px 8px; margin-right:5px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:4px 8px;" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
 
@@ -2443,11 +2443,40 @@ class WebServer(
             if (pContacts) permissions.push('CONTACTS');
             if (pMedia) permissions.push('MEDIA');
             if (pMicrophone) permissions.push('MICROPHONE');
-            appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
+
+            const existingIdx = appRules.findIndex(r => r.package === pkg);
+            if (existingIdx !== -1) {
+                appRules[existingIdx] = { package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions };
+            } else {
+                appRules.push({ package: pkg, template: tmpl === 'null' ? '' : tmpl, keybox: kb, permissions: permissions });
+            }
+
             renderAppTable(); pkgInput.value = ''; document.getElementById('appKeybox').value = ''; if(document.getElementById('clearPkgBtn')) document.getElementById('clearPkgBtn').style.display='none'; if(document.getElementById('clearKbBtn')) document.getElementById('clearKbBtn').style.display='none';
             document.getElementById('permContacts').checked = false; document.getElementById('permMedia').checked = false; document.getElementById('permMicrophone').checked = false;
-            toggleAddButton(); pkgInput.focus(); notify('Rule Added');
+            toggleAddButton(); pkgInput.focus();
+            notify(existingIdx !== -1 ? 'Rule Updated' : 'Rule Added');
+            const btn = document.getElementById('btnAddRule');
+            if (btn) btn.innerText = 'Add Rule';
         }
+
+        function editAppRule(idx) {
+            const rule = appRules[idx];
+            document.getElementById('appPkg').value = rule.package;
+            const tmplSel = document.getElementById('appTemplate');
+            tmplSel.value = rule.template || 'null';
+            if (!tmplSel.value) tmplSel.value = 'null';
+            document.getElementById('appKeybox').value = rule.keybox || '';
+            document.getElementById('permContacts').checked = rule.permissions.includes('CONTACTS');
+            document.getElementById('permMedia').checked = rule.permissions.includes('MEDIA');
+            document.getElementById('permMicrophone').checked = rule.permissions.includes('MICROPHONE');
+            document.getElementById('appPkg').focus();
+            toggleAddButton();
+            document.getElementById('clearPkgBtn').style.display = 'block';
+            document.getElementById('clearKbBtn').style.display = rule.keybox ? 'block' : 'none';
+            const btn = document.getElementById('btnAddRule');
+            if (btn) btn.innerText = 'Update Rule';
+        }
+
         function removeAppRule(idx) {
             appRules.splice(idx, 1); renderAppTable();
         }
@@ -2790,11 +2819,12 @@ class WebServer(
             a.click();
         }
 
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            window.addEventListener(eventName, preventDefaults, false);
+        });
+
         const dropZone = document.getElementById('dropZone');
         if (dropZone) {
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-            });
             ['dragenter', 'dragover'].forEach(eventName => {
                 dropZone.addEventListener(eventName, highlight, false);
             });

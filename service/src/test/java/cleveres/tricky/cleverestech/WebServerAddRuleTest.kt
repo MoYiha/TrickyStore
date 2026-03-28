@@ -71,7 +71,7 @@ class WebServerAddRuleTest {
 
         // 5. Verify addAppRule JS notifies success
         assertTrue("addAppRule should notify success",
-             html.contains("notify('Rule Added');")
+             html.contains("notify(existingIdx !== -1 ? 'Rule Updated' : 'Rule Added');")
         )
     }
 }
