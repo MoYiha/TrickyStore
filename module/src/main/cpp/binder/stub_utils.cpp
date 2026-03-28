@@ -36,7 +36,7 @@ namespace android {
 
     EXPORT void RefBase::onFirstRef() {}
     EXPORT void RefBase::onLastStrongRef(const void* id) {}
-    EXPORT bool RefBase::onIncStrongAttempted(const void* id) { return false; }
+    EXPORT bool RefBase::onIncStrongAttempted(uint32_t flags, const void* id) { return false; }
 
     EXPORT RefBase* RefBase::weakref_type::refBase() const { return nullptr; }
 
