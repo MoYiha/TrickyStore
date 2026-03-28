@@ -94,21 +94,8 @@ $pem2
 
         val vec = org.bouncycastle.asn1.ASN1EncodableVector()
         vec.add(org.bouncycastle.asn1.ASN1Integer(1)) // version
-        vec.add(org.bouncycastle.asn1.DEROctetString(priv.s.toByteArray().let {
-            // BigInteger.toByteArray() might have leading zero, strip it if needed?
-            // Fixed length? OctetString usually fits content.
-            // BouncyCastle BigIntegers.asUnsignedByteArray() is safer.
-            // But here we rely on basic java.
-            // Let's use simple BigInteger.toByteArray() but ensure positive?
-            // priv.s is positive.
-             // Remove leading zero if present and length > 32 (for P-256)
-             val bytes = it
-             if (bytes.size > 32 && bytes[0] == 0.toByte()) {
-                 java.util.Arrays.copyOfRange(bytes, 1, bytes.size)
-             } else {
-                 bytes
-             }
-        }))
+        val curveLength = (priv.params.order.bitLength() + 7) / 8
+        vec.add(org.bouncycastle.asn1.DEROctetString(org.bouncycastle.util.BigIntegers.asUnsignedByteArray(curveLength, priv.s)))
 
         // parameters [0]
         vec.add(org.bouncycastle.asn1.DERTaggedObject(true, 0, params))
