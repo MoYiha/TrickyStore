@@ -735,13 +735,46 @@ class WebServer(
                     file.useLines { lines ->
                         lines.forEach { line ->
                             if (line.isNotBlank() && !line.startsWith("#")) {
-                                val parts = line.trim().split(WHITESPACE_REGEX)
-                                if (parts.isNotEmpty()) {
-                                    val pkg = parts[0]
+                                val trimmed = line.trim()
+                                if (trimmed.isEmpty()) return@forEach
+
+                                val len = trimmed.length
+                                var idx = 0
+
+                                var start = idx
+                                while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                val pkg = trimmed.substring(start, idx)
+
+                                var tmpl = ""
+                                var kb = ""
+                                var perms = ""
+
+                                while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                if (idx < len) {
+                                    start = idx
+                                    while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                    val tmplStr = trimmed.substring(start, idx)
+                                    if (tmplStr != "null") tmpl = tmplStr
+
+                                    while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                    if (idx < len) {
+                                        start = idx
+                                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                        val kbStr = trimmed.substring(start, idx)
+                                        if (kbStr != "null") kb = kbStr
+
+                                        while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                        if (idx < len) {
+                                            start = idx
+                                            while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                            val permStr = trimmed.substring(start, idx)
+                                            if (permStr != "null") perms = permStr
+                                        }
+                                    }
+                                }
+
+                                if (pkg.isNotEmpty()) {
                                     if (pkg.matches(PKG_NAME_REGEX)) {
-                                        val tmpl = if (parts.size > 1 && parts[1] != "null") parts[1] else ""
-                                        val kb = if (parts.size > 2 && parts[2] != "null") parts[2] else ""
-                                        val perms = if (parts.size > 3 && parts[3] != "null") parts[3] else ""
                                         val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
                                         val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
                                         val isPermsValid = perms.isEmpty() || perms.matches(PERMISSIONS_REGEX)
@@ -2902,13 +2935,43 @@ class WebServer(
                 val lines = content.split('\n')
                 return lines.all { line ->
                      if (line.isBlank() || line.startsWith("#")) return@all true
-                     val parts = line.trim().split(WHITESPACE_REGEX)
-                     if (parts.isEmpty()) return@all true
-                     val pkg = parts[0]
+
+                     val trimmed = line.trim()
+                     if (trimmed.isEmpty()) return@all true
+
+                     val len = trimmed.length
+                     var idx = 0
+
+                     var start = idx
+                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                     val pkg = trimmed.substring(start, idx)
+
                      if (!pkg.matches(PKG_NAME_REGEX)) return@all false
-                     if (parts.size > 1 && parts[1] != "null" && !parts[1].matches(TEMPLATE_NAME_REGEX)) return@all false
-                     if (parts.size > 2 && parts[2] != "null" && !parts[2].matches(KEYBOX_FILENAME_REGEX)) return@all false
-                     if (parts.size > 3 && parts[3] != "null" && !parts[3].matches(PERMISSIONS_REGEX)) return@all false
+
+                     while (idx < len && trimmed[idx].isWhitespace()) idx++
+                     if (idx < len) {
+                         start = idx
+                         while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                         val tmplStr = trimmed.substring(start, idx)
+                         if (tmplStr != "null" && !tmplStr.matches(TEMPLATE_NAME_REGEX)) return@all false
+
+                         while (idx < len && trimmed[idx].isWhitespace()) idx++
+                         if (idx < len) {
+                             start = idx
+                             while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                             val kbStr = trimmed.substring(start, idx)
+                             if (kbStr != "null" && !kbStr.matches(KEYBOX_FILENAME_REGEX)) return@all false
+
+                             while (idx < len && trimmed[idx].isWhitespace()) idx++
+                             if (idx < len) {
+                                 start = idx
+                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                 val permStr = trimmed.substring(start, idx)
+                                 if (permStr != "null" && !permStr.matches(PERMISSIONS_REGEX)) return@all false
+                             }
+                         }
+                     }
+
                      true
                 }
             }
