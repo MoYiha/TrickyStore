@@ -53,7 +53,7 @@ extern "C" int hook_ioctl(int fd, int request, void* arg) {
                         ALOGI("Pass-through large payload: %zu bytes", txn_data->data_size);
                     }
                     // Latency Optimization: Pass-through AIDL system calls (PING, DUMP, codes > 0x00ffffffu)
-                    else if (txn_data->code > 0x00ffffffu || txn_data->code == 5 /* PING */ || txn_data->code == 14 /* DUMP */) {
+                    else if (txn_data->code > 0x00ffffffu || txn_data->code == 0x5f504e47 /* PING */ || txn_data->code == 0x5f444d50 /* DUMP */) {
                         ALOGI("Pass-through system call code: %u", txn_data->code);
                     }
                     else {
