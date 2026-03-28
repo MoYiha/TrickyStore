@@ -376,8 +376,7 @@ To ensure the long-term viability and unbreakability of this module, AI Agents c
 
 ## Roadmap
 
-- [x] Adaptive Binder Interceptor (version-immune hook architecture)
-- [x] Play Integrity API Protection (all verdict categories + Device Recall)
+- [ ] AOSP Full Compatibility
 - [ ] Zygisk-less standalone mode
 - [ ] Enhanced KernelSU native integration
 - [ ] Advanced detection evasion independent of Zygisk injection
