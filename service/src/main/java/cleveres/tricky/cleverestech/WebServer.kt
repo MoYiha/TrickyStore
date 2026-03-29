@@ -1929,12 +1929,13 @@ class WebServer(
         }
 
         async function loadServers() {
+            const list = document.getElementById('serverList');
+            if (list) list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">Loading...</div>';
             const res = await fetchAuth('/api/servers');
             const servers = await res.json();
-            const list = document.getElementById('serverList');
-            list.innerHTML = '';
+            if (list) list.innerHTML = '';
             if (servers.length === 0) {
-                list.innerHTML = '<div style="text-align:center; padding:15px; color:#666;">No servers configured. Add one below to fetch keyboxes automatically.</div>';
+                if (list) list.innerHTML = '<div style="text-align:center; padding:15px; color:#666;">No servers configured. Add one below to fetch keyboxes automatically.</div>';
             }
             servers.forEach(s => {
                 const div = document.createElement('div');
@@ -1970,11 +1971,12 @@ class WebServer(
 
         async function deleteServer(id) {
             try {
+                notify('Removing...', 'working');
                 const formData = new FormData();
                 formData.append('id', id);
-                await fetchAuth('/api/server/delete', { method: 'POST', body: formData });
-                loadServers();
-            } catch(e) {}
+                const res = await fetchAuth('/api/server/delete', { method: 'POST', body: formData });
+                if (res.ok) { notify('Server Removed'); loadServers(); } else { notify('Failed', 'error'); }
+            } catch(e) { notify('Error', 'error'); }
         }
 
         async function refreshServer(id) {
@@ -2252,6 +2254,8 @@ class WebServer(
         let cachedKeyboxes = [];
         async function loadKeyboxes() {
             try {
+                const list = document.getElementById('storedKeyboxesList');
+                if (list) list.innerHTML = '<div style="padding:10px; text-align:center; color:#888;">Loading...</div>';
                 const res = await fetchAuth('/api/keyboxes');
                 if (res.ok) {
                     cachedKeyboxes = await res.json();
@@ -2431,6 +2435,8 @@ class WebServer(
 
         let appRules = [];
         async function loadAppConfig() {
+            const tbody = document.querySelector('#appTable tbody');
+            if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
             const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
             appRules = await res.json();
             renderAppTable();
@@ -2770,6 +2776,8 @@ class WebServer(
 
         async function loadResourceUsage() {
              try {
+                 const tbody = document.getElementById('resourceBody');
+                 if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
                  const res = await fetchAuth('/api/resource_usage');
                  const data = await res.json();
                  renderResourceTable(data);
