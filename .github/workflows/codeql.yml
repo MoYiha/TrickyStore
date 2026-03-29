@@ -37,8 +37,13 @@ jobs:
       with:
         languages: ${{ matrix.language }}
 
+    - name: Set up Kotlin for CodeQL compatibility
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-disabled: true
+
     - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      run: ./gradlew testDebugUnitTest -Pkotlin.compiler.execution.strategy=in-process
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3

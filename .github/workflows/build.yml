@@ -544,7 +544,9 @@ jobs:
   # ============================================================
 
   build:
-    needs: rust-test
+    needs:
+      - rust-test
+      - instrumentation-test
     runs-on: ubuntu-latest
     steps:
       - name: Check out
