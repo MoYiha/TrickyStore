@@ -472,7 +472,7 @@ jobs:
           target: google_apis_playstore
           arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu auto -no-snapshot-load -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: |
             echo "Waiting for boot after rootAVD patch..."
@@ -482,7 +482,24 @@ jobs:
 
             echo "Pushing and Installing CleveresTricky Module..."
             MODULE_ZIP="$(ls module/release/*-debug.zip 2>/dev/null | head -n 1)"; if [ -z "$MODULE_ZIP" ]; then echo "Error: debug module zip not found"; exit 1; fi; adb push "$MODULE_ZIP" /data/local/tmp/module.zip
-            if ! adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"; then echo "Installation via su failed, attempting direct magisk command..."; adb shell "magisk --install-module /data/local/tmp/module.zip"; fi
+
+            # Start Magisk app to initialize daemon fully
+            adb shell am start -n com.topjohnwu.magisk/.ui.MainActivity || true
+            sleep 10
+
+            # Try su installation in background and press Grant
+            adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" &
+            PID=$!
+            sleep 5
+            # Press DPAD_RIGHT then ENTER to grant root in Magisk prompt
+            adb shell input keyevent 22
+            adb shell input keyevent 66
+            wait $PID
+
+            if [ $? -ne 0 ]; then
+              echo "Installation via background su failed, attempting direct magisk command..."
+              adb shell "magisk --install-module /data/local/tmp/module.zip"
+            fi
             adb reboot
             adb wait-for-disconnect
             sleep 10
