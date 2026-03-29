@@ -456,7 +456,7 @@ jobs:
           arch: x86_64
           force-avd-creation: false
           emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
+          disable-animations: false
           script: |
             echo "Installing Magisk via rootAVD..."
             git clone https://github.com/newbit1/rootAVD.git
