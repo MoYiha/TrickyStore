@@ -487,19 +487,8 @@ jobs:
             adb shell am start -n com.topjohnwu.magisk/.ui.MainActivity || true
             sleep 10
 
-            # Try su installation in background and press Grant
-            adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" &
-            PID=$!
-            sleep 5
-            # Press DPAD_RIGHT then ENTER to grant root in Magisk prompt
-            adb shell input keyevent 22
-            adb shell input keyevent 66
-            wait $PID
-
-            if [ $? -ne 0 ]; then
-              echo "Installation via background su failed, attempting direct magisk command..."
-              adb shell "magisk --install-module /data/local/tmp/module.zip"
-            fi
+            # Try su installation in background and press Grant (single-line to avoid split-shell issues)
+            adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" & PID=$!; sleep 5; adb shell input keyevent 22; adb shell input keyevent 66; wait $PID || (echo "Installation via background su failed, attempting direct magisk command..." && adb shell "magisk --install-module /data/local/tmp/module.zip")
             adb reboot
             adb wait-for-disconnect
             sleep 10
