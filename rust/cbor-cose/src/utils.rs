@@ -63,8 +63,7 @@ pub fn kick_already_blocked_ioctls() {
             // Check if signal is blocked by the thread.
             // Signals are 1-indexed. Bit 0 corresponds to signal 1.
             // So mask bit (sig - 1) corresponds to signal `sig`.
-            let blocked_mask =
-                get_thread_blocked_signals(pid, tid, &mut status_path).unwrap_or(0);
+            let blocked_mask = get_thread_blocked_signals(pid, tid, &mut status_path).unwrap_or(0);
             let is_blocked = (blocked_mask & (1u64 << (sig - 1))) != 0;
 
             if !is_blocked {
@@ -178,7 +177,11 @@ fn get_thread_blocked_signals(
             if let Some(pos) = data.windows(7).position(|w| w == b"SigBlk:") {
                 let start = pos + 7;
                 // Find end of line
-                let end = data[start..].iter().position(|&b| b == b'\n').map(|i| start + i).unwrap_or(bytes_read);
+                let end = data[start..]
+                    .iter()
+                    .position(|&b| b == b'\n')
+                    .map(|i| start + i)
+                    .unwrap_or(bytes_read);
                 if let Ok(line) = std::str::from_utf8(&data[start..end]) {
                     // Skip whitespace
                     let hex_str = line.trim();
