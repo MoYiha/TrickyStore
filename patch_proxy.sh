@@ -1,26 +1,30 @@
-package cleveres.tricky.cleverestech.rkp
-
-import cleveres.tricky.cleverestech.Logger
-import cleveres.tricky.cleverestech.util.SecureFile
-import cleveres.tricky.cleverestech.util.CborEncoder
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-import java.io.File
-
-/**
- * Acts as a local "Back-end" / "Authority" for RKP requests.
- * Simulates the server component that:
- * 1. Holds the root secrets (HMAC Key).
- * 2. Validates the integrity/schema of requests.
- * 3. "Provisions" the device (provides the MAC key or signs data).
- */
+cat << 'INNER_EOF' > /tmp/proxy_patch.txt
+<<<<<<< SEARCH
 object LocalRkpProxy {
 
     private const val RKP_MAC_KEY_ALGORITHM = "HmacSHA256"
     internal const val KEY_FILE_PATH = "/data/adb/cleverestricky/rkp_root_secret"
-    
+
     // Dynamic Root Secret
-    // Loaded from file or generated randomly to ensure persistence across reboots but 
+    // Loaded from file or generated randomly to ensure persistence across reboots but
+    // ability to rotate if caught.
+    @Volatile
+    private var serverHmacKey: ByteArray = ByteArray(32)
+
+    init {
+        loadOrGenerateKey()
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun loadOrGenerateKey() {
+=======
+object LocalRkpProxy {
+
+    private const val RKP_MAC_KEY_ALGORITHM = "HmacSHA256"
+    internal const val KEY_FILE_PATH = "/data/adb/cleverestricky/rkp_root_secret"
+
+    // Dynamic Root Secret
+    // Loaded from file or generated randomly to ensure persistence across reboots but
     // ability to rotate if caught.
     @Volatile
     private var serverHmacKey: ByteArray = ByteArray(32)
@@ -34,56 +38,61 @@ object LocalRkpProxy {
 
     @OptIn(ExperimentalStdlibApi::class)
     private fun loadOrGenerateKey() {
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    /**
+     * Checks if the key is expired and rotates it if possible.
+     * Intended to be called by the maintenance service (root).
+     */
+    fun checkAndRotate() {
         try {
             val file = File(KEY_FILE_PATH)
-            if (file.exists()) {
-                // Check age
-                val lastMod = file.lastModified()
-                val now = System.currentTimeMillis()
-                // 24 hours = 86400000 ms
-                if (now - lastMod > 86400000) {
-                     if (file.canWrite()) {
-                         Logger.i("LocalRkpProxy: Key expired (>24h), rotating...")
-                         rotateKey()
-                     } else {
-                         Logger.e("LocalRkpProxy: Key expired but not writable, skipping rotation")
-                         // Try to read content (Hex or Binary)
-                         readKeyContent(file)
-                     }
-                } else {
-                    readKeyContent(file)
-                    Logger.d("LocalRkpProxy: Loaded valid existing root secret")
-                }
-            } else {
-                rotateKey() // Generate new
+            if (file.exists() && System.currentTimeMillis() - file.lastModified() > 86400000) {
+                 Logger.i("LocalRkpProxy: Maintenance rotation triggered")
+                 rotateKey()
             }
-        } catch (e: Throwable) {
-            Logger.e("LocalRkpProxy: Failed to load key, using random ephemeral", e)
-            java.security.SecureRandom().nextBytes(serverHmacKey)
+        } catch (e: Exception) {
+            Logger.e("LocalRkpProxy: Maintenance failed", e)
         }
     }
 
+    /**
+     * "Smart System": Rotates the root secret.
+     * Use this if attestation starts failing. This invalidates all previous MACs,
+     * effectively giving the device a new RKP identity relative to this proxy.
+     */
     @OptIn(ExperimentalStdlibApi::class)
-    private fun readKeyContent(file: File) {
-        val bytes = file.readBytes()
-        if (bytes.size == 32) {
-            // Legacy Binary Format
-            serverHmacKey = bytes
-        } else {
-            // New Hex Format
-            try {
-                val hexString = String(bytes, Charsets.UTF_8).trim()
-                serverHmacKey = hexString.hexToByteArray()
-            } catch (e: Exception) {
-                // Fallback or error?
-                // If hex parsing fails, maybe it was corrupted or wrong format.
-                // Log and rotate if possible?
-                // For now, let's just log and fallback to random (handled by caller catch block)
-                throw IllegalArgumentException("Invalid key format", e)
+    fun rotateKey() {
+        Logger.d("LocalRkpProxy: Rotating Root Secret (Anti-Fingerprinting)")
+        val newKey = ByteArray(32)
+        java.security.SecureRandom().nextBytes(newKey)
+        serverHmacKey = newKey
+
+        // Persist
+        try {
+            val file = File(KEY_FILE_PATH)
+            val parent = file.parentFile
+            if (parent != null) {
+                SecureFile.mkdirs(parent, 448) // 0700
             }
+
+            // Use SecureFile to ensure atomic write and correct permissions (0600)
+            // Store as Hex String to avoid binary encoding issues with writeText
+            SecureFile.writeText(file, serverHmacKey.toHexString())
+
+        } catch (e: Throwable) {
+            Logger.e("LocalRkpProxy: Failed to persist new key", e)
         }
     }
 
+    /**
+     * "Provisions" the TEE (CertHack) with the HMAC key.
+     */
+    fun getMacKey(): ByteArray {
+        // Return a copy to prevent modification
+        return serverHmacKey.clone()
+    }
+=======
     /**
      * Checks if the key is expired and rotates it if possible.
      * Intended to be called by the maintenance service (root).
@@ -142,7 +151,40 @@ object LocalRkpProxy {
             return serverHmacKey.clone()
         }
     }
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    /**
+     * Validates that a MACed public key has correct COSE_Mac0 structure.
+     * Checks: 4-element CBOR array, protected header contains alg:5 (HMAC-256),
+     * tag is exactly 32 bytes (HMAC-SHA256 output).
+     */
+    fun validateMacedPublicKey(macedKey: ByteArray): Boolean {
+        if (macedKey.size < 10) {
+            Logger.e("LocalRkpProxy: Validation Failed - MACed key too short (${macedKey.size} bytes)")
+            return false
+        }
 
+        if (macedKey[0] != 0x84.toByte()) {
+            Logger.e("LocalRkpProxy: Validation Failed - Not a valid COSE_Mac0 array (expected 0x84, got 0x${macedKey[0].toInt().and(0xFF).toString(16)})")
+            return false
+        }
+
+        // Verify 32-byte HMAC tag at the end of the structure.
+        // CBOR encodes 32-byte bstr as: 0x58 (bstr, 1-byte length) 0x20 (32).
+        // tagLengthMarker could be negative for very small payloads, guarded by >= 1 check.
+        val tagLengthMarker = macedKey.size - 33
+        if (tagLengthMarker >= 1 && macedKey[tagLengthMarker] == 0x58.toByte()
+            && macedKey[tagLengthMarker + 1] == 0x20.toByte()) {
+            Logger.d("LocalRkpProxy: COSE_Mac0 structure validated (32-byte HMAC tag present)")
+            return true
+        }
+
+        // If 32-byte tag not found at expected position, the structure is malformed
+        Logger.e("LocalRkpProxy: Validation Failed - 32-byte HMAC tag not found at expected position (marker=$tagLengthMarker)")
+        return false
+    }
+}
+=======
     /**
      * Validates that a MACed public key has correct COSE_Mac0 structure.
      * Checks: 4-element CBOR array, extracts payload and tag, and cryptographically
@@ -195,3 +237,41 @@ object LocalRkpProxy {
         }
     }
 }
+>>>>>>> REPLACE
+INNER_EOF
+python3 -c "
+import sys
+import os
+
+def apply_patch(file_path, patch_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        with open(patch_path, 'r', encoding='utf-8') as f:
+            patch = f.read()
+
+        blocks = patch.split('<<<<<<< SEARCH\n')[1:]
+        for block in blocks:
+            search, replace_and_rest = block.split('=======\n', 1)
+            replace = replace_and_rest.split('>>>>>>> REPLACE', 1)[0]
+
+            if search in content:
+                content = content.replace(search, replace, 1)
+            else:
+                print(f'Warning: Could not find block in {file_path}')
+                return False
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return True
+    except Exception as e:
+        print(f'Error applying patch: {e}')
+        return False
+
+success = apply_patch('service/src/main/java/cleveres/tricky/cleverestech/rkp/LocalRkpProxy.kt', '/tmp/proxy_patch.txt')
+if success:
+    print('Patch applied successfully to LocalRkpProxy.kt')
+else:
+    sys.exit(1)
+"

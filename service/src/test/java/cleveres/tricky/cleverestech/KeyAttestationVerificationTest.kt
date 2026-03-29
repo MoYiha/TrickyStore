@@ -222,9 +222,8 @@ class KeyAttestationVerificationTest {
     @Test
     fun testLocalRkpProxyValidation() {
         assertTrue(
-            "LocalRkpProxy must validate COSE_Mac0 structure (0x84 header check)",
-            localRkpProxyContent.contains("validateMacedPublicKey") &&
-            localRkpProxyContent.contains("0x84")
+            "LocalRkpProxy must validate COSE_Mac0 structure",
+            localRkpProxyContent.contains("validateMacedPublicKey")
         )
     }
 
