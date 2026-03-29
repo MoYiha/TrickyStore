@@ -271,22 +271,112 @@ class RkpInterceptor(
     }
 
     private fun createProtectedData(): ByteArray {
-        // COSE_Encrypt = [protected, unprotected, ciphertext, recipients]
         try {
+            // 1. Generate Ephemeral X25519 Key Pair
+            val ephemeralKeyPair = cleveres.tricky.cleverestech.util.CryptoUtils.generateX25519KeyPair()
+
+            // Dummy EEK Public Key (Google's prod EEK is usually passed or fetched)
+            // For bypass purposes where we need a valid structure but don't have the real EEK,
+            // we create a placeholder X25519 public key or parse it from args (if we passed it).
+            // Here we just use a random key to simulate the ECDH process correctly.
+            val dummyEekPair = cleveres.tricky.cleverestech.util.CryptoUtils.generateX25519KeyPair()
+            val eekPublicKey = dummyEekPair.public.encoded
+
+            // 2. ECDH Shared Secret
+            val sharedSecret = cleveres.tricky.cleverestech.util.CryptoUtils.ecdhDeriveKey(ephemeralKeyPair.private, eekPublicKey)
+
+            // 3. HKDF-SHA-256 to derive AES-256-GCM CEK (32 bytes)
+            val salt = ByteArray(0)
+            val info = "EekCek".toByteArray(Charsets.UTF_8)
+            val cek = cleveres.tricky.cleverestech.util.CryptoUtils.hkdfSha256(sharedSecret, salt, info, 32)
+
+            // 4. Create DICE Chain (Degenerate DICE)
+            // Generate UDS (CDI_Leaf) Ed25519 key
+            val udsKeyPair = cleveres.tricky.cleverestech.util.CryptoUtils.generateEd25519KeyPair()
+            val udsPubCose = createCoseKeyMap(udsKeyPair.public)
+
+            // Create a fake DICE chain payload: [UdsCerts, DiceCertChain, SignedData...]
+            // For bypass, we build a simple array to represent the Open DICE chain
+            val diceChain = java.util.ArrayList<Any>()
+            diceChain.add(cleveres.tricky.cleverestech.util.CborEncoder.encode(udsPubCose))
+            val diceChainBytes = cleveres.tricky.cleverestech.util.CborEncoder.encode(diceChain)
+
+            // Payload = DICE Chain + MACed Keys (represented as simple array here)
+            val payloadArray = java.util.ArrayList<Any>()
+            payloadArray.add(diceChainBytes)
+            val payloadBytes = cleveres.tricky.cleverestech.util.CborEncoder.encode(payloadArray)
+
+            // 5. AES-GCM Encryption
+            val iv = ByteArray(12)
+            java.security.SecureRandom().nextBytes(iv)
+
+            // Protected Header for COSE_Encrypt
             val protectedMap = java.util.HashMap<Int, Any>()
             protectedMap[1] = 3 // A256GCM
-            val protHeader = cleveres.tricky.cleverestech.util.CborEncoder.encode(protectedMap)
+            val protHeaderBytes = cleveres.tricky.cleverestech.util.CborEncoder.encode(protectedMap)
+
+            // Encrypt_structure = ["Encrypt", protected, external_aad]
+            val encStructure = java.util.ArrayList<Any>()
+            encStructure.add("Encrypt")
+            encStructure.add(protHeaderBytes)
+            encStructure.add(ByteArray(0)) // external_aad
+            val aadBytes = cleveres.tricky.cleverestech.util.CborEncoder.encode(encStructure)
+
+            val ciphertext = cleveres.tricky.cleverestech.util.CryptoUtils.aesGcmEncrypt(cek, iv, aadBytes, payloadBytes)
+
+            // 6. Build COSE_Encrypt0
+            val unprotectedMap = java.util.HashMap<Any, Any>()
+            unprotectedMap[5] = iv // IV
             
             val coseEncrypt = java.util.ArrayList<Any>()
-            coseEncrypt.add(protHeader)
-            coseEncrypt.add(java.util.HashMap<Any, Any>()) // unprotected
-            coseEncrypt.add(ByteArray(16)) // dummy ciphertext
-            coseEncrypt.add(java.util.ArrayList<Any>()) // recipients
+            coseEncrypt.add(protHeaderBytes)
+            coseEncrypt.add(unprotectedMap)
+            coseEncrypt.add(ciphertext)
+
+            // Include ephemeral public key in recipients or unprotected map based on spec.
+            // Usually in recipients for COSE_Encrypt, but for v2 we follow the standard structure.
+            val recipients = java.util.ArrayList<Any>()
+            val recipientUnprotected = java.util.HashMap<Any, Any>()
+            recipientUnprotected[-1] = createCoseKeyMap(ephemeralKeyPair.public) // ephemeral key
+
+            val recipient = java.util.ArrayList<Any>()
+            recipient.add(ByteArray(0)) // protected
+            recipient.add(recipientUnprotected)
+            recipient.add(ByteArray(0)) // ciphertext
+            recipients.add(recipient)
             
+            coseEncrypt.add(recipients)
+
             return cleveres.tricky.cleverestech.util.CborEncoder.encode(coseEncrypt)
         } catch (e: Throwable) {
-            Logger.e("failed to create protected data", e)
+            Logger.e("failed to create actual cryptographic protected data", e)
             return ByteArray(0)
         }
+    }
+
+    private fun createCoseKeyMap(publicKey: java.security.PublicKey): Map<Any, Any> {
+        val map = mutableMapOf<Any, Any>()
+        try {
+            val encoded = publicKey.encoded
+            if (publicKey.algorithm == "Ed25519") {
+                map.put(1, 1)   // kty: OKP
+                map.put(3, -8)  // alg: EdDSA
+                map.put(-1, 6)  // crv: Ed25519
+                // Extract last 32 bytes for raw key
+                val raw = ByteArray(32)
+                System.arraycopy(encoded, encoded.size - 32, raw, 0, 32)
+                map.put(-2, raw) // x coord
+            } else if (publicKey.algorithm == "X25519") {
+                map.put(1, 1)   // kty: OKP
+                map.put(3, -25) // alg: ECDH-ES
+                map.put(-1, 4)  // crv: X25519
+                val raw = ByteArray(32)
+                System.arraycopy(encoded, encoded.size - 32, raw, 0, 32)
+                map.put(-2, raw) // x coord
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to create COSE key map", e)
+        }
+        return map
     }
 }
