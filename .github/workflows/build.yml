@@ -465,7 +465,8 @@ jobs:
             (cd rootAVD && ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img)
             adb wait-for-disconnect
             adb wait-for-device
-            sleep 30
+            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 1; done
+            sleep 15
 
             echo "Pushing and Installing CleveresTricky Module..."
             MODULE_ZIP="$(ls module/release/*-debug.zip 2>/dev/null | head -n 1)"; if [ -z "$MODULE_ZIP" ]; then echo "Error: debug module zip not found"; exit 1; fi; adb push "$MODULE_ZIP" /data/local/tmp/module.zip
@@ -473,7 +474,8 @@ jobs:
             adb reboot
             adb wait-for-disconnect
             adb wait-for-device
-            sleep 30
+            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 1; done
+            sleep 15
 
             echo "Downloading Test APKs..."
             wget -q https://github.com/vvb2060/KeyAttestation/releases/download/v1.8.4/KeyAttestation-v1.8.4.apk -O KeyAttestation.apk
