@@ -464,18 +464,18 @@ jobs:
             sed -i 's/adb shell setprop sys.powerctl shutdown/adb reboot/g' rootAVD/rootAVD.sh
             (cd rootAVD && ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img)
             adb wait-for-disconnect
+            sleep 10
             adb wait-for-device
-            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 1; done
-            sleep 15
+            sleep 45
 
             echo "Pushing and Installing CleveresTricky Module..."
             MODULE_ZIP="$(ls module/release/*-debug.zip 2>/dev/null | head -n 1)"; if [ -z "$MODULE_ZIP" ]; then echo "Error: debug module zip not found"; exit 1; fi; adb push "$MODULE_ZIP" /data/local/tmp/module.zip
             if ! adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'"; then echo "Installation via su failed, attempting direct magisk command..."; adb shell "magisk --install-module /data/local/tmp/module.zip"; fi
             adb reboot
             adb wait-for-disconnect
+            sleep 10
             adb wait-for-device
-            while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 1; done
-            sleep 15
+            sleep 45
 
             echo "Downloading Test APKs..."
             wget -q https://github.com/vvb2060/KeyAttestation/releases/download/v1.8.4/KeyAttestation-v1.8.4.apk -O KeyAttestation.apk
@@ -491,7 +491,7 @@ jobs:
             adb shell am start -n com.henrikherzig.playintegritychecker/.MainActivity
 
             echo "Waiting for logs to generate..."
-            sleep 15
+            sleep 45
             adb logcat -d > logcat.txt
 
             echo "Verifying CleveresTricky daemon..."
