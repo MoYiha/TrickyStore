@@ -448,8 +448,9 @@ jobs:
       - name: Build Module
         run: ./gradlew :module:zipDebug
 
-      - name: Run E2E Integration Tests (Magisk)
+      - name: Patch Ramdisk with rootAVD
         uses: reactivecircus/android-emulator-runner@v2
+        continue-on-error: true
         with:
           api-level: ${{ matrix.api-level }}
           target: google_apis_playstore
@@ -461,10 +462,20 @@ jobs:
             echo "Installing Magisk via rootAVD..."
             git clone https://github.com/newbit1/rootAVD.git
             rm -rf rootAVD/.git
-            sed -i 's/adb shell setprop sys.powerctl shutdown/adb reboot/g' rootAVD/rootAVD.sh
             (cd rootAVD && ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img)
             adb wait-for-disconnect
-            sleep 10
+
+      - name: Run E2E Integration Tests (Magisk)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          target: google_apis_playstore
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu auto -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: |
+            echo "Waiting for boot after rootAVD patch..."
             adb wait-for-device
             while [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" != "1" ]; do sleep 1; done
             sleep 45
@@ -493,7 +504,7 @@ jobs:
             adb shell am start -n com.henrikherzig.playintegritychecker/.MainActivity
 
             echo "Waiting for logs to generate..."
-            sleep 45
+            sleep 15
             adb logcat -d > logcat.txt
 
             echo "Verifying CleveresTricky daemon..."
