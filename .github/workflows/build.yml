@@ -483,12 +483,12 @@ jobs:
             echo "Pushing and Installing CleveresTricky Module..."
             MODULE_ZIP="$(ls module/release/*-debug.zip 2>/dev/null | head -n 1)"; if [ -z "$MODULE_ZIP" ]; then echo "Error: debug module zip not found"; exit 1; fi; adb push "$MODULE_ZIP" /data/local/tmp/module.zip
 
-            # Start Magisk app to initialize daemon fully
-            adb shell am start -n com.topjohnwu.magisk/.ui.MainActivity || true
+            # Try to poke Magisk UI package if present (rootAVD images may not ship the app)
+            adb shell monkey -p com.topjohnwu.magisk -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
             sleep 10
 
-            # Prefer adbd root path (more stable in CI), fallback to su grant flow (single-line to avoid split-shell issues)
-            adb root >/dev/null 2>&1 || true; adb wait-for-device; if ! adb shell "magisk --install-module /data/local/tmp/module.zip"; then echo "Direct magisk install failed, falling back to su grant flow..."; adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" & PID=$!; sleep 5; adb shell input keyevent 22; adb shell input keyevent 66; if ! wait $PID; then echo "Installation via background su failed, retrying after root grant..."; sleep 5; adb shell input keyevent 22; adb shell input keyevent 66; adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" || { echo "Error: module install failed with root"; exit 1; }; fi; fi
+            # Prefer adbd root path, otherwise bootstrap magisk daemon and use su grant flow (single-line avoids split-shell issues)
+            adb root >/dev/null 2>&1 || true; adb wait-for-device; if ! adb shell "magisk --install-module /data/local/tmp/module.zip"; then echo "Direct magisk install failed, bootstrapping daemon and falling back to su grant flow..."; adb shell "su -c 'magisk --daemon'" >/dev/null 2>&1 || true; sleep 3; adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" & PID=$!; sleep 5; adb shell input keyevent 22; adb shell input keyevent 66; if ! wait $PID; then echo "Installation via background su failed, retrying after root grant..."; adb shell "su -c 'magisk --daemon'" >/dev/null 2>&1 || true; sleep 5; adb shell input keyevent 22; adb shell input keyevent 66; adb shell "su -c 'magisk --install-module /data/local/tmp/module.zip'" || { echo "Error: module install failed with root"; exit 1; }; fi; fi
             adb reboot
             adb wait-for-disconnect
             sleep 10
