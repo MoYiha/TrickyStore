@@ -461,7 +461,8 @@ jobs:
             echo "Installing Magisk via rootAVD..."
             git clone https://github.com/newbit1/rootAVD.git
             rm -rf rootAVD/.git
-            sed -i 's/adb shell setprop sys.powerctl shutdown/adb reboot/g' rootAVD/rootAVD.sh
+            sed -i 's/adb shell setprop sys.powerctl shutdown/echo "Reboot skipped"/g' rootAVD/rootAVD.sh
+            sed -i 's/adb reboot/echo "Reboot skipped"/g' rootAVD/rootAVD.sh
             (cd rootAVD && ./rootAVD.sh system-images/android-33/google_apis_playstore/x86_64/ramdisk.img)
             adb wait-for-disconnect
             sleep 30
