@@ -21,7 +21,7 @@ pub fn kick_already_blocked_ioctls() {
     // Candidate signals to try. We use a slice to iterate easily.
     let signals = [libc::SIGWINCH, libc::SIGURG];
 
-    let mut status_path = String::with_capacity(64);
+    let mut status_path_buf = [0u8; 128];
 
     for &sig in &signals {
         if target_threads.is_empty() {
@@ -63,7 +63,8 @@ pub fn kick_already_blocked_ioctls() {
             // Check if signal is blocked by the thread.
             // Signals are 1-indexed. Bit 0 corresponds to signal 1.
             // So mask bit (sig - 1) corresponds to signal `sig`.
-            let blocked_mask = get_thread_blocked_signals(pid, tid, &mut status_path).unwrap_or(0);
+            let blocked_mask =
+                get_thread_blocked_signals(pid, tid, &mut status_path_buf).unwrap_or(0);
             let is_blocked = (blocked_mask & (1u64 << (sig - 1))) != 0;
 
             if !is_blocked {
@@ -102,53 +103,63 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
     let my_tid = unsafe { libc::gettid() };
 
     // Read /proc/{pid}/task directory to find all threads
-    use std::fmt::Write;
-    let mut path_buf = String::with_capacity(128);
-    let _ = write!(path_buf, "/proc/{}/task", pid);
+    use std::io::Write;
+    let mut path_buf = [0u8; 128];
+    let mut cursor = std::io::Cursor::new(&mut path_buf[..]);
+    let _ = write!(cursor, "/proc/{}/task", pid);
+    let len = cursor.position() as usize;
 
-    if let Ok(entries) = fs::read_dir(&path_buf) {
-        path_buf.push('/');
-        let base_len = path_buf.len();
+    if let Ok(dir_path) = std::str::from_utf8(&path_buf[..len]) {
+        if let Ok(entries) = fs::read_dir(dir_path) {
+            let mut cursor = std::io::Cursor::new(&mut path_buf[..]);
+            let _ = write!(cursor, "/proc/{}/task/", pid);
+            let base_len = cursor.position() as usize;
 
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let bytes = file_name.as_bytes();
-            if bytes.starts_with(b".") {
-                continue;
-            }
-            // Optimization: avoid string allocation from `OsStr`
-            if let Ok(file_name_str) = std::str::from_utf8(bytes) {
-                if let Ok(tid) = file_name_str.parse::<libc::pid_t>() {
-                    // Don't kick ourselves
-                    if tid == my_tid {
-                        continue;
-                    }
+            for entry in entries.flatten() {
+                let file_name = entry.file_name();
+                let bytes = file_name.as_bytes();
+                if bytes.starts_with(b".") {
+                    continue;
+                }
+                // Optimization: avoid string allocation from `OsStr`
+                if let Ok(file_name_str) = std::str::from_utf8(bytes) {
+                    if let Ok(tid) = file_name_str.parse::<libc::pid_t>() {
+                        // Don't kick ourselves
+                        if tid == my_tid {
+                            continue;
+                        }
 
-                    // Check which syscall the thread is executing
-                    path_buf.push_str(file_name_str);
-                    path_buf.push_str("/syscall");
-                    // Read into a reusable stack buffer if possible, to avoid string allocation.
-                    // The "syscall" file content is very small (e.g., "16 0x0...").
-                    let mut buf = [0u8; 64];
-                    if let Ok(mut file) = fs::File::open(&path_buf) {
-                        use std::io::Read;
-                        if let Ok(bytes_read) = file.read(&mut buf) {
-                            if let Ok(content_str) = std::str::from_utf8(&buf[..bytes_read]) {
-                                if let Some(syscall_nr_str) = content_str.split_whitespace().next()
-                                {
-                                    if let Ok(nr) = syscall_nr_str.parse::<i64>() {
-                                        // SYS_ioctl constant varies by platform.
-                                        // We cast to i64 to ensure comparison works safely.
-                                        #[allow(clippy::unnecessary_cast)]
-                                        if nr == libc::SYS_ioctl as i64 {
-                                            threads.push(tid);
+                        // Check which syscall the thread is executing
+                        let mut cursor = std::io::Cursor::new(&mut path_buf[base_len..]);
+                        let _ = write!(cursor, "{}/syscall", file_name_str);
+                        let full_len = base_len + cursor.position() as usize;
+
+                        if let Ok(full_path) = std::str::from_utf8(&path_buf[..full_len]) {
+                            // Read into a reusable stack buffer if possible, to avoid string allocation.
+                            // The "syscall" file content is very small (e.g., "16 0x0...").
+                            let mut buf = [0u8; 64];
+                            if let Ok(mut file) = fs::File::open(full_path) {
+                                use std::io::Read;
+                                if let Ok(bytes_read) = file.read(&mut buf) {
+                                    if let Ok(content_str) = std::str::from_utf8(&buf[..bytes_read])
+                                    {
+                                        if let Some(syscall_nr_str) =
+                                            content_str.split_whitespace().next()
+                                        {
+                                            if let Ok(nr) = syscall_nr_str.parse::<i64>() {
+                                                // SYS_ioctl constant varies by platform.
+                                                // We cast to i64 to ensure comparison works safely.
+                                                #[allow(clippy::unnecessary_cast)]
+                                                if nr == libc::SYS_ioctl as i64 {
+                                                    threads.push(tid);
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    path_buf.truncate(base_len);
                 }
             }
         }
@@ -161,31 +172,34 @@ fn get_threads_in_ioctl(pid: libc::pid_t) -> Vec<libc::pid_t> {
 fn get_thread_blocked_signals(
     pid: libc::pid_t,
     tid: libc::pid_t,
-    status_path: &mut String,
+    status_path_buf: &mut [u8],
 ) -> Option<u64> {
-    use std::fmt::Write;
-    status_path.clear();
-    let _ = write!(status_path, "/proc/{}/task/{}/status", pid, tid);
+    use std::io::Write;
+    let mut cursor = std::io::Cursor::new(status_path_buf);
+    let _ = write!(cursor, "/proc/{}/task/{}/status", pid, tid);
+    let len = cursor.position() as usize;
 
-    if let Ok(mut file) = fs::File::open(status_path.as_str()) {
-        use std::io::Read;
-        // Allocate a buffer to avoid reading entire file into a new String
-        let mut buf = [0u8; 4096];
-        if let Ok(bytes_read) = file.read(&mut buf) {
-            let data = &buf[..bytes_read];
-            // Find "SigBlk:" in the buffer
-            if let Some(pos) = data.windows(7).position(|w| w == b"SigBlk:") {
-                let start = pos + 7;
-                // Find end of line
-                let end = data[start..]
-                    .iter()
-                    .position(|&b| b == b'\n')
-                    .map(|i| start + i)
-                    .unwrap_or(bytes_read);
-                if let Ok(line) = std::str::from_utf8(&data[start..end]) {
-                    // Skip whitespace
-                    let hex_str = line.trim();
-                    return u64::from_str_radix(hex_str, 16).ok();
+    if let Ok(status_path) = std::str::from_utf8(&cursor.into_inner()[..len]) {
+        if let Ok(mut file) = fs::File::open(status_path) {
+            use std::io::Read;
+            // Allocate a buffer to avoid reading entire file into a new String
+            let mut buf = [0u8; 4096];
+            if let Ok(bytes_read) = file.read(&mut buf) {
+                let data = &buf[..bytes_read];
+                // Find "SigBlk:" in the buffer
+                if let Some(pos) = data.windows(7).position(|w| w == b"SigBlk:") {
+                    let start = pos + 7;
+                    // Find end of line
+                    let end = data[start..]
+                        .iter()
+                        .position(|&b| b == b'\n')
+                        .map(|i| start + i)
+                        .unwrap_or(bytes_read);
+                    if let Ok(line) = std::str::from_utf8(&data[start..end]) {
+                        // Skip whitespace
+                        let hex_str = line.trim();
+                        return u64::from_str_radix(hex_str, 16).ok();
+                    }
                 }
             }
         }
