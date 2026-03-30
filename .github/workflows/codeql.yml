@@ -37,8 +37,18 @@ jobs:
       with:
         languages: ${{ matrix.language }}
 
+    - name: Set up Kotlin for CodeQL compatibility
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-disabled: true
+
+    - name: Pin Kotlin version for CodeQL
+      run: sed -i 's/^kotlin = ".*"/kotlin = "2.3.10"/' gradle/libs.versions.toml
+
+    # Use explicit Gradle invocation (instead of CodeQL autobuild) to force in-process Kotlin compiler
+    # and avoid extractor incompatibility with the default Kotlin build tools API path.
     - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
+      run: ./gradlew testDebugUnitTest -Pkotlin.compiler.execution.strategy=in-process
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
