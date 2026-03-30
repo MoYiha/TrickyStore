@@ -43,7 +43,7 @@ jobs:
         cache-disabled: true
 
     - name: Pin Kotlin version for CodeQL
-      run: sed -i 's/^kotlin = ".*"/kotlin = "2.3.10"/' gradle/libs.versions.toml
+      run: sed -i 's/^kotlin = ".*"/kotlin = "2.1.0"/' gradle/libs.versions.toml
 
     # Use explicit Gradle invocation (instead of CodeQL autobuild) to force in-process Kotlin compiler
     # and avoid extractor incompatibility with the default Kotlin build tools API path.
