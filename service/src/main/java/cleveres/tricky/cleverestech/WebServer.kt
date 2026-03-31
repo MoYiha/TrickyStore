@@ -1432,7 +1432,7 @@ class WebServer(
                 <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
                 <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
-            <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="applySpoofing(this)">Apply Global</button></div>
+            <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="runWithState(this, 'Saving...', applySpoofing)">Apply Global</button></div>
         </div>
         <div class="panel"><h3>System-Wide Spoofing (Global Hardware)</h3>
             <div class="section-header">Modem</div><div class="grid-2">
@@ -1451,7 +1451,7 @@ class WebServer(
                 <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
                 <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
-            <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;"><button type="button" onclick="clearSpoofingInputs()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="applySpoofing(this)" class="danger">Apply System-Wide</button></div>
+            <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;"><button type="button" onclick="clearSpoofingInputs()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply System-Wide</button></div>
         </div>
         <div class="panel"><h3>Location Spoofing (Privacy Suite)</h3>
             <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
@@ -1471,7 +1471,7 @@ class WebServer(
                 <div><label for="inputLocationRadius">Radius (m)</label><input type="text" id="inputLocationRadius" placeholder="500" value="500" style="font-family:monospace;" inputmode="numeric" aria-label="Random location radius in meters" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
                 <div><label for="inputLocationInterval">Interval (sec)</label><input type="text" id="inputLocationInterval" placeholder="30" value="30" style="font-family:monospace;" inputmode="numeric" aria-label="Random location update interval in seconds" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
-            <div style="margin-top:15px;"><button onclick="applyLocationSpoof(this)" class="primary" style="width:100%;">Save Location Settings</button></div>
+            <div style="margin-top:15px;"><button onclick="runWithState(this, 'Saving...', applyLocationSpoof)" class="primary" style="width:100%;">Save Location Settings</button></div>
         </div>
     </div>
 
@@ -1891,9 +1891,9 @@ class WebServer(
                         const div = document.createElement('div');
                         div.className = 'locked-item';
                         div.innerHTML = `<div style="font-weight:bold; margin-bottom:5px;">${'$'}{f}</div>
-                        <input type="password" id="pwd_${'$'}{f}" placeholder="Password" style="margin-bottom:5px;">
-                        <textarea id="pk_${'$'}{f}" placeholder="Public Key (Optional)" style="height:60px; font-size:0.8em; margin-bottom:5px;"></textarea>
-                        <button onclick="unlockCbox('${'$'}{f}', this)">Unlock</button>`;
+                        <input type="password" id="pwd_${'$'}{f}" placeholder="Password" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                        <textarea id="pk_${'$'}{f}" placeholder="Public Key (Optional)" style="height:60px; font-size:0.8em; margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+                        <button onclick="runWithState(this, 'Unlocking...', () => unlockCbox('${'$'}{f}'))">Unlock</button>`;
                         lockedList.appendChild(div);
                     });
                 } else {
@@ -1912,11 +1912,10 @@ class WebServer(
             } catch(e) {}
         }
 
-        async function unlockCbox(filename, btn) {
+        async function unlockCbox(filename) {
             const pwd = document.getElementById('pwd_' + filename).value;
             if (!pwd.trim()) { notify('Password required', 'error'); return; }
             const pk = document.getElementById('pk_' + filename).value;
-            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Unlocking...';
             try {
                 const formData = new FormData();
                 formData.append('filename', filename);
@@ -1925,7 +1924,6 @@ class WebServer(
                 const res = await fetchAuth('/api/unlock_cbox', { method: 'POST', body: formData });
                 if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { notify('Failed', 'error'); }
             } catch(e) { notify('Error', 'error'); }
-            finally { btn.disabled = false; btn.innerText = orig; }
         }
 
         async function loadServers() {
@@ -2327,9 +2325,9 @@ class WebServer(
             });
         }
 
-        async function saveAdvancedSpoof() { await applySpoofing(document.querySelector('#spoof button.danger')); }
+        async function saveAdvancedSpoof() { await applySpoofing(); }
 
-        async function applySpoofing(btn) {
+        async function applySpoofing() {
              const inputTypes = {
                  'inputImei': 'luhn', 'inputImsi': 'imsi', 'inputIccid': 'luhn',
                  'inputSerial': 'alphanum', 'inputWifiMac': 'mac', 'inputBtMac': 'mac', 'inputSimIso': 'iso'
@@ -2346,7 +2344,6 @@ class WebServer(
                  }
              }
 
-             const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
              try {
                  // 1. Fetch current spoof_build_vars content
                  let content = "";
@@ -2428,8 +2425,6 @@ class WebServer(
 
              } catch (e) {
                  notify('Error: ' + e.message, 'error');
-             } finally {
-                 btn.disabled = false; btn.innerText = orig;
              }
         }
 
@@ -2575,7 +2570,7 @@ class WebServer(
                 }
             } catch(e) { notify('Error', 'error'); }
         }
-        async function applyLocationSpoof(btn) {
+        async function applyLocationSpoof() {
             const lat = document.getElementById('inputLatitude').value.trim();
             const lng = document.getElementById('inputLongitude').value.trim();
             const alt = document.getElementById('inputAltitude').value.trim() || '0';
@@ -2596,7 +2591,6 @@ class WebServer(
             const intervalNum = parseInt(interval, 10);
             if (randomEnabled && (isNaN(radiusNum) || radiusNum < 1 || radiusNum > 100000)) { notify('Radius must be 1-100000 meters', 'error'); return; }
             if (randomEnabled && (isNaN(intervalNum) || intervalNum < 5 || intervalNum > 86400)) { notify('Interval must be 5-86400 seconds', 'error'); return; }
-            const orig = btn.innerText; btn.disabled = true; btn.innerText = 'Saving...';
             try {
                 let content = '';
                 try {
@@ -2631,7 +2625,6 @@ class WebServer(
                 if (saveRes.ok) notify('Location Settings Saved');
                 else notify('Save Failed', 'error');
             } catch(e) { notify('Error: ' + e.message, 'error'); }
-            finally { btn.disabled = false; btn.innerText = orig; }
         }
         async function backupConfig() {
             const pw = document.getElementById('backupPw') ? document.getElementById('backupPw').value : '';

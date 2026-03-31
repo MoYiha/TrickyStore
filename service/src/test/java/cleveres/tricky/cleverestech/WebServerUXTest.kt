@@ -57,19 +57,19 @@ class WebServerUXTest {
         // Current: <input type="text" id="appFilter" ...
         // Expected: <input type="search" id="appFilter" ... (or similar)
 
-        // Verify Apply System-Wide Button passes 'this'
-        assertTrue("Apply System-Wide button should pass 'this' to handler",
-            html.contains("onclick=\"applySpoofing(this)\"")
+        // Verify Apply System-Wide Button uses runWithState wrapper
+        assertTrue("Apply System-Wide button should use runWithState wrapper",
+            html.contains("runWithState(this, 'Saving...', applySpoofing)")
         )
 
-        // Verify JS function signature updated (checking for btn arg)
-        assertTrue("applySpoofing should accept btn argument",
-            html.contains("async function applySpoofing(btn)")
+        // Verify JS function signature updated (removed btn arg since runWithState handles it)
+        assertTrue("applySpoofing should no longer need btn argument",
+            html.contains("async function applySpoofing()") && !html.contains("async function applySpoofing(btn)")
         )
 
-        // Verify JS loading state logic
-        assertTrue("applySpoofing should show loading state",
-            html.contains("btn.innerText = 'Saving...'")
+        // Verify JS loading state logic using wrapper
+        assertTrue("applySpoofing should use runWithState wrapper",
+            html.contains("runWithState(this, 'Saving...', applySpoofing)")
         )
     }
 
