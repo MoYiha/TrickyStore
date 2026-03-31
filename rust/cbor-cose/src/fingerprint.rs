@@ -7,7 +7,7 @@
 //! This module is gated behind the `fingerprint` feature (enabled by default)
 //! which pulls in `minreq` for lightweight HTTPS fetching.
 
-use ahash::AHashMap;
+use rustc_hash::FxHashMap;
 use std::sync::RwLock;
 
 /// Thread-safe in-memory fingerprint cache.
@@ -22,7 +22,7 @@ const DEFAULT_FP_URL: &str =
 #[allow(dead_code)]
 struct FingerprintCache {
     /// Map of device codename → fingerprint string.
-    entries: AHashMap<Box<str>, Box<str>>,
+    entries: FxHashMap<Box<str>, Box<str>>,
 }
 
 /// Parse a fingerprint list from raw text.
@@ -34,8 +34,8 @@ struct FingerprintCache {
 ///
 /// The device codename is extracted from the third `/`-separated segment
 /// (before the `:`), e.g. `husky` from `google/husky/husky:15/...`.
-pub fn parse_fingerprints(data: &str) -> AHashMap<&str, &str> {
-    let mut map = AHashMap::new();
+pub fn parse_fingerprints(data: &str) -> FxHashMap<&str, &str> {
+    let mut map = FxHashMap::default();
     for line in data.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -91,7 +91,7 @@ pub fn fetch_fingerprints(url: Option<&str>) -> Result<usize, String> {
     let entries_ref = parse_fingerprints(body);
     let count = entries_ref.len();
 
-    let entries: AHashMap<Box<str>, Box<str>> = entries_ref
+    let entries: FxHashMap<Box<str>, Box<str>> = entries_ref
         .into_iter()
         .map(|(k, v)| (Box::from(k), Box::from(v)))
         .collect();
@@ -156,7 +156,7 @@ pub fn inject_fingerprints(data: &str) -> usize {
     let entries_ref = parse_fingerprints(data);
     let count = entries_ref.len();
 
-    let entries: AHashMap<Box<str>, Box<str>> = entries_ref
+    let entries: FxHashMap<Box<str>, Box<str>> = entries_ref
         .into_iter()
         .map(|(k, v)| (Box::from(k), Box::from(v)))
         .collect();

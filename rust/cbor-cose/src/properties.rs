@@ -1,7 +1,7 @@
-use ahash::AHashMap;
+use rustc_hash::FxHashMap;
 use std::sync::RwLock;
 
-static PROPERTIES: RwLock<Option<AHashMap<Box<str>, Box<str>>>> = RwLock::new(None);
+static PROPERTIES: RwLock<Option<FxHashMap<Box<str>, Box<str>>>> = RwLock::new(None);
 
 pub fn get_property<R, F: FnOnce(&str) -> R>(name: &str, f: F) -> Option<R> {
     // Avoid panics inside Zygote
@@ -16,7 +16,7 @@ pub fn get_property<R, F: FnOnce(&str) -> R>(name: &str, f: F) -> Option<R> {
 
 pub fn set_property(name: &str, value: &str) {
     if let Ok(mut cache) = PROPERTIES.write() {
-        let map = cache.get_or_insert_with(AHashMap::new);
+        let map = cache.get_or_insert_with(FxHashMap::default);
         map.insert(Box::from(name), Box::from(value));
     }
 }
