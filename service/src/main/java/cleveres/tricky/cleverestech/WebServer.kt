@@ -1533,7 +1533,7 @@ class WebServer(
                 <div id="dropZone" role="button" tabindex="0" style="border: 2px dashed var(--border); border-radius: 6px; padding: 20px; text-align: center; margin-bottom: 10px; cursor: pointer;" onclick="document.getElementById('kbFilePicker').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault(); document.getElementById('kbFilePicker').click();}">
                     <label for="kbFilename" style="display:none">Keybox File</label>
                     <input type="file" id="kbFilePicker" style="display:none" onchange="loadFileContent(this)" onclick="event.stopPropagation(); this.value = null" aria-label="Upload Keybox File">
-                    <div id="dropZoneContent"><div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Upload ]</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div></div>
+                    <div id="dropZoneContent"><div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Drag &amp; Drop ]</div><div style="font-size: 0.9em; color: #888;">Or click to select .xml, .cbox, or .zip</div></div>
                 </div>
                 <div>
                     <label for="kbContent" style="display:block; font-size:0.85em; color:#888; margin-bottom:4px;">Manual Paste (XML)</label>
