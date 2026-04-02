@@ -771,6 +771,53 @@ object Config {
     @Volatile
     var keyboxSourceUrl: String? = null
 
+    private val packageListLock = Any()
+    @Volatile
+    private var cachedPackageList: List<String>? = null
+    @Volatile
+    private var lastPackageFetchTime: Long = 0
+    private const val PACKAGE_CACHE_TTL = 30_000L // 30 seconds
+
+    /**
+     * Retrieves the complete list of installed packages, using a TTL cache to avoid
+     * frequent, costly IPC and serialization overhead from IPackageManager.
+     */
+    fun getInstalledPackages(): List<String> {
+        val now = clockSource()
+        val cached = cachedPackageList
+        if (cached != null && (now - lastPackageFetchTime) < PACKAGE_CACHE_TTL) {
+            return cached
+        }
+
+        return synchronized(packageListLock) {
+            val doubleCheck = cachedPackageList
+            if (doubleCheck != null && (now - lastPackageFetchTime) < PACKAGE_CACHE_TTL) {
+                doubleCheck
+            } else {
+                val pm = getPm()
+                val packages = if (pm != null) {
+                    try {
+                        try {
+                            pm.getInstalledPackages(0L, 0).list.map { it.packageName }
+                        } catch (e: NoSuchMethodError) {
+                            pm.getInstalledPackages(0, 0).list.map { it.packageName }
+                        }
+                    } catch (t: Throwable) {
+                        Logger.e("Failed to list packages via IPC", t)
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+
+                val sortedPackages = packages.sorted()
+                cachedPackageList = sortedPackages
+                lastPackageFetchTime = now
+                sortedPackages
+            }
+        }
+    }
+
     private fun updateKeyboxSource(f: File?) = runCatching {
         val url = f?.readText()?.trim()
         if (!url.isNullOrBlank()) {
@@ -1198,6 +1245,8 @@ object Config {
         moduleHash = null
         moduleHashFromVars = null
         keyboxSourceUrl = null
+        cachedPackageList = null
+        lastPackageFetchTime = 0
         isGlobalMode = false
         isTeeBrokenMode = false
         isAutoTeeBroken = false

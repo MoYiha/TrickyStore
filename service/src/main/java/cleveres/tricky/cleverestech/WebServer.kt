@@ -703,22 +703,7 @@ class WebServer(
 
         if (uri == "/api/packages" && method == Method.GET) {
             return try {
-                val pm = Config.getPm()
-                val packages = if (pm != null) {
-                    try {
-                        try {
-                            pm.getInstalledPackages(0L, 0).list.map { it.packageName }
-                        } catch (e: NoSuchMethodError) {
-                            pm.getInstalledPackages(0, 0).list.map { it.packageName }
-                        }
-                    } catch (t: Throwable) {
-                        Logger.e("Failed to list packages via IPC", t)
-                        emptyList()
-                    }
-                } else {
-                    emptyList()
-                }
-                val sortedPackages = packages.sorted()
+                val sortedPackages = Config.getInstalledPackages()
                 val array = JSONArray(sortedPackages)
                 secureResponse(Response.Status.OK, "application/json", array.toString())
             } catch (e: Exception) {
