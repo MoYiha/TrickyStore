@@ -2671,6 +2671,8 @@ class WebServer(
                     document.getElementById('fileSelector').value = currentFile;
                     return;
                 }
+                editor.value = originalContent;
+                updateSaveButtonState();
             }
             editorUnsavedBypass = false;
             currentFile = f;
