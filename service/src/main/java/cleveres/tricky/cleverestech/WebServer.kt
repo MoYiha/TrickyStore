@@ -2928,29 +2928,29 @@ class WebServer(
         fun validateContent(filename: String, content: String): Boolean {
             // Basic validation based on known file types
             if (filename == "target.txt") {
-                val lines = content.split('\n')
+                val lines = content.lineSequence()
                 return lines.all { it.isEmpty() || it.startsWith("#") || it.matches(TARGET_PKG_REGEX) }
             }
             if (filename == "security_patch.txt") {
-                 val lines = content.split('\n')
+                 val lines = content.lineSequence()
                  return lines.all { it.isEmpty() || it.matches(SECURITY_PATCH_REGEX) }
             }
             if (filename == "spoof_build_vars") {
-                val lines = content.split('\n')
+                val lines = content.lineSequence()
                 return lines.all { line ->
                     if (line.isEmpty() || line.startsWith("#")) return@all true
                     // Must be KEY=VALUE format
                     if (!line.matches(KEY_VALUE_REGEX)) return@all false
                     // Value part security check
-                    val parts = line.split("=", limit=2)
-                    if (parts.size < 2) return@all false
-                    val value = parts[1]
+                    val idx = line.indexOf('=')
+                    if (idx == -1) return@all false
+                    val value = line.substring(idx + 1)
                     // Check for unsafe shell chars
                     value.matches(SAFE_BUILD_VAR_VALUE_REGEX)
                 }
             }
             if (filename == "app_config") {
-                val lines = content.split('\n')
+                val lines = content.lineSequence()
                 return lines.all { line ->
                      if (line.isBlank() || line.startsWith("#")) return@all true
 
