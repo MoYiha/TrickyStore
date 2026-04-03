@@ -47,3 +47,7 @@
 ## 2024-03-19 - [Repeated Allocations in /proc Parsing]
 **Learning:** `WebServer.getCpuUsagePercent` was reading `/proc/self/stat` and `/proc/stat` using `File.readText().split(Regex)`. `readText` allocates a `String` for the entire file (which for `/proc/stat` can be large) and `split` creates multiple objects. This adds unnecessary memory pressure for a simple stats read.
 **Action:** Use a pre-allocated `ByteArray` and `FileInputStream.read()` to process just the first line without loading the entire file into a `String`.
+
+## 2024-04-03 - Optimize Kotlin String Multi-line Parsing
+**Learning:** In Kotlin, calling `content.split('\n')` on large system files or configurations eagerly allocates a full `List<String>` and creates many new string objects, which creates severe GC pressure in hot paths.
+**Action:** Replace `split('\n')` with `lineSequence()` whenever validating or iterating through text files sequentially (e.g., in `validateContent`). `lineSequence()` evaluates lines lazily without creating intermediate lists, drastically reducing memory overhead. Also, use `indexOf` combined with `substring` instead of `split("=", limit=2)` for simple key-value parsing.
