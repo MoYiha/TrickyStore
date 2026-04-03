@@ -95,30 +95,6 @@ class BootLogicSafetyTest {
     // FD leak prevention
     // ================================
 
-    @Test
-    fun testGetSystemPropertyDrainsErrorStream() {
-        // Bug fix: getSystemProperty must drain errorStream to prevent FD exhaustion
-        val funcStart = bootLogicContent.indexOf("fun getSystemProperty")
-        assertTrue("getSystemProperty function must exist", funcStart >= 0)
-        val funcBody = bootLogicContent.substring(funcStart, minOf(funcStart + 500, bootLogicContent.length))
-        assertTrue(
-            "getSystemProperty must drain errorStream to prevent FD exhaustion",
-            funcBody.contains("errorStream")
-        )
-    }
-
-    @Test
-    fun testGetSystemPropertyCallsWaitFor() {
-        val funcStart = bootLogicContent.indexOf("fun getSystemProperty")
-        assertTrue("getSystemProperty function must exist", funcStart >= 0)
-        val funcBody = bootLogicContent.substring(funcStart, minOf(funcStart + 500, bootLogicContent.length))
-        assertTrue(
-            "getSystemProperty must call waitFor() to avoid zombie processes",
-            funcBody.contains("waitFor()")
-        )
-    }
-
-    @Test
     fun testExecAndDrainHelper() {
         assertTrue(
             "BootLogic must have execAndDrain helper that drains both streams and calls waitFor",

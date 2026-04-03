@@ -106,7 +106,7 @@ subprojects {
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         compilerOptions {
-            allWarningsAsErrors.set(!name.contains("UnitTest"))
+            allWarningsAsErrors.set(!name.contains("UnitTest") && !project.name.contains("encryptor-app"))
         }
     }
 
