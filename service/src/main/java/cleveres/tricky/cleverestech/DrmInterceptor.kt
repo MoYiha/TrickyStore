@@ -27,6 +27,7 @@ object DrmInterceptor : BinderInterceptor() {
     @Volatile private var drmBinder: IBinder? = null
     @Volatile private var triedCount = 0
     @Volatile private var injected = false
+    @Volatile private var isInjecting = false
 
     // Cached state to avoid file I/O on every transaction
     @Volatile private var cachedRandomDrmOnBoot = false
@@ -293,7 +294,8 @@ object DrmInterceptor : BinderInterceptor() {
                 return false
             }
 
-            if (!injected) {
+            if (!injected && !isInjecting) {
+                isInjecting = true
                 Logger.i("DRM: Backdoor not found, attempting injection into DRM process...")
                 val pid = findDrmServicePid()
                 if (pid == null) {
@@ -304,27 +306,33 @@ object DrmInterceptor : BinderInterceptor() {
 
                 val modulePath = "/data/adb/modules/cleverestricky"
                 Logger.d("DRM: Injecting PID=$pid with $modulePath/libcleverestricky.so")
-                val p = Runtime.getRuntime().exec(
-                    arrayOf(
-                        "$modulePath/inject",
-                        pid.toString(),
-                        "$modulePath/libcleverestricky.so",
-                        "entry"
-                    )
-                )
-                try {
-                    p.inputStream.readBytes()
-                } catch (_: Exception) {}
-                finally {
-                    try { p.errorStream.readBytes() } catch (_: Exception) {}
-                }
-                val exitCode = p.waitFor()
-                if (exitCode != 0) {
-                    Logger.e("DRM: Injection failed (exit=$exitCode)")
-                } else {
-                    Logger.i("DRM: Injection succeeded for PID=$pid")
-                    injected = true
-                }
+                Thread {
+                    try {
+                        val p = Runtime.getRuntime().exec(
+                            arrayOf(
+                                "$modulePath/inject",
+                                pid.toString(),
+                                "$modulePath/libcleverestricky.so",
+                                "entry"
+                            )
+                        )
+                        try {
+                            p.inputStream.readBytes()
+                        } catch (_: Exception) {}
+                        finally {
+                            try { p.errorStream.readBytes() } catch (_: Exception) {}
+                        }
+                        val exitCode = p.waitFor()
+                        if (exitCode != 0) {
+                            Logger.e("DRM: Injection failed (exit=$exitCode)")
+                        } else {
+                            Logger.i("DRM: Injection succeeded for PID=$pid")
+                            injected = true
+                        }
+                    } finally {
+                        isInjecting = false
+                    }
+                }.start()
             }
             triedCount += 1
             return false
