@@ -1304,7 +1304,7 @@ class WebServer(
         .res-desc { display: block; font-size: 0.8em; color: #888; margin-top: 4px; line-height: 1.3; }
         .search-container { position: relative; margin-bottom: 10px; }
         .search-container input[type="search"] { width: 100%; padding-right: 30px; }
-        .clear-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: #888; font-size: 1.2em; padding: 0; min-height: auto; width: auto; cursor: pointer; display: none; touch-action: manipulation; }
+        .clear-btn { position: absolute; right: 0; top: 0; height: 100%; min-height: 44px; min-width: 44px; background: transparent; border: none; color: #888; font-size: 1.2em; padding: 0; cursor: pointer; display: none; touch-action: manipulation; }
         .clear-btn:hover { color: #fff; background: transparent; }
         @media screen and (max-width: 600px) {
             .grid-2 { grid-template-columns: 1fr; }
@@ -1415,7 +1415,7 @@ class WebServer(
             <select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"></select>
             <div id="templatePreview" style="background:var(--input-bg); border-radius:8px; padding:15px; margin-bottom:15px;">
                 <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
-                <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:2px 6px; margin-left:5px;" title="Copy fingerprint" aria-label="Copy Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
+                <div class="section-header">Fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:8px 12px; margin-left:5px; min-height:44px;" title="Copy fingerprint" aria-label="Copy Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
             </div>
             <div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="runWithState(this, 'Saving...', applySpoofing)">Apply Global</button></div>
         </div>
@@ -1609,16 +1609,16 @@ class WebServer(
             <table class="responsive-table">
                 <thead><tr><th>Asset</th><th>Network</th><th>Address</th><th></th></tr></thead>
                 <tbody>
-                    <tr><td data-label="Asset"><strong>USDT</strong></td><td data-label="Network">TRC20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk</td><td><button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk','Copied USDT Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
-                    <tr><td data-label="Asset"><strong>XMR</strong></td><td data-label="Network">Monero</td><td data-label="Address" style="font-family:monospace; font-size:0.75em; word-break:break-all;">85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv</td><td><button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv','Copied XMR Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
-                    <tr><td data-label="Asset"><strong>USDT / USDC</strong></td><td data-label="Network">ERC20 / BEP20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b</td><td><button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b','Copied ERC20 Address',this)" style="padding:4px 8px; font-size:0.8em;">Copy</button></td></tr>
+                    <tr><td data-label="Asset"><strong>USDT</strong></td><td data-label="Network">TRC20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk</td><td><button onclick="copyToClipboard('TQGTsbqawRHhv35UMxjHo14mieUGWXyQzk','Copied USDT Address',this)" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Copy</button></td></tr>
+                    <tr><td data-label="Asset"><strong>XMR</strong></td><td data-label="Network">Monero</td><td data-label="Address" style="font-family:monospace; font-size:0.75em; word-break:break-all;">85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv</td><td><button onclick="copyToClipboard('85m61iuWiwp24g8NRXoMKdW25ayVWFzYf5BoAqvgGpLACLuMsXbzGbWR9mC8asnCSfcyHN3dZgEX8KZh2pTc9AzWGXtrEUv','Copied XMR Address',this)" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Copy</button></td></tr>
+                    <tr><td data-label="Asset"><strong>USDT / USDC</strong></td><td data-label="Network">ERC20 / BEP20</td><td data-label="Address" style="font-family:monospace; font-size:0.85em; word-break:break-all;">0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b</td><td><button onclick="copyToClipboard('0x1a4b9e55e268e6969492a70515a5fd9fd4e6ea8b','Copied ERC20 Address',this)" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Copy</button></td></tr>
                 </tbody>
             </table>
         </div>
         <div class="panel">
             <h3>Platforms</h3>
             <div style="display:flex; flex-direction:column; gap:12px;">
-                <div class="row"><span style="font-weight:bold;">Binance User ID</span><span style="font-family:monospace;">114574830 <button onclick="copyToClipboard('114574830','Copied Binance ID',this)" style="padding:2px 8px; font-size:0.8em; margin-left:5px;">Copy</button></span></div>
+                <div class="row"><span style="font-weight:bold;">Binance User ID</span><span style="font-family:monospace;">114574830 <button onclick="copyToClipboard('114574830','Copied Binance ID',this)" style="padding:8px 16px; font-size:0.85em; margin-left:5px; min-height:44px;">Copy</button></span></div>
                 <div class="row"><span style="font-weight:bold;">PayPal</span><a href="https://www.paypal.me/tryigitx" target="_blank" style="color:var(--accent); text-decoration:none;">paypal.me/tryigitx</a></div>
                 <div class="row"><span style="font-weight:bold;">BuyMeACoffee</span><a href="https://buymeacoffee.com/yigitx" target="_blank" style="color:var(--accent); text-decoration:none;">buymeacoffee.com/yigitx</a></div>
             </div>
@@ -1925,8 +1925,8 @@ class WebServer(
                 div.className = 'server-item';
                 div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
                 <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
-                <button style="padding:4px 8px; margin-left:10px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
-                <button class="danger" style="padding:4px 8px; margin-left:5px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
+                <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
+                <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
                 list.appendChild(div);
             });
         }
@@ -2263,14 +2263,14 @@ class WebServer(
                 if (filterText && !k.toLowerCase().includes(filterText)) return;
                 matchCount++;
                 const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:4px 8px; font-size:0.8em;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
+                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:8px 16px; font-size:0.85em; min-height:44px;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
                 list.appendChild(div);
             });
 
             if (filterText && matchCount === 0) {
                  const div = document.createElement('div');
                  div.style.padding = '10px'; div.style.textAlign = 'center'; div.style.color = '#666';
-                 div.innerHTML = 'No keyboxes match your filter. <button onclick="document.getElementById(\'keyboxFilter\').value=\'\'; renderKeyboxes()" style="margin-left:10px; padding:4px 8px; font-size:0.85em;">Clear Filter</button>';
+                 div.innerHTML = 'No keyboxes match your filter. <button onclick="document.getElementById(\'keyboxFilter\').value=\'\'; renderKeyboxes()" style="margin-left:10px; padding:8px 16px; font-size:0.85em; min-height:44px;">Clear Filter</button>';
                  list.appendChild(div);
             } else if (cachedKeyboxes.length === 0) {
                  const div = document.createElement('div');
@@ -2437,13 +2437,13 @@ class WebServer(
                 matchCount++;
                 const tr = document.createElement('tr');
                 const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:4px 8px; margin-right:5px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:4px 8px;" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:8px 16px; margin-right:5px; min-height:44px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:8px 16px; min-height:44px;" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
 
             if (filter && matchCount === 0) {
                 const tr = document.createElement('tr');
-                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No rules match your filter. <button onclick="document.getElementById(\'appFilter\').value=\'\'; renderAppTable()" style="margin-left:10px; padding:4px 8px; font-size:0.85em;">Clear Filter</button></td>';
+                tr.innerHTML = '<td colspan="5" style="text-align:center; padding:20px; color:#666;">No rules match your filter. <button onclick="document.getElementById(\'appFilter\').value=\'\'; renderAppTable()" style="margin-left:10px; padding:8px 16px; font-size:0.85em; min-height:44px;">Clear Filter</button></td>';
                 tbody.appendChild(tr);
             }
         }
