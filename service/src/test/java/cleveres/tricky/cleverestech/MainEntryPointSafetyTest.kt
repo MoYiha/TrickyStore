@@ -56,7 +56,7 @@ class MainEntryPointSafetyTest {
     fun testStartsWebServer() {
         assertTrue(
             "Must start WebServer for configuration management",
-            mainContent.contains("WebServer(") && mainContent.contains("server.start()")
+            mainContent.contains("WebServer(") && mainContent.contains("server.startAsync()")
         )
     }
 

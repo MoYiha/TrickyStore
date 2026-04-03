@@ -55,12 +55,12 @@ class WebServer(
     }
 ) : NanoHTTPD(WEB_UI_LOOPBACK_HOST, requestedPort) {
 
-    override fun start(timeout: Int, daemon: Boolean) {
+    suspend fun startAsync(timeout: Int = 5000, daemon: Boolean = true) {
         Logger.d("WebServer: Starting on $WEB_UI_LOOPBACK_HOST:$requestedPort (timeout=$timeout daemon=$daemon)")
         try {
             super.start(timeout, daemon)
             Logger.d("WebServer: NanoHTTPD start returned (alive=$isAlive port=$listeningPort)")
-            waitUntilListening()
+            waitUntilListeningAsync()
             Logger.d("WebServer: Readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:$listeningPort")
         } catch (e: Exception) {
             Logger.e("WebServer: Failed to start", e)
@@ -74,7 +74,7 @@ class WebServer(
      * @param timeoutMs total amount of time to wait for the loopback socket to accept connections
      * @param pollMs delay between readiness probes while the server is still binding
      */
-    private fun waitUntilListening(
+    private suspend fun waitUntilListeningAsync(
         timeoutMs: Long = WEB_UI_READINESS_TIMEOUT_MS,
         pollMs: Long = WEB_UI_READINESS_POLL_MS
     ) {
@@ -86,14 +86,16 @@ class WebServer(
         var lastError: IOException? = null
         while (System.nanoTime() < deadline) {
             try {
-                Socket().use { socket ->
-                    socket.connect(InetSocketAddress(WEB_UI_LOOPBACK_HOST, port), WEB_UI_READINESS_CONNECT_TIMEOUT_MS)
+                withContext(Dispatchers.IO) {
+                    Socket().use { socket ->
+                        socket.connect(InetSocketAddress(WEB_UI_LOOPBACK_HOST, port), WEB_UI_READINESS_CONNECT_TIMEOUT_MS)
+                    }
                 }
                 return
             } catch (e: IOException) {
                 lastError = e
                 Logger.d("WebServer: Waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections (${e.message})")
-                Thread.sleep(pollMs)
+                delay(pollMs)
             }
         }
         throw IOException("WebServer: Timed out waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections", lastError)
