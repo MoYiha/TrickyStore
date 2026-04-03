@@ -240,6 +240,7 @@ class WebServer(
     @Volatile private var cachedTelegramCount: String? = null
     @Volatile private var lastTelegramFetchTime: Long = 0
     @Volatile private var isFetchingTelegram = false
+    private val isResettingDrm = java.util.concurrent.atomic.AtomicBoolean(false)
     private val CACHE_DURATION_SUCCESS = 10 * 60 * 1000L
     private val CACHE_DURATION_ERROR = 1 * 60 * 1000L
 
@@ -1071,35 +1072,43 @@ class WebServer(
         }
 
         if (uri == "/api/reset_drm" && method == Method.POST) {
+             if (!isResettingDrm.compareAndSet(false, true)) return secureResponse(Response.Status.OK, "text/plain", "Already resetting...")
              try {
-                 synchronized(fileLock) {
-                     val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
-                     dirs.forEach { path ->
-                         try {
-                             var cleaned = 0
-                             File(path).walkBottomUp().forEach {
-                                 if (it.path != path) {
-                                     if (!it.delete()) Logger.e("DRM reset: failed to delete ${it.path}")
-                                     else cleaned++
+                 @Suppress("OPT_IN_USAGE")
+                 GlobalScope.launch(Dispatchers.IO) {
+                     try {
+                         synchronized(fileLock) {
+                             val dirs = listOf("/data/vendor/mediadrm", "/data/mediadrm")
+                             dirs.forEach { path ->
+                                 try {
+                                     var cleaned = 0
+                                     File(path).walkBottomUp().forEach {
+                                         if (it.path != path) {
+                                             if (!it.delete()) Logger.e("DRM reset: failed to delete ${it.path}")
+                                             else cleaned++
+                                         }
+                                     }
+                                     if (cleaned > 0) Logger.i("DRM reset: cleaned $cleaned files from $path")
+                                 } catch (e: Exception) {
+                                     Logger.e("DRM reset: failed to clean $path", e)
                                  }
                              }
-                             if (cleaned > 0) Logger.i("DRM reset: cleaned $cleaned files from $path")
-                         } catch (e: Exception) {
-                             Logger.e("DRM reset: failed to clean $path", e)
+                             val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
+                             try { p.inputStream.readBytes() } catch (_: Exception) {} finally { try { p.errorStream.readBytes() } catch (_: Exception) {} }
+                             p.waitFor()
+                             Logger.i("DRM ID regenerated successfully")
                          }
+                     } finally {
+                         isResettingDrm.set(false)
                      }
-                     val p = Runtime.getRuntime().exec(arrayOf("sh", "-c", "killall -9 android.hardware.drm-service.widevine android.hardware.drm-service.clearkey mediadrmserver || true"))
-                     try { p.inputStream.readBytes() } catch (_: Exception) {} finally { try { p.errorStream.readBytes() } catch (_: Exception) {} }
-                     p.waitFor()
-                     Logger.i("DRM ID regenerated successfully")
-                     return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerated")
                  }
+                 return secureResponse(Response.Status.OK, "text/plain", "DRM ID Regenerating...")
              } catch(e: Exception) {
+                 isResettingDrm.set(false)
                  Logger.e("DRM reset failed", e)
                  return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
              }
         }
-
         if (uri == "/api/fetch_beta" && method == Method.POST) {
              try {
                  val result = BetaFetcher.fetchAndApply(null)
@@ -2139,7 +2148,7 @@ class WebServer(
         }
         async function resetDrmId() {
             notify('Regenerating...', 'working');
-            try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM ID Reset'); } catch(e) { notify('Failed', 'error'); }
+            try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM Reset Started'); } catch(e) { notify('Failed', 'error'); }
         }
         async function fetchBeta() {
             try {
