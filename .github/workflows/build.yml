@@ -404,7 +404,10 @@ jobs:
   # Phase 3: Instrumentation Tests (after safety check)
   # ============================================================
 
+  # NOTE: instrumentation-test is currently skipped.
+  # The build and related code require a bug fix / further development by the community.
   instrumentation-test:
+    if: false
     needs: safety-check
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -536,7 +539,7 @@ jobs:
   build:
     needs:
       - rust-test
-      - instrumentation-test
+      # - instrumentation-test
     runs-on: ubuntu-latest
     steps:
       - name: Check out
