@@ -1980,7 +1980,7 @@ class WebServer(
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/refresh', { method: 'POST', body: formData });
                 if(res.ok) { notify('Refreshed'); loadServers(); } else { notify('Failed', 'error'); }
-            } catch(e) {}
+            } catch(e) { notify('Error', 'error'); }
         }
 
         async function loadFileContent(input) {
@@ -2672,6 +2672,8 @@ class WebServer(
             }
             editorUnsavedBypass = false;
             currentFile = f;
+            editor.disabled = true;
+            editor.value = 'Loading...';
             console.log('[CleveresTricky] loadFile: loading', f);
             try {
                 const res = await fetchAuth('/api/file?filename=' + f);
@@ -2682,9 +2684,15 @@ class WebServer(
                     updateSaveButtonState();
                 } else {
                     console.log('[CleveresTricky] loadFile:', f, 'failed (status=' + res.status + ')');
+                    editor.value = 'Failed to load file.';
+                    notify('Failed to load file', 'error');
                 }
             } catch(e){
                 console.log('[CleveresTricky] loadFile:', f, 'error -', e.message);
+                editor.value = 'Error loading file.';
+                notify('Error loading file', 'error');
+            } finally {
+                editor.disabled = false;
             }
         }
         async function handleSave(btn) {
