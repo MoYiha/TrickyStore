@@ -133,7 +133,13 @@ pub fn get_all_fingerprints() -> Vec<String> {
         Some(cache) => cache
             .entries
             .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
+            .map(|(k, v)| {
+                let mut s = String::with_capacity(k.len() + v.len() + 1);
+                s.push_str(k);
+                s.push('=');
+                s.push_str(v);
+                s
+            })
             .collect(),
         None => vec![],
     }
