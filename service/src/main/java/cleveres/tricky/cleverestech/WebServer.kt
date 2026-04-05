@@ -1370,7 +1370,7 @@ class WebServer(
                     <option value="DailyUse">Daily Use (Standard Spoofing)</option>
                     <option value="Minimal">Minimal (Clean state)</option>
                 </select>
-                <button onclick="const sel = document.getElementById('profileSelect').value; if(!sel) { notify('Please select a profile first', 'error'); return; } requireConfirm(this, () => applyProfile(sel), 'Confirm Apply', async () => { const res = await fetchAuth(getAuthUrl('/api/config')); const data = await res.json(); determineActiveProfile(data); })" style="min-height: 44px;">Apply</button>
+                <button onclick="applySelectedProfile(this)" style="min-height: 44px;">Apply</button>
             </div>
             <div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
         </div>
@@ -1871,7 +1871,7 @@ class WebServer(
                 const configRes = await fetchAuth(getAuthUrl('/api/config'));
                 const configData = await configRes.json();
                 document.getElementById('keyboxStatus').innerText = `${'$'}{configData.keybox_count} Keys Loaded`;
-            } catch(e) {}
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
             // Load CBOX Status
             try {
@@ -1905,7 +1905,7 @@ class WebServer(
                     });
                 }
                 loadServers();
-            } catch(e) {}
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
         }
 
         async function unlockCbox(filename) {
@@ -2021,7 +2021,7 @@ class WebServer(
                         if (body.keybox_count !== undefined) {
                             document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
                         }
-                    } catch(e) {}
+                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
                     loadKeyInfo();
                 } catch(e) { notify('Error', 'error'); } finally {
                     resetDropZone();
@@ -2061,7 +2061,7 @@ class WebServer(
                         if (body.keybox_count !== undefined) {
                             document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
                         }
-                    } catch(e) {}
+                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
                     loadKeyInfo();
                 }
             } catch(e) {
@@ -2093,7 +2093,7 @@ class WebServer(
                     if (data.drm_fix) { drmStatus.innerText = 'Active'; drmStatus.style.color = 'var(--success)'; }
                     else { drmStatus.innerText = 'Inactive'; drmStatus.style.color = 'var(--danger)'; }
                 }
-            } catch(e) {}
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
             fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
                 document.getElementById('communityCount').innerText = d.members;
@@ -2257,7 +2257,7 @@ class WebServer(
                     const dl = document.getElementById('keyboxList');
                     if (dl) { dl.innerHTML = ''; cachedKeyboxes.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
                 }
-            } catch(e) {}
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
         }
 
         function renderKeyboxes() {
@@ -2346,7 +2346,7 @@ class WebServer(
                  try {
                      const res = await fetchAuth('/api/file?filename=spoof_build_vars');
                      if (res.ok) content = await res.text();
-                 } catch(e) {}
+                 } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
                  // 2. Parse lines
                  let lines = content.split('\n');
@@ -2520,6 +2520,18 @@ class WebServer(
             if (btn && input) btn.disabled = !input.value.trim();
         }
 
+        function applySelectedProfile(btn) {
+            const sel = document.getElementById('profileSelect').value;
+            if(!sel) { notify('Please select a profile first', 'error'); return; }
+            requireConfirm(btn, () => {
+                runWithState(btn, 'Applying...', () => applyProfile(sel));
+            }, 'Confirm Apply', async () => {
+                const res = await fetchAuth(getAuthUrl('/api/config'));
+                const data = await res.json();
+                determineActiveProfile(data);
+            });
+        }
+
         async function applyProfile(profileName) {
             if (!profileName) return;
             try {
@@ -2592,7 +2604,7 @@ class WebServer(
                 try {
                     const res = await fetchAuth('/api/file?filename=spoof_build_vars');
                     if (res.ok) content = await res.text();
-                } catch(e) {}
+                } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
                 const locationKeys = {
                     'SPOOF_LATITUDE': lat,
                     'SPOOF_LONGITUDE': lng,
@@ -2780,7 +2792,7 @@ class WebServer(
                  const res = await fetchAuth('/api/resource_usage');
                  const data = await res.json();
                  renderResourceTable(data);
-             } catch(e) {}
+             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
         }
 
         function renderResourceTable(data) {
