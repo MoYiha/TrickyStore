@@ -2098,7 +2098,7 @@ class WebServer(
             fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
                 document.getElementById('communityCount').innerText = d.members;
                 document.getElementById('bannedCount').innerText = 'Global Banned Keys: ' + d.banned;
-            });
+            }).catch(e => { notify('Error: ' + e.message, 'error'); });
             const tRes = await fetchAuth(getAuthUrl('/api/templates'));
             const templates = await tRes.json();
             const sel = document.getElementById('templateSelect');
@@ -2112,7 +2112,7 @@ class WebServer(
             fetchAuth(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => { const opt = document.createElement('option'); opt.value = p; dl.appendChild(opt); });
-            });
+            }).catch(e => { notify('Error: ' + e.message, 'error'); });
             loadKeyboxes();
             currentFile = document.getElementById('fileSelector').value;
             await loadFile();
@@ -2428,9 +2428,11 @@ class WebServer(
         async function loadAppConfig() {
             const tbody = document.querySelector('#appTable tbody');
             if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
-            const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
-            appRules = await res.json();
-            renderAppTable();
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
+                appRules = await res.json();
+                renderAppTable();
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         function renderAppTable() {
             const filterInput = document.getElementById('appFilter');
@@ -2563,7 +2565,7 @@ class WebServer(
         }
 
         async function reloadConfig() {
-            await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000);
+            try { await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000); } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function resetEnvironment() {
             notify('Resetting...', 'working');
