@@ -1925,21 +1925,27 @@ class WebServer(
         async function loadServers() {
             const list = document.getElementById('serverList');
             if (list) list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">Loading...</div>';
-            const res = await fetchAuth('/api/servers');
-            const servers = await res.json();
-            if (list) list.innerHTML = '';
-            if (servers.length === 0) {
-                if (list) list.innerHTML = '<div style="text-align:center; padding:15px; color:#666;">No servers configured. Add one below to fetch keyboxes automatically.</div>';
+            try {
+                const res = await fetchAuth('/api/servers');
+                const servers = await res.json();
+                if (list) list.innerHTML = '';
+                if (servers.length === 0) {
+                    if (list) list.innerHTML = '<div style="text-align:center; padding:15px; color:#666;">No servers configured. Add one below to fetch keyboxes automatically.</div>';
+                }
+                servers.forEach(s => {
+                    const div = document.createElement('div');
+                    div.className = 'server-item';
+                    div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
+                    <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
+                    <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
+                    <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
+                    list.appendChild(div);
+                });
+            } catch(e) {
+                console.error(e);
+                notify('Error: ' + e.message, 'error');
+                if (list) list.innerHTML = '<div style="text-align:center; padding:15px; color:var(--danger);">Failed to load servers.</div>';
             }
-            servers.forEach(s => {
-                const div = document.createElement('div');
-                div.className = 'server-item';
-                div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
-                <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
-                <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
-                <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
-                list.appendChild(div);
-            });
         }
 
         async function addServer() {
@@ -2099,16 +2105,18 @@ class WebServer(
                 document.getElementById('communityCount').innerText = d.members;
                 document.getElementById('bannedCount').innerText = 'Global Banned Keys: ' + d.banned;
             }).catch(e => { notify('Error: ' + e.message, 'error'); });
-            const tRes = await fetchAuth(getAuthUrl('/api/templates'));
-            const templates = await tRes.json();
-            const sel = document.getElementById('templateSelect');
-            const appSel = document.getElementById('appTemplate');
-            templates.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t.id; opt.text = `${'$'}{t.model} (${'$'}{t.manufacturer})`; opt.dataset.json = JSON.stringify(t);
-                sel.appendChild(opt.cloneNode(true)); appSel.appendChild(opt);
-            });
-            previewTemplate();
+            try {
+                const tRes = await fetchAuth(getAuthUrl('/api/templates'));
+                const templates = await tRes.json();
+                const sel = document.getElementById('templateSelect');
+                const appSel = document.getElementById('appTemplate');
+                templates.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id; opt.text = `${'$'}{t.model} (${'$'}{t.manufacturer})`; opt.dataset.json = JSON.stringify(t);
+                    sel.appendChild(opt.cloneNode(true)); appSel.appendChild(opt);
+                });
+                previewTemplate();
+            } catch(e) { console.error(e); notify('Error loading templates: ' + e.message, 'error'); }
             fetchAuth(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => { const opt = document.createElement('option'); opt.value = p; dl.appendChild(opt); });
@@ -2169,23 +2177,28 @@ class WebServer(
         }
 
         async function generateRandomIdentity() {
-            const res = await fetchAuth('/api/random_identity');
-            if (!res.ok) { notify('Failed', 'error'); return; }
-            const t = await res.json();
-            document.getElementById('inputImei').value = t.imei || '';
-            document.getElementById('inputImsi').value = t.imsi || '';
-            document.getElementById('inputIccid').value = t.iccid || '';
-            document.getElementById('inputSerial').value = t.serial || '';
-            document.getElementById('inputWifiMac').value = t.wifiMac || '';
-            document.getElementById('inputBtMac').value = t.btMac || '';
-            document.getElementById('inputSimIso').value = t.simCountryIso || '';
-            document.getElementById('inputSimOp').value = t.carrier || '';
-            document.getElementById('pModel').innerText = t.model + ' (Randomized)';
-            document.getElementById('pManuf').innerText = t.manufacturer;
-            document.getElementById('pFing').innerText = t.fingerprint;
-            const sel = document.getElementById('templateSelect');
-            sel.dataset.generated = JSON.stringify(t);
-            notify('Identity Generated');
+            try {
+                const res = await fetchAuth('/api/random_identity');
+                if (!res.ok) { notify('Failed', 'error'); return; }
+                const t = await res.json();
+                document.getElementById('inputImei').value = t.imei || '';
+                document.getElementById('inputImsi').value = t.imsi || '';
+                document.getElementById('inputIccid').value = t.iccid || '';
+                document.getElementById('inputSerial').value = t.serial || '';
+                document.getElementById('inputWifiMac').value = t.wifiMac || '';
+                document.getElementById('inputBtMac').value = t.btMac || '';
+                document.getElementById('inputSimIso').value = t.simCountryIso || '';
+                document.getElementById('inputSimOp').value = t.carrier || '';
+                document.getElementById('pModel').innerText = t.model + ' (Randomized)';
+                document.getElementById('pManuf').innerText = t.manufacturer;
+                document.getElementById('pFing').innerText = t.fingerprint;
+                const sel = document.getElementById('templateSelect');
+                sel.dataset.generated = JSON.stringify(t);
+                notify('Identity Generated');
+            } catch (e) {
+                console.error(e);
+                notify('Error generating identity: ' + e.message, 'error');
+            }
         }
 
         async function verifyKeyboxes() {
@@ -2513,9 +2526,14 @@ class WebServer(
             appRules.splice(idx, 1); renderAppTable();
         }
         async function saveAppConfig() {
-            const res = await fetchAuth(getAuthUrl('/api/app_config_structured'), { method: 'POST', body: new URLSearchParams({ data: JSON.stringify(appRules) }) });
-            const txt = await res.text();
-            if (res.ok) { notify('App Config Saved'); } else { notify('Save Failed: ' + txt, 'error'); }
+            try {
+                const res = await fetchAuth(getAuthUrl('/api/app_config_structured'), { method: 'POST', body: new URLSearchParams({ data: JSON.stringify(appRules) }) });
+                const txt = await res.text();
+                if (res.ok) { notify('App Config Saved'); } else { notify('Save Failed: ' + txt, 'error'); }
+            } catch (e) {
+                console.error(e);
+                notify('Error saving app config: ' + e.message, 'error');
+            }
         }
         function toggleAddButton() {
             const btn = document.getElementById('btnAddRule'); const input = document.getElementById('appPkg');
