@@ -26,7 +26,17 @@ object KeyboxVerifier {
 
     private const val CRL_URL = "https://android.googleapis.com/attestation/status"
     private val HASH_LENGTHS = listOf(32, 40, 64)
-    private val HEX_REGEX = Regex("^[0-9a-fA-F]+$")
+
+    private fun isHex(str: String): Boolean {
+        if (str.isEmpty()) return false
+        for (i in 0 until str.length) {
+            val c = str[i]
+            if (!(c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F')) {
+                return false
+            }
+        }
+        return true
+    }
 
     @JvmStatic
     @JvmOverloads
@@ -230,14 +240,14 @@ object KeyboxVerifier {
         // This prevents "Fail Open" scenarios where a hash composed entirely of digits
         // would otherwise be ignored as a hash.
         if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
-            if (decStr.matches(HEX_REGEX)) {
+            if (isHex(decStr)) {
                 set.add(decStr.lowercase())
             }
         }
 
         if (!added) {
             // Try treating as Hex (literal) as fallback
-            if (decStr.matches(HEX_REGEX)) {
+            if (isHex(decStr)) {
                 try {
                     val hexStr = java.math.BigInteger(decStr, 16).toString(16).lowercase()
                     set.add(hexStr)
