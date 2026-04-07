@@ -8,7 +8,17 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object KeyboxAutoCleaner {
-    private val WEB_UI_TOKEN_REGEX = Regex("^[A-Za-z0-9-]+$")
+    private fun isTokenValid(token: String): Boolean {
+        if (token.isEmpty()) return false
+        for (i in 0 until token.length) {
+            val c = token[i]
+            if (!(c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-')) {
+                return false
+            }
+        }
+        return true
+    }
+
     private val executor = Executors.newSingleThreadScheduledExecutor()
     private val configDir = File("/data/adb/cleverestricky")
     private val keyboxDir = File(configDir, "keyboxes")
@@ -97,7 +107,7 @@ object KeyboxAutoCleaner {
             val parts = raw.split('|', limit = 2)
             val port = parts.getOrNull(0)?.toIntOrNull()
             val token = parts.getOrNull(1)?.trim().orEmpty()
-            if (port == null || port !in 1..65535 || token.isBlank() || !WEB_UI_TOKEN_REGEX.matches(token)) {
+            if (port == null || port !in 1..65535 || token.isBlank() || !isTokenValid(token)) {
                 Logger.e("AutoCleaner: Invalid web_port content '$raw'")
                 "http://$WEB_UI_LOOPBACK_HOST:$WEB_UI_PORT"
             } else {
