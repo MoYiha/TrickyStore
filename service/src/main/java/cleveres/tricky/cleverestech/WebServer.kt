@@ -1253,7 +1253,7 @@ class WebServer(
         :root { --bg: #0B0B0C; --fg: #E5E7EB; --accent: #D1D5DB; --panel: #161616; --border: #333; --input-bg: #1A1A1A; --success: #34D399; --danger: #EF4444; }
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
-        .island { background: #000; color: #fff; border-radius: 30px; height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); }
+        .island { background: #000; color: #fff; border-radius: 30px; height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); cursor: pointer; }
         .island.active { width: auto; min-width: 250px; padding: 12px 24px; opacity: 1; transform: translateY(0); font-size: 0.9em; }
         .island.error { background: #330000; border: 1px solid var(--danger); }
         .island.error #islandText { color: #FECACA; }
@@ -1263,7 +1263,7 @@ class WebServer(
         .island.error .error-icon { display: block; }
         @keyframes spin { to { transform: rotate(360deg); } }
         h1 { text-align: center; font-weight: 200; letter-spacing: 2px; margin: 25px 0; color: var(--accent); font-size: 1.5em; text-transform: uppercase; }
-        .tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; }
+        .tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; position: sticky; top: 0; z-index: 100; }
         .tab { padding: 15px 20px; cursor: pointer; border-bottom: 2px solid transparent; opacity: 0.6; transition: all 0.2s; white-space: nowrap; font-size: 0.9em; letter-spacing: 1px; }
         .tab:hover { opacity: 0.9; }
         .tab.active { border-bottom-color: var(--accent); opacity: 1; color: var(--accent); }
@@ -1351,6 +1351,10 @@ class WebServer(
 
     <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
         <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <div style="flex: 1; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
+                <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">Global Mode</div>
+                <div id="status_global" style="font-weight: bold; color: var(--danger); margin-top: 5px;">Inactive</div>
+            </div>
             <div style="flex: 1; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
                 <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">RKP Bypass</div>
                 <div id="status_rkp" style="font-weight: bold; color: var(--danger); margin-top: 5px;">Inactive</div>
@@ -1729,6 +1733,7 @@ class WebServer(
 
             document.getElementById('islandText').innerHTML = iconHtml + '<span style="vertical-align: middle;">' + safeMsg + '</span>';
             island.className = 'island active ' + type;
+            island.onclick = () => { island.classList.remove('active'); };
             if (type === 'working') {
                 // Keep active until cleared manually or by another notify
             } else {
@@ -2099,6 +2104,11 @@ class WebServer(
                     if (data.drm_fix) { drmStatus.innerText = 'Active'; drmStatus.style.color = 'var(--success)'; }
                     else { drmStatus.innerText = 'Inactive'; drmStatus.style.color = 'var(--danger)'; }
                 }
+                const globalStatus = document.getElementById('status_global');
+                if (globalStatus) {
+                    if (data.global_mode) { globalStatus.innerText = 'Active'; globalStatus.style.color = 'var(--success)'; }
+                    else { globalStatus.innerText = 'Inactive'; globalStatus.style.color = 'var(--danger)'; }
+                }
             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
             fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
@@ -2147,7 +2157,7 @@ class WebServer(
             } catch(e) { console.log('[CleveresTricky] Location settings load failed (expected if no file)'); }
         }
 
-        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
+        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'global_mode') { const s = document.getElementById('status_global'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
 
         function editDrmConfig() {
             document.getElementById('fileSelector').value = 'drm_fix';
