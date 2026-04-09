@@ -1,3 +1,3 @@
-## 2024-05-18 - Avoid runBlocking Overhead in Kotlin Loops
-**Learning:** Placing `runBlocking(Dispatchers.IO)` inside a loop (like iterating through chunks) creates the heavy Coroutine dispatcher and event loop infrastructure on every single iteration, severely degrading performance.
-**Action:** When parallelizing I/O across chunks with coroutines, always wrap the *entire* loop inside a single `runBlocking` block, and use `async/awaitAll` on the individual chunks within that block to eliminate redundant infrastructure setup overhead.
+## 2024-04-09 - Fix Thread Starvation via Blocking IPC in ConcurrentHashMap.compute
+**Learning:** Placing slow operations (like IPC calls to PackageManager) inside `ConcurrentHashMap.compute()` locks the entire hash bucket. Under concurrent access, even threads accessing different keys (if they hash to the same bucket) will block, causing severe thread starvation and massive latency spikes.
+**Action:** Use a secondary synchronization map (e.g., `uidLocks.computeIfAbsent(uid) { Any() }`) and `synchronized(lock)` to limit the blocking scope exclusively to the specific key, allowing `ConcurrentHashMap` to handle fast-path reads and unrelated bucket writes concurrently without stalling.

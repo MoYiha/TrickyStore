@@ -1137,6 +1137,7 @@ object Config {
     // The map is unbounded but limited by the number of installed apps (~hundreds, max ~50k UIDs),
     // which fits well within memory limits compared to synchronized access overhead.
     private val packageCache = ConcurrentHashMap<Int, CachedPackage>()
+    private val uidLocks = ConcurrentHashMap<Int, Any>()
 
     internal var clockSource: () -> Long = { System.currentTimeMillis() }
     private const val CACHE_TTL_MS = 60 * 1000L // 1 minute
@@ -1154,23 +1155,23 @@ object Config {
         }
 
         // Slow path: update atomically to prevent "thundering herd" on IPC
-        // Use compute to ensure only one thread performs the update for this UID
-        val updatedEntry = packageCache.compute(uid) { _, current ->
-            // Double-check inside the lock: another thread might have updated it
+        // Use a per-UID lock to avoid holding the global map bucket lock during the slow IPC
+        val lock = uidLocks.computeIfAbsent(uid) { Any() }
+        synchronized(lock) {
+            val current = packageCache[uid]
             if (current != null && (now - current.timestamp) < CACHE_TTL_MS) {
-                current
+                return current.value
+            }
+
+            val pm = getPm()
+            return if (pm == null) {
+                emptyArray()
             } else {
-                val pm = getPm()
-                if (pm == null) {
-                    null
-                } else {
-                    val pkgs = pm.getPackagesForUid(uid) ?: emptyArray()
-                    CachedPackage(pkgs, now)
-                }
+                val pkgs = pm.getPackagesForUid(uid) ?: emptyArray()
+                packageCache[uid] = CachedPackage(pkgs, now)
+                pkgs
             }
         }
-
-        return updatedEntry?.value ?: emptyArray()
     }
 
     private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int): Boolean {
@@ -1232,6 +1233,7 @@ object Config {
 
         root = File(CONFIG_PATH)
         packageCache.clear()
+        uidLocks.clear()
         dynamicPatchCache.clear()
         securityPatchState = SecurityPatchState(emptyMap(), null)
         iPm = null
