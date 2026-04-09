@@ -222,9 +222,9 @@ object DrmInterceptor : BinderInterceptor() {
 
         val validPids = pids.filter { it.all { c -> c.isDigit() } }
 
-        for (chunk in validPids.chunked(20)) {
-            val foundPid = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-                chunk.map { pidStr ->
+        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            for (chunk in validPids.chunked(20)) {
+                val foundPid = chunk.map { pidStr ->
                     async {
                         val buf = ByteArray(1024)
                         kotlin.runCatching {
@@ -255,13 +255,14 @@ object DrmInterceptor : BinderInterceptor() {
                         }.getOrNull()
                     }
                 }.awaitAll().firstNotNullOfOrNull { it }
+
+                if (foundPid != null) {
+                    cachedDrmPid = foundPid
+                    return@runBlocking foundPid
+                }
             }
-            if (foundPid != null) {
-                cachedDrmPid = foundPid
-                return foundPid
-            }
+            null
         }
-        return null
     }
 
     private fun findDrmService(): IBinder? {
