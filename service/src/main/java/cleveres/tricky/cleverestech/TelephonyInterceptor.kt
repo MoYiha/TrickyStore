@@ -84,17 +84,10 @@ object TelephonyInterceptor : BinderInterceptor() {
             return Skip
         }
 
-        val imei = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
-        val imei2 = Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: fallbackImei2
-        val imsi = Config.getBuildVar("ATTESTATION_ID_IMSI") ?: fallbackImsi
-        val iccid = Config.getBuildVar("ATTESTATION_ID_ICCID") ?: fallbackIccid
-        val meid = Config.getBuildVar("ATTESTATION_ID_MEID") ?: ""
-        val phoneNumber = Config.getBuildVar("ATTESTATION_ID_PHONE_NUMBER") ?: ""
-
         var spoofedVal: String? = null
 
         when (code) {
-            getDeviceIdTransaction -> spoofedVal = imei
+            getDeviceIdTransaction -> spoofedVal = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
             getDeviceIdForPhoneTransaction -> {
                 // Read phone index from the original request data to support dual-SIM
                 val dataPos = data.dataPosition()
@@ -102,10 +95,14 @@ object TelephonyInterceptor : BinderInterceptor() {
                     data.setDataPosition(0)
                     data.readString() // skip interface token
                     val phoneId = data.readInt()
-                    spoofedVal = if (phoneId > 0) imei2 else imei
+                    spoofedVal = if (phoneId > 0) {
+                        Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: fallbackImei2
+                    } else {
+                        Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
+                    }
                     Logger.i("Telephony: getDeviceIdForPhone phoneId=$phoneId -> ${if (phoneId > 0) "IMEI2" else "IMEI1"}")
                 } catch (e: Exception) {
-                    spoofedVal = imei
+                    spoofedVal = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
                 } finally {
                     data.setDataPosition(dataPos)
                 }
@@ -117,20 +114,26 @@ object TelephonyInterceptor : BinderInterceptor() {
                     data.setDataPosition(0)
                     data.readString() // skip interface token
                     val subId = data.readInt()
-                    spoofedVal = if (subId > 0) imei2 else imei
+                    spoofedVal = if (subId > 0) {
+                        Config.getBuildVar("ATTESTATION_ID_IMEI2") ?: fallbackImei2
+                    } else {
+                        Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
+                    }
                     Logger.i("Telephony: getImeiForSubscriber subId=$subId -> ${if (subId > 0) "IMEI2" else "IMEI1"}")
                 } catch (e: Exception) {
-                    spoofedVal = imei
+                    spoofedVal = Config.getBuildVar("ATTESTATION_ID_IMEI") ?: fallbackImei
                 } finally {
                     data.setDataPosition(dataPos)
                 }
             }
-            getSubscriberIdTransaction, getSubscriberIdForSubscriberTransaction -> spoofedVal = imsi
-            getIccSerialNumberTransaction, getIccSerialNumberForSubscriberTransaction -> spoofedVal = iccid
+            getSubscriberIdTransaction, getSubscriberIdForSubscriberTransaction -> spoofedVal = Config.getBuildVar("ATTESTATION_ID_IMSI") ?: fallbackImsi
+            getIccSerialNumberTransaction, getIccSerialNumberForSubscriberTransaction -> spoofedVal = Config.getBuildVar("ATTESTATION_ID_ICCID") ?: fallbackIccid
             getLine1NumberTransaction, getLine1NumberForSubscriberTransaction -> {
+                val phoneNumber = Config.getBuildVar("ATTESTATION_ID_PHONE_NUMBER") ?: ""
                 spoofedVal = if (phoneNumber.isNotEmpty()) phoneNumber else ""
             }
             getMeidForSubscriberTransaction -> {
+                val meid = Config.getBuildVar("ATTESTATION_ID_MEID") ?: ""
                 spoofedVal = if (meid.isNotEmpty()) meid else ""
             }
         }
