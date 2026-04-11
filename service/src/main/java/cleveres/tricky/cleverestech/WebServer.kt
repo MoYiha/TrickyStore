@@ -2556,9 +2556,13 @@ class WebServer(
             requireConfirm(btn, () => {
                 runWithState(btn, 'Applying...', () => applyProfile(sel));
             }, 'Confirm Apply', async () => {
-                const res = await fetchAuth(getAuthUrl('/api/config'));
-                const data = await res.json();
-                determineActiveProfile(data);
+                try {
+                    const res = await fetchAuth(getAuthUrl('/api/config'));
+                    const data = await res.json();
+                    determineActiveProfile(data);
+                } catch (e) {
+                    notify('Error: ' + e.message, 'error');
+                }
             });
         }
 
@@ -2749,6 +2753,8 @@ class WebServer(
                      editorUnsavedBypass = false;
                      updateSaveButtonState();
                  } else { notify('Save Failed: ' + txt, 'error'); }
+             } catch (e) {
+                 notify('Error: ' + e.message, 'error');
              } finally { btn.disabled = false; updateSaveButtonState(); }
         }
         function updateSaveButtonState() {
