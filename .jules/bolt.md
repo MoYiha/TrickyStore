@@ -1,3 +1,3 @@
-## 2024-04-09 - Fix Thread Starvation via Blocking IPC in ConcurrentHashMap.compute
-**Learning:** Placing slow operations (like IPC calls to PackageManager) inside `ConcurrentHashMap.compute()` locks the entire hash bucket. Under concurrent access, even threads accessing different keys (if they hash to the same bucket) will block, causing severe thread starvation and massive latency spikes.
-**Action:** Use a secondary synchronization map (e.g., `uidLocks.computeIfAbsent(uid) { Any() }`) and `synchronized(lock)` to limit the blocking scope exclusively to the specific key, allowing `ConcurrentHashMap` to handle fast-path reads and unrelated bucket writes concurrently without stalling.
+## 2024-05-24 - Kotlin Sequence Parsing for Memory Optimization
+**Learning:** `File.readLines()` causes severe memory spikes in Android background services by loading the entire file content into a massive `List<String>`. In hot paths parsing files like `spoof_build_vars`, this leads to unnecessary Garbage Collection pressure and allocation overhead.
+**Action:** When performing file reads where lines are filtered, transformed, or evaluated early in Kotlin, strictly replace `.readLines()` with `.useLines { lines -> ... }` to achieve zero-allocation lazy stream processing.
