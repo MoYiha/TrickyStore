@@ -1924,7 +1924,7 @@ class WebServer(
                 formData.append('public_key', pk);
                 const res = await fetchAuth('/api/unlock_cbox', { method: 'POST', body: formData });
                 if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { notify('Failed', 'error'); }
-            } catch(e) { notify('Error', 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
         async function loadServers() {
@@ -1971,7 +1971,7 @@ class WebServer(
                 const res = await fetchAuth('/api/server/add', { method: 'POST', body: formData });
                 if (res.ok) { notify('Server Added'); document.getElementById('addServerForm').style.display='none'; document.getElementById('srvName').value=''; document.getElementById('srvUrl').value=''; document.getElementById('srvAuthType').value='NONE'; document.getElementById('authFields').innerHTML=''; loadServers(); }
                 else notify('Failed', 'error');
-            } catch(e) { notify('Error', 'error'); throw e; }
+            } catch(e) { notify('Error: ' + e.message, 'error'); throw e; }
         }
 
         async function deleteServer(id) {
@@ -1981,7 +1981,7 @@ class WebServer(
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/delete', { method: 'POST', body: formData });
                 if (res.ok) { notify('Server Removed'); loadServers(); } else { notify('Failed', 'error'); }
-            } catch(e) { notify('Error', 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
         async function refreshServer(id) {
@@ -1991,7 +1991,7 @@ class WebServer(
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/refresh', { method: 'POST', body: formData });
                 if(res.ok) { notify('Refreshed'); loadServers(); } else { notify('Failed', 'error'); }
-            } catch(e) { notify('Error', 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
         async function loadFileContent(input) {
@@ -2034,7 +2034,7 @@ class WebServer(
                         }
                     } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
                     loadKeyInfo();
-                } catch(e) { notify('Error', 'error'); } finally {
+                } catch(e) { notify('Error: ' + e.message, 'error'); } finally {
                     resetDropZone();
                 }
             }
@@ -2076,7 +2076,7 @@ class WebServer(
                     loadKeyInfo();
                 }
             } catch(e) {
-                notify('Error', 'error');
+                notify('Error: ' + e.message, 'error');
             }
         }
 
@@ -2264,7 +2264,7 @@ class WebServer(
                 notify('Verification Complete');
             } catch(e) {
                 resultDiv.innerHTML = '<div style="color:var(--danger);">Error: ' + e.message + '</div>';
-                notify('Error', 'error');
+                notify('Error: ' + e.message, 'error');
             }
         }
 
@@ -2328,7 +2328,7 @@ class WebServer(
                     notify('Failed: ' + txt, 'error');
                 }
             } catch (e) {
-                notify('Error', 'error');
+                notify('Error: ' + e.message, 'error');
             }
         }
 
@@ -2579,7 +2579,7 @@ class WebServer(
                     notify('Failed to apply profile', 'error');
                 }
             } catch (e) {
-                notify('Error', 'error');
+                notify('Error: ' + e.message, 'error');
             }
         }
 
@@ -2610,7 +2610,7 @@ class WebServer(
                     const txt = await res.text();
                     notify('Reset Failed: ' + txt, 'error');
                 }
-            } catch(e) { notify('Error', 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function applyLocationSpoof() {
             const lat = document.getElementById('inputLatitude').value.trim();
@@ -2698,7 +2698,7 @@ class WebServer(
                 try {
                     const res = await fetchAuth(getAuthUrl('/api/restore'), { method: 'POST', body: formData });
                     if (res.ok) { notify('Success'); setTimeout(() => window.location.reload(), 1000); } else notify('Failed: ' + await res.text(), 'error');
-                } catch (e) { notify('Error', 'error'); }
+                } catch (e) { notify('Error: ' + e.message, 'error'); }
                 input.value = '';
             }
         }
