@@ -243,10 +243,11 @@ object BetaFetcher {
         
         // Preserve user overrides
         val userOverrides = if (varsFile.exists()) {
-            varsFile.readLines()
-                .filter { it.startsWith("#") || it.startsWith("ATTESTATION_") || 
-                          it.startsWith("MODULE_") || it.startsWith("KEYMINT_") }
-                .joinToString("\n")
+            varsFile.useLines { lines ->
+                lines.filter { it.startsWith("#") || it.startsWith("ATTESTATION_") ||
+                               it.startsWith("MODULE_") || it.startsWith("KEYMINT_") }
+                     .joinToString("\n")
+            }
         } else ""
         
         val content = """

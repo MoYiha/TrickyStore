@@ -946,24 +946,26 @@ object Config {
             } else {
                 // Partial randomization (Keep Template + IMEI)
                 if (spoofFile.exists()) {
-                    spoofFile.readLines().forEach { line ->
-                        val l = line.trim()
-                        if (l.isEmpty() || l.startsWith("#")) {
+                    spoofFile.useLines { lines ->
+                        lines.forEach { line ->
+                            val l = line.trim()
+                            if (l.isEmpty() || l.startsWith("#")) {
+                                sb.append(line).append("\n")
+                                return@forEach
+                            }
+                            // Filter out keys we are about to randomize
+                            if (l.startsWith("ATTESTATION_ID_SERIAL") ||
+                                l.startsWith("ro.serialno") ||
+                                l.startsWith("ro.boot.serialno") ||
+                                l.startsWith("ATTESTATION_ID_ANDROID_ID") ||
+                                l.startsWith("ATTESTATION_ID_WIFI_MAC") ||
+                                l.startsWith("ATTESTATION_ID_BT_MAC") ||
+                                l.startsWith("SIM_COUNTRY_ISO") ||
+                                l.startsWith("SIM_OPERATOR_NAME")) {
+                                return@forEach
+                            }
                             sb.append(line).append("\n")
-                            return@forEach
                         }
-                        // Filter out keys we are about to randomize
-                        if (l.startsWith("ATTESTATION_ID_SERIAL") ||
-                            l.startsWith("ro.serialno") ||
-                            l.startsWith("ro.boot.serialno") ||
-                            l.startsWith("ATTESTATION_ID_ANDROID_ID") ||
-                            l.startsWith("ATTESTATION_ID_WIFI_MAC") ||
-                            l.startsWith("ATTESTATION_ID_BT_MAC") ||
-                            l.startsWith("SIM_COUNTRY_ISO") ||
-                            l.startsWith("SIM_OPERATOR_NAME")) {
-                            return@forEach
-                        }
-                        sb.append(line).append("\n")
                     }
                     sb.append("# Updated by Randomize on Boot (Partial)\n")
                 } else {
