@@ -1923,7 +1923,7 @@ class WebServer(
                 formData.append('password', pwd);
                 formData.append('public_key', pk);
                 const res = await fetchAuth('/api/unlock_cbox', { method: 'POST', body: formData });
-                if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { notify('Failed', 'error'); }
+                if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
             } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
@@ -1970,7 +1970,7 @@ class WebServer(
                 formData.append('data', JSON.stringify(data));
                 const res = await fetchAuth('/api/server/add', { method: 'POST', body: formData });
                 if (res.ok) { notify('Server Added'); document.getElementById('addServerForm').style.display='none'; document.getElementById('srvName').value=''; document.getElementById('srvUrl').value=''; document.getElementById('srvAuthType').value='NONE'; document.getElementById('authFields').innerHTML=''; loadServers(); }
-                else notify('Failed', 'error');
+                else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
             } catch(e) { notify('Error: ' + e.message, 'error'); throw e; }
         }
 
@@ -1980,7 +1980,7 @@ class WebServer(
                 const formData = new FormData();
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/delete', { method: 'POST', body: formData });
-                if (res.ok) { notify('Server Removed'); loadServers(); } else { notify('Failed', 'error'); }
+                if (res.ok) { notify('Server Removed'); loadServers(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
             } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
@@ -1990,7 +1990,7 @@ class WebServer(
                 const formData = new FormData();
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/refresh', { method: 'POST', body: formData });
-                if(res.ok) { notify('Refreshed'); loadServers(); } else { notify('Failed', 'error'); }
+                if(res.ok) { notify('Refreshed'); loadServers(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
             } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
 
@@ -2157,7 +2157,7 @@ class WebServer(
             } catch(e) { console.log('[CleveresTricky] Location settings load failed (expected if no file)'); }
         }
 
-        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'global_mode') { const s = document.getElementById('status_global'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Failed', 'error'); } }
+        async function toggle(setting) { const el = document.getElementById(setting); try { const res = await fetchAuth('/api/toggle', {method:'POST', body: new URLSearchParams({setting, value: el.checked})}); if (res.ok) { notify('Setting Updated'); if (setting === 'rkp_bypass') { const s = document.getElementById('status_rkp'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'drm_fix') { const s = document.getElementById('status_drm'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } else if (setting === 'global_mode') { const s = document.getElementById('status_global'); if(s) { if(el.checked) { s.innerText='Active'; s.style.color='var(--success)'; } else { s.innerText='Inactive'; s.style.color='var(--danger)'; } } } } else { throw new Error('Server returned ' + res.status); } } catch(e){ el.checked=!el.checked; notify('Error: ' + e.message, 'error'); } }
 
         function editDrmConfig() {
             document.getElementById('fileSelector').value = 'drm_fix';
@@ -2166,7 +2166,7 @@ class WebServer(
         }
         async function resetDrmId() {
             notify('Regenerating...', 'working');
-            try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM Reset Started'); } catch(e) { notify('Failed', 'error'); }
+            try { const res = await fetchAuth('/api/reset_drm', { method: 'POST' }); if (!res.ok) throw new Error(await res.text()); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function fetchBeta() {
             try {
@@ -2189,7 +2189,7 @@ class WebServer(
         async function generateRandomIdentity() {
             try {
                 const res = await fetchAuth('/api/random_identity');
-                if (!res.ok) { notify('Failed', 'error'); return; }
+                if (!res.ok) { const msg = await res.text(); notify('Error: ' + msg, 'error'); return; }
                 const t = await res.json();
                 document.getElementById('inputImei').value = t.imei || '';
                 document.getElementById('inputImsi').value = t.imsi || '';
@@ -2576,7 +2576,7 @@ class WebServer(
                     notify(`Profile ${"$"}{profileName} Applied`);
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
-                    notify('Failed to apply profile', 'error');
+                    const msg = await res.text(); notify('Error: ' + msg, 'error');
                 }
             } catch (e) {
                 notify('Error: ' + e.message, 'error');
@@ -2665,7 +2665,7 @@ class WebServer(
                     body: new URLSearchParams({ filename: 'spoof_build_vars', content: updatedLines.join('\n') + '\n' })
                 });
                 if (saveRes.ok) notify('Location Settings Saved');
-                else notify('Save Failed', 'error');
+                else { const msg = await saveRes.text(); notify('Error: ' + msg, 'error'); }
             } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function backupConfig() {
