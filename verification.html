@@ -1,903 +1,4 @@
-package cleveres.tricky.cleverestech
-
-import android.system.Os
-import cleveres.tricky.cleverestech.keystore.CertHack
-import cleveres.tricky.cleverestech.util.KeyboxVerifier
-import cleveres.tricky.cleverestech.util.RandomUtils
-import cleveres.tricky.cleverestech.util.SecureFile
-import cleveres.tricky.cleverestech.util.BackupEncryptor
-import cleveres.tricky.cleverestech.util.CboxDecryptor
-import cleveres.tricky.cleverestech.util.ZipProcessor
-import fi.iki.elonen.NanoHTTPD
-import kotlinx.coroutines.*
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.io.StringReader
-import java.net.InetSocketAddress
-import java.net.Socket
-import java.net.URL
-import java.security.MessageDigest
-import java.util.UUID
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
-import org.json.JSONArray
-import org.json.JSONObject
-
-private val WHITESPACE_REGEX = Regex("\\s+")
-private val WHITESPACE_FIND_REGEX = Regex("\\s")
-private val PKG_NAME_REGEX = Regex("^[a-zA-Z0-9_.*]+$")
-private val TEMPLATE_NAME_REGEX = Regex("^[a-zA-Z0-9_-]+$")
-private val KEYBOX_FILENAME_REGEX = Regex("^[a-zA-Z0-9_.-]+$")
-private val KEY_VALUE_REGEX = Regex("^[a-zA-Z0-9_.]+=.+$")
-private val SAFE_BUILD_VAR_VALUE_REGEX = Regex("^[a-zA-Z0-9_\\-\\.\\s/:,+=()@]*$")
-private val TARGET_PKG_REGEX = Regex("^[a-zA-Z0-9_.*!]+$")
-private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
-private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
-private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
-private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
-private const val WEB_UI_READINESS_TIMEOUT_MS = 5_000L
-private const val WEB_UI_READINESS_POLL_MS = 100L
-private const val WEB_UI_READINESS_CONNECT_TIMEOUT_MS = 250
-
-class WebServer(
-    private val requestedPort: Int,
-    private val configDir: File,
-    private val permissionSetter: (File, Int) -> Unit = { f, m ->
-        try {
-            Os.chmod(f.absolutePath, m)
-        } catch (t: Throwable) {
-            Logger.e("failed to set permissions for ${f.name}", t)
-        }
-    }
-) : NanoHTTPD(WEB_UI_LOOPBACK_HOST, requestedPort) {
-
-    suspend fun startAsync(timeout: Int = 5000, daemon: Boolean = true) {
-        Logger.d("WebServer: Starting on $WEB_UI_LOOPBACK_HOST:$requestedPort (timeout=$timeout daemon=$daemon)")
-        try {
-            super.start(timeout, daemon)
-            Logger.d("WebServer: NanoHTTPD start returned (alive=$isAlive port=$listeningPort)")
-            waitUntilListeningAsync()
-            Logger.d("WebServer: Readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:$listeningPort")
-        } catch (e: Exception) {
-            Logger.e("WebServer: Failed to start", e)
-            throw e
-        }
-    }
-
-    /**
-     * Polls the loopback socket until the server accepts connections or the timeout elapses.
-     *
-     * @param timeoutMs total amount of time to wait for the loopback socket to accept connections
-     * @param pollMs delay between readiness probes while the server is still binding
-     */
-    private suspend fun waitUntilListeningAsync(
-        timeoutMs: Long = WEB_UI_READINESS_TIMEOUT_MS,
-        pollMs: Long = WEB_UI_READINESS_POLL_MS
-    ) {
-        val port = listeningPort
-        if (port <= 0) {
-            throw IOException("WebServer: Invalid listening port $port after start")
-        }
-        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
-        var lastError: IOException? = null
-        while (System.nanoTime() < deadline) {
-            try {
-                withContext(Dispatchers.IO) {
-                    Socket().use { socket ->
-                        socket.connect(InetSocketAddress(WEB_UI_LOOPBACK_HOST, port), WEB_UI_READINESS_CONNECT_TIMEOUT_MS)
-                    }
-                }
-                return
-            } catch (e: IOException) {
-                lastError = e
-                Logger.d("WebServer: Waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections (${e.message})")
-                delay(pollMs)
-            }
-        }
-        throw IOException("WebServer: Timed out waiting for $WEB_UI_LOOPBACK_HOST:$port to accept connections", lastError)
-    }
-
-    init { cleveres.tricky.cleverestech.util.LoggerConfig.disableNanoHttpdLogging() }
-    val token = UUID.randomUUID().toString()
-    private val MAX_UPLOAD_SIZE = 10 * 1024 * 1024L // 10MB for ZIPs
-    private val MAX_BODY_SIZE = 5 * 1024 * 1024L // 5MB for non-multipart requests
-
-    private class RateLimitEntry(var timestamp: Long, var count: Int)
-    private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
-    private val RATE_LIMIT = 100
-    private val RATE_WINDOW = 60 * 1000L
-
-    private val fileLock = Any()
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    @Suppress("DEPRECATION")
-    private fun getParam(session: IHTTPSession, name: String): String? {
-        return session.parms[name]
-    }
-
-    private fun isRateLimited(ip: String): Boolean {
-        if (requestCounts.size > 1000) requestCounts.clear()
-        val current = requestCounts.compute(ip) { _, v ->
-            val now = System.currentTimeMillis()
-            if (v == null || now - v.timestamp > RATE_WINDOW) {
-                RateLimitEntry(now, 1)
-            } else {
-                v.count++
-                v
-            }
-        }
-        return current!!.count > RATE_LIMIT
-    }
-
-    private fun isSafePath(file: File): Boolean {
-        return try {
-            val configCanonical = configDir.canonicalPath
-            val fileCanonical = file.canonicalPath
-            fileCanonical.equals(configCanonical) || fileCanonical.startsWith(configCanonical + File.separator)
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun readFile(filename: String): String {
-        synchronized(fileLock) {
-            return try {
-                if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
-                    Logger.e("Path traversal attempt detected in filename: $filename")
-                    return ""
-                }
-                val f = File(configDir, filename)
-                if (!isSafePath(f)) {
-                    Logger.e("Path traversal attempt detected: $filename")
-                    return ""
-                }
-                f.readText()
-            } catch (e: Exception) { "" }
-        }
-    }
-
-    private fun saveFile(filename: String, content: String): Boolean {
-        synchronized(fileLock) {
-            return try {
-                if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
-                    Logger.e("Path traversal attempt detected in save filename: $filename")
-                    return false
-                }
-                val f = File(configDir, filename)
-                if (!isSafePath(f)) {
-                    Logger.e("Path traversal attempt detected during save: $filename")
-                    return false
-                }
-                SecureFile.writeText(f, content)
-                true
-            } catch (e: Exception) {
-                Logger.e("Failed to save file: $filename", e)
-                false
-            }
-        }
-    }
-
-    private fun fileExists(filename: String): Boolean {
-        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
-            return false
-        }
-        synchronized(fileLock) {
-            val f = File(configDir, filename)
-            return isSafePath(f) && f.exists()
-        }
-    }
-
-    private fun listKeyboxes(): List<String> {
-        synchronized(fileLock) {
-            val keyboxDir = File(configDir, "keyboxes")
-            if (keyboxDir.exists() && keyboxDir.isDirectory) {
-                return keyboxDir.listFiles { _, name -> name.endsWith(".xml") }
-                    ?.map { it.name }
-                    ?.sorted()
-                    ?: emptyList()
-            } else {
-                return emptyList()
-            }
-        }
-    }
-
-    private fun isValidSetting(name: String): Boolean {
-        return name in setOf("global_mode", "tee_broken_mode", "rkp_bypass", "auto_beta_fetch", "auto_keybox_check", "random_on_boot", "drm_fix", "random_drm_on_boot", "auto_patch_update", "hide_sensitive_props", "spoof_region_cn", "remove_magisk_32", "spoof_build", "spoof_build_ps", "spoof_props", "spoof_provider", "spoof_signature", "spoof_sdk_ps", "spoof_location", "imei_global", "network_global")
-    }
-
-    private fun toggleFile(filename: String, enable: Boolean): Boolean {
-        if (!isValidSetting(filename)) return false
-        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
-            return false
-        }
-        synchronized(fileLock) {
-            val f = File(configDir, filename)
-            return try {
-                if (enable) {
-                    if (!f.exists()) {
-                        if (filename == "drm_fix") {
-                            val content = "ro.netflix.bsp_rev=0\ndrm.service.enabled=true\nro.com.google.widevine.level=1\nro.crypto.state=encrypted\n"
-                            SecureFile.writeText(f, content)
-                        } else {
-                            SecureFile.touch(f, 384)
-                        }
-                    }
-                } else {
-                    if (f.exists()) f.delete()
-                }
-                true
-            } catch (e: Exception) {
-                Logger.e("Failed to toggle setting: $filename", e)
-                false
-            }
-        }
-    }
-
-    @Volatile private var cachedTelegramCount: String? = null
-    @Volatile private var lastTelegramFetchTime: Long = 0
-    @Volatile private var isFetchingTelegram = false
-    private val isResettingDrm = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val CACHE_DURATION_SUCCESS = 10 * 60 * 1000L
-    private val CACHE_DURATION_ERROR = 1 * 60 * 1000L
-
-    @Volatile private var cachedBannedCount: String? = null
-    @Volatile private var lastBannedFetchTime: Long = 0
-    @Volatile private var isFetchingBanned = false
-    private val CACHE_DURATION_BANNED = 1 * 60 * 60 * 1000L // 1 hour
-
-    private fun fetchTelegramCount(): String {
-        val now = System.currentTimeMillis()
-        val currentCache = cachedTelegramCount
-        val lastTime = lastTelegramFetchTime
-
-        if (currentCache != null) {
-            val duration = if (currentCache == "Error" || currentCache == "Unknown" || currentCache.startsWith("Error")) CACHE_DURATION_ERROR else CACHE_DURATION_SUCCESS
-            if ((now - lastTime) < duration) return currentCache
-        }
-
-        if (!isFetchingTelegram) {
-            isFetchingTelegram = true
-            scope.launch {
-                try {
-                    val result = doFetchTelegramCount()
-                    cachedTelegramCount = result
-                    lastTelegramFetchTime = System.currentTimeMillis()
-                } finally {
-                    isFetchingTelegram = false
-                }
-            }
-        }
-        return currentCache ?: "Loading..."
-    }
-
-    private fun fetchBannedCount(): String {
-        val now = System.currentTimeMillis()
-        val currentCache = cachedBannedCount
-        val lastTime = lastBannedFetchTime
-
-        if (currentCache != null && (now - lastTime) < CACHE_DURATION_BANNED) {
-            return currentCache
-        }
-
-        if (!isFetchingBanned) {
-            isFetchingBanned = true
-            scope.launch {
-                try {
-                    val count = KeyboxVerifier.countRevokedKeys()
-                    cachedBannedCount = if (count >= 0) count.toString() else "Error"
-                    lastBannedFetchTime = System.currentTimeMillis()
-                } finally {
-                    isFetchingBanned = false
-                }
-            }
-        }
-        return currentCache ?: "Loading..."
-    }
-
-    private fun doFetchTelegramCount(): String {
-        return try {
-            val url = URL("https://t.me/cleverestech")
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            if (conn.responseCode == 200) {
-                val html = conn.inputStream.bufferedReader().use { it.readText() }
-                val matcher = TELEGRAM_COUNT_PATTERN.matcher(html)
-                if (matcher.find()) matcher.group(1)?.trim() ?: "Unknown" else "Unknown"
-            } else {
-                "Error: ${conn.responseCode}"
-            }
-        } catch (e: Exception) {
-            "Error"
-        }
-    }
-
-    @Suppress("DEPRECATION")
-
-
-    private fun getEnvironmentInfo(): String {
-        if (File("/data/adb/ksu").exists() || File("/data/adb/ksud").exists()) return "KernelSU"
-        if (File("/data/adb/apatch").exists()) return "APatch"
-        if (File("/sbin/magisk").exists() || File("/data/adb/magisk").exists()) return "Magisk"
-        return "Unknown Root"
-    }
-
-    private var lastCpuTime: Long = 0
-    private var lastSysTime: Long = 0
-    private var lastCpuUsage: Double = 0.0
-
-    private fun getCpuUsagePercent(): Double {
-        try {
-            val statBuffer = ByteArray(8192)
-            var uTime = 0L
-            var sTime = 0L
-            java.io.FileInputStream("/proc/self/stat").use { fis ->
-                val read = fis.read(statBuffer)
-                if (read > 0) {
-                    var pos = 0
-                    var spaceCount = 0
-                    while (pos < read && spaceCount < 15) {
-                        if (statBuffer[pos] == ' '.code.toByte()) {
-                            spaceCount++
-                        } else if (spaceCount == 13) {
-                            uTime = uTime * 10 + (statBuffer[pos] - '0'.code.toByte())
-                        } else if (spaceCount == 14) {
-                            sTime = sTime * 10 + (statBuffer[pos] - '0'.code.toByte())
-                        }
-                        pos++
-                    }
-                }
-            }
-            val procTime = uTime + sTime
-
-            var totalTime = 0L
-            java.io.FileInputStream("/proc/stat").use { fis ->
-                val read = fis.read(statBuffer)
-                if (read > 0) {
-                    var pos = 0
-                    // skip "cpu" prefix
-                    while (pos < read && statBuffer[pos] != ' '.code.toByte() && statBuffer[pos] != '\n'.code.toByte()) {
-                        pos++
-                    }
-                    while (pos < read && statBuffer[pos] != '\n'.code.toByte()) {
-                        while (pos < read && statBuffer[pos] == ' '.code.toByte()) {
-                            pos++
-                        }
-                        if (pos >= read || statBuffer[pos] == '\n'.code.toByte()) break
-                        var currentVal = 0L
-                        while (pos < read && statBuffer[pos] >= '0'.code.toByte() && statBuffer[pos] <= '9'.code.toByte()) {
-                            currentVal = currentVal * 10 + (statBuffer[pos] - '0'.code.toByte())
-                            pos++
-                        }
-                        totalTime += currentVal
-                    }
-                }
-            }
-
-            if (lastSysTime > 0 && totalTime > lastSysTime) {
-                val deltaProc = procTime - lastCpuTime
-                val deltaSys = totalTime - lastSysTime
-                if (deltaSys > 0) {
-                    lastCpuUsage = (deltaProc.toDouble() / deltaSys.toDouble()) * 100.0 * Runtime.getRuntime().availableProcessors()
-                }
-            }
-            lastCpuTime = procTime
-            lastSysTime = totalTime
-
-            return lastCpuUsage
-        } catch (e: Exception) {
-            return 0.0
-        }
-    }
-
-    private fun getRamUsageKb(): Long {
-        try {
-            val buffer = ByteArray(8192)
-            java.io.FileInputStream("/proc/self/status").use { fis ->
-                val read = fis.read(buffer)
-                if (read > 0) {
-                    var pos = 0
-                    while (pos < read) {
-                        // Check if line starts with "VmRSS:"
-                        if (pos + 6 < read &&
-                            buffer[pos] == 'V'.code.toByte() &&
-                            buffer[pos+1] == 'm'.code.toByte() &&
-                            buffer[pos+2] == 'R'.code.toByte() &&
-                            buffer[pos+3] == 'S'.code.toByte() &&
-                            buffer[pos+4] == 'S'.code.toByte() &&
-                            buffer[pos+5] == ':'.code.toByte()
-                        ) {
-                            pos += 6
-                            // Skip spaces
-                            while (pos < read && (buffer[pos] == ' '.code.toByte() || buffer[pos] == '\t'.code.toByte())) {
-                                pos++
-                            }
-                            var kb = 0L
-                            while (pos < read && buffer[pos] >= '0'.code.toByte() && buffer[pos] <= '9'.code.toByte()) {
-                                kb = kb * 10 + (buffer[pos] - '0'.code.toByte())
-                                pos++
-                            }
-                            return kb
-                        }
-                        // Skip to next line
-                        while (pos < read && buffer[pos] != '\n'.code.toByte()) {
-                            pos++
-                        }
-                        pos++
-                    }
-                }
-            }
-        } catch (e: Exception) {}
-        return (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024
-    }
-
-    override fun serve(session: IHTTPSession): Response {
-        return try {
-            serveInternal(session)
-        } catch (e: Exception) {
-            Logger.e("WebServer: Error handling request", e)
-            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, NanoHTTPD.MIME_PLAINTEXT, "Internal Server Error")
-        }
-    }
-
-    private fun serveInternal(session: IHTTPSession): Response {
-        val uri = session.uri
-        val method = session.method
-        val headers = session.headers
-
-        if (!isSafeHost(headers["host"])) return secureResponse(Response.Status.FORBIDDEN, "text/plain", "Invalid Host header")
-
-        var ip = session.remoteIpAddress ?: "unknown"
-        if (ip.startsWith("/")) ip = ip.substring(1)
-        if (isRateLimited(ip)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Too Many Requests")
-
-        val origin = headers["origin"]
-        val host = headers["host"]
-        if (origin != null && host != null) {
-             val allowedOrigin = "http://$host"
-             val allowedSecureOrigin = "https://$host"
-             if (origin != allowedOrigin && origin != allowedSecureOrigin) return secureResponse(Response.Status.FORBIDDEN, "text/plain", "CSRF Forbidden")
-        }
-
-        if (uri == "/" || uri == "/index.html") return secureResponse(Response.Status.OK, "text/html", htmlBytes)
-
-        if (method == Method.POST || method == Method.PUT) {
-             val lenStr = headers["content-length"]
-             if (lenStr != null) {
-                  try {
-                      val contentLen = lenStr.toLong()
-                      val contentType = headers["content-type"] ?: ""
-                      val isMultipart = contentType.contains("multipart/form-data", ignoreCase = true)
-                      val maxSize = if (isMultipart) MAX_UPLOAD_SIZE else MAX_BODY_SIZE
-                      if (contentLen > maxSize) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Payload too large")
-                  } catch (e: Exception) {}
-             } else {
-                 return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Content-Length required")
-             }
-        }
-
-        var authToken = headers["x-auth-token"]
-        if (authToken == null) {
-            val authHeader = headers["authorization"]
-            if (authHeader != null && authHeader.startsWith("Bearer ", ignoreCase = true)) {
-                authToken = authHeader.substring(7)
-            }
-        }
-        if (authToken == null) authToken = getParam(session, "token")
-
-        if (authToken == null || !MessageDigest.isEqual(token.toByteArray(), authToken.toByteArray())) {
-             return secureResponse(Response.Status.UNAUTHORIZED, "text/plain", "Unauthorized")
-        }
-
-        if (uri == "/api/config" && method == Method.GET) {
-            val json = JSONObject()
-            json.put("global_mode", fileExists("global_mode"))
-            json.put("tee_broken_mode", fileExists("tee_broken_mode"))
-            json.put("rkp_bypass", fileExists("rkp_bypass"))
-            json.put("auto_beta_fetch", fileExists("auto_beta_fetch"))
-            json.put("auto_keybox_check", fileExists("auto_keybox_check"))
-            json.put("random_on_boot", fileExists("random_on_boot"))
-            json.put("drm_fix", fileExists("drm_fix"))
-            json.put("random_drm_on_boot", fileExists("random_drm_on_boot"))
-            json.put("auto_patch_update", fileExists("auto_patch_update"))
-            json.put("hide_sensitive_props", fileExists("hide_sensitive_props"))
-            json.put("spoof_region_cn", fileExists("spoof_region_cn"))
-            json.put("remove_magisk_32", fileExists("remove_magisk_32"))
-            json.put("spoof_build", fileExists("spoof_build"))
-            json.put("spoof_build_ps", fileExists("spoof_build_ps"))
-            json.put("spoof_props", fileExists("spoof_props"))
-            json.put("spoof_provider", fileExists("spoof_provider"))
-            json.put("spoof_signature", fileExists("spoof_signature"))
-            json.put("spoof_sdk_ps", fileExists("spoof_sdk_ps"))
-            json.put("spoof_location", fileExists("spoof_location"))
-            json.put("imei_global", fileExists("imei_global"))
-            json.put("network_global", fileExists("network_global"))
-            val files = JSONArray()
-            files.put("keybox.xml")
-            files.put("target.txt")
-            files.put("security_patch.txt")
-            files.put("spoof_build_vars")
-            files.put("app_config")
-            files.put("drm_fix")
-            json.put("files", files)
-            json.put("keybox_count", CertHack.getKeyboxCount())
-            val templates = JSONArray()
-            Config.getTemplateNames().forEach { name -> templates.put(name) }
-            json.put("templates", templates)
-            return secureResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/api/keyboxes" && method == Method.GET) {
-            val keyboxes = listKeyboxes()
-            val array = JSONArray(keyboxes)
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        if (uri == "/api/cbox_status" && method == Method.GET) {
-            val json = JSONObject()
-            val locked = JSONArray()
-            CboxManager.getLockedFiles().forEach { locked.put(it) }
-            json.put("locked", locked)
-            val unlocked = JSONArray()
-            CboxManager.getUnlockedKeyboxes().forEach { k ->
-                // Only show distinct filenames
-                if (!k.filename.startsWith("server_")) unlocked.put(k.filename)
-            }
-            json.put("unlocked", unlocked)
-
-            val servers = JSONArray()
-            ServerManager.getServers().forEach { s ->
-                val obj = JSONObject()
-                obj.put("id", s.id)
-                obj.put("status", s.lastStatus)
-                servers.put(obj)
-            }
-            json.put("server_status", servers)
-
-            return secureResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/api/unlock_cbox" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val filename = getParam(session, "filename")
-             val password = getParam(session, "password")
-             val pubKey = getParam(session, "public_key")
-
-             if (filename != null && password != null) {
-                 if (CboxManager.unlock(filename, password, pubKey)) {
-                     Config.updateKeyBoxes()
-                     return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
-                 } else {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
-                 }
-             }
-             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing params")
-        }
-
-        if (uri == "/api/servers" && method == Method.GET) {
-            val json = JSONArray()
-            ServerManager.getServers().forEach { s ->
-                val obj = JSONObject()
-                obj.put("id", s.id)
-                obj.put("name", s.name)
-                obj.put("url", s.url)
-                obj.put("priority", s.priority)
-                obj.put("enabled", s.enabled)
-                obj.put("authType", s.authType)
-                obj.put("autoRefresh", s.autoRefresh)
-                obj.put("refreshIntervalHours", s.refreshIntervalHours)
-                obj.put("lastStatus", s.lastStatus)
-                obj.put("lastChecked", s.lastChecked)
-                obj.put("lastAuthor", s.lastAuthor)
-                json.put(obj)
-            }
-            return secureResponse(Response.Status.OK, "application/json", json.toString())
-        }
-
-        if (uri == "/api/server/add" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = getParam(session, "data")
-             if (jsonStr != null) {
-                 try {
-                     val obj = JSONObject(jsonStr)
-                     val server = ServerManager.ServerConfig(
-                         id = obj.optString("id").ifEmpty { UUID.randomUUID().toString() },
-                         name = obj.getString("name"),
-                         url = obj.getString("url"),
-                         priority = obj.optInt("priority", 0),
-                         enabled = obj.optBoolean("enabled", true),
-                         authType = obj.getString("authType"),
-                         authData = obj.optJSONObject("authData") ?: JSONObject(),
-                         autoRefresh = obj.optBoolean("autoRefresh", true),
-                         refreshIntervalHours = obj.optInt("refreshIntervalHours", 24),
-                         contentPassword = obj.optString("contentPassword").ifEmpty { null },
-                         contentPublicKey = obj.optString("contentPublicKey").ifEmpty { null }
-                     )
-                     if (obj.has("id")) {
-                         ServerManager.removeServer(server.id)
-                     }
-                     ServerManager.addServer(server)
-                     Config.updateKeyBoxes()
-                     return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                 } catch(e: Exception) {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
-                 }
-             }
-             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing data")
-        }
-
-        if (uri == "/api/server/delete" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val id = getParam(session, "id")
-             if (id != null) {
-                 ServerManager.removeServer(id)
-                 Config.updateKeyBoxes()
-                 return secureResponse(Response.Status.OK, "text/plain", "Deleted")
-             }
-             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing id")
-        }
-
-        if (uri == "/api/server/refresh" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val id = getParam(session, "id")
-             if (id != null) {
-                 val s = ServerManager.getServers().find { it.id == id }
-                 if (s != null) {
-                     if (ServerManager.fetchFromServer(s)) {
-                         Config.updateKeyBoxes()
-                         return secureResponse(Response.Status.OK, "text/plain", "Refreshed")
-                     } else {
-                         return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Fetch Failed: ${s.lastStatus}")
-                     }
-                 }
-             }
-             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing id")
-        }
-
-        if (uri == "/api/templates" && method == Method.GET) {
-            val templates = DeviceTemplateManager.listTemplates()
-            val array = JSONArray()
-            templates.forEach { t ->
-                val obj = JSONObject()
-                obj.put("id", t.id)
-                obj.put("model", t.model)
-                obj.put("manufacturer", t.manufacturer)
-                obj.put("fingerprint", t.fingerprint)
-                obj.put("securityPatch", t.securityPatch)
-                array.put(obj)
-            }
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        if (uri == "/api/random_identity" && method == Method.GET) {
-            val templates = DeviceTemplateManager.listTemplates()
-            if (templates.isNotEmpty()) {
-                val t = templates.random()
-                val json = JSONObject()
-                json.put("id", t.id)
-                json.put("model", t.model)
-                json.put("manufacturer", t.manufacturer)
-                json.put("fingerprint", t.fingerprint)
-                json.put("securityPatch", t.securityPatch)
-                json.put("imei", RandomUtils.generateLuhn(15))
-                json.put("imei2", RandomUtils.generateLuhn(15))
-                json.put("serial", RandomUtils.generateRandomSerial(12))
-                json.put("androidId", RandomUtils.generateRandomAndroidId())
-                json.put("wifiMac", RandomUtils.generateRandomMac())
-                json.put("btMac", RandomUtils.generateRandomMac())
-                json.put("simCountryIso", RandomUtils.generateRandomSimIso())
-                json.put("carrier", RandomUtils.generateRandomCarrier())
-                json.put("imsi", RandomUtils.generateLuhn(15))
-                json.put("iccid", RandomUtils.generateLuhn(20))
-                return secureResponse(Response.Status.OK, "application/json", json.toString())
-            }
-            return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
-        }
-
-        if (uri == "/api/packages" && method == Method.GET) {
-            return try {
-                val sortedPackages = Config.getInstalledPackages()
-                val array = JSONArray(sortedPackages)
-                secureResponse(Response.Status.OK, "application/json", array.toString())
-            } catch (e: Exception) {
-                Logger.e("Failed to list packages", e)
-                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to list packages")
-            }
-        }
-
-        if (uri == "/api/app_config_structured" && method == Method.GET) {
-            val file = File(configDir, "app_config")
-            val array = JSONArray()
-            synchronized(fileLock) {
-                if (file.exists()) {
-                    file.useLines { lines ->
-                        lines.forEach { line ->
-                            if (line.isNotBlank() && !line.startsWith("#")) {
-                                val trimmed = line.trim()
-                                if (trimmed.isEmpty()) return@forEach
-
-                                val len = trimmed.length
-                                var idx = 0
-
-                                var start = idx
-                                while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                val pkg = trimmed.substring(start, idx)
-
-                                var tmpl = ""
-                                var kb = ""
-                                var perms = ""
-
-                                while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                if (idx < len) {
-                                    start = idx
-                                    while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                    val tmplStr = trimmed.substring(start, idx)
-                                    if (tmplStr != "null") tmpl = tmplStr
-
-                                    while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                    if (idx < len) {
-                                        start = idx
-                                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                        val kbStr = trimmed.substring(start, idx)
-                                        if (kbStr != "null") kb = kbStr
-
-                                        while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                        if (idx < len) {
-                                            start = idx
-                                            while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                            val permStr = trimmed.substring(start, idx)
-                                            if (permStr != "null") perms = permStr
-                                        }
-                                    }
-                                }
-
-                                if (pkg.isNotEmpty()) {
-                                    if (pkg.matches(PKG_NAME_REGEX)) {
-                                        val isTmplValid = tmpl.isEmpty() || tmpl.matches(TEMPLATE_NAME_REGEX)
-                                        val isKbValid = kb.isEmpty() || kb.matches(KEYBOX_FILENAME_REGEX)
-                                        val isPermsValid = perms.isEmpty() || perms.matches(PERMISSIONS_REGEX)
-                                        if (isTmplValid && isKbValid && isPermsValid) {
-                                            val obj = JSONObject()
-                                            obj.put("package", pkg)
-                                            obj.put("template", tmpl)
-                                            obj.put("keybox", kb)
-                                            if (perms.isNotEmpty()) {
-                                                val permArray = JSONArray()
-                                                perms.split(",").forEach { permArray.put(it) }
-                                                obj.put("permissions", permArray)
-                                            }
-                                            array.put(obj)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return secureResponse(Response.Status.OK, "application/json", array.toString())
-        }
-
-        if (uri == "/api/app_config_structured" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val jsonStr = getParam(session, "data")
-             if (jsonStr != null) {
-                 try {
-                     val array = JSONArray(jsonStr)
-                     val sb = StringBuilder()
-                     sb.append("# Generated by WebUI\n")
-                     for (i in 0 until array.length()) {
-                         val obj = array.getJSONObject(i)
-                         val pkg = obj.getString("package")
-                         val tmpl = obj.optString("template", "null").ifEmpty { "null" }
-                         val kb = obj.optString("keybox", "null").ifEmpty { "null" }
-                         val permsArr = obj.optJSONArray("permissions")
-                         var permsStr = "null"
-                         if (permsArr != null && permsArr.length() > 0) {
-                             val list = ArrayList<String>()
-                             for (j in 0 until permsArr.length()) {
-                                 list.add(permsArr.getString(j))
-                             }
-                             permsStr = list.joinToString(",")
-                         }
-                         if (!pkg.matches(PKG_NAME_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input: invalid characters")
-                         if (tmpl != "null" && !tmpl.matches(TEMPLATE_NAME_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input")
-                         if (kb != "null" && !kb.matches(KEYBOX_FILENAME_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input")
-                         if (permsStr != "null" && !permsStr.matches(PERMISSIONS_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input")
-                         if (pkg.contains(WHITESPACE_FIND_REGEX)) return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid input")
-                         sb.append("$pkg $tmpl $kb $permsStr\n")
-                     }
-                     synchronized(fileLock) {
-                         try {
-                             val f = File(configDir, "app_config")
-                             SecureFile.writeText(f, sb.toString())
-                             f.setLastModified(System.currentTimeMillis())
-                             return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                         } catch (e: Exception) {
-                             Logger.e("Failed to save app_config", e)
-                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-                         }
-                     }
-                 } catch (e: Exception) {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
-                 }
-             }
-             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-        }
-
-        if (uri == "/api/file" && method == Method.GET) {
-            val filename = getParam(session, "filename")
-            if (filename != null && isValidFilename(filename)) {
-                if (filename == "keybox.xml") {
-                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Access denied")
-                }
-                return secureResponse(Response.Status.OK, "text/plain", readFile(filename))
-            }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
-        }
-
-        if (uri == "/api/save" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val filename = getParam(session, "filename")
-             val content = getParam(session, "content")
-             if (filename != null && isValidFilename(filename) && content != null) {
-                 if (validateContent(filename, content)) {
-                     if (saveFile(filename, content)) {
-                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
-                     }
-                 } else {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid content")
-                 }
-             }
-             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-        }
-
-        if (uri == "/api/upload_keybox" && method == Method.POST) {
-             val map = HashMap<String, String>()
-             try { session.parseBody(map) } catch(e:Exception){}
-             val filename = getParam(session, "filename")
-             val content = getParam(session, "content") // Raw text content for XML
-             // For binary upload (CBOX/ZIP), we might need multipart or read raw body
-             // Since WebUI uses multipart or simple body for text...
-             // Wait, for binary files, we need better upload handling.
-
-             // Check if this is a binary upload via "file" param (Multipart)
-             // NanoHTTPD's parseBody handles multipart and puts temp file path in map
-             val tmpFilePath = map["file"]
-             if (tmpFilePath != null) {
-                 val originalName = getParam(session, "filename") ?: "upload.bin"
-                 if (originalName.contains("..") || originalName.contains("/") || originalName.contains("\\")) {
-                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
-                 }
-                 val tmpFile = File(tmpFilePath)
-                 val bytes = tmpFile.readBytes()
-
-                 // Process as CBOX or ZIP
-                 if (originalName.endsWith(".cbox") || originalName.endsWith(".zip")) {
-                     val keyboxDir = File(configDir, "keyboxes")
-                     SecureFile.mkdirs(keyboxDir, 448)
-                     val dest = File(keyboxDir, originalName)
-                     if (!dest.canonicalPath.startsWith(keyboxDir.canonicalPath + File.separator) && dest.canonicalPath != keyboxDir.canonicalPath) {
-                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
-                     }
-                     SecureFile.writeBytes(dest, bytes)
-                     // Trigger refresh and wait for completion
-                     CboxManager.refresh()
-                     runBlocking { Config.updateKeyBoxes().join() }
-                     val count = CertHack.getKeyboxCount()
-                     return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+{"status":"ok","keybox_count":$count}""")
                  }
              }
 
@@ -1247,7 +348,7 @@ class WebServer(
 <html>
 <head>
     <meta charset="utf-8">
-    <title>${getAppName()}</title>
+    <title>CleveresTricky</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root { --bg: #0B0B0C; --fg: #E5E7EB; --accent: #D1D5DB; --panel: #161616; --border: #333; --input-bg: #1A1A1A; --success: #34D399; --danger: #EF4444; }
@@ -1338,7 +439,7 @@ class WebServer(
 </head>
 <body>
     <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon" style="color:var(--danger);font-weight:bold;font-size:1.2em;">!</div><span id="islandText">Notification</span></div></div>
-    <h1>${getAppName()}</h1>
+    <h1>CleveresTricky</h1>
     <div class="tabs" role="tablist">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabNavigation(event, 'dashboard')">Dashboard</div>
         <div class="tab" id="tab_spoof" onclick="switchTab('spoof')" role="tab" tabindex="-1" aria-selected="false" aria-controls="spoof" onkeydown="handleTabNavigation(event, 'spoof')">Spoofing</div>
@@ -1753,7 +854,7 @@ class WebServer(
             let msg = "";
 
             if (type === 'luhn') {
-                if (!/^\d+${'$'}/.test(val)) {
+                if (!/^\d+$/.test(val)) {
                     msg = "Must be numeric";
                 } else {
                      const len = val.length;
@@ -1777,7 +878,7 @@ class WebServer(
                      }
                 }
             } else if (type === 'imsi') {
-                if (!/^\d+${'$'}/.test(val)) {
+                if (!/^\d+$/.test(val)) {
                     msg = "Must be numeric";
                 } else if (val.length !== 15) {
                     msg = "Must be 15 digits";
@@ -1785,13 +886,13 @@ class WebServer(
                     isValid = true;
                 }
             } else if (type === 'mac') {
-                if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})${'$'}/.test(val)) isValid = true;
+                if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(val)) isValid = true;
                 else msg = "Invalid MAC (XX:XX:XX:XX:XX:XX)";
             } else if (type === 'iso') {
-                if (/^[a-zA-Z]{2}${'$'}/.test(val)) isValid = true;
+                if (/^[a-zA-Z]{2}$/.test(val)) isValid = true;
                 else msg = "Must be 2 letters";
             } else if (type === 'alphanum') {
-                if (/^[a-zA-Z0-9]*${'$'}/.test(val)) isValid = true;
+                if (/^[a-zA-Z0-9]*$/.test(val)) isValid = true;
                 else msg = "Alphanumeric only";
             } else if (type === 'lat') {
                 const num = parseFloat(val);
@@ -1875,7 +976,7 @@ class WebServer(
             try {
                 const configRes = await fetchAuth(getAuthUrl('/api/config'));
                 const configData = await configRes.json();
-                document.getElementById('keyboxStatus').innerText = `${'$'}{configData.keybox_count} Keys Loaded`;
+                document.getElementById('keyboxStatus').innerText = `${configData.keybox_count} Keys Loaded`;
             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
             // Load CBOX Status
@@ -1891,10 +992,10 @@ class WebServer(
                     data.locked.forEach(f => {
                         const div = document.createElement('div');
                         div.className = 'locked-item';
-                        div.innerHTML = `<div style="font-weight:bold; margin-bottom:5px;">${'$'}{f}</div>
-                        <input type="password" id="pwd_${'$'}{f}" placeholder="Password" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
-                        <textarea id="pk_${'$'}{f}" placeholder="Public Key (Optional)" style="height:60px; font-size:0.8em; margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
-                        <button onclick="runWithState(this, 'Unlocking...', () => unlockCbox('${'$'}{f}'))">Unlock</button>`;
+                        div.innerHTML = `<div style="font-weight:bold; margin-bottom:5px;">${f}</div>
+                        <input type="password" id="pwd_${f}" placeholder="Password" style="margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                        <textarea id="pk_${f}" placeholder="Public Key (Optional)" style="height:60px; font-size:0.8em; margin-bottom:5px;" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+                        <button onclick="runWithState(this, 'Unlocking...', () => unlockCbox('${f}'))">Unlock</button>`;
                         lockedList.appendChild(div);
                     });
                 } else {
@@ -1940,10 +1041,10 @@ class WebServer(
                 servers.forEach(s => {
                     const div = document.createElement('div');
                     div.className = 'server-item';
-                    div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
-                    <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
-                    <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
-                    <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
+                    div.innerHTML = `<div><div style="font-weight:bold">${s.name}</div><div style="font-size:0.8em; color:#888;">${s.url}</div></div>
+                    <div><span class="status-badge status-${s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${s.lastStatus}</span>
+                    <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${s.id}')">Refresh</button>
+                    <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${s.id}'), 'Confirm Remove')">Remove</button></div>`;
                     list.appendChild(div);
                 });
             } catch(e) {
@@ -2092,7 +1193,7 @@ class WebServer(
                     if(document.getElementById(k)) document.getElementById(k).checked = data[k];
                 });
                 determineActiveProfile(data);
-                document.getElementById('keyboxStatus').innerText = `${'$'}{data.keybox_count} Keys Loaded`;
+                document.getElementById('keyboxStatus').innerText = `${data.keybox_count} Keys Loaded`;
 
                 const rkpStatus = document.getElementById('status_rkp');
                 if (rkpStatus) {
@@ -2122,7 +1223,7 @@ class WebServer(
                 const appSel = document.getElementById('appTemplate');
                 templates.forEach(t => {
                     const opt = document.createElement('option');
-                    opt.value = t.id; opt.text = `${'$'}{t.model} (${'$'}{t.manufacturer})`; opt.dataset.json = JSON.stringify(t);
+                    opt.value = t.id; opt.text = `${t.model} (${t.manufacturer})`; opt.dataset.json = JSON.stringify(t);
                     sel.appendChild(opt.cloneNode(true)); appSel.appendChild(opt);
                 });
                 previewTemplate();
@@ -2166,7 +1267,7 @@ class WebServer(
         }
         async function resetDrmId() {
             notify('Regenerating...', 'working');
-            try { const res = await fetchAuth('/api/reset_drm', { method: 'POST' }); if (!res.ok) throw new Error(await res.text()); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
+            try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function fetchBeta() {
             try {
@@ -2297,7 +1398,7 @@ class WebServer(
                 if (filterText && !k.toLowerCase().includes(filterText)) return;
                 matchCount++;
                 const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:8px 16px; font-size:0.85em; min-height:44px;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
+                div.innerHTML = `<span>${k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:8px 16px; font-size:0.85em; min-height:44px;" onclick="requireConfirm(this, () => deleteKeybox('${k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${k}">Delete</button></div>`;
                 list.appendChild(div);
             });
 
@@ -2473,7 +1574,7 @@ class WebServer(
                 matchCount++;
                 const tr = document.createElement('tr');
                 const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:8px 16px; margin-right:5px; min-height:44px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:8px 16px; min-height:44px;" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${rule.package}</td><td data-label="Profile">${rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${permStr}</td><td style="text-align:right;"><button style="padding:8px 16px; margin-right:5px; min-height:44px;" onclick="editAppRule(${idx})" title="Edit rule" aria-label="Edit rule for ${rule.package}">Edit</button><button class="danger" style="padding:8px 16px; min-height:44px;" onclick="requireConfirm(this, () => removeAppRule(${idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
 
@@ -2576,7 +1677,7 @@ class WebServer(
                     notify(`Profile ${"$"}{profileName} Applied`);
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
-                    const msg = await res.text(); notify('Error: ' + msg, 'error');
+                    notify('Failed to apply profile', 'error');
                 }
             } catch (e) {
                 notify('Error: ' + e.message, 'error');
@@ -2953,7 +2054,7 @@ class WebServer(
         loadLanguage();
         init();
 
-        const isRelease = !("${BuildConfig.DEBUG}" === "true");
+        const isRelease = !("true" === "true");
         if (!isRelease) {
             const devFooter = document.createElement("div");
             devFooter.style.textAlign = "center";
@@ -2968,168 +2069,3 @@ class WebServer(
     </script>
 </body>
 </html>
-        """.trimIndent()
-    }
-
-    companion object {
-        fun isSafeHost(host: String?): Boolean {
-            if (host == null) return false
-            val h = host.split(":")[0].lowercase()
-            return h == "localhost" || h == "127.0.0.1" || h == "[::1]"
-        }
-
-        fun isSafePath(configDir: File, file: File): Boolean {
-            return try {
-                val configCanonical = configDir.canonicalPath
-                val fileCanonical = file.canonicalPath
-                fileCanonical.equals(configCanonical) || fileCanonical.startsWith(configCanonical + File.separator)
-            } catch (e: Exception) {
-                false
-            }
-        }
-
-        fun isValidFilename(name: String): Boolean {
-            return name.matches(FILENAME_REGEX) && !name.contains("..") && !name.contains("/") && !name.contains("\\")
-        }
-
-        fun validateContent(filename: String, content: String): Boolean {
-            // Basic validation based on known file types
-            if (filename == "target.txt") {
-                val lines = content.lineSequence()
-                return lines.all { it.isEmpty() || it.startsWith("#") || it.matches(TARGET_PKG_REGEX) }
-            }
-            if (filename == "security_patch.txt") {
-                 val lines = content.lineSequence()
-                 return lines.all { it.isEmpty() || it.matches(SECURITY_PATCH_REGEX) }
-            }
-            if (filename == "spoof_build_vars") {
-                val lines = content.lineSequence()
-                return lines.all { line ->
-                    if (line.isEmpty() || line.startsWith("#")) return@all true
-                    // Must be KEY=VALUE format
-                    if (!line.matches(KEY_VALUE_REGEX)) return@all false
-                    // Value part security check
-                    val idx = line.indexOf('=')
-                    if (idx == -1) return@all false
-                    val value = line.substring(idx + 1)
-                    // Check for unsafe shell chars
-                    value.matches(SAFE_BUILD_VAR_VALUE_REGEX)
-                }
-            }
-            if (filename == "app_config") {
-                val lines = content.lineSequence()
-                return lines.all { line ->
-                     if (line.isBlank() || line.startsWith("#")) return@all true
-
-                     val trimmed = line.trim()
-                     if (trimmed.isEmpty()) return@all true
-
-                     val len = trimmed.length
-                     var idx = 0
-
-                     var start = idx
-                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                     val pkg = trimmed.substring(start, idx)
-
-                     if (!pkg.matches(PKG_NAME_REGEX)) return@all false
-
-                     while (idx < len && trimmed[idx].isWhitespace()) idx++
-                     if (idx < len) {
-                         start = idx
-                         while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                         val tmplStr = trimmed.substring(start, idx)
-                         if (tmplStr != "null" && !tmplStr.matches(TEMPLATE_NAME_REGEX)) return@all false
-
-                         while (idx < len && trimmed[idx].isWhitespace()) idx++
-                         if (idx < len) {
-                             start = idx
-                             while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                             val kbStr = trimmed.substring(start, idx)
-                             if (kbStr != "null" && !kbStr.matches(KEYBOX_FILENAME_REGEX)) return@all false
-
-                             while (idx < len && trimmed[idx].isWhitespace()) idx++
-                             if (idx < len) {
-                                 start = idx
-                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                 val permStr = trimmed.substring(start, idx)
-                                 if (permStr != "null" && !permStr.matches(PERMISSIONS_REGEX)) return@all false
-                             }
-                         }
-                     }
-
-                     true
-                }
-            }
-            if (filename == "templates.json") {
-                try {
-                    val json = org.json.JSONTokener(content).nextValue()
-                    return json is org.json.JSONObject || json is org.json.JSONArray
-                } catch(e: Exception) {
-                    return false
-                }
-            }
-            // Allow others with lenient check
-            return true
-        }
-
-        fun createBackupZip(configDir: File): ByteArray {
-            val bos = ByteArrayOutputStream()
-            ZipOutputStream(bos).use { zos ->
-                listOf("target.txt", "security_patch.txt", "spoof_build_vars", "app_config", "drm_fix", "global_mode", "tee_broken_mode", "rkp_bypass", "templates.json", "custom_templates", "spoof_location", "imei_global", "network_global").forEach { name ->
-                    val f = File(configDir, name)
-                    if (f.exists()) {
-                        zos.putNextEntry(ZipEntry(name))
-                        f.inputStream().use { it.copyTo(zos) }
-                        zos.closeEntry()
-                    }
-                }
-                val keyboxDir = File(configDir, "keyboxes")
-                if (keyboxDir.exists() && keyboxDir.isDirectory) {
-                    keyboxDir.listFiles { _, name -> name.endsWith(".xml") }?.forEach { k ->
-                        zos.putNextEntry(ZipEntry("keyboxes/${k.name}"))
-                        k.inputStream().use { it.copyTo(zos) }
-                        zos.closeEntry()
-                    }
-                }
-            }
-            return bos.toByteArray()
-        }
-
-        fun createKeyboxVerificationJson(results: List<KeyboxVerifier.Result>): String {
-            val array = JSONArray()
-            results.forEach { r ->
-                val obj = JSONObject()
-                obj.put("filename", r.filename)
-                obj.put("status", r.status.name)
-                obj.put("details", r.details)
-                array.put(obj)
-            }
-            return array.toString()
-        }
-
-        fun restoreBackupZip(configDir: File, inputStream: InputStream) {
-            ZipInputStream(inputStream).use { zis ->
-                var entry = zis.nextEntry
-                while (entry != null) {
-                    val name = entry.name
-                    if (name.contains("..") || name.startsWith("/") || name.contains("\\")) {
-                        throw SecurityException("Zip entry contains path traversal: $name")
-                    }
-                    val file = File(configDir, name)
-                    if (file.canonicalPath.equals(configDir.canonicalPath) || file.canonicalPath.startsWith(configDir.canonicalPath + File.separator)) {
-                        if (name.startsWith("keyboxes/")) {
-                            File(configDir, "keyboxes").mkdirs()
-                        }
-                        if (!entry.isDirectory) {
-                            SecureFile.writeStream(file, zis, 50 * 1024 * 1024)
-                        }
-                    } else {
-                        throw SecurityException("Zip entry path traversal detected via canonical path: $name")
-                    }
-                    zis.closeEntry()
-                    entry = zis.nextEntry
-                }
-            }
-        }
-    }
-}
