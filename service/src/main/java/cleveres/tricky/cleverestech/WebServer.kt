@@ -2166,7 +2166,7 @@ class WebServer(
         }
         async function resetDrmId() {
             notify('Regenerating...', 'working');
-            try { await fetchAuth('/api/reset_drm', { method: 'POST' }); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
+            try { const res = await fetchAuth('/api/reset_drm', { method: 'POST' }); if (!res.ok) throw new Error(await res.text()); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
         }
         async function fetchBeta() {
             try {
@@ -2576,7 +2576,7 @@ class WebServer(
                     notify(`Profile ${"$"}{profileName} Applied`);
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
-                    notify('Failed to apply profile', 'error');
+                    const msg = await res.text(); notify('Error: ' + msg, 'error');
                 }
             } catch (e) {
                 notify('Error: ' + e.message, 'error');
