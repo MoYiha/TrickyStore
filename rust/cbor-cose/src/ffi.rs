@@ -258,11 +258,17 @@ pub unsafe extern "C" fn rust_create_certificate_request(
             for i in 0..keys_count {
                 let start = offsets[i];
                 let end = offsets[i + 1];
-                // Check bounds within keys_data
+                // Check bounds within keys_data strictly
                 if start <= end && end <= keys_data.len() {
                     maced_keys.push(keys_data[start..end].to_vec());
+                } else {
+                    // Out-of-bounds offset detected; return empty buffer
+                    return RustBuffer::empty();
                 }
             }
+        } else {
+            // Invalid data or offsets slice; return empty buffer
+            return RustBuffer::empty();
         }
 
         let challenge = unsafe { validate_slice_args(challenge_ptr, challenge_len) }.unwrap_or(&[]);
