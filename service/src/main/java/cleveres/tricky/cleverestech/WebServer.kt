@@ -1881,6 +1881,7 @@ class WebServer(
             // Load CBOX Status
             try {
                 const res = await fetchAuth('/api/cbox_status');
+                if (!res.ok) throw new Error(await res.text());
                 const data = await res.json();
 
                 // Locked
@@ -2086,6 +2087,7 @@ class WebServer(
             console.log('[CleveresTricky] init: loading config...');
             try {
                 const res = await fetchAuth(getAuthUrl('/api/config'));
+                    if (!res.ok) throw new Error(await res.text());
                 const data = await res.json();
                 console.log('[CleveresTricky] config loaded:', JSON.stringify({rkp_bypass: data.rkp_bypass, global_mode: data.global_mode, keybox_count: data.keybox_count, tee_broken_mode: data.tee_broken_mode}));
                 ['global_mode', 'tee_broken_mode', 'rkp_bypass', 'auto_beta_fetch', 'auto_keybox_check', 'random_on_boot', 'drm_fix', 'random_drm_on_boot', 'auto_patch_update', 'hide_sensitive_props', 'spoof_region_cn', 'remove_magisk_32', 'spoof_location', 'imei_global', 'network_global'].forEach(k => {
@@ -2111,7 +2113,7 @@ class WebServer(
                 }
             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
-            fetchAuth(getAuthUrl('/api/stats')).then(r => r.json()).then(d => {
+            fetchAuth(getAuthUrl('/api/stats')).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); }).then(d => {
                 document.getElementById('communityCount').innerText = d.members;
                 document.getElementById('bannedCount').innerText = 'Global Banned Keys: ' + d.banned;
             }).catch(e => { notify('Error: ' + e.message, 'error'); });
@@ -2127,7 +2129,7 @@ class WebServer(
                 });
                 previewTemplate();
             } catch(e) { console.error(e); notify('Error loading templates: ' + e.message, 'error'); }
-            fetchAuth(getAuthUrl('/api/packages')).then(r => r.json()).then(pkgs => {
+            fetchAuth(getAuthUrl('/api/packages')).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); }).then(pkgs => {
                 const dl = document.getElementById('pkgList');
                 pkgs.forEach(p => { const opt = document.createElement('option'); opt.value = p; dl.appendChild(opt); });
             }).catch(e => { notify('Error: ' + e.message, 'error'); });
@@ -2279,7 +2281,7 @@ class WebServer(
                     renderKeyboxes();
                     const dl = document.getElementById('keyboxList');
                     if (dl) { dl.innerHTML = ''; cachedKeyboxes.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
-                }
+                } else { throw new Error(await res.text()); }
             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
         }
 
@@ -2368,8 +2370,8 @@ class WebServer(
                  let content = "";
                  try {
                      const res = await fetchAuth('/api/file?filename=spoof_build_vars');
-                     if (res.ok) content = await res.text();
-                 } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+                     if (res.ok) { content = await res.text(); } else { const msg = await res.text(); throw new Error(msg); }
+                 } catch(e) { console.error(e); notify('Error loading build vars: ' + e.message, 'error'); return; }
 
                  // 2. Parse lines
                  let lines = content.split('\n');
@@ -2453,6 +2455,7 @@ class WebServer(
             if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
             try {
                 const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
+                if (!res.ok) throw new Error(await res.text());
                 appRules = await res.json();
                 renderAppTable();
             } catch(e) { notify('Error: ' + e.message, 'error'); }
@@ -2558,6 +2561,7 @@ class WebServer(
             }, 'Confirm Apply', async () => {
                 try {
                     const res = await fetchAuth(getAuthUrl('/api/config'));
+                    if (!res.ok) throw new Error(await res.text());
                     const data = await res.json();
                     determineActiveProfile(data);
                 } catch (e) {
@@ -2637,8 +2641,8 @@ class WebServer(
                 let content = '';
                 try {
                     const res = await fetchAuth('/api/file?filename=spoof_build_vars');
-                    if (res.ok) content = await res.text();
-                } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+                    if (res.ok) { content = await res.text(); } else { throw new Error(await res.text()); }
+                } catch(e) { console.error(e); notify('Error loading build vars: ' + e.message, 'error'); }
                 const locationKeys = {
                     'SPOOF_LATITUDE': lat,
                     'SPOOF_LONGITUDE': lng,
@@ -2826,6 +2830,7 @@ class WebServer(
                  const tbody = document.getElementById('resourceBody');
                  if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
                  const res = await fetchAuth('/api/resource_usage');
+                 if (!res.ok) throw new Error(await res.text());
                  const data = await res.json();
                  renderResourceTable(data);
              } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
