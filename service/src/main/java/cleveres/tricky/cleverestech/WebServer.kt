@@ -1421,7 +1421,7 @@ class WebServer(
             <h3>DRM / Streaming</h3>
             <div class="row"><label for="drm_fix">Netflix / DRM Fix</label><div style="display:flex; align-items:center; gap:10px;"><button onclick="editDrmConfig()" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Edit</button><input type="checkbox" class="toggle" id="drm_fix" onchange="toggle('drm_fix')"></div></div>
             <div class="row"><label for="random_drm_on_boot">Randomize on Boot</label><input type="checkbox" class="toggle" id="random_drm_on_boot" onchange="toggle('random_drm_on_boot')"></div>
-            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="requireConfirm(this, () => resetDrmId(), 'Confirm Regen')" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Regenerate DRM ID</button></div>
+            <div class="row" style="margin-top:10px;"><label style="font-size:0.8em; color:#888;">Reset Identity</label><button onclick="const btn = this; requireConfirm(btn, () => runWithState(btn, 'Regenerating...', resetDrmId), 'Confirm Regen')" style="padding:8px 16px; font-size:0.85em; min-height:44px;">Regenerate DRM ID</button></div>
         </div>
         <div class="panel"><h3>Beta Profile Fetcher</h3><button onclick="runWithState(this, 'Fetching...', fetchBeta)" style="width:100%">Fetch & Apply Latest Beta</button></div>
         <div class="panel">
@@ -1943,8 +1943,8 @@ class WebServer(
                     div.className = 'server-item';
                     div.innerHTML = `<div><div style="font-weight:bold">${'$'}{s.name}</div><div style="font-size:0.8em; color:#888;">${'$'}{s.url}</div></div>
                     <div><span class="status-badge status-${'$'}{s.lastStatus.startsWith('OK')?'OK':'ERROR'}">${'$'}{s.lastStatus}</span>
-                    <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="refreshServer('${'$'}{s.id}')">Refresh</button>
-                    <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="requireConfirm(this, () => deleteServer('${'$'}{s.id}'), 'Confirm Remove')">Remove</button></div>`;
+                    <button style="padding:8px 16px; margin-left:10px; min-height:44px;" onclick="runWithState(this, 'Refreshing...', () => refreshServer('${'$'}{s.id}'))">Refresh</button>
+                    <button class="danger" style="padding:8px 16px; margin-left:5px; min-height:44px;" onclick="const btn = this; requireConfirm(btn, () => runWithState(btn, 'Removing...', () => deleteServer('${'$'}{s.id}')), 'Confirm Remove')">Remove</button></div>`;
                     list.appendChild(div);
                 });
             } catch(e) {
@@ -2299,7 +2299,7 @@ class WebServer(
                 if (filterText && !k.toLowerCase().includes(filterText)) return;
                 matchCount++;
                 const div = document.createElement('div'); div.className = 'row'; div.style.padding = '10px'; div.style.borderBottom = '1px solid var(--border)';
-                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:8px 16px; font-size:0.85em; min-height:44px;" onclick="requireConfirm(this, () => deleteKeybox('${'$'}{k}'), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
+                div.innerHTML = `<span>${'$'}{k}</span><div><span style="font-size:0.8em; color:#666; margin-right:15px;">Stored</span><button class="danger" style="padding:8px 16px; font-size:0.85em; min-height:44px;" onclick="const btn = this; requireConfirm(btn, () => runWithState(btn, 'Deleting...', () => deleteKeybox('${'$'}{k}')), 'Confirm Delete')" title="Delete Keybox" aria-label="Delete ${'$'}{k}">Delete</button></div>`;
                 list.appendChild(div);
             });
 
@@ -2476,7 +2476,7 @@ class WebServer(
                 matchCount++;
                 const tr = document.createElement('tr');
                 const permStr = (rule.permissions && rule.permissions.length > 0) ? rule.permissions.join(', ') : '';
-                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:8px 16px; margin-right:5px; min-height:44px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:8px 16px; min-height:44px;" onclick="requireConfirm(this, () => removeAppRule(${'$'}{idx}), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
+                tr.innerHTML = `<td data-label="Package">${'$'}{rule.package}</td><td data-label="Profile">${'$'}{rule.template === 'null' ? 'Default' : rule.template}</td><td data-label="Keybox">${'$'}{rule.keybox && rule.keybox !== 'null' ? rule.keybox : ''}</td><td data-label="Permissions">${'$'}{permStr}</td><td style="text-align:right;"><button style="padding:8px 16px; margin-right:5px; min-height:44px;" onclick="editAppRule(${'$'}{idx})" title="Edit rule" aria-label="Edit rule for ${'$'}{rule.package}">Edit</button><button class="danger" style="padding:8px 16px; min-height:44px;" onclick="const btn = this; requireConfirm(btn, () => runWithState(btn, 'Removing...', () => removeAppRule(${'$'}{idx})), 'Confirm Remove')" title="Remove rule" aria-label="Remove rule for ${'$'}{rule.package}">Remove</button></td>`;
                 tbody.appendChild(tr);
             });
 
