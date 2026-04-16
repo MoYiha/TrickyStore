@@ -47,7 +47,7 @@ pub fn kick_already_blocked_ioctls() {
         // SA_RESTART would cause the syscall to automatically restart, defeating our purpose.
         let mut sa: libc::sigaction = unsafe { std::mem::zeroed() };
         // Fix for clippy::function_casts_as_integer
-        sa.sa_sigaction = handler as *const () as libc::sighandler_t;
+        sa.sa_sigaction = (handler as *const ()).addr() as libc::sighandler_t;
         sa.sa_flags = 0;
         unsafe { libc::sigemptyset(&mut sa.sa_mask) };
 
