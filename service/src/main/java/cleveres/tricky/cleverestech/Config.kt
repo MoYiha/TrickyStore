@@ -238,6 +238,14 @@ object Config {
     private val directoryKeyboxCache = ConcurrentHashMap<String, Pair<Long, List<CertHack.KeyBox>>>()
 
     fun updateKeyBoxes() = scope.launch {
+        updateKeyBoxesSync()
+    }
+
+    /**
+     * Performs a synchronous update of the keyboxes.
+     * This avoids runBlocking overhead when called from synchronous handlers.
+     */
+    fun updateKeyBoxesSync() {
         runCatching {
             Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
