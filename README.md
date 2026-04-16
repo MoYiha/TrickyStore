@@ -25,7 +25,7 @@ Unlike traditional modules that apply static patches, CleveresTricky runs an alw
 
 | Requirement | Details |
 |-------------|---------|
-| **Root Manager** | Magisk v26.0+ (Zygisk enabled) or KernelSU v0.7.0+ (Zygisk Next) |
+| **Root Manager** | KernelSU v0.7.0+ (Zygisk Next) or APatch |
 | **Android** | 12 or newer (API 31+) |
 | **Architecture** | arm64-v8a, x86_64 |
 | **SELinux** | Enforcing (module manages its own policy) |
@@ -117,7 +117,7 @@ The module detects your chipset and uses the correct provisioning binary automat
 
 ## Quick Start
 
-1. **Install** -- Flash the module ZIP from Magisk/KernelSU manager and reboot
+1. **Install** -- Flash the module ZIP from KernelSU/APatch manager and reboot
 2. **Open WebUI** -- Navigate to `http://localhost:5623` in any browser
 3. **Add Keybox** *(optional)* -- Upload via WebUI or place at `/data/adb/cleverestricky/keybox.xml`
 4. **Enable RKP** *(for STRONG integrity)* -- Toggle in WebUI or `touch /data/adb/cleverestricky/rkp_bypass`

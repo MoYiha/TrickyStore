@@ -9,18 +9,23 @@ MIN_SDK=@MIN_SDK@
 if [ "$BOOTMODE" ] && [ "$KSU" ]; then
   ui_print "- Installing from KernelSU app"
   ui_print "- KernelSU version: $KSU_KERNEL_VER_CODE (kernel) + $KSU_VER_CODE (ksud)"
-  if [ "$(which magisk)" ]; then
-    ui_print "*********************************************************"
-    ui_print "! Multiple root implementation is NOT supported!"
-    ui_print "! Please uninstall Magisk before installing this module"
-    abort    "*********************************************************"
-  fi
-elif [ "$BOOTMODE" ] && [ "$MAGISK_VER_CODE" ]; then
-  ui_print "- Installing from Magisk app"
-else
+elif [ "$BOOTMODE" ] && [ "$APATCH" ]; then
+  ui_print "- Installing from APatch app"
+  ui_print "- APatch version: $APATCH_VER_CODE"
+fi
+
+if [ "$MAGISK_VER_CODE" ] || [ "$(which magisk)" ]; then
   ui_print "*********************************************************"
-  ui_print "! Install from recovery is not supported"
-  ui_print "! Please install from KernelSU or Magisk app"
+  ui_print "! Magisk is NOT supported!"
+  ui_print "! Magisk has been detected. Installation is blocked because Magisk causes issues."
+  ui_print "! Please use KernelSU or APatch instead."
+  abort    "*********************************************************"
+fi
+
+if [ -z "$KSU" ] && [ -z "$APATCH" ]; then
+  ui_print "*********************************************************"
+  ui_print "! Install from recovery or unsupported root is not supported"
+  ui_print "! Please install from KernelSU or APatch app"
   abort    "*********************************************************"
 fi
 
