@@ -53,7 +53,7 @@ class WebServer(
             Logger.e("failed to set permissions for ${f.name}", t)
         }
     }
-) : NanoHTTPD(WEB_UI_LOOPBACK_HOST, requestedPort) {
+) : NanoHTTPD(requestedPort) {
 
     suspend fun startAsync(timeout: Int = 5000, daemon: Boolean = true) {
         Logger.d("WebServer: Starting on $WEB_UI_LOOPBACK_HOST:$requestedPort (timeout=$timeout daemon=$daemon)")
