@@ -895,7 +895,7 @@ class WebServer(
                      SecureFile.writeBytes(dest, bytes)
                      // Trigger refresh and wait for completion
                      CboxManager.refresh()
-                     runBlocking { Config.updateKeyBoxes().join() }
+                     Config.updateKeyBoxesSync()
                      val count = CertHack.getKeyboxCount()
                      return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                  }
@@ -921,7 +921,7 @@ class WebServer(
                      }
                      try {
                          SecureFile.writeText(file, content)
-                         runBlocking { Config.updateKeyBoxes().join() }
+                         Config.updateKeyBoxesSync()
                          val count = CertHack.getKeyboxCount()
                          return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                      } catch (e: Exception) {
@@ -1050,7 +1050,7 @@ class WebServer(
                      }
                      val target = File(configDir, "target.txt")
                      if (target.exists()) target.setLastModified(System.currentTimeMillis())
-                     runBlocking { Config.updateKeyBoxes().join() }
+                     Config.updateKeyBoxesSync()
                      return secureResponse(Response.Status.OK, "text/plain", "Environment Reset")
                  }
              } catch(e: Exception) {
