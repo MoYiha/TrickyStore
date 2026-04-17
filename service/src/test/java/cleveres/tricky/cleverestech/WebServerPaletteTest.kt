@@ -158,7 +158,7 @@ class WebServerPaletteTest {
 
         // 5. Verify resetDropZone restores default state
         assertTrue("resetDropZone should restore default content",
-            html.contains("dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color: #888;\">[ Upload ]</div>")
+            html.contains("dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color: #888;\">[ Drag &amp; Drop ]</div>")
         )
 
         // 6. Verify uploadKeybox calls resetDropZone
