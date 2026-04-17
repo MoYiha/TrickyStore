@@ -2043,7 +2043,7 @@ class WebServer(
 
         function resetDropZone() {
             const dz = document.getElementById('dropZoneContent');
-            dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Upload ]</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
+            dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color: #888;">[ Drag &amp; Drop ]</div><div style="font-size: 0.9em; color: #888;">Select .xml, .cbox, or .zip</div>';
             document.getElementById('dropZone').style.borderColor = 'var(--border)';
         }
 
