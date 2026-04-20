@@ -1400,7 +1400,7 @@ class WebServer(
                 <div class="row"><span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span><button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button></div>
             </div>
         </div>
-        <div class="panel"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Encryption Password (optional - leave blank for unencrypted export)</label><input type="password" id="backupPw" placeholder="Leave blank to skip encryption" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><div class="grid-2"><button onclick="runWithState(this, 'Exporting...', backupConfig)">Export Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip,.ctsb"></div><div style="margin-top:10px;"><button onclick="requireConfirm(this, () => resetEnvironment(), 'Confirm Reset')" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
+        <div class="panel"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Encryption Password (optional - leave blank for unencrypted export)</label><input type="password" id="backupPw" placeholder="Leave blank to skip encryption" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><div class="grid-2"><button onclick="runWithState(this, 'Exporting...', backupConfig)">Export Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".zip,.ctsb"></div><div style="margin-top:10px;"><button onclick="const btn = this; requireConfirm(btn, () => runWithState(btn, 'Resetting...', resetEnvironment), 'Confirm Reset')" class="danger" style="width:100%;">One-Click Reset (Refresh Environment)</button></div></div>
         <div class="panel" style="text-align:center;"><h3>Community</h3><div id="communityCount" style="font-size:2em; font-weight:300; margin: 10px 0;">...</div><div id="bannedCount" style="font-size:0.9em; color:#888; margin-bottom:10px;">Global Banned Keys: ...</div><a href="https://t.me/cleverestech" target="_blank" style="display:inline-block; margin-top:10px; color:var(--accent); text-decoration:none; font-size:0.9em; border:1px solid var(--border); padding:5px 15px; border-radius:15px;">Join Channel</a></div>
     </div>
 
@@ -2642,7 +2642,7 @@ class WebServer(
                 try {
                     const res = await fetchAuth('/api/file?filename=spoof_build_vars');
                     if (res.ok) { content = await res.text(); } else { throw new Error(await res.text()); }
-                } catch(e) { console.error(e); notify('Error loading build vars: ' + e.message, 'error'); }
+                } catch(e) { console.error(e); notify('Error loading build vars: ' + e.message, 'error'); return; }
                 const locationKeys = {
                     'SPOOF_LATITUDE': lat,
                     'SPOOF_LONGITUDE': lng,
