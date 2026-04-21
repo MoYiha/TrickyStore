@@ -222,47 +222,41 @@ object DrmInterceptor : BinderInterceptor() {
 
         val validPids = pids.filter { it.all { c -> c.isDigit() } }
 
-        return kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
-            for (chunk in validPids.chunked(20)) {
-                val foundPid = chunk.map { pidStr ->
-                    async {
-                        val buf = ByteArray(1024)
-                        kotlin.runCatching {
-                            val cmdlineFile = File("/proc/$pidStr/cmdline")
-                            if (cmdlineFile.exists()) {
-                                val stream = java.io.FileInputStream(cmdlineFile)
-                                val length = try {
-                                    stream.read(buf)
-                                } finally {
-                                    stream.close()
-                                }
-                                if (length > 0) {
-                                    var end = 0
-                                    while (end < length && buf[end] != 0.toByte()) {
-                                        end++
-                                    }
-                                    val argv0 = String(buf, 0, end)
-                                    for (target in DRM_PROCESS_NAMES) {
-                                        if (argv0 == target || argv0.endsWith("/$target")) {
-                                            val pid = pidStr.toInt()
-                                            Logger.d("DRM: Found DRM process '$argv0' at PID $pid")
-                                            return@runCatching pid
-                                        }
-                                    }
-                                }
-                            }
-                            null
-                        }.getOrNull()
+        val buf = ByteArray(1024)
+        for (pidStr in validPids) {
+            val pid = kotlin.runCatching {
+                val cmdlineFile = File("/proc/$pidStr/cmdline")
+                if (cmdlineFile.exists()) {
+                    val stream = java.io.FileInputStream(cmdlineFile)
+                    val length = try {
+                        stream.read(buf)
+                    } finally {
+                        stream.close()
                     }
-                }.awaitAll().firstNotNullOfOrNull { it }
-
-                if (foundPid != null) {
-                    cachedDrmPid = foundPid
-                    return@runBlocking foundPid
+                    if (length > 0) {
+                        var end = 0
+                        while (end < length && buf[end] != 0.toByte()) {
+                            end++
+                        }
+                        val argv0 = String(buf, 0, end)
+                        for (target in DRM_PROCESS_NAMES) {
+                            if (argv0 == target || argv0.endsWith("/$target")) {
+                                val parsedPid = pidStr.toInt()
+                                Logger.d("DRM: Found DRM process '$argv0' at PID $parsedPid")
+                                return@runCatching parsedPid
+                            }
+                        }
+                    }
                 }
+                null
+            }.getOrNull()
+
+            if (pid != null) {
+                cachedDrmPid = pid
+                return pid
             }
-            null
         }
+        return null
     }
 
     private fun findDrmService(): IBinder? {
