@@ -12,17 +12,13 @@ if [ "$BOOTMODE" ] && [ "$KSU" ]; then
 elif [ "$BOOTMODE" ] && [ "$APATCH" ]; then
   ui_print "- Installing from APatch app"
   ui_print "- APatch version: $APATCH_VER_CODE"
-fi
-
-if [ "$MAGISK_VER_CODE" ] || [ "$(which magisk)" ]; then
+elif [ "$MAGISK_VER_CODE" ] || [ "$(which magisk)" ]; then
   ui_print "*********************************************************"
   ui_print "! Magisk is NOT supported!"
   ui_print "! Magisk has been detected. Installation is blocked because Magisk causes issues."
   ui_print "! Please use KernelSU or APatch instead."
   abort    "*********************************************************"
-fi
-
-if [ -z "$KSU" ] && [ -z "$APATCH" ]; then
+else
   ui_print "*********************************************************"
   ui_print "! Install from recovery or unsupported root is not supported"
   ui_print "! Please install from KernelSU or APatch app"
