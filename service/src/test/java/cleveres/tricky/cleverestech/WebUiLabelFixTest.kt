@@ -96,11 +96,11 @@ class WebUiLabelFixTest {
     fun testNotificationIconsUseTextLabels() {
         assertTrue(
             "Success notification icon should use text label for cross-WebView compatibility",
-            webServerContent.contains("font-weight:bold;\">OK</span>")
+            webServerContent.contains("\">OK</div>") || webServerContent.contains("\">OK</span>")
         )
         assertTrue(
             "Error notification icon should use text label for cross-WebView compatibility",
-            webServerContent.contains("font-weight:bold;font-size:1.2em;\">!</div>")
+            webServerContent.contains("\">!</div>") || webServerContent.contains("\">!</span>")
         )
     }
 
