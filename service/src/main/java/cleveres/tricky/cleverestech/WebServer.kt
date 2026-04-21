@@ -1253,14 +1253,19 @@ class WebServer(
         :root { --bg: #0B0B0C; --fg: #E5E7EB; --accent: #D1D5DB; --panel: #161616; --border: #333; --input-bg: #1A1A1A; --success: #34D399; --danger: #EF4444; }
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
-        .island { background: #000; color: #fff; border-radius: 30px; height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); cursor: pointer; }
-        .island.active { width: auto; min-width: 250px; padding: 12px 24px; opacity: 1; transform: translateY(0); font-size: 0.9em; }
+        .island { background: #000; color: #fff; border-radius: 30px; min-height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); }
+        .island.active { width: auto; min-width: 250px; padding: 8px 12px 8px 24px; opacity: 1; transform: translateY(0); font-size: 0.9em; min-height: 44px; }
         .island.error { background: #330000; border: 1px solid var(--danger); }
         .island.error #islandText { color: #FECACA; }
         .spinner { width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 10px; display: none; }
         .island.working .spinner { display: block; }
-        .error-icon { display: none; margin-right: 10px; color: var(--danger); font-size: 1.2em; }
+        .error-icon { display: none; margin-right: 10px; color: var(--danger); font-size: 1.2em; font-weight: bold; }
         .island.error .error-icon { display: block; }
+        .success-icon { display: none; margin-right: 10px; color: var(--success); font-size: 1.2em; font-weight: bold; }
+        .island.normal .success-icon { display: block; }
+        .island-close { background: transparent; border: none; color: #888; font-size: 1.5em; padding: 0; margin-left: 15px; cursor: pointer; min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+        .island-close:hover { color: #fff; }
+        #islandText { flex: 1; }
         @keyframes spin { to { transform: rotate(360deg); } }
         h1 { text-align: center; font-weight: 200; letter-spacing: 2px; margin: 25px 0; color: var(--accent); font-size: 1.5em; text-transform: uppercase; }
         .tabs { display: flex; justify-content: center; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; position: sticky; top: 0; z-index: 100; }
@@ -1337,7 +1342,7 @@ class WebServer(
     </style>
 </head>
 <body>
-    <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon" style="color:var(--danger);font-weight:bold;font-size:1.2em;">!</div><span id="islandText">Notification</span></div></div>
+    <div class="island-container"><div id="island" class="island" role="status" aria-live="polite"><div class="spinner"></div><div class="error-icon">!</div><div class="success-icon">OK</div><span id="islandText">Notification</span><button class="island-close" onclick="document.getElementById('island').classList.remove('active')" aria-label="Close notification">&times;</button></div></div>
     <h1>${getAppName()}</h1>
     <div class="tabs" role="tablist">
         <div class="tab active" id="tab_dashboard" onclick="switchTab('dashboard')" role="tab" tabindex="0" aria-selected="true" aria-controls="dashboard" onkeydown="handleTabNavigation(event, 'dashboard')">Dashboard</div>
@@ -1717,23 +1722,14 @@ class WebServer(
         function notify(msg, type = 'normal') {
             if (notifyTimeout) clearTimeout(notifyTimeout);
             const island = document.getElementById('island');
-            let iconHtml = '';
-            if (type === 'working') {
-                iconHtml = '<div class="spinner"></div>';
-            } else if (type === 'error') {
-                iconHtml = '<span class="island-icon" style="color:var(--danger); font-weight:bold;">!</span>';
-            } else {
-                iconHtml = '<span class="island-icon" style="color:var(--success); font-weight:bold;">OK</span>';
-            }
 
             // Escape HTML for message
             const div = document.createElement('div');
             div.innerText = msg;
             const safeMsg = div.innerHTML;
 
-            document.getElementById('islandText').innerHTML = iconHtml + '<span style="vertical-align: middle;">' + safeMsg + '</span>';
+            document.getElementById('islandText').innerHTML = safeMsg;
             island.className = 'island active ' + type;
-            island.onclick = () => { island.classList.remove('active'); };
             if (type === 'working') {
                 // Keep active until cleared manually or by another notify
             } else {
