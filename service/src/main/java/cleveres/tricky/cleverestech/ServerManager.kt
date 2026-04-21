@@ -38,7 +38,8 @@ object ServerManager {
         var contentPublicKey: String? = null
     )
 
-    private val servers = CopyOnWriteArrayList<ServerConfig>()
+    private val serversList = CopyOnWriteArrayList<ServerConfig>()
+    private val serversMap = ConcurrentHashMap<String, ServerConfig>()
     private val serverKeyboxes = ConcurrentHashMap<String, List<CertHack.KeyBox>>() // ServerID -> List<KeyBox>
     private val serverFile by lazy { File(Config.keyboxDirectory.parentFile, "servers.json") }
 
@@ -56,10 +57,13 @@ object ServerManager {
         try {
             val content = serverFile.readText()
             val json = JSONArray(content)
-            servers.clear()
+            serversList.clear()
+            serversMap.clear()
             for (i in 0 until json.length()) {
                 val obj = json.getJSONObject(i)
-                servers.add(parseServer(obj))
+                val s = parseServer(obj)
+                serversList.add(s)
+                serversMap[s.id] = s
             }
         } catch (e: Exception) {
             Logger.e("Failed to load servers", e)
@@ -69,7 +73,7 @@ object ServerManager {
     fun saveServers() {
         try {
             val json = JSONArray()
-            servers.forEach { server ->
+            serversList.forEach { server ->
                 json.put(serializeServer(server))
             }
             SecureFile.writeText(serverFile, json.toString())
@@ -116,16 +120,18 @@ object ServerManager {
         return json
     }
 
-    fun getServers(): List<ServerConfig> = servers.sortedBy { it.priority }
+    fun getServers(): List<ServerConfig> = serversList.sortedBy { it.priority }
 
     fun addServer(server: ServerConfig) {
-        servers.add(server)
+        serversList.add(server)
+        serversMap[server.id] = server
         saveServers()
         fetchFromServer(server) // Initial fetch
     }
 
     fun removeServer(id: String) {
-        servers.removeIf { it.id == id }
+        serversList.removeIf { it.id == id }
+        serversMap.remove(id)
         serverKeyboxes.remove(id)
         File(Config.keyboxDirectory.parentFile, "server_cache_${id}.enc").delete()
         saveServers()
@@ -138,7 +144,7 @@ object ServerManager {
     }
 
     fun updateServer(id: String, block: (ServerConfig) -> Unit) {
-        val s = servers.find { it.id == id }
+        val s = serversMap[id]
         if (s != null) {
             block(s)
             saveServers()
@@ -146,7 +152,7 @@ object ServerManager {
     }
 
     private fun loadCachedKeyboxes() {
-        servers.forEach { server ->
+        serversList.forEach { server ->
             if (server.enabled) {
                 val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
                 if (cacheFile.exists()) {
@@ -340,7 +346,7 @@ object ServerManager {
     }
 
     fun refreshAll() {
-        servers.filter { it.enabled }.sortedBy { it.priority }.forEach {
+        serversList.filter { it.enabled }.sortedBy { it.priority }.forEach {
             fetchFromServer(it)
         }
     }
