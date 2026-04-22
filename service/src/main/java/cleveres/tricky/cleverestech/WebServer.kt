@@ -1253,7 +1253,7 @@ class WebServer(
         :root { --bg: #0B0B0C; --fg: #E5E7EB; --accent: #D1D5DB; --panel: #161616; --border: #333; --input-bg: #1A1A1A; --success: #34D399; --danger: #EF4444; }
         body { background-color: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; }
         .island-container { display: flex; justify-content: center; position: fixed; top: 10px; width: 100%; z-index: 1000; pointer-events: none; }
-        .island { background: #000; color: #fff; border-radius: 30px; min-height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); }
+        .island { background: #000; color: #fff; border-radius: 30px; min-height: 35px; width: 120px; display: flex; align-items: center; justify-content: center; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 0.8em; font-weight: 500; opacity: 0; transform: translateY(-20px); pointer-events: auto; }
         .island.active { width: auto; min-width: 250px; padding: 8px 12px 8px 24px; opacity: 1; transform: translateY(0); font-size: 0.9em; min-height: 44px; }
         .island.error { background: #330000; border: 1px solid var(--danger); }
         .island.error #islandText { color: #FECACA; }
