@@ -10,14 +10,17 @@ import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.cert.Certificate
 import java.util.Base64
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 
-class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkClient()) {
+class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkClient(), private val dispatcher: kotlinx.coroutines.CoroutineDispatcher = kotlinx.coroutines.Dispatchers.IO) {
 
     interface NetworkClient {
         fun fetch(url: String): String?
@@ -65,25 +68,25 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
         }
     }
 
-    fun harvest(
+    suspend fun harvest(
         sourceUrl: String? = Config.keyboxSourceUrl,
         outputDir: File = Config.keyboxDirectory
-    ) {
+    ) = withContext(dispatcher) {
         if (sourceUrl.isNullOrBlank()) {
             Logger.i("Fetcher: No source URL configured.")
-            return
+            return@withContext
         }
 
         Logger.i("Fetcher: Starting harvest from $sourceUrl")
 
         try {
-            val content = networkClient.fetch(sourceUrl) ?: return
+            val content = networkClient.fetch(sourceUrl) ?: return@withContext
             val keyboxes = ArrayList<CertHack.KeyBox>()
 
             if (content.trimStart().startsWith("<")) {
                 keyboxes.addAll(CertHack.parseKeyboxXml(content.reader(), "harvested_direct.xml"))
             } else {
-                runBlocking(Dispatchers.IO) {
+                coroutineScope {
                     val deferreds = content.lines()
                         .filter { it.isNotBlank() && !it.startsWith("#") }
                         .map { line ->
@@ -105,13 +108,13 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
 
             if (keyboxes.isEmpty()) {
                 Logger.i("Fetcher: No keyboxes found.")
-                return
+                return@withContext
             }
 
             val crl = KeyboxVerifier.fetchCrl()
             if (crl == null) {
                 Logger.e("Fetcher: Failed to fetch CRL, aborting verification.")
-                return
+                return@withContext
             }
 
             var added = 0
@@ -188,12 +191,19 @@ class KeyboxFetcher(private val networkClient: NetworkClient = DefaultNetworkCli
 
     companion object {
         private const val MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
-        private val executor = Executors.newSingleThreadScheduledExecutor()
 
         fun schedule() {
-            executor.scheduleAtFixedRate({
-                KeyboxFetcher().harvest()
-            }, 5, 360, TimeUnit.MINUTES)
+            CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                delay(TimeUnit.MINUTES.toMillis(5))
+                while (true) {
+                    try {
+                        KeyboxFetcher().harvest()
+                    } catch (e: Exception) {
+                        Logger.e("Fetcher: Scheduled harvest failed", e)
+                    }
+                    delay(TimeUnit.MINUTES.toMillis(360))
+                }
+            }
         }
     }
 }

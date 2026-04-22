@@ -5,6 +5,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import org.mockito.MockedStatic
 import org.mockito.Mockito
 import java.io.File
@@ -53,7 +54,7 @@ class KeyboxFetcherTest {
     }
 
     @Test
-    fun `harvest fetches XML, verifies, and saves valid keybox`() {
+    fun `harvest fetches XML, verifies, and saves valid keybox`() = runBlocking {
         // Arrange
         val validXml = "<keybox>valid</keybox>"
         val sourceUrl = "http://example.com/pool.xml"
@@ -88,7 +89,7 @@ class KeyboxFetcherTest {
             .thenReturn(KeyboxVerifier.Status.VALID)
 
         // Act
-        val fetcher = KeyboxFetcher(fakeNetwork)
+        val fetcher = KeyboxFetcher(fakeNetwork, kotlinx.coroutines.Dispatchers.Unconfined)
         fetcher.harvest(sourceUrl, mockDir)
 
         // Assert
@@ -98,7 +99,7 @@ class KeyboxFetcherTest {
     }
 
     @Test
-    fun `harvest skips invalid keybox`() {
+    fun `harvest skips invalid keybox`() = runBlocking {
         // Arrange
         val xml = "<keybox>invalid</keybox>"
         val sourceUrl = "http://example.com/pool.xml"
@@ -117,7 +118,7 @@ class KeyboxFetcherTest {
             .thenReturn(KeyboxVerifier.Status.REVOKED)
 
         // Act
-        val fetcher = KeyboxFetcher(fakeNetwork)
+        val fetcher = KeyboxFetcher(fakeNetwork, kotlinx.coroutines.Dispatchers.Unconfined)
         fetcher.harvest(sourceUrl, mockDir)
 
         // Assert
