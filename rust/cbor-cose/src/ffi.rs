@@ -242,7 +242,7 @@ pub unsafe extern "C" fn rust_create_certificate_request(
 ) -> RustBuffer {
     panic::catch_unwind(panic::AssertUnwindSafe(|| {
         // Parse concatenated keys using offsets
-        let mut maced_keys: Vec<Vec<u8>> = Vec::new();
+        let mut maced_keys: Vec<Vec<u8>> = Vec::with_capacity(keys_count);
 
         // Validate keys_data and offsets
         let keys_data_opt = unsafe { validate_slice_args(keys_data_ptr, keys_data_len) };
