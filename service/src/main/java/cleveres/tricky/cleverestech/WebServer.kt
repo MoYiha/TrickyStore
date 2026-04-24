@@ -1493,7 +1493,7 @@ class WebServer(
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
         <div class="panel">
-            <h3>Active Rules</h3><div class="search-container"><input type="search" id="appFilter" placeholder="Filter active rules by package name..." oninput="renderAppTable()" aria-label="Filter rules" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('appFilter').value=''; renderAppTable();" class="clear-btn" id="clearAppFilterBtn" aria-label="Clear filter">&times;</button></div>
+            <h3>Active Rules</h3><div class="search-container"><input type="search" id="appFilter" placeholder="Filter active rules by package name..." oninput="renderAppTable()" aria-label="Filter rules" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('appFilter').value=''; renderAppTable(); document.getElementById('appFilter').focus();" class="clear-btn" id="clearAppFilterBtn" aria-label="Clear filter">&times;</button></div>
             <table id="appTable" class="responsive-table"><thead><tr><th>Package</th><th>Profile</th><th>Keybox</th><th>Permissions</th><th></th></tr></thead><tbody></tbody></table>
             <div style="margin-top:15px; text-align:right;"><button onclick="runWithState(this, 'Saving...', saveAppConfig)" class="primary">Save Configuration</button></div>
         </div>
@@ -1554,7 +1554,7 @@ class WebServer(
         </div>
         <div class="panel">
             <h3>Stored Keyboxes</h3>
-            <div class="search-container"><input type="search" id="keyboxFilter" placeholder="Filter keyboxes by name..." oninput="renderKeyboxes()" aria-label="Filter keyboxes" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('keyboxFilter').value=''; renderKeyboxes();" class="clear-btn" id="clearKeyboxFilterBtn" aria-label="Clear filter">&times;</button></div>
+            <div class="search-container"><input type="search" id="keyboxFilter" placeholder="Filter keyboxes by name..." oninput="renderKeyboxes()" aria-label="Filter keyboxes" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"><button onclick="document.getElementById('keyboxFilter').value=''; renderKeyboxes(); document.getElementById('keyboxFilter').focus();" class="clear-btn" id="clearKeyboxFilterBtn" aria-label="Clear filter">&times;</button></div>
             <div id="storedKeyboxesList" style="max-height: 200px; overflow-y: auto;"></div>
         </div>
         <div class="panel">
@@ -2080,6 +2080,7 @@ class WebServer(
                 } else {
                     notify('Saved Successfully');
                     document.getElementById('kbContent').value = '';
+                    document.getElementById('kbFilenameInput').value = '';
                     try {
                         const body = await res.clone().json();
                         if (body.keybox_count !== undefined) {
@@ -2525,8 +2526,6 @@ class WebServer(
             document.getElementById('permContacts').checked = false; document.getElementById('permMedia').checked = false; document.getElementById('permMicrophone').checked = false;
             toggleAddButton(); pkgInput.focus();
             notify(existingIdx !== -1 ? 'Rule Updated' : 'Rule Added');
-            const btn = document.getElementById('btnAddRule');
-            if (btn) btn.innerText = 'Add Rule';
         }
 
         function editAppRule(idx) {
@@ -2543,8 +2542,6 @@ class WebServer(
             toggleAddButton();
             document.getElementById('clearPkgBtn').style.display = 'block';
             document.getElementById('clearKbBtn').style.display = rule.keybox ? 'block' : 'none';
-            const btn = document.getElementById('btnAddRule');
-            if (btn) btn.innerText = 'Update Rule';
         }
 
         function removeAppRule(idx) {
@@ -2562,7 +2559,14 @@ class WebServer(
         }
         function toggleAddButton() {
             const btn = document.getElementById('btnAddRule'); const input = document.getElementById('appPkg');
-            if (btn && input) btn.disabled = !input.value.trim();
+            if (btn && input) {
+                const pkg = input.value.trim();
+                btn.disabled = !pkg;
+                if (typeof appRules !== 'undefined') {
+                    const exists = appRules.some(r => r.package === pkg);
+                    btn.innerText = exists ? 'Update Rule' : 'Add Rule';
+                }
+            }
         }
 
         function applySelectedProfile(btn) {
