@@ -5,6 +5,16 @@ CONFIG_DIR="/data/adb/cleverestricky"
 
 cd $MODDIR
 
+. $MODDIR/common_func.sh
+resetprop_if_diff ro.boot.verifiedbootstate green
+resetprop_if_diff ro.boot.flash.locked 1
+resetprop_if_diff ro.boot.veritymode enforcing
+resetprop_if_diff ro.boot.vbmeta.device_state locked
+resetprop_if_diff ro.boot.warranty_bit 0
+resetprop_if_diff ro.secure 1
+resetprop_if_diff ro.debuggable 0
+resetprop_if_diff ro.oem_unlock_supported 0
+
 (
 FAIL_COUNT=0
 MAX_FAILS=5
