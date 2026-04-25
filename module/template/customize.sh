@@ -62,7 +62,12 @@ fi
 extract "$ZIPFILE" 'customize.sh'  "$TMPDIR/.vunzip"
 extract "$ZIPFILE" 'verify.sh'     "$TMPDIR/.vunzip"
 
+if ! command -v busybox >/dev/null 2>&1; then
+  abort "! busybox is required for installation"
+fi
+
 ui_print "- Extracting module files"
+extract "$ZIPFILE" 'common_func.sh'  "$MODPATH"
 extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
 extract "$ZIPFILE" 'provision_attestation.sh' "$MODPATH"

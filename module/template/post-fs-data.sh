@@ -18,12 +18,15 @@ find "$MODDIR" -maxdepth 1 -name '*.so' -exec chcon u:object_r:cleverestricky_pu
 [ -f "$MODDIR/provision_attestation.sh" ] && chcon u:object_r:cleverestricky_exec:s0 "$MODDIR/provision_attestation.sh" 2>/dev/null
 
 # ===== Property Hiding =====
-# All property hiding (bootloader state, verified boot, debug flags, etc.)
-# is handled by BootLogic.kt inside the daemon at startup.
-# Shell-based resetprop commands were intentionally removed:
-#   - Shell scripts are trivially scannable by detection frameworks
-#   - Compiled daemon code is far harder to fingerprint
-#   - The daemon applies properties immediately on launch via service.sh
+. $MODDIR/common_func.sh
+resetprop_if_diff ro.boot.verifiedbootstate green
+resetprop_if_diff ro.boot.flash.locked 1
+resetprop_if_diff ro.boot.veritymode enforcing
+resetprop_if_diff ro.boot.vbmeta.device_state locked
+resetprop_if_diff ro.boot.warranty_bit 0
+resetprop_if_diff ro.secure 1
+resetprop_if_diff ro.debuggable 0
+resetprop_if_diff ro.oem_unlock_supported 0
 
 # Dynamic TEE Attestation Provisioning (Fixes CSR code 20 without Keybox)
 if [ -f "$MODDIR/provision_attestation.sh" ]; then
