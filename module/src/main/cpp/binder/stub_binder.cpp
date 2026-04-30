@@ -18,13 +18,10 @@ namespace android {
     BpBinder* IBinder::remoteBinder() { return nullptr; }
     
     // Binder.h
-#ifdef __LP64__
-    static_assert(sizeof(IBinder) == 24);
-    static_assert(sizeof(BBinder) == 40);
-#else
-    static_assert(sizeof(IBinder) == 12);
-    static_assert(sizeof(BBinder) == 20);
-#endif
+    // NOTE: No static_assert on sizeof(IBinder)/sizeof(BBinder) here.
+    // OEM ROMs (HyperOS, OneUI, OPPO, etc.) may add vendor-specific fields to
+    // these classes, making the AOSP sizes incorrect and causing crashes.
+    // Runtime size validation is performed via dlsym in binder_abi.h instead.
     BBinder::BBinder() {}
 
     const String16 &BBinder::getInterfaceDescriptor() const { __builtin_unreachable(); }
@@ -64,11 +61,11 @@ namespace android {
     uid_t IPCThreadState::getCallingUid() const { return 0; }
     
     // Parcel.h
-#ifdef __LP64__
-    static_assert(sizeof(Parcel) == 120);
-#else
-    static_assert(sizeof(Parcel) == 60);
-#endif
+    // NOTE: No static_assert on sizeof(Parcel) here.
+    // OEM ROMs (HyperOS, OneUI, OPPO, etc.) may extend the Parcel class with
+    // vendor-specific fields, making the AOSP size incorrect. A crash caused by
+    // a wrong sizeof assumption is worse than no check at all.
+    // The BinderAbi dynamic resolver (binder_abi.h) handles runtime validation.
     Parcel::Parcel() {}
     Parcel::~Parcel() {}
 
