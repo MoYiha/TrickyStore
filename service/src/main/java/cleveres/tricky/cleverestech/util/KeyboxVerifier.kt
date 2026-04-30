@@ -24,8 +24,19 @@ object KeyboxVerifier {
         VALID, REVOKED, INVALID, ERROR
     }
 
-    private const val CRL_URL = "https://android.googleapis.com/attestation/status"
+    private var CRL_URL = "https://android.googleapis.com/attestation/status"
     private val HASH_LENGTHS = listOf(32, 40, 64)
+
+    @androidx.annotation.VisibleForTesting
+    fun setCrlUrlForTesting(url: String) {
+        CRL_URL = url
+    }
+
+    private var cachedCrl: Set<String>? = null
+    private var cachedEtag: String? = null
+    private var lastFetchTime: Long = 0
+    private const val CACHE_TTL = 24 * 60 * 60 * 1000L // 24 hours
+    private val cacheLock = java.util.concurrent.locks.ReentrantLock()
 
     private fun isHex(str: String): Boolean {
         if (str.isEmpty()) return false
@@ -72,26 +83,78 @@ object KeyboxVerifier {
 
     @JvmStatic
     fun fetchCrl(): Set<String>? {
+        val now = System.currentTimeMillis()
+        cacheLock.lock()
+        try {
+            if (cachedCrl != null && (now - lastFetchTime) < CACHE_TTL) {
+                return cachedCrl
+            }
+        } finally {
+            cacheLock.unlock()
+        }
+
         return try {
             val url = URL(CRL_URL)
             val conn = url.openConnection() as HttpURLConnection
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             conn.requestMethod = "GET"
-            conn.setRequestProperty("Cache-Control", "no-cache")
 
-            if (conn.responseCode != 200) {
-                Logger.e("CRL Fetch Failed: ${conn.responseCode}")
-                return null
+            cacheLock.lock()
+            try {
+                cachedEtag?.let {
+                    conn.setRequestProperty("If-None-Match", it)
+                }
+            } finally {
+                cacheLock.unlock()
             }
+
+            val responseCode = conn.responseCode
+            if (responseCode == 304) {
+                cacheLock.lock()
+                try {
+                    lastFetchTime = now
+                    return cachedCrl
+                } finally {
+                    cacheLock.unlock()
+                }
+            }
+
+            if (responseCode != 200) {
+                Logger.e("CRL Fetch Failed: $responseCode")
+                // Return cached if available even if expired, as fallback
+                cacheLock.lock()
+                try {
+                    return cachedCrl
+                } finally {
+                    cacheLock.unlock()
+                }
+            }
+
+            val etag = conn.getHeaderField("ETag")
 
             // Use streaming parser to prevent OOM on large CRL files
-            conn.inputStream.bufferedReader().use { reader ->
+            val newCrl = conn.inputStream.bufferedReader().use { reader ->
                 parseCrl(reader)
             }
+
+            cacheLock.lock()
+            try {
+                cachedCrl = newCrl
+                cachedEtag = etag
+                lastFetchTime = now
+            } finally {
+                cacheLock.unlock()
+            }
+            newCrl
         } catch (e: Exception) {
             Logger.e("Failed to fetch CRL", e)
-            null
+            cacheLock.lock()
+            try {
+                cachedCrl // Fallback to cache on error
+            } finally {
+                cacheLock.unlock()
+            }
         }
     }
 
@@ -102,26 +165,7 @@ object KeyboxVerifier {
 
     @JvmStatic
     fun countRevokedKeys(): Int {
-        return try {
-            val url = URL(CRL_URL)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("Cache-Control", "no-cache")
-
-            if (conn.responseCode != 200) {
-                Logger.e("CRL Fetch Failed (Count): ${conn.responseCode}")
-                return -1
-            }
-
-            conn.inputStream.bufferedReader().use { reader ->
-                countCrlEntries(reader)
-            }
-        } catch (e: Exception) {
-            Logger.e("Failed to count CRL entries", e)
-            -1
-        }
+        return fetchCrl()?.size ?: -1
     }
 
     @JvmStatic
