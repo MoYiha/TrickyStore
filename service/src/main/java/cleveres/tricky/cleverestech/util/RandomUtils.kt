@@ -76,6 +76,15 @@ object RandomUtils {
         return sb.toString()
     }
 
+    fun generateRandomGsfId(): String {
+        val rng = secureRandom
+        val sb = StringBuilder(16)
+        repeat(16) {
+            sb.append(HEX_POOL[rng.nextInt(HEX_POOL.length)])
+        }
+        return sb.toString()
+    }
+
     fun generateRandomSimIso(): String {
         return COUNTRIES[secureRandom.nextInt(COUNTRIES.size)]
     }

@@ -938,6 +938,7 @@ object Config {
             val btMac = RandomUtils.generateRandomMac()
             val simIso = RandomUtils.generateRandomSimIso()
             val simCarrier = RandomUtils.generateRandomCarrier()
+            val gsfId = RandomUtils.generateRandomGsfId()
 
             val sb = StringBuilder()
 
@@ -969,6 +970,7 @@ object Config {
                                 l.startsWith("ATTESTATION_ID_WIFI_MAC") ||
                                 l.startsWith("ATTESTATION_ID_BT_MAC") ||
                                 l.startsWith("SIM_COUNTRY_ISO") ||
+                                l.startsWith("GSF_ID") ||
                                 l.startsWith("SIM_OPERATOR_NAME")) {
                                 return@forEach
                             }
@@ -990,6 +992,7 @@ object Config {
             sb.append("ATTESTATION_ID_BT_MAC=$btMac\n")
             sb.append("SIM_COUNTRY_ISO=$simIso\n")
             sb.append("SIM_OPERATOR_NAME=$simCarrier\n")
+            sb.append("GSF_ID=$gsfId\n")
 
             // Random location if enabled
             if (File(root, SPOOF_LOCATION_FILE).exists()) {
