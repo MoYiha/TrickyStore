@@ -63,16 +63,16 @@ class KeyboxVerifierCacheTest {
 
             // 1. Initial fetch
             val res1 = KeyboxVerifier.fetchCrl()
-            assertEquals(setOf("3039"), res1)
+            assertEquals(setOf("3039", "0000000000000000000000000000000000003039", "0000000000000000000000000000000000000000000000000000000000003039", "00000000000000000000000000003039"), res1)
             assertEquals(1, requestCount.get())
 
             // 2. Immediate second fetch - should be CACHED in memory (no network)
             val res2 = KeyboxVerifier.fetchCrl()
-            assertEquals(setOf("3039"), res2)
+            assertEquals(setOf("3039", "0000000000000000000000000000000000003039", "0000000000000000000000000000000000000000000000000000000000003039", "00000000000000000000000000003039"), res2)
             assertEquals(1, requestCount.get())
 
             // 3. countRevokedKeys - should also be cached
-            assertEquals(1, KeyboxVerifier.countRevokedKeys())
+            assertEquals(4, KeyboxVerifier.countRevokedKeys())
             assertEquals(1, requestCount.get())
 
             // 4. Force expiration by modifying private field via reflection?
@@ -84,7 +84,7 @@ class KeyboxVerifierCacheTest {
 
             // 5. Fetch after expiration - should trigger network with If-None-Match
             val res3 = KeyboxVerifier.fetchCrl()
-            assertEquals(setOf("3039"), res3)
+            assertEquals(setOf("3039", "0000000000000000000000000000000000003039", "0000000000000000000000000000000000000000000000000000000000003039", "00000000000000000000000000003039"), res3)
             assertEquals(2, requestCount.get()) // Incremented because of network request
 
         } finally {
