@@ -1321,7 +1321,19 @@ class WebServer(
         .search-container { position: relative; margin-bottom: 10px; }
         .search-container input[type="search"] { width: 100%; padding-right: 30px; }
         .clear-btn { position: absolute; right: 0; top: 0; height: 100%; min-height: 44px; min-width: 44px; background: transparent; border: none; color: #888; font-size: 1.2em; padding: 0; cursor: pointer; display: none; touch-action: manipulation; }
+
+
+
         .clear-btn:hover { color: #fff; background: transparent; }
+
+
+
+
+        .autocomplete-items { position: absolute; border: 1px solid var(--border); border-bottom: none; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; max-height: 200px; overflow-y: auto; background-color: var(--panel); border-radius: 0 0 6px 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .autocomplete-items div { padding: 10px; cursor: pointer; background-color: var(--panel); border-bottom: 1px solid var(--border); color: var(--fg); font-size: 0.9em; }
+        .autocomplete-items div:hover { background-color: #333; }
+        .autocomplete-active { background-color: var(--accent) !important; color: #000 !important; }
+
         .pwd-wrapper { position: relative; display: flex; align-items: center; width: 100%; margin-bottom: 5px; }
         .pwd-wrapper input { margin-bottom: 0 !important; padding-right: 60px; }
         .pwd-toggle { position: absolute; right: 5px; background: transparent; border: none; color: var(--accent); cursor: pointer; font-size: 0.85em; padding: 5px 10px; min-height: auto; text-transform: none; }
@@ -1487,8 +1499,8 @@ class WebServer(
     <div id="apps" class="content" role="tabpanel" aria-labelledby="tab_apps">
         <div class="panel">
             <h3>New Rule</h3>
-            <div style="margin-bottom:10px; position:relative;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" list="pkgList" placeholder="Type to search packages..." oninput="toggleAddButton(); document.getElementById('clearPkgBtn').style.display=this.value?'block':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:30px;"><button id="clearPkgBtn" class="clear-btn" onclick="document.getElementById('appPkg').value=''; this.style.display='none'; toggleAddButton(); document.getElementById('appPkg').focus();" style="top:auto; bottom:6px; transform:none;">&times;</button><datalist id="pkgList"></datalist></div>
-            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div style="position:relative;"><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" list="keyboxList" placeholder="Custom Keybox" oninput="document.getElementById('clearKbBtn').style.display=this.value?'block':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:30px;"><button id="clearKbBtn" class="clear-btn" onclick="document.getElementById('appKeybox').value=''; this.style.display='none'; document.getElementById('appKeybox').focus();" style="top:auto; bottom:6px; transform:none;">&times;</button><datalist id="keyboxList"></datalist></div></div>
+            <div style="margin-bottom:10px; position:relative;"><label for="appPkg">Package Name</label><input type="text" id="appPkg" placeholder="Type to search packages..." oninput="toggleAddButton(); document.getElementById('clearPkgBtn').style.display=this.value?'block':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:30px;"><button id="clearPkgBtn" class="clear-btn" onclick="document.getElementById('appPkg').value=''; this.style.display='none'; toggleAddButton(); document.getElementById('appPkg').focus();" style="top:auto; bottom:6px; transform:none;">&times;</button></div>
+            <div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Identity Profile</label><select id="appTemplate"><option value="null">No Identity Spoof</option></select></div><div style="position:relative;"><label for="appKeybox">Custom Keybox</label><input type="text" id="appKeybox" placeholder="Custom Keybox" oninput="document.getElementById('clearKbBtn').style.display=this.value?'block':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:30px;"><button id="clearKbBtn" class="clear-btn" onclick="document.getElementById('appKeybox').value=''; this.style.display='none'; document.getElementById('appKeybox').focus();" style="top:auto; bottom:6px; transform:none;">&times;</button></div></div>
             <div class="section-header">Blank Permissions (Privacy)</div><div style="display:flex; gap:15px;"><div class="row"><input type="checkbox" id="permContacts" class="toggle"><label for="permContacts">Contacts</label></div><div class="row"><input type="checkbox" id="permMedia" class="toggle"><label for="permMedia">Media</label></div><div class="row"><input type="checkbox" id="permMicrophone" class="toggle"><label for="permMicrophone">Microphone</label></div></div>
             <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
@@ -1716,7 +1728,79 @@ class WebServer(
             }
         }
 
+
+
+
         const urlParams = new URLSearchParams(window.location.search);
+
+        let installedPackages = [];
+        function setupAutocomplete(inputId, getDataArray) {
+            const inp = document.getElementById(inputId);
+            if (!inp || inp.dataset.acInitialized) return;
+            inp.dataset.acInitialized = 'true';
+            let currentFocus;
+            inp.addEventListener("input", function(e) {
+                let a, b, i, val = this.value;
+                closeAllLists();
+                if (!val) { return false;}
+                currentFocus = -1;
+                a = document.createElement("DIV");
+                a.setAttribute("id", this.id + "autocomplete-list");
+                a.setAttribute("class", "autocomplete-items");
+                this.parentNode.appendChild(a);
+                const arr = getDataArray();
+                let count = 0;
+                for (i = 0; i < arr.length; i++) {
+                    if (arr[i].toLowerCase().includes(val.toLowerCase())) {
+                        if (count > 50) break;
+                        b = document.createElement("DIV");
+                        b.innerHTML = arr[i].replace(new RegExp(val.replace(/[.*+?^${"$"}{}()|[\]\\]/g, "\\$&"), "gi"), (match) => `<strong style="color:var(--accent)">${"$"}{match}</strong>`);
+                        b.innerHTML += "<input type='hidden' value='" + arr[i] + "'>";
+                        b.addEventListener("click", function(e) {
+                            inp.value = this.getElementsByTagName("input")[0].value;
+                            closeAllLists();
+                            if(inputId === 'appPkg') {
+                                toggleAddButton();
+                                document.getElementById('clearPkgBtn').style.display = 'block';
+                            } else if (inputId === 'appKeybox') {
+                                document.getElementById('clearKbBtn').style.display = 'block';
+                            }
+                        });
+                        a.appendChild(b);
+                        count++;
+                    }
+                }
+            });
+            inp.addEventListener("keydown", function(e) {
+                let x = document.getElementById(this.id + "autocomplete-list");
+                if (x) x = x.getElementsByTagName("div");
+                if (e.keyCode == 40) { currentFocus++; addActive(x); }
+                else if (e.keyCode == 38) { currentFocus--; addActive(x); }
+                else if (e.keyCode == 13) {
+                    e.preventDefault();
+                    if (currentFocus > -1) { if (x) x[currentFocus].click(); }
+                    else if (this.value && inputId === 'appPkg') { addAppRule(); closeAllLists(); }
+                }
+            });
+            function addActive(x) {
+                if (!x) return false;
+                removeActive(x);
+                if (currentFocus >= x.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (x.length - 1);
+                x[currentFocus].classList.add("autocomplete-active");
+            }
+            function removeActive(x) {
+                for (let i = 0; i < x.length; i++) { x[i].classList.remove("autocomplete-active"); }
+            }
+            function closeAllLists(elmnt) {
+                let x = document.getElementsByClassName("autocomplete-items");
+                for (let i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != inp) { x[i].parentNode.removeChild(x[i]); }
+                }
+            }
+            document.addEventListener("click", function (e) { closeAllLists(e.target); });
+        }
+
         const token = urlParams.get('token');
         function getAuthUrl(path) { return path; }
         async function fetchAuth(url, options = {}) {
@@ -2143,8 +2227,8 @@ class WebServer(
                 previewTemplate();
             } catch(e) { console.error(e); notify('Error loading templates: ' + e.message, 'error'); }
             fetchAuth(getAuthUrl('/api/packages')).then(async r => { if(!r.ok) throw new Error(await r.text()); return r.json(); }).then(pkgs => {
-                const dl = document.getElementById('pkgList');
-                pkgs.forEach(p => { const opt = document.createElement('option'); opt.value = p; dl.appendChild(opt); });
+                installedPackages = pkgs;
+                setupAutocomplete('appPkg', () => installedPackages);
             }).catch(e => { notify('Error: ' + e.message, 'error'); });
             loadKeyboxes();
             currentFile = document.getElementById('fileSelector').value;
@@ -2292,8 +2376,7 @@ class WebServer(
                 if (res.ok) {
                     cachedKeyboxes = await res.json();
                     renderKeyboxes();
-                    const dl = document.getElementById('keyboxList');
-                    if (dl) { dl.innerHTML = ''; cachedKeyboxes.forEach(k => { const opt = document.createElement('option'); opt.value = k; dl.appendChild(opt); }); }
+                    setupAutocomplete('appKeybox', () => cachedKeyboxes);
                 } else { throw new Error(await res.text()); }
             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
         }
