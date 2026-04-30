@@ -119,6 +119,10 @@ class SecurityLevelInterceptor(
                         }
 
                         // StrongBox timing simulation
+                        // Note: Do NOT replace Thread.sleep with coroutines (e.g. runBlocking { delay() }).
+                        // In Android Binder IPC interceptors (onPreTransact), execution is strictly synchronous.
+                        // Non-blocking coroutines would break timing simulations by returning immediately,
+                        // and runBlocking adds heavy overhead while still blocking the underlying thread.
                         val delay = if (kgp.purpose.contains(android.hardware.security.keymint.KeyPurpose.SIGN)) 80L else 250L
                         Thread.sleep(delay)
                     }
