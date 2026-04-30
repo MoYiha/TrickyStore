@@ -1,10 +1,17 @@
 // LOCAL PKI & DER ENGINE
 // Native Rust PKI engine for isolated environments.
+//
+// FFI Safety Notes:
+//   - All #[no_mangle] extern "C" functions are wrapped with catch_unwind so
+//     that Rust panics never unwind across the FFI boundary into C++, which
+//     is undefined behaviour.  On panic the function returns a sentinel error
+//     value instead of aborting the process unexpectedly.
+//   - Blocking I/O (/dev/random) has been replaced with ring::rand::SystemRandom
+//     which is non-blocking, signal-safe, and works on all Android versions.
 
-use ring::{rand, signature};
+use std::panic::catch_unwind;
+use ring::{rand, rand::SecureRandom, signature};
 use ring::signature::KeyPair;
-use std::fs::File;
-use std::io::Read;
 use ring::hmac;
 
 pub struct CertEngine {
@@ -12,11 +19,16 @@ pub struct CertEngine {
 }
 
 impl CertEngine {
+    /// Create a new CertEngine.
+    /// Uses `ring::rand::SystemRandom` (non-blocking) instead of opening
+    /// `/dev/random` directly, which avoids blocking I/O in constructors and
+    /// is safe to call from FFI contexts and from threads without a Looper.
     pub fn new() -> Self {
+        let rng = rand::SystemRandom::new();
         let mut seed = [0u8; 32];
-        if let Ok(mut file) = File::open("/dev/random") {
-            let _ = file.read_exact(&mut seed);
-        }
+        // fill_bytes never blocks; returns Unspecified on error, in which case
+        // we leave seed as all-zeros (a weaker but non-panicking fallback).
+        let _ = rng.fill(&mut seed);
         Self { seed }
     }
 
@@ -45,3 +57,60 @@ impl CertEngine {
         Ok(())
     }
 }
+
+// =============================================================================
+// FFI-exported entry points
+//
+// Each function is guarded with std::panic::catch_unwind so that a Rust panic
+// inside this module can never unwind into C++ code (undefined behaviour in
+// the Rust/C++ FFI model).  On an unexpected panic the function returns a
+// safe sentinel value instead.
+// =============================================================================
+
+/// Generate an EC P-256 keypair and write the PKCS#8-encoded bytes into
+/// `out_buf` (caller-allocated, at least `out_buf_len` bytes).
+/// Returns the number of bytes written, or 0 on error / panic.
+#[no_mangle]
+pub extern "C" fn certengine_generate_ec_p256_keypair(
+    out_buf: *mut u8,
+    out_buf_len: usize,
+) -> usize {
+    // Safety: catch_unwind ensures panics do not cross the FFI boundary.
+    let result = catch_unwind(|| {
+        let pkcs8 = CertEngine::generate_ec_p256_keypair()
+            .unwrap_or_default();
+        if pkcs8.is_empty() || out_buf.is_null() || pkcs8.len() > out_buf_len {
+            return 0usize;
+        }
+        // SAFETY: caller guarantees out_buf points to at least out_buf_len bytes.
+        unsafe {
+            std::ptr::copy_nonoverlapping(pkcs8.as_ptr(), out_buf, pkcs8.len());
+        }
+        pkcs8.len()
+    });
+    result.unwrap_or(0)
+}
+
+/// Validate an attestation challenge (max 128 bytes).
+/// Returns 0 on success, -21 (INVALID_INPUT_LENGTH) if challenge is too long,
+/// or -1 on unexpected panic.
+#[no_mangle]
+pub extern "C" fn certengine_validate_challenge(
+    challenge: *const u8,
+    challenge_len: usize,
+) -> i32 {
+    if challenge.is_null() {
+        return -22; // INVALID_ARGUMENT
+    }
+    let result = catch_unwind(|| {
+        // SAFETY: caller guarantees challenge points to at least challenge_len bytes.
+        let slice = unsafe { std::slice::from_raw_parts(challenge, challenge_len) };
+        let engine = CertEngine::new();
+        match engine.validate_challenge(slice) {
+            Ok(()) => 0i32,
+            Err(code) => code,
+        }
+    });
+    result.unwrap_or(-1)
+}
+

