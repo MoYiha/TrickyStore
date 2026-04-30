@@ -184,6 +184,13 @@ object DrmInterceptor : BinderInterceptor() {
         return File(Config.getConfigRoot(), "random_drm_on_boot").exists()
     }
 
+    private fun isDigitStr(s: String): Boolean {
+        for (i in 0 until s.length) {
+            if (!s[i].isDigit()) return false
+        }
+        return true
+    }
+
     private var cachedDrmPid: Int? = null
 
     private fun findDrmServicePid(): Int? {
@@ -220,31 +227,28 @@ object DrmInterceptor : BinderInterceptor() {
 
         val pids = proc.list() ?: return null
 
-        val validPids = pids.filter { it.all { c -> c.isDigit() } }
-
         val buf = ByteArray(1024)
-        for (pidStr in validPids) {
+        for (i in 0 until pids.size) {
+            val pidStr = pids[i]
+            if (!isDigitStr(pidStr)) continue
             val pid = kotlin.runCatching {
-                val cmdlineFile = File("/proc/$pidStr/cmdline")
-                if (cmdlineFile.exists()) {
-                    val stream = java.io.FileInputStream(cmdlineFile)
-                    val length = try {
-                        stream.read(buf)
-                    } finally {
-                        stream.close()
+                val stream = java.io.FileInputStream("/proc/$pidStr/cmdline")
+                val length = try {
+                    stream.read(buf)
+                } finally {
+                    stream.close()
+                }
+                if (length > 0) {
+                    var end = 0
+                    while (end < length && buf[end] != 0.toByte()) {
+                        end++
                     }
-                    if (length > 0) {
-                        var end = 0
-                        while (end < length && buf[end] != 0.toByte()) {
-                            end++
-                        }
-                        val argv0 = String(buf, 0, end)
-                        for (target in DRM_PROCESS_NAMES) {
-                            if (argv0 == target || argv0.endsWith("/$target")) {
-                                val parsedPid = pidStr.toInt()
-                                Logger.d("DRM: Found DRM process '$argv0' at PID $parsedPid")
-                                return@runCatching parsedPid
-                            }
+                    val argv0 = String(buf, 0, end)
+                    for (target in DRM_PROCESS_NAMES) {
+                        if (argv0 == target || argv0.endsWith("/$target")) {
+                            val parsedPid = pidStr.toInt()
+                            Logger.d("DRM: Found DRM process '$argv0' at PID $parsedPid")
+                            return@runCatching parsedPid
                         }
                     }
                 }
