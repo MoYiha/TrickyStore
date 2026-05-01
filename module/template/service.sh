@@ -42,8 +42,14 @@ while [ true ]; do
     if [ $FAIL_COUNT -ge $MAX_FAILS ]; then
       BACKOFF_COUNT=$((BACKOFF_COUNT + 1))
       if [ $BACKOFF_COUNT -ge $MAX_BACKOFF_CYCLES ]; then
-        log -t CleveresTricky "Exhausted $MAX_BACKOFF_CYCLES backoff cycles ($((MAX_FAILS * MAX_BACKOFF_CYCLES)) total attempts). Giving up."
-        break
+        log -t CleveresTricky "Backoff cycles exhausted; entering slow-retry mode (every ${BACKOFF_SECONDS}s)"
+        # Do not break — keep retrying indefinitely so a transient boot-time
+        # failure (SELinux relabel, race with zygote, OOM) doesn't silence the
+        # module permanently until the next reboot.
+        BACKOFF_COUNT=0
+        FAIL_COUNT=0
+        sleep "$BACKOFF_SECONDS"
+        continue
       fi
       log -t CleveresTricky "Max retries reached, backing off for $BACKOFF_SECONDS seconds (backoff $BACKOFF_COUNT/$MAX_BACKOFF_CYCLES)"
       sleep "$BACKOFF_SECONDS"

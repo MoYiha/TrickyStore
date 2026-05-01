@@ -39,7 +39,7 @@ private val SECURITY_PATCH_REGEX = Regex("^[a-zA-Z0-9_=-]+$")
 private val FILENAME_REGEX = Regex("^[a-zA-Z0-9._-]+$")
 private val PERMISSIONS_REGEX = Regex("^[a-zA-Z0-9_.,]+$")
 private val TELEGRAM_COUNT_PATTERN = java.util.regex.Pattern.compile("tgme_page_extra\">([0-9 ]+) members")
-private const val WEB_UI_READINESS_TIMEOUT_MS = 5_000L
+private const val WEB_UI_READINESS_TIMEOUT_MS = 15_000L
 private const val WEB_UI_READINESS_POLL_MS = 100L
 private const val WEB_UI_READINESS_CONNECT_TIMEOUT_MS = 250
 
