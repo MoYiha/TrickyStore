@@ -3087,7 +3087,8 @@ class WebServer(
     companion object {
         fun isSafeHost(host: String?): Boolean {
             if (host == null) return false
-            val h = host.split(":")[0].lowercase()
+            val colonIdx = host.indexOf(':')
+            val h = (if (colonIdx != -1) host.substring(0, colonIdx) else host).lowercase()
             return h == "localhost" || h == "127.0.0.1" || h == "[::1]"
         }
 
