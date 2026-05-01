@@ -1972,7 +1972,7 @@ class WebServer(
                 const configRes = await fetchAuth(getAuthUrl('/api/config'));
                 const configData = await configRes.json();
                 document.getElementById('keyboxStatus').innerText = `${'$'}{configData.keybox_count} Keys Loaded`;
-            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
 
             // Load CBOX Status
             try {
@@ -2007,7 +2007,7 @@ class WebServer(
                     });
                 }
                 loadServers();
-            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
         }
 
         async function unlockCbox(filename) {
@@ -2021,7 +2021,7 @@ class WebServer(
                 formData.append('public_key', pk);
                 const res = await fetchAuth('/api/unlock_cbox', { method: 'POST', body: formData });
                 if (res.ok) { notify('Unlocked!'); loadKeyInfo(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
 
         async function loadServers() {
@@ -2029,6 +2029,7 @@ class WebServer(
             if (list) list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">Loading...</div>';
             try {
                 const res = await fetchAuth('/api/servers');
+                if (!res.ok) throw new Error(await res.text());
                 const servers = await res.json();
                 if (list) list.innerHTML = '';
                 if (servers.length === 0) {
@@ -2078,7 +2079,7 @@ class WebServer(
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/delete', { method: 'POST', body: formData });
                 if (res.ok) { notify('Server Removed'); loadServers(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
 
         async function refreshServer(id) {
@@ -2088,7 +2089,7 @@ class WebServer(
                 formData.append('id', id);
                 const res = await fetchAuth('/api/server/refresh', { method: 'POST', body: formData });
                 if(res.ok) { notify('Refreshed'); loadServers(); } else { const msg = await res.text(); notify('Error: ' + msg, 'error'); }
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
 
         async function loadFileContent(input) {
@@ -2129,9 +2130,9 @@ class WebServer(
                         if (body.keybox_count !== undefined) {
                             document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
                         }
-                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
                     loadKeyInfo();
-                } catch(e) { notify('Error: ' + e.message, 'error'); } finally {
+                } catch(e) { notify('Error: ' + e.message, 'error'); return; } finally {
                     resetDropZone();
                 }
             }
@@ -2170,7 +2171,7 @@ class WebServer(
                         if (body.keybox_count !== undefined) {
                             document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
                         }
-                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+                    } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
                     loadKeyInfo();
                 }
             } catch(e) {
@@ -2216,6 +2217,7 @@ class WebServer(
             }).catch(e => { notify('Error: ' + e.message, 'error'); });
             try {
                 const tRes = await fetchAuth(getAuthUrl('/api/templates'));
+                if (!tRes.ok) throw new Error(await tRes.text());
                 const templates = await tRes.json();
                 const sel = document.getElementById('templateSelect');
                 const appSel = document.getElementById('appTemplate');
@@ -2265,14 +2267,14 @@ class WebServer(
         }
         async function resetDrmId() {
             notify('Regenerating...', 'working');
-            try { const res = await fetchAuth('/api/reset_drm', { method: 'POST' }); if (!res.ok) throw new Error(await res.text()); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); }
+            try { const res = await fetchAuth('/api/reset_drm', { method: 'POST' }); if (!res.ok) throw new Error(await res.text()); notify('DRM Reset Started'); } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
         async function fetchBeta() {
             try {
                 const res = await fetchAuth('/api/fetch_beta', { method: 'POST' });
                 const text = await res.text();
                 if (res.ok) notify(text); else notify(text, 'error');
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
 
         function previewTemplate() {
@@ -2378,7 +2380,7 @@ class WebServer(
                     renderKeyboxes();
                     setupAutocomplete('appKeybox', () => cachedKeyboxes);
                 } else { throw new Error(await res.text()); }
-            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+            } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
         }
 
         function renderKeyboxes() {
@@ -2554,7 +2556,7 @@ class WebServer(
                 if (!res.ok) throw new Error(await res.text());
                 appRules = await res.json();
                 renderAppTable();
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
         function renderAppTable() {
             const filterInput = document.getElementById('appFilter');
@@ -2700,7 +2702,7 @@ class WebServer(
         }
 
         async function reloadConfig() {
-            try { await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000); } catch(e) { notify('Error: ' + e.message, 'error'); }
+            try { await fetchAuth(getAuthUrl('/api/reload'), { method: 'POST' }); notify('Reloaded'); setTimeout(() => window.location.reload(), 1000); } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
         async function resetEnvironment() {
             notify('Resetting...', 'working');
@@ -2713,7 +2715,7 @@ class WebServer(
                     const txt = await res.text();
                     notify('Reset Failed: ' + txt, 'error');
                 }
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
         async function applyLocationSpoof() {
             const lat = document.getElementById('inputLatitude').value.trim();
@@ -2769,7 +2771,7 @@ class WebServer(
                 });
                 if (saveRes.ok) notify('Location Settings Saved');
                 else { const msg = await saveRes.text(); notify('Error: ' + msg, 'error'); }
-            } catch(e) { notify('Error: ' + e.message, 'error'); }
+            } catch(e) { notify('Error: ' + e.message, 'error'); return; }
         }
         async function backupConfig() {
             const pw = document.getElementById('backupPw') ? document.getElementById('backupPw').value : '';
@@ -2784,7 +2786,7 @@ class WebServer(
                         const a = document.createElement('a'); a.href = url; a.download = 'cleverestricky_backup.ctsb'; a.click();
                         URL.revokeObjectURL(url); notify('Encrypted backup saved');
                     } else { notify('Backup failed', 'error'); }
-                } catch(e) { notify('Error: ' + e.message, 'error'); }
+                } catch(e) { notify('Error: ' + e.message, 'error'); return; }
             } else {
                 window.location.href = getAuthUrl('/api/backup') + '?token=' + token;
             }
@@ -2833,15 +2835,22 @@ class WebServer(
                     updateSaveButtonState();
                 } else {
                     console.log('[CleveresTricky] loadFile:', f, 'failed (status=' + res.status + ')');
+                    originalContent = '';
                     editor.value = 'Failed to load file.';
                     notify('Failed to load file', 'error');
+                    return;
                 }
             } catch(e){
                 console.log('[CleveresTricky] loadFile:', f, 'error -', e.message);
+                originalContent = '';
                 editor.value = 'Error loading file.';
                 notify('Error loading file', 'error');
+                return;
             } finally {
-                editor.disabled = false;
+                // Do not re-enable editor on failure to prevent saving the error message
+                if (editor.value !== 'Error loading file.' && editor.value !== 'Failed to load file.') {
+                    editor.disabled = false;
+                }
             }
         }
         async function handleSave(btn) {
@@ -2932,7 +2941,7 @@ class WebServer(
                  if (!res.ok) throw new Error(await res.text());
                  const data = await res.json();
                  renderResourceTable(data);
-             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
+             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
         }
 
         function renderResourceTable(data) {
