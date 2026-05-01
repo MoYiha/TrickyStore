@@ -115,23 +115,20 @@ object KeystoreInterceptor : BinderInterceptor() {
         for (pidStr in pids) {
             if (pidStr.all { it.isDigit() }) {
                 kotlin.runCatching {
-                    val cmdlineFile = java.io.File("/proc/$pidStr/cmdline")
-                    if (cmdlineFile.exists()) {
-                        val stream = java.io.FileInputStream(cmdlineFile)
-                        val length = try {
-                            stream.read(buf)
-                        } finally {
-                            stream.close()
-                        }
-                        if (length <= 0) return@runCatching
-                        var end = 0
-                        while (end < length && buf[end] != 0.toByte()) {
-                            end++
-                        }
-                        val argv0 = String(buf, 0, end)
-                        if (argv0 == "keystore2" || argv0.endsWith("/keystore2")) {
-                            return pidStr.toInt()
-                        }
+                    val stream = java.io.FileInputStream("/proc/$pidStr/cmdline")
+                    val length = try {
+                        stream.read(buf)
+                    } finally {
+                        stream.close()
+                    }
+                    if (length <= 0) return@runCatching
+                    var end = 0
+                    while (end < length && buf[end] != 0.toByte()) {
+                        end++
+                    }
+                    val argv0 = String(buf, 0, end)
+                    if (argv0 == "keystore2" || argv0.endsWith("/keystore2")) {
+                        return pidStr.toInt()
                     }
                 }
             }
