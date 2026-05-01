@@ -89,15 +89,15 @@ class MainEntryPointSafetyTest {
     }
 
     @Test
-    fun testConfigInitAfterKeystoreSuccess() {
+    fun testConfigInitBeforeKeystoreLoop() {
         val lines = mainContent.lines()
-        val ksSuccessLine = lines.indexOfFirst { it.contains("!ksSuccess") }
+        val loopStartLine = lines.indexOfFirst { it.contains("while (true)") }
         val configInitLine = lines.indexOfFirst { it.contains("Config.initialize()") }
-        assertTrue("ksSuccess check must exist", ksSuccessLine >= 0)
+        assertTrue("while loop must exist", loopStartLine >= 0)
         assertTrue("Config.initialize() must exist", configInitLine >= 0)
         assertTrue(
-            "Config.initialize() must come AFTER keystore success check",
-            configInitLine > ksSuccessLine
+            "Config.initialize() must come BEFORE the interceptor loop to ensure readiness",
+            configInitLine < loopStartLine
         )
     }
 
