@@ -35,9 +35,9 @@ fun main(args: Array<String>) {
                 Logger.d("Main: WebUI server readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:${server.listeningPort}")
             } catch (e: Exception) {
                 // Readiness probe timed out — the server thread may still be
-                // binding.  Log and continue so we still write the port file
-                // (NanoHTTPD opened the ServerSocket before probe started).
-                Logger.e("WebServer readiness probe failed; writing port file anyway if server bound", e)
+                // binding.  Log and continue; the port file will be written below
+                // if listeningPort > 0 (i.e. NanoHTTPD opened the ServerSocket).
+                Logger.e("WebServer readiness probe failed; will write port file if server bound (port > 0)", e)
             }
             val port = server.listeningPort
             val token = server.token
