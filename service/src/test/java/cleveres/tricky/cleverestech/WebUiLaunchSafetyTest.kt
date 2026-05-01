@@ -80,7 +80,7 @@ class WebUiLaunchSafetyTest {
             "Network security config must allow cleartext loopback traffic for the local WebUI",
             networkSecurityConfigContent.contains("cleartextTrafficPermitted=\"true\"") &&
                 networkSecurityConfigContent.contains("<domain includeSubdomains=\"true\">localhost</domain>") &&
-                networkSecurityConfigContent.contains("<domain>127.0.0.1</domain>")
+                networkSecurityConfigContent.contains("<domain includeSubdomains=\"false\">127.0.0.1</domain>")
         )
     }
 
