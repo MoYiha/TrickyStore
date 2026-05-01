@@ -5,7 +5,6 @@ import cleveres.tricky.cleverestech.rkp.LocalRkpProxy
 import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
-import java.security.MessageDigest
 import kotlinx.coroutines.*
 
 private const val CONFIG_DIR_MODE = 448
@@ -22,45 +21,91 @@ fun main(args: Array<String>) {
     cleveres.tricky.cleverestech.util.KeyboxFetcher.schedule()
 
     runBlocking {
+        val configDir = File("/data/adb/cleverestricky")
+
+        // === WebUI Setup ===
+        // The port file must be written regardless of whether the readiness probe
+        // succeeds, so that action.sh can always open the correct URL.
         try {
-            val configDir = File("/data/adb/cleverestricky")
             Logger.d("Main: Preparing WebUI config directory at ${configDir.absolutePath}")
             val server = WebServer(WEB_UI_PORT, configDir)
             Logger.d("Main: Starting WebUI server bootstrap on requested port $WEB_UI_PORT")
-            server.startAsync()
+            try {
+                server.startAsync()
+                Logger.d("Main: WebUI server readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:${server.listeningPort}")
+            } catch (e: Exception) {
+                // Readiness probe timed out — the server thread may still be
+                // binding.  Log and continue so we still write the port file
+                // (NanoHTTPD opened the ServerSocket before probe started).
+                Logger.e("WebServer readiness probe failed; writing port file anyway if server bound", e)
+            }
             val port = server.listeningPort
             val token = server.token
-            Logger.i("Web server started on port $port")
-            Logger.d("Main: WebUI server is listening on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
-            val portFile = File(configDir, "web_port")
-            // Secure directory before writing sensitive file
-            try {
-                SecureFile.mkdirs(configDir, CONFIG_DIR_MODE) // 0700
-                Logger.d("Main: Ensured WebUI config directory permissions for ${configDir.absolutePath}")
-            } catch (t: Throwable) {
-                Logger.e("failed to set permissions for config dir", t)
-            }
+            Logger.i("Web server on port $port (alive=${server.isAlive})")
+            Logger.d("Main: WebUI server on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
+            if (port > 0) {
+                val portFile = File(configDir, "web_port")
+                // Secure directory before writing sensitive file
+                try {
+                    SecureFile.mkdirs(configDir, CONFIG_DIR_MODE) // 0700
+                    Logger.d("Main: Ensured WebUI config directory permissions for ${configDir.absolutePath}")
+                } catch (t: Throwable) {
+                    Logger.e("failed to set permissions for config dir", t)
+                }
 
-            // Initialize RKP Proxy and ensure key is accessible by system/interceptor
-            try {
-                LocalRkpProxy.getMacKey()
-                Os.chmod(LocalRkpProxy.KEY_FILE_PATH, RKP_KEY_MODE) // 0600
-            } catch (t: Throwable) {
-                Logger.e("failed to init RKP permissions", t)
-            }
+                // Initialize RKP Proxy and ensure key is accessible by system/interceptor
+                try {
+                    LocalRkpProxy.getMacKey()
+                    Os.chmod(LocalRkpProxy.KEY_FILE_PATH, RKP_KEY_MODE) // 0600
+                } catch (t: Throwable) {
+                    Logger.e("failed to init RKP permissions", t)
+                }
 
-            SecureFile.writeText(portFile, "$port|$token")
-            Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
+                SecureFile.writeText(portFile, "$port|$token")
+                Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
+            } else {
+                Logger.e("Main: Server reported invalid port $port after start; port file not written")
+            }
         } catch (e: Exception) {
             Logger.e("Failed to start web server", e)
         }
+
+        // === Config Initialization ===
+        // Load keyboxes and all settings before the interceptor loop.  This
+        // guarantees that CertHack.canHack() returns true as soon as the
+        // first attestation request arrives — even if injection is delayed or
+        // permanently blocked by a ptrace conflict with another module.
+        try {
+            SecureFile.mkdirs(configDir, CONFIG_DIR_MODE)
+            Config.initialize()
+            BootLogic.run()
+        } catch (e: Exception) {
+            Logger.e("Failed to initialize Config/BootLogic", e)
+        }
+
+        // === Interceptor Registration Loop ===
+        // Wrapping each launch in try-catch prevents an unexpected exception
+        // inside tryRunKeystoreInterceptor / tryRunTelephonyInterceptor from
+        // propagating to the parent runBlocking scope and crashing the daemon.
         while (true) {
             var ksSuccess = false
             var telSuccess = false
 
             // Launch concurrent polling for both interceptors to improve startup time
-            val ksJob = launch(Dispatchers.IO) { ksSuccess = KeystoreInterceptor.tryRunKeystoreInterceptor() }
-            val telJob = launch(Dispatchers.IO) { telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor() }
+            val ksJob = launch(Dispatchers.IO) {
+                try {
+                    ksSuccess = KeystoreInterceptor.tryRunKeystoreInterceptor()
+                } catch (e: Exception) {
+                    Logger.e("Keystore interceptor threw unexpected exception", e)
+                }
+            }
+            val telJob = launch(Dispatchers.IO) {
+                try {
+                    telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
+                } catch (e: Exception) {
+                    Logger.e("Telephony interceptor threw unexpected exception", e)
+                }
+            }
 
             ksJob.join()
             telJob.join()
@@ -83,25 +128,36 @@ fun main(args: Array<String>) {
                  Logger.d("Telephony interceptor not ready yet")
             }
 
-            Config.initialize()
-            BootLogic.run()
+            // Config.initialize() and BootLogic.run() were already called above.
 
             var drmRegistered = false
             while (true) {
                 val telRetryJob = launch(Dispatchers.IO) {
-                    if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
-                        Logger.d("Retrying Telephony Interceptor injection...")
+                    try {
+                        if (!TelephonyInterceptor.tryRunTelephonyInterceptor()) {
+                            Logger.d("Retrying Telephony Interceptor injection...")
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("Telephony interceptor retry threw unexpected exception", e)
                     }
                 }
 
                 val drmRetryJob = launch(Dispatchers.IO) {
-                    if (!drmRegistered) {
-                        drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
+                    try {
+                        if (!drmRegistered) {
+                            drmRegistered = DrmInterceptor.tryRunDrmInterceptor()
+                        }
+                    } catch (e: Exception) {
+                        Logger.e("DRM interceptor threw unexpected exception", e)
                     }
                 }
 
                 val rkpJob = launch(Dispatchers.IO) {
-                    LocalRkpProxy.checkAndRotate()
+                    try {
+                        LocalRkpProxy.checkAndRotate()
+                    } catch (e: Exception) {
+                        Logger.e("RKP check threw unexpected exception", e)
+                    }
                 }
 
                 telRetryJob.join()
