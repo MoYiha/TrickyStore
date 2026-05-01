@@ -39,7 +39,7 @@
 // Forward-declare to avoid pulling in the full Parcel.h in headers that only
 // need the dynamic ABI layer.
 namespace android { class Parcel; class IBinder; }
-template <typename T> class sp;
+namespace android { template <typename T> class sp; }
 
 // ---------------------------------------------------------------------------
 // BinderAbi — Singleton holding all dynamically-resolved function pointers
@@ -177,7 +177,7 @@ public:
         return android::INVALID_OPERATION;
     }
     static android::status_t parcel_writeStrongBinder(android::Parcel *p,
-                                                       const sp<android::IBinder> &val) {
+                                                       const android::sp<android::IBinder> &val) {
         if (get().fn_parcel_writeStrongBinder) return get().fn_parcel_writeStrongBinder(p, val);
         return android::INVALID_OPERATION;
     }
@@ -212,7 +212,7 @@ public:
         return android::INVALID_OPERATION;
     }
     static android::status_t parcel_readStrongBinder(const android::Parcel *p,
-                                                      sp<android::IBinder> *out) {
+                                                      android::sp<android::IBinder> *out) {
         if (get().fn_parcel_readStrongBinder_ptr) return get().fn_parcel_readStrongBinder_ptr(p, out);
         return android::INVALID_OPERATION;
     }
@@ -270,7 +270,7 @@ private:
         android::status_t (*fn_parcel_write)(android::Parcel *, const void *, uint32_t)          = nullptr;
         android::status_t (*fn_parcel_writeNoException)(android::Parcel *)                        = nullptr;
         android::status_t (*fn_parcel_writeStrongBinder)(android::Parcel *,
-                                                          const sp<android::IBinder> &)           = nullptr;
+                                                          const android::sp<android::IBinder> &)           = nullptr;
         void              (*fn_parcel_freeData)(android::Parcel *)                                = nullptr;
         android::status_t (*fn_parcel_appendFrom)(android::Parcel *,
                                                    const android::Parcel *, uint32_t, uint32_t)  = nullptr;
@@ -281,7 +281,7 @@ private:
         uint64_t          (*fn_parcel_readUint64_val)(const android::Parcel *)                    = nullptr;
         android::status_t (*fn_parcel_read)(const android::Parcel *, void *, uint32_t)           = nullptr;
         android::status_t (*fn_parcel_readStrongBinder_ptr)(const android::Parcel *,
-                                                              sp<android::IBinder> *)             = nullptr;
+                                                              android::sp<android::IBinder> *)             = nullptr;
         size_t            (*fn_parcel_dataSize)(const android::Parcel *)                          = nullptr;
         size_t            (*fn_parcel_dataAvail)(const android::Parcel *)                         = nullptr;
         size_t            (*fn_parcel_dataPosition)(const android::Parcel *)                      = nullptr;
