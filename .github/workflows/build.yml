@@ -439,6 +439,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-home-cache-cleanup: true
+          add-job-summary: never
+          dependency-graph: disabled
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
@@ -558,6 +560,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-home-cache-cleanup: true
+          add-job-summary: never
+          dependency-graph: disabled
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
