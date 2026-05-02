@@ -1263,7 +1263,7 @@ class WebServer(
         .island.error .error-icon { display: block; }
         .success-icon { display: none; margin-right: 10px; color: var(--success); font-size: 1.2em; font-weight: bold; }
         .island.normal .success-icon { display: block; }
-        .island-close { background: transparent; border: none; color: #888; font-size: 1.5em; padding: 0; margin-left: 15px; cursor: pointer; min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+        .island-close { background: transparent; border: none; color: #888; font-size: 1.5em; padding: 0; margin-left: 15px; cursor: pointer; min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; pointer-events: auto; }
         .island-close:hover { color: #fff; }
         #islandText { flex: 1; }
         @keyframes spin { to { transform: rotate(360deg); } }
