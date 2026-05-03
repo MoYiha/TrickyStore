@@ -1336,7 +1336,7 @@ class WebServer(
 
         .pwd-wrapper { position: relative; display: flex; align-items: center; width: 100%; margin-bottom: 5px; }
         .pwd-wrapper input { margin-bottom: 0 !important; padding-right: 60px; }
-        .pwd-toggle { position: absolute; right: 5px; background: transparent; border: none; color: var(--accent); cursor: pointer; font-size: 0.85em; padding: 5px 10px; min-height: auto; text-transform: none; }
+        .pwd-toggle { position: absolute; right: 5px; background: transparent; border: none; color: var(--accent); cursor: pointer; font-size: 0.85em; padding: 5px 10px; min-height: 44px; min-width: 44px; text-transform: none; }
         .pwd-toggle:hover { color: #fff; background: transparent; }
         @media screen and (max-width: 600px) {
             .grid-2 { grid-template-columns: 1fr; }
