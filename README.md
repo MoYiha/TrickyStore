@@ -354,7 +354,7 @@ The native Binder hook uses an **Adaptive Interception** architecture that is im
 |----------|----------|------|
 | 1 | **BTF Kernel Introspection** | Kernel 5.4+ with `CONFIG_DEBUG_INFO_BTF` -- reads `/sys/kernel/btf/vmlinux` for exact struct layouts |
 | 2 | **Runtime Heuristic Probing** | Sends a dummy `PING_TRANSACTION` at startup and analyzes the response to discover struct field positions |
-| 3 | **Static Fallback Database** | Known offset maps for Android 8 (API 26) through Android 15+ (API 35) across kernel 4.4 -- 6.6 |
+| 3 | **Static Fallback Database** | Known offset maps for Android 8 (API 26) through Android 16+ (API 36) across kernel 4.4 -- 6.6 |
 
 **Safety guarantees:**
 
