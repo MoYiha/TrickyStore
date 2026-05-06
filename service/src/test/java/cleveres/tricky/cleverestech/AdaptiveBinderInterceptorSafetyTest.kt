@@ -225,9 +225,9 @@ class AdaptiveBinderInterceptorSafetyTest {
     @Test
     fun testHasMultipleAndroidVersionEntries() {
         assertTrue(
-            "Fallback database must cover multiple Android API levels (26-35+)",
-            cppContent.contains("26") && cppContent.contains("35") ||
-                cppContent.contains("android_8") && cppContent.contains("android_15")
+            "Fallback database must cover multiple Android API levels (26-36+)",
+            cppContent.contains("26") && cppContent.contains("36") ||
+                cppContent.contains("android_8") && cppContent.contains("android_16")
         )
     }
 

@@ -409,6 +409,9 @@ const FallbackOffsetEntry FallbackDatabase::s_entries[] = {
     // API 35 (Android 15), kernel 6.1.x / 6.6.x
     {35, 6, 1,  104, 112,  0, 8, 16, 20, 24, 28, 32, 48, 48},
     {35, 6, 6,  104, 112,  0, 8, 16, 20, 24, 28, 32, 48, 48},
+    // API 36 (Android 16), kernel 6.1.x / 6.6.x
+    {36, 6, 1,  104, 112,  0, 8, 16, 20, 24, 28, 32, 48, 48},
+    {36, 6, 6,  104, 112,  0, 8, 16, 20, 24, 28, 32, 48, 48},
 };
 
 const size_t FallbackDatabase::s_entry_count =
