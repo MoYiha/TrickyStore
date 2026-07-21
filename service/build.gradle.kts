@@ -127,7 +127,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(project(":stub"))
     testImplementation("net.sf.kxml:kxml2:2.3.0")
-    testImplementation("org.json:json:20260522")
+    testImplementation("org.json:json:20260719")
     testImplementation("org.mockito:mockito-core:5.23.0")
     testImplementation("org.mockito:mockito-inline:5.2.0")
     testImplementation("net.bytebuddy:byte-buddy:1.18.11")
