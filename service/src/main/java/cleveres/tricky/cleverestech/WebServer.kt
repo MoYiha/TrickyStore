@@ -1736,7 +1736,7 @@ class WebServer(
     <div id="info" class="content" role="tabpanel" aria-labelledby="tab_info">
         <div class="panel" style="background:var(--bg); border:none; padding:0; box-shadow:none;">
             <div id="resourceSummary" class="resource-summary">
-                <div style="color:#888;">Loading resource usage...</div>
+                <div style="color:#888;"><div class="inline-spinner"></div> Loading resource usage...</div>
             </div>
             
             <div class="panel">
@@ -2271,7 +2271,7 @@ class WebServer(
 
         async function loadServers() {
             const list = document.getElementById('serverList');
-            if (list) list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;">Loading...</div>';
+            if (list) list.innerHTML = '<div style="padding:15px; text-align:center; color:#888;"><div class="inline-spinner"></div> Loading...</div>';
             try {
                 const res = await fetchAuth('/api/servers');
                 if (!res.ok) throw new Error(await res.text());
@@ -2624,7 +2624,7 @@ class WebServer(
         async function loadKeyboxes() {
             try {
                 const list = document.getElementById('storedKeyboxesList');
-                if (list) list.innerHTML = '<div style="padding:10px; text-align:center; color:#888;">Loading...</div>';
+                if (list) list.innerHTML = '<div style="padding:10px; text-align:center; color:#888;"><div class="inline-spinner"></div> Loading...</div>';
                 const res = await fetchAuth('/api/keyboxes');
                 if (res.ok) {
                     cachedKeyboxes = await res.json();
@@ -2802,7 +2802,7 @@ class WebServer(
         let appRules = [];
         async function loadAppConfig() {
             const tbody = document.querySelector('#appTable tbody');
-            if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
+            if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;"><div class="inline-spinner"></div> Loading...</td></tr>';
             try {
                 const res = await fetchAuth(getAuthUrl('/api/app_config_structured'));
                 if (!res.ok) throw new Error(await res.text());
@@ -3190,7 +3190,7 @@ class WebServer(
         async function loadResourceUsage() {
              try {
                  const tbody = document.getElementById('resourceBody');
-                 if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;">Loading...</td></tr>';
+                 if(tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#888;"><div class="inline-spinner"></div> Loading...</td></tr>';
                  const res = await fetchAuth('/api/resource_usage');
                  if (!res.ok) throw new Error(await res.text());
                  const data = await res.json();
