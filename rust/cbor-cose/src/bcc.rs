@@ -12,7 +12,6 @@ use crate::cose::CoseError;
 use coset::{iana, CborSerializable, CoseKey, CoseSign1, CoseSign1Builder, HeaderBuilder};
 use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
 use p256::pkcs8::EncodePublicKey;
-use rand_core::OsRng;
 
 /// Generate a spoofed Boot Certificate Chain (BCC).
 ///
@@ -23,11 +22,11 @@ use rand_core::OsRng;
 /// Returns the CBOR-encoded BCC array.
 pub fn generate_spoofed_bcc() -> Result<Vec<u8>, CoseError> {
     // 1. Generate Root Key (DK)
-    let dk_private = SigningKey::random(&mut OsRng);
+    let dk_private = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
     let dk_public = VerifyingKey::from(&dk_private);
 
     // 2. Generate KeyMint Key (KM)
-    let km_private = SigningKey::random(&mut OsRng);
+    let km_private = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
     let km_public = VerifyingKey::from(&km_private);
 
     // 3. Create BCC[0]: Root -> Root (Self-signed)
@@ -116,7 +115,7 @@ fn create_bcc_entry<'a>(
 /// attestation checks.
 pub fn generate_keymint_4_0_exploit() -> Result<Vec<u8>, CoseError> {
     // 1. Generate fake KeyMint Key (KM)
-    let km_private = SigningKey::random(&mut OsRng);
+    let km_private = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
     let km_public = VerifyingKey::from(&km_private);
 
     // 2. Create COSE_Key structure mimicking KeyMint 4.0
