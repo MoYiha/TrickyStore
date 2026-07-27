@@ -1,11 +1,10 @@
 use crate::cbor::CborValue;
 use crate::cose::CoseError;
 use coset::CborSerializable;
-use p256::ecdsa::{SigningKey, VerifyingKey};
-use rand_core::OsRng;
+use p256::ecdsa::VerifyingKey;
 
 pub fn generate_hardware_backed_simulation() -> Result<Vec<u8>, CoseError> {
-    let hw_private = SigningKey::random(&mut OsRng);
+    let hw_private = p256::ecdsa::SigningKey::random(&mut rand_core::OsRng);
     let hw_public = VerifyingKey::from(&hw_private);
 
     // Simulate a secure element response
