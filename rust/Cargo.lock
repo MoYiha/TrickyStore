@@ -211,7 +211,7 @@ dependencies = [
  "minreq",
  "p256",
  "rand 0.8.7",
- "rand_core 0.9.5",
+ "rand_core 0.6.4",
  "rustc-hash",
  "serial_test",
  "sha2",
