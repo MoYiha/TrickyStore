@@ -1630,7 +1630,7 @@ class WebServer(
                 <div><label for="inputSimIso">SIM ISO</label><input type="text" id="inputSimIso" placeholder="ISO" oninput="validateRealtime(this, 'iso')" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
                 <div><label for="inputSimOp">Operator</label><input type="text" id="inputSimOp" placeholder="Operator" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
             </div>
-            <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;"><button type="button" onclick="clearSpoofingInputs()" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply System-Wide</button></div>
+            <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;"><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply System-Wide</button></div>
         </div>
         <div class="panel"><h3>Location Spoofing (Privacy Suite)</h3>
             <div class="row"><label for="spoof_location">Enable Location Spoofing</label><input type="checkbox" class="toggle" id="spoof_location" onchange="toggle('spoof_location')"></div>
@@ -1807,6 +1807,7 @@ class WebServer(
                 </select>
                 <button onclick="runWithState(this, 'Refreshing...', fetchLogs)" class="primary">Refresh Logs</button>
                 <button onclick="downloadLogs()">Download Logs</button>
+                <button onclick="copyToClipboard(document.getElementById('logViewer').value, 'Logs Copied', this)">Copy Logs</button>
             </div>
             <textarea id="logViewer" style="height:400px; width:100%; font-family:monospace; font-size:0.8em; line-height:1.4; padding: 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text);" readonly aria-label="Module Logs"></textarea>
         </div>
@@ -1814,7 +1815,7 @@ class WebServer(
 
     <div id="editor" class="content" role="tabpanel" aria-labelledby="tab_editor">
         <div class="panel">
-            <div class="row"><select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit"><option value="target.txt">target.txt</option><option value="security_patch.txt">security_patch.txt</option><option value="spoof_build_vars">spoof_build_vars</option><option value="app_config">app_config</option><option value="drm_fix">drm_fix</option></select><button id="revertBtn" class="danger" onclick="revertEditor()" style="display:none; margin-right:10px;" title="Revert Changes">Revert</button><button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button></div>
+            <div class="row"><select id="fileSelector" onchange="loadFile()" style="width:70%;" aria-label="Select file to edit"><option value="target.txt">target.txt</option><option value="security_patch.txt">security_patch.txt</option><option value="spoof_build_vars">spoof_build_vars</option><option value="app_config">app_config</option><option value="drm_fix">drm_fix</option></select><button id="revertBtn" class="danger" onclick="const btn = this; requireConfirm(btn, () => revertEditor(), 'Confirm Revert')" style="display:none; margin-right:10px;" title="Revert Changes">Revert</button><button id="saveBtn" onclick="handleSave(this)" title="Ctrl+S">Save</button></div>
             <textarea id="fileEditor" style="height:500px; font-family:monospace; margin-top:10px; line-height:1.4;" aria-label="File Content" onclick="editorUnsavedBypass = false;" oninput="editorUnsavedBypass = false; updateSaveButtonState()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
         </div>
     </div>
@@ -2564,7 +2565,7 @@ class WebServer(
 
         async function verifyKeyboxes() {
             const resultDiv = document.getElementById('verifyResult');
-            resultDiv.innerHTML = '<div style="color:#888;">Verifying... Please wait.</div>';
+            resultDiv.innerHTML = '<div style="color:#888;"><div class="inline-spinner"></div> Verifying... Please wait.</div>';
             notify('Verifying...', 'working');
             try {
                 const res = await fetchAuth('/api/verify_keyboxes', { method: 'POST' });
