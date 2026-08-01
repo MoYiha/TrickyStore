@@ -167,4 +167,25 @@ class WebServerPaletteTest {
         )
     }
 
+    @Test
+    fun testPaletteUxImprovements() {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/?token=$token")
+        val conn = url.openConnection() as HttpURLConnection
+        val html = conn.inputStream.bufferedReader().readText()
+
+        // 1. Verify Clear All has requireConfirm
+        assertTrue("Clear All should trigger requireConfirm", html.contains("requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')"))
+
+        // 2. Verify Revert has requireConfirm
+        assertTrue("Revert should trigger requireConfirm", html.contains("requireConfirm(btn, () => revertEditor(), 'Confirm Revert')"))
+
+        // 3. Verify verifyKeyboxes loading spinner
+        assertTrue("verifyKeyboxes should have inline spinner", html.contains("<div class=\"inline-spinner\"></div> Verifying... Please wait."))
+
+        // 4. Verify Copy Logs button exists
+        assertTrue("Copy Logs button should exist", html.contains("Copy Logs</button>"))
+    }
+
 }
