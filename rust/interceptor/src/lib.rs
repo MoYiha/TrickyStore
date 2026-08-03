@@ -35,9 +35,9 @@ pub extern "system" fn Java_cleveres_tricky_cleverestech_RkpInterceptor_createPr
         info!("Executing RKP Spoofing entirely in Native Rust!");
 
         // Fake ECC coordinates (32 bytes) and HMAC key
-        let x = vec![0x01; 32];
-        let y = vec![0x02; 32];
-        let hmac_key = vec![0xAA; 32];
+        let x = [0x01; 32];
+        let y = [0x02; 32];
+        let hmac_key = [0xAA; 32];
 
         let arr_ptr = match unowned_env
             .with_env(|env| -> Result<jbyteArray, jni::errors::Error> {

@@ -103,17 +103,20 @@ impl<'a> SafeParcel<'a> {
             return None;
         }
 
-        let mut u16_chars = Vec::with_capacity(length as usize);
-        for i in 0..(length as usize) {
+        let iter = (0..length as usize).map(|i| {
             let start = self.offset + i * 2;
             let bytes: [u8; 2] = self.data[start..start + 2].try_into().unwrap();
-            u16_chars.push(u16::from_le_bytes(bytes));
-        }
+            u16::from_le_bytes(bytes)
+        });
+
+        let s = std::char::decode_utf16(iter)
+            .map(|r| r.unwrap_or(std::char::REPLACEMENT_CHARACTER))
+            .collect::<String>();
 
         // Android pads strings to 4-byte boundaries
         let pad_len = (byte_len + 3) & !3;
         self.offset += pad_len;
 
-        String::from_utf16(&u16_chars).ok()
+        Some(s)
     }
 }
