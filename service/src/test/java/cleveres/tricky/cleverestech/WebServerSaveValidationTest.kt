@@ -1,71 +1,104 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import fi.iki.elonen.NanoHTTPD
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Test
 import org.junit.Rule
+import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.InputStream
-import java.util.UUID
-import cleveres.tricky.cleverestech.util.SecureFile
-import cleveres.tricky.cleverestech.util.SecureFileOperations
 
-@org.junit.Ignore
 class WebServerSaveValidationTest {
-
     @Rule
     @JvmField
     val tempFolder = TemporaryFolder()
 
     private lateinit var webServer: WebServer
     private lateinit var configDir: File
+    private lateinit var originalSecureFileImpl: SecureFileOperations
 
     @Before
     fun setUp() {
         configDir = tempFolder.newFolder("config")
         webServer = WebServer(8080, configDir)
+        originalSecureFileImpl = SecureFile.impl
 
         // Mock SecureFile to avoid Android OS dependency
-        SecureFile.impl = object : SecureFileOperations {
-             override fun writeText(file: File, content: String) {
-                 file.parentFile?.mkdirs()
-                 file.writeText(content)
-             }
-             override fun mkdirs(file: File, mode: Int) {
-                 file.mkdirs()
-             }
-             override fun touch(file: File, mode: Int) {
-                 file.parentFile?.mkdirs()
-                 if (!file.exists()) file.createNewFile()
-             }
-        }
+        SecureFile.impl =
+            object : SecureFileOperations {
+                override fun writeText(
+                    file: File,
+                    content: String,
+                ) {
+                    file.parentFile?.mkdirs()
+                    file.writeText(content)
+                }
+
+                override fun mkdirs(
+                    file: File,
+                    mode: Int,
+                ) {
+                    file.mkdirs()
+                }
+
+                override fun touch(
+                    file: File,
+                    mode: Int,
+                ) {
+                    file.parentFile?.mkdirs()
+                    if (!file.exists()) file.createNewFile()
+                }
+            }
     }
 
-    private fun mockSession(filename: String, content: String): NanoHTTPD.IHTTPSession {
+    @After
+    fun tearDown() {
+        SecureFile.impl = originalSecureFileImpl
+    }
+
+    private fun mockSession(
+        filename: String,
+        content: String,
+    ): NanoHTTPD.IHTTPSession {
         return object : NanoHTTPD.IHTTPSession {
             override fun execute() {}
+
             override fun getCookies() = null
+
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
+            override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
+
             override fun getInputStream(): InputStream? = null
+
             override fun getMethod() = NanoHTTPD.Method.POST
-            override fun getParms() = mapOf(
-                "token" to webServer.token,
-                "filename" to filename,
-                "content" to content
-            )
+
+            override fun getParms() =
+                mapOf(
+                    "token" to webServer.token,
+                    "filename" to filename,
+                    "content" to content,
+                )
+
             override fun getParameters(): Map<String, List<String>> = emptyMap<String, List<String>>()
+
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getQueryParameterString() = ""
+            override fun getQueryParameterString() = ""
+
             override fun getUri() = "/api/save"
+
             override fun parseBody(files: MutableMap<String, String>?) {}
+
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getRemoteIpAddress() = "127.0.0.1"
+            override fun getRemoteIpAddress() = "127.0.0.1"
+
             @Deprecated("NanoHTTPD deprecated this, ignore warning")
-    override fun getRemoteHostName() = "localhost"
+            override fun getRemoteHostName() = "localhost"
         }
     }
 
@@ -76,11 +109,11 @@ class WebServerSaveValidationTest {
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
         assertTrue(File(configDir, "app_config").exists())
 
-        // Test with permissions (added in recent optimization check)
-        val contentWithPerms = "com.example.app template1 keybox1.xml CONTACTS,MEDIA\n" +
-                               "com.test.pkg null null null\n" +
-                               "com.another.one template-2 keybox-2.xml null"
-        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("app_config", contentWithPerms)).status)
+        val threeColumnContent =
+            "com.example.app template1 keybox1.xml\n" +
+                "com.test.pkg null null\n" +
+                "com.another.one template-2 keybox-2.xml"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("app_config", threeColumnContent)).status)
     }
 
     @Test
@@ -90,15 +123,15 @@ class WebServerSaveValidationTest {
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
 
         // Invalid cases from optimization verification
-        val invalidPackage = "com.ex@mple.app template1 keybox1.xml null" // @ not allowed in pkg
-        val invalidTemplate = "com.example.app template*1 keybox1.xml null" // * not allowed in template
-        val invalidKeybox = "com.example.app template1 keybox/1.xml null" // / not allowed in keybox
-        val invalidPermissions = "com.example.app template1 keybox1.xml CONTACTS;MEDIA" // ; not allowed
+        val invalidPackage = "com.ex@mple.app template1 keybox1.xml"
+        val invalidTemplate = "com.example.app template*1 keybox1.xml"
+        val invalidKeybox = "com.example.app template1 keybox/1.xml"
+        val unsupportedFourthColumn = "com.example.app template1 keybox1.xml CONTACTS"
 
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidPackage)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidTemplate)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidKeybox)).status)
-        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidPermissions)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", unsupportedFourthColumn)).status)
     }
 
     @Test
@@ -117,9 +150,15 @@ class WebServerSaveValidationTest {
 
     @Test
     fun testSpoofBuildVarsValid() {
-        val content = "MANUFACTURER=Google\nMODEL=Pixel 8\nro.product.model=Pixel 8"
+        val content = "MANUFACTURER=Google\nMODEL=Pixel 8\nATTESTATION_ID_SERIAL=ABC123"
         val response = webServer.serve(mockSession("spoof_build_vars", content))
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
+    }
+
+    @Test
+    fun testSpoofBuildVarsRejectsUnsupportedNoOpKey() {
+        val response = webServer.serve(mockSession("spoof_build_vars", "ro.product.model=Pixel 8"))
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
     }
 
     @Test
@@ -131,7 +170,14 @@ class WebServerSaveValidationTest {
 
     @Test
     fun testSecurityPatchValid() {
-        val content = "2024-01-01\nsystem=20240101"
+        val content =
+            """
+            all=YYYY-MM-05
+            vendor=device_default
+            boot=no
+            [com.google.android.gms]
+            system=20240101
+            """.trimIndent()
         val response = webServer.serve(mockSession("security_patch.txt", content))
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
     }
@@ -141,6 +187,46 @@ class WebServerSaveValidationTest {
         val content = "2024-01-01\nINJECTED <script>"
         val response = webServer.serve(mockSession("security_patch.txt", content))
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
+
+        val legacyRuleInsideSection =
+            """
+            [com.example.app]
+            com.example.other=2024-01-01
+            """.trimIndent()
+        assertEquals(
+            NanoHTTPD.Response.Status.BAD_REQUEST,
+            webServer.serve(mockSession("security_patch.txt", legacyRuleInsideSection)).status,
+        )
+    }
+
+    @Test
+    fun testLegacySecurityPatchWildcardValid() {
+        val content = "system=2025-09-01\ncom.example.*=2024-01-01"
+        val response = webServer.serve(mockSession("security_patch.txt", content))
+        assertEquals(NanoHTTPD.Response.Status.OK, response.status)
+    }
+
+    @Test
+    fun testDrmPackagesValidation() {
+        val valid = "com.netflix.mediaclient\ncom.example.*\n# comment"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("drm_packages.txt", valid)).status)
+
+        val invalid = "com.example.valid\ncom.example;reboot"
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("drm_packages.txt", invalid)).status)
+    }
+
+    @Test
+    fun testBootPropsModeValidation() {
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("boot_props_mode", "auto\n")).status)
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("boot_props_mode", "force")).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("boot_props_mode", "always")).status)
+    }
+
+    @Test
+    fun testUnknownConfigFileIsRejected() {
+        val response = webServer.serve(mockSession("private_state", "value"))
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, response.status)
+        assertFalse(File(configDir, "private_state").exists())
     }
 
     @Test
@@ -150,13 +236,13 @@ class WebServerSaveValidationTest {
         assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("spoof_build_vars", validContent)).status)
 
         // Invalid content with unsafe shell characters
-        val bad1 = "KEY=\$(rm -rf /)"
-        val bad2 = "KEY=value; rm -rf /"
-        val bad3 = "KEY=value & reboot"
-        val bad4 = "KEY=value | reboot"
-        val bad5 = "KEY=val > /tmp/x"
-        val bad6 = "KEY=val < /etc/passwd"
-        val bad7 = "KEY=`reboot`"
+        val bad1 = "MODEL=\$(rm -rf /)"
+        val bad2 = "MODEL=value; rm -rf /"
+        val bad3 = "MODEL=value & reboot"
+        val bad4 = "MODEL=value | reboot"
+        val bad5 = "MODEL=val > /tmp/x"
+        val bad6 = "MODEL=val < /etc/passwd"
+        val bad7 = "MODEL=`reboot`"
 
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad1)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("spoof_build_vars", bad2)).status)
@@ -169,15 +255,32 @@ class WebServerSaveValidationTest {
 
     @Test
     fun testTemplatesJsonValidation() {
-        // Valid JSON
-        val valid = "[{\"id\":\"test\",\"model\":\"Test\"}]"
+        val valid =
+            """
+            [{
+              "id":"test",
+              "manufacturer":"Example",
+              "model":"Test",
+              "fingerprint":"example/test/test:14/BUILD/1:user/release-keys",
+              "brand":"example",
+              "product":"test",
+              "device":"test",
+              "release":"14",
+              "buildId":"BUILD",
+              "incremental":"1",
+              "securityPatch":"2024-01-01"
+            }]
+            """.trimIndent()
         assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("templates.json", valid)).status)
 
-        // Invalid JSON
         val invalid1 = "NOT JSON"
-        val invalid3 = "[}" // definitely invalid
+        val invalid2 = "[{\"id\":\"test\",\"model\":\"missing required fields\"}]"
+        val invalid3 = "[}"
+        val invalidObject = "{\"id\":\"test\"}"
 
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalid1)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalid2)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalid3)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("templates.json", invalidObject)).status)
     }
 }

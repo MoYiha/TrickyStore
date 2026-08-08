@@ -4,7 +4,9 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlPullParserFactory;
 
+import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -12,6 +14,13 @@ import java.util.List;
 import java.util.Map;
 
 public class XMLParser {
+    private static final int MAX_DEPTH = 32;
+    private static final int MAX_ELEMENTS = 4096;
+    private static final int MAX_ATTRIBUTES_PER_ELEMENT = 32;
+    private static final int MAX_NAME_LENGTH = 128;
+    private static final int MAX_ATTRIBUTE_VALUE_LENGTH = 4096;
+    private static final int MAX_TEXT_CHARS = 12 * 1024 * 1024;
+    private static final int MAX_DOCUMENT_CHARS = 16 * 1024 * 1024;
 
     public static class Element {
         public String name;
@@ -52,14 +61,17 @@ public class XMLParser {
     }
 
     private Element parse(Reader reader) throws Exception {
+        String document = readBounded(reader);
+        if (document.contains("<!DOCTYPE") || document.contains("<!ENTITY")) {
+            throw dtdRejected();
+        }
+
         XmlPullParserFactory xmlFactoryObject = XmlPullParserFactory.newInstance();
         XmlPullParser parser = xmlFactoryObject.newPullParser();
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
         try {
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false);
-        } catch (Exception ignored) {
-            // Ignore if feature not supported (though it should be for security)
-        }
+        } catch (Exception ignored) {}
         try {
             parser.setFeature("http://xml.org/sax/features/external-general-entities", false);
             parser.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
@@ -67,25 +79,44 @@ public class XMLParser {
         try {
             parser.setFeature(XmlPullParser.FEATURE_VALIDATION, false);
         } catch (Exception ignored) {}
-        parser.setInput(reader);
+        parser.setInput(new StringReader(document));
 
         Element currentElement = null;
         // Stack to keep track of parents
         List<Element> stack = new ArrayList<>();
 
         int eventType = parser.getEventType();
+        int elementCount = 0;
+        int textChars = 0;
         while (eventType != XmlPullParser.END_DOCUMENT) {
             switch (eventType) {
                 case XmlPullParser.DOCDECL:
                     // Security: Explicitly reject DTDs to prevent XXE (XML External Entity) attacks.
                     // Even if FEATURE_PROCESS_DOCDECL was disabled, checking the event type adds
                     // a second layer of defense.
-                    throw new SecurityException("DTD is not allowed in this parser to prevent XXE attacks");
+                    throw dtdRejected();
 
                 case XmlPullParser.START_TAG:
-                    Element element = new Element(parser.getName());
-                    for (int i = 0; i < parser.getAttributeCount(); i++) {
-                        element.attributes.put(parser.getAttributeName(i), parser.getAttributeValue(i));
+                    if (++elementCount > MAX_ELEMENTS || stack.size() >= MAX_DEPTH) {
+                        throw new SecurityException("XML structure exceeds safety limits");
+                    }
+                    String elementName = parser.getName();
+                    if (elementName == null || elementName.length() > MAX_NAME_LENGTH) {
+                        throw new SecurityException("Invalid XML element name");
+                    }
+                    int attributeCount = parser.getAttributeCount();
+                    if (attributeCount > MAX_ATTRIBUTES_PER_ELEMENT) {
+                        throw new SecurityException("Too many XML attributes");
+                    }
+                    Element element = new Element(elementName);
+                    for (int i = 0; i < attributeCount; i++) {
+                        String attributeName = parser.getAttributeName(i);
+                        String attributeValue = parser.getAttributeValue(i);
+                        if (attributeName == null || attributeName.length() > MAX_NAME_LENGTH ||
+                                attributeValue == null || attributeValue.length() > MAX_ATTRIBUTE_VALUE_LENGTH) {
+                            throw new SecurityException("XML attribute exceeds safety limits");
+                        }
+                        element.attributes.put(attributeName, attributeValue);
                     }
                     if (!stack.isEmpty()) {
                         stack.get(stack.size() - 1).addChild(element);
@@ -98,6 +129,10 @@ public class XMLParser {
                     if (currentElement != null && parser.getText() != null) {
                         String text = parser.getText().trim();
                         if (!text.isEmpty()) {
+                            textChars = Math.addExact(textChars, text.length());
+                            if (textChars > MAX_TEXT_CHARS) {
+                                throw new SecurityException("XML text exceeds safety limit");
+                            }
                             if (currentElement.textBuilder == null) {
                                 currentElement.textBuilder = new StringBuilder(text);
                             } else {
@@ -106,6 +141,9 @@ public class XMLParser {
                         }
                     }
                     break;
+
+                case XmlPullParser.ENTITY_REF:
+                    throw new SecurityException("XML entities are not allowed");
 
                 case XmlPullParser.END_TAG:
                     if (!stack.isEmpty()) {
@@ -120,6 +158,26 @@ public class XMLParser {
             eventType = parser.next();
         }
         return stack.isEmpty() ? null : stack.get(0);
+    }
+
+    private static String readBounded(Reader reader) throws IOException {
+        char[] buffer = new char[8192];
+        StringBuilder document = new StringBuilder();
+        int count;
+        while ((count = reader.read(buffer)) != -1) {
+            if (count == 0) continue;
+            if (document.length() > MAX_DOCUMENT_CHARS - count) {
+                throw new SecurityException("XML document exceeds safety limit");
+            }
+            document.append(buffer, 0, count);
+        }
+        return document.toString();
+    }
+
+    private static SecurityException dtdRejected() {
+        return new SecurityException(
+                "DTD is not allowed in this parser to prevent XXE attacks",
+                new XmlPullParserException("docdecl not permitted"));
     }
 
     public Map<String, String> obtainPath(String path) {

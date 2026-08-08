@@ -2,398 +2,217 @@
 
 [![Build](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml/badge.svg)](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml)
 
-### The Intelligent Android Security Module
-
-CleveresTricky is a self-managing spoof root module that uses automated decision-making to keep your device passing integrity checks, rotating identities, and healing itself without manual intervention. It monitors, adapts, and corrects problems on its own.
-
----
-
-## How It Works
-
-Unlike traditional modules that apply static patches, CleveresTricky runs an always-on daemon that makes real-time decisions:
-
-- **Self-Healing:** If SELinux contexts are lost after an OTA, the daemon detects and repairs them before every launch. No user action needed.
-- **Adaptive Key Rotation:** Cryptographic keys rotate automatically every 24 hours. If a key is revoked, the system detects it and switches to the next valid key without interruption.
-- **Automated Patch Sync:** When your security patch level falls behind (6+ months), the module updates it automatically to keep attestation passing.
-- **Crash Recovery:** If the daemon crashes, the service restarts it with exponential backoff, logging every event. After exhausting retries, it backs off to prevent boot storms. Also support Rust.
-- **Live Configuration:** Changes to config files are detected instantly via FileObserver. No reboot needed.
-- **Stealth Execution:** Property hiding runs inside compiled daemon code, not scannable shell scripts. The process disguises itself to avoid detection by integrity frameworks.
-
----
-
-## Minimum Requirements
-
-| Requirement | Details |
-|-------------|---------|
-| **Root Manager** | KernelSU v0.7.0+ (Zygisk Next) or APatch |
-| **Android** | 12 or newer (API 31+) |
-| **Architecture** | arm64-v8a, x86_64 |
-| **SELinux** | Enforcing (module manages its own policy) |
-
-> **TEE features** (IMEI provisioning, hardware attestation) require Qualcomm or MediaTek hardware. All other features work on any SoC.
-
----
+CleveresTricky is a KernelSU/APatch module for Android keystore and attestation compatibility. It provides app-scoped certificate handling, keybox management, patch-level controls, boot-property compatibility, and an on-device WebUI.
 
 ## Features
 
-### Pass Every Integrity Check
+| Feature | What it gives you |
+|---|---|
+| Targeted attestation handling | Apply certificate-chain substitution only to the apps you choose, or enable global mode when needed. |
+| TEE and StrongBox support | Works with genuine Android KeyMint key creation and later cryptographic operations. |
+| Multi-keybox manager | Load, verify, select, rotate, and monitor EC/RSA keyboxes from the WebUI. |
+| Encrypted CBOX storage | Protect keybox files with AES-256-GCM containers and encrypted local caches. |
+| Complete patch-level control | Configure OS, vendor, and boot patch levels globally or per app with live reload. |
+| Boot-property compatibility | Optional, bounded property adjustments for common unlocked/debug build indicators. |
+| PIF-friendly coexistence | Keeps process-scoped fingerprint configuration separate instead of overwriting another module's working setup. |
+| RKP passthrough | Keep generated-key responses on Android's genuine Remote Key Provisioning path when enabled. |
+| DRM app passthrough | Keep selected streaming/DRM apps on the genuine keystore certificate path. |
+| Secure WebUI | Manage targets, keyboxes, profiles, logs, encrypted backups, and compatibility switches from the module Action button. |
+| Hardened installer | Verifies every packaged payload, blocks unsupported installation paths, and keeps configuration root-only. |
 
-| What it does | How |
-|--------------|-----|
-| **Play Integrity DEVICE/STRONG** | Intercepts keystore at the Binder level and injects valid attestation chains |
-| **KeyMint 4.0 attestation** | Full support for the latest hardware attestation protocol |
-| **RKP (Remote Key Provisioning) - Beta** | Optional experimental mode (default OFF) with local proxy-generated COSE/CBOR proofs |
-| **Device Recall Protection** | Neutralizes Google's persistent 3-bit device recall by randomizing all device identity signals (see below) |
-| **Multi-keybox rotation** | Maintains a pool of keyboxes and rotates through them automatically (round-robin) |
-| **Encrypted keyboxes (.cbox)** | AES-256-GCM containers with hardware-backed key storage |
-| **Remote key servers** | Auto-fetches and validates keyboxes from configured community servers |
-| **Automated revocation check** | Verifies keys against Google's CRL every 24 hours; switches to valid keys if revoked |
+## Quick start
 
-### Complete Identity Control
+1. Download the release ZIP.
+2. Open KernelSU or APatch and choose **Install module**.
+3. Select the ZIP and reboot.
+4. Press CleveresTricky's **Action** button to open the WebUI.
+5. Add an authorized keybox, select target apps, and choose a profile.
+6. Check the dashboard and logs before enabling extra compatibility options.
 
-| What it does | How |
-|--------------|-----|
-| **IMEI / Serial / IMSI / ICCID** | System-wide spoofing via Binder interception (Qualcomm and MediaTek) |
-| **Randomize on boot** | Generates a fresh identity every reboot: IMEI (Luhn-valid), Serial, MAC, device template |
-| **Contact spoofing** | Per-app blank permissions for contacts, media, and microphone |
-| **DRM ID reset** | Regenerates Widevine device ID with one click |
-| **Location spoofing** | Simulates GPS coordinates with optional random drift within a configurable radius |
-| **MAC randomization** | WiFi and Bluetooth MAC addresses randomized per boot or on demand |
+No usable keybox or private attestation key is bundled. Only use key material you own or are authorized to test.
 
-### WebUI Dashboard
+## Requirements
 
-Manage everything from your browser at `http://localhost:5623`:
+| Component | Supported |
+|---|---|
+| Android | 12–16 (API 31–36) |
+| Root manager | KernelSU or APatch |
+| Architecture | `arm64-v8a` or `x86_64` |
+| Install method | Root-manager app while Android is running |
+| Magisk/recovery | Not supported; installation is stopped instead of leaving a partial module |
 
-| Capability | Details |
-|------------|---------|
-| **Settings backup/restore** | Encrypted backup (.ctsb format, AES-256-GCM) with password protection. Upload to restore. |
-| **Keybox management** | Upload, delete, verify, and rotate keyboxes. Supports XML, .cbox encrypted containers |
-| **One-click profiles** | GodProfile, DailyUse, Minimal, Default -- each configures all toggles at once |
-| **Per-app rules** | Assign templates, keyboxes, and blank permissions per application |
-| **Live toggles** | Enable/disable features instantly without reboot |
-| **Multi-language** | Fully translatable UI via lang.json |
+Results still depend on the real device state, certification, firmware, key material, Google Play services, and server-side policy. The module improves the working compatibility path but cannot promise a particular server verdict on every device.
 
-### Spoof Modes
+## Recommended profiles
 
-| Mode | What happens |
-|------|-------------|
-| **Target Only** (default) | Only apps in `target.txt` see spoofed values |
-| **Global Mode** | All apps are spoofed; `target.txt` becomes an exclusion list |
-| **IMEI Global** | IMEI/modem spoofing applies system-wide, independent of Global Mode |
-| **Network Global** | WiFi/BT MAC spoofing applies system-wide, independent of Global Mode |
+| Profile | Best for | Main behavior |
+|---|---|---|
+| Daily Compatibility | Fresh install / normal use | Targeted substitution, revocation checks, automatic boot-property policy, DRM and RKP passthrough enabled. |
+| Default | Conservative setup | Targeted substitution and revocation checks; boot-property changes off, DRM/RKP passthrough on. |
+| Maximum Compatibility | Focused testing | Global scope, identity refresh, telephony and boot-property compatibility; DRM/RKP passthrough disabled. |
+| Minimal | Troubleshooting | Certificate substitution and active spoofing features off; DRM/RKP passthrough remains on. |
 
-### Device Templates
+Start with **Daily Compatibility**. If a vendor feature regresses, switch to **Default** or set `boot_props_mode` to `disable`. Use **Maximum Compatibility** for short, controlled tests because it intentionally changes the widest scope.
 
-Built-in profiles that set all Build properties at once:
+## WebUI controls
 
-`pixel8pro` `pixel7pro` `pixel6` `xiaomi14` `s23ultra` `oneplus11` and more.
+The Action button opens a token-authenticated WebUI on the device loopback interface. It is not exposed to the local network.
 
-Assign templates globally or per-app. The module applies the correct fingerprint, model, brand, security patch, and attestation IDs automatically.
+The main controls are:
 
-### Platform Auto-Detection
+- **Global Mode:** targets every calling UID instead of only `target.txt` entries.
+- **Disable Certificate Substitution:** immediate safe mode without uninstalling the module.
+- **Auto Keybox Check:** periodically checks loaded keyboxes and revocation state.
+- **Refresh Identity on Boot:** refreshes supported attestation/telephony identifiers.
+- **Telephony Identifier Interception:** optional targeted telephony handling; reboot recommended after changing it.
+- **Hide Sensitive Props:** applies the boot-property compatibility set on the next boot.
+- **RKP Passthrough:** leaves generated-key replies untouched while the normal existing-key path remains available.
+- **DRM App Passthrough:** excludes packages in `drm_packages.txt` from certificate substitution.
 
-| Feature | Qualcomm | MediaTek |
-|---------|----------|----------|
-| **TEE Attestation** | `/dev/qseecom` or `/dev/smd` | `/dev/tee0` |
-| **IMEI Provisioning** | `provision_device_ids` | `provision_device_ids_mtk` |
-| **Hardware Keystore** | Supported | Supported |
+RKP and DRM passthrough are enabled on a fresh install. They are compatibility safeguards, not simulated RKP or DRM implementations.
 
-The module detects your chipset and uses the correct provisioning binary automatically.
+`boot_props_mode` controls the property layer: `auto` skips known overlapping/vendor-sensitive setups, `force` applies it whenever Hide Sensitive Props is enabled, and `disable` turns it off without deleting the toggle.
 
-### Self-Managing Architecture
+If you also use a process-scoped PIF/Zygisk module, let that module own its fingerprint file. CleveresTricky does not download public fingerprints or overwrite external PIF configuration; its attestation identity, patch-level, keybox, and boot-property layers continue to work independently.
 
-| Component | Description |
-|-----------|-------------|
-| **Adaptive Binder Interceptor** | Version-immune hook architecture that discovers kernel struct layouts at runtime (see below) |
-| **Stealth Daemon** | Runs as a disguised process. All property hiding happens in compiled code, not shell scripts. |
-| **Crash Recovery** | Automatic restart with exponential backoff (5 retries, 3 cycles, 5-minute cooldown) |
-| **SELinux Auto-Repair** | Contexts are verified and repaired before every daemon launch |
-| **Hot Reload** | FileObserver detects config changes and applies them instantly |
-| **Detailed Logging** | Every decision, rotation, failure, and recovery is logged with context |
-| **Atomic File Writes** | Config writes use temp-file + rename to prevent corruption on power loss |
-| **Thread-Safe State** | All shared configuration uses volatile fields and concurrent data structures |
+## Configuration
 
----
+Configuration is stored in `/data/adb/cleverestricky` with root-only permissions. WebUI saves are validated and written atomically.
 
-## Quick Start
+### Target apps
 
-1. **Install** -- Flash the module ZIP from KernelSU/APatch manager and reboot
-2. **Open WebUI** -- Navigate to `http://localhost:5623` in any browser (Configuration changes take effect immediately. No reboot needed)
-3. **Add Keybox** *(optional)* -- Upload via WebUI or place at `/data/adb/cleverestricky/keybox.xml`
-4. **(Optional) Enable RKP Beta** -- Toggle in WebUI or `touch /data/adb/cleverestricky/rkp_bypass` when explicitly testing the beta path
-5. **Set Targets** *(optional)* -- Add package names in WebUI or edit `/data/adb/cleverestricky/target.txt`
+Edit `target.txt` from the WebUI:
 
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [LOG.md](LOG.md) | Logcat filters and debugging guide |
-| [DETECTION_ANALYSIS.md](DETECTION_ANALYSIS.md) | Security analysis: eBPF, DroidGuard, timing checks |
-| [FFI_SAFETY_NOTES.md](FFI_SAFETY_NOTES.md) | Rust FFI safety audit and memory ownership model |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute to the project |
-| [LANGUAGES.md](LANGUAGES.md) | WebUI translation guide |
-| [THEME.md](THEME.md) | WebUI theme customization |
-| [DONATE.md](DONATE.md) | Support development |
-
----
-
-## Configuration Reference
-
-### Keybox (keybox.xml)
-
-```xml
-<?xml version="1.0"?>
-<AndroidAttestation>
-    <NumberOfKeyboxes>1</NumberOfKeyboxes>
-    <Keybox DeviceID="...">
-        <Key algorithm="ecdsa|rsa">
-            <PrivateKey format="pem">
------BEGIN EC PRIVATE KEY-----
-...
------END EC PRIVATE KEY-----
-            </PrivateKey>
-            <CertificateChain>
-                <NumberOfCertificates>...</NumberOfCertificates>
-                <Certificate format="pem">
------BEGIN CERTIFICATE-----
-...
------END CERTIFICATE-----
-                </Certificate>
-            </CertificateChain>
-        </Key>
-    </Keybox>
-</AndroidAttestation>
+```text
+com.google.android.gms
+io.github.vvb2060.keyattestation
+com.example.*
 ```
 
-### Build Properties Spoofing (`spoof_build_vars`)
+Wildcards are supported. Global Mode ignores this list and targets every UID.
+
+### Per-app identity and keybox
+
+`app_config` accepts three columns:
+
+```text
+# package                      identity-template  keybox-file
+com.example.attestation       pixel8pro          test.xml
+com.example.second            null               second.cbox
+```
+
+Use `null` when no per-app override is required.
+
+### Security patch levels
+
+`security_patch.txt` can set all three attestation patch fields:
 
 ```ini
+# Global defaults
+system=YYYY-MM-05
+vendor=device_default
+boot=no
+
+# Per-app override
+[com.google.android.gms]
+system=2025-10-01
+```
+
+Supported keys:
+
+- `system`: OS patch level;
+- `vendor`: vendor patch level;
+- `boot`: boot/kernel patch level;
+- `all`: set all three together.
+
+Supported values include `YYYY-MM-DD`, `YYYYMMDD`, `YYYYMM`, `today`, date placeholders, `device_default`, `prop`, and `no`. `device_default` preserves the certificate's genuine field; `prop` reads the matching system, vendor, or boot-image security-patch property; `no` removes that field. Invalid or oversized files are rejected and the last valid configuration stays active.
+
+The older `package.name=date` syntax remains supported for OS-patch overrides.
+
+### Build and attestation identity
+
+`spoof_build_vars` contains only values the module actually consumes:
+
+```ini
+TEMPLATE=pixel8pro
 MANUFACTURER=Google
 MODEL=Pixel 8 Pro
-FINGERPRINT=google/husky/husky:15/AP4A.250305.002/12737840:user/release-keys
 BRAND=google
 PRODUCT=husky
 DEVICE=husky
-RELEASE=15
-ID=AP4A.250305.002
-SECURITY_PATCH=2025-03-05
-# Or use a built-in template:
-# TEMPLATE=pixel8pro
+ATTESTATION_ID_SERIAL=ABC123XYZ789
 ```
 
-<details>
-<summary><b>All Supported Keys</b></summary>
+Bootloader-related userspace properties are controlled by **Hide Sensitive Props**, not by placing arbitrary `ro.*` lines in this file. The file accepts only fields supported by the module.
 
-| Key | Example |
-|-----|---------|
-| `MANUFACTURER` | `Google` |
-| `MODEL` | `Pixel 8 Pro` |
-| `FINGERPRINT` | `google/husky/husky:15/...` |
-| `BRAND` | `google` |
-| `PRODUCT` | `husky` |
-| `DEVICE` | `husky` |
-| `RELEASE` | `15` |
-| `ID` | `AP4A.250305.002` |
-| `DISPLAY` | `AP4A.250305.002` |
-| `INCREMENTAL` | `12737840` |
-| `TYPE` | `user` |
-| `TAGS` | `release-keys` |
-| `SECURITY_PATCH` | `2025-03-05` |
-| `BOOTLOADER` | `...` |
-| `BOARD` | `...` |
-| `HARDWARE` | `...` |
-| `SDK_INT` | `35` |
-| `CODENAME` | `REL` |
-| `TEMPLATE` | `pixel8pro` |
-| `ATTESTATION_ID_BRAND` | `google` |
-| `ATTESTATION_ID_DEVICE` | `husky` |
-| `ATTESTATION_ID_MODEL` | `Pixel 8 Pro` |
-| `ATTESTATION_ID_IMEI` | `35...` (Luhn-valid 15 digits) |
-| `ATTESTATION_ID_SERIAL` | `ABC123...` |
-| `ATTESTATION_ID_WIFI_MAC` | `00:11:22:33:44:55` |
-| `ATTESTATION_ID_BT_MAC` | `00:11:22:33:44:55` |
-| `SPOOF_LATITUDE` | `41.0082` |
-| `SPOOF_LONGITUDE` | `28.9784` |
-| `SPOOF_ALTITUDE` | `0` |
-| `SPOOF_ACCURACY` | `1.0` |
-| `SPOOF_LOCATION_RANDOM` | `true` / `false` |
-| `SPOOF_LOCATION_RADIUS` | `500` (meters) |
-| `SPOOF_LOCATION_INTERVAL` | `30` (seconds) |
+### DRM passthrough packages
 
-</details>
+Edit `drm_packages.txt` to choose which apps keep the genuine keystore path:
 
-### Target Packages for Attestation (`target.txt`)
+```text
+com.netflix.mediaclient
+com.amazon.avod.thirdpartyclient
+com.example.video.*
+```
+
+The list has no effect while DRM App Passthrough is disabled.
+
+## Keybox manager
+
+CleveresTricky accepts:
+
+- `/data/adb/cleverestricky/keybox.xml` for legacy setups;
+- XML files under `/data/adb/cleverestricky/keyboxes/`;
+- encrypted `.cbox` files uploaded from the WebUI;
+- explicitly configured HTTPS sources.
+
+Before a keybox becomes active, the module checks its private-key/certificate match, algorithm, chain structure, validity period, and revocation state. A broken or mixed pool is rejected as a whole. If the revocation list cannot be checked, newly loaded material stays inactive.
+
+Prefer CBOX for storage and transfer. Plain XML contains root-readable private key material and should never be committed to Git.
+
+## KernelSU package layout
+
+KernelSU recognizes the module through `module.prop`. The boot scripts, policy, Action script, and other module files are included in the ZIP root as documented by KernelSU.
+
+`service.apk`, `inject`, and `libcleverestricky.so` are build outputs. Gradle compiles them for each supported ABI, verifies them, and places them in the release ZIP with SHA-256 files. `module/template` contains the source-controlled scripts and configuration templates.
+
+A recovery-style `META-INF/com/google/android/update-binary` is not required by KernelSU and is not included because recovery and legacy Magisk installation are unsupported. See the official [KernelSU module guide](https://kernelsu.org/guide/module.html).
+
+## Troubleshooting
+
+Use the WebUI **Logs** tab or run:
 
 ```bash
-# Standard mode (leaf certificate replacement)
-io.github.vvb2060.keyattestation
-
-# Generate mode for TEE-broken devices (append !)
-com.google.android.gms!
+logcat -s CleveresTricky
 ```
 
-### Per-App Configuration (`app_config`)
+Common checks:
+
+- **No keybox active:** open Keyboxes, run verification, and check network access to the revocation list.
+- **An app behaves differently after property changes:** disable Hide Sensitive Props and reboot.
+- **Key generation or provisioning regressed:** enable RKP Passthrough.
+- **Native endpoint unavailable:** disable other ptrace/injection modules and inspect SELinux logs.
+- **Tamper warning:** reinstall the complete ZIP; a payload or checksum is missing or changed.
+- **Unsure which option caused a problem:** choose Minimal, reboot, then enable one option at a time.
+
+See [LOG.md](LOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), [LANGUAGES.md](LANGUAGES.md), and [THEME.md](THEME.md).
+
+## Building
+
+The build requires JDK 21, Android SDK 36, Android NDK `27.3.13750724`, Rust, `rustup`, `cargo-ndk`, and initialized Git submodules.
 
 ```bash
-# Format: packageName [template] [keybox_filename] [permissions]
-com.google.android.gms pixel8pro keybox_beta.xml
-com.netflix.mediaclient xiaomi14 null
-com.google.android.apps.walletnfcrel null keybox_wallet.xml
+git submodule update --init --recursive
+./gradlew testDebugUnitTest ktlintCheck zipDebug
 ```
 
-### Security Patch Spoofing (`security_patch.txt`)
+Release ZIPs are created in `module/release/`. CI also runs Android lint, native builds for both ABIs, Rust formatting/Clippy/tests/audit, shell validation, module-structure checks, and ZIP assembly.
 
-```ini
-# Simple (applied to all components)
-20250305
+## Security
 
-# Advanced (per-component)
-system=202503
-boot=2025-03-05
-vendor=2025-03-05
+- Keep the WebUI on loopback and never expose it through a public proxy or tunnel.
+- Keep recoverable backups before testing boot/property changes.
+- Use only authorized key material.
+- Report vulnerabilities privately before publishing exploit details.
 
-# Dynamic (auto-updates)
-today
-```
-
----
-
-## Advanced
-
-### RKP Beta Mode (Optional)
-
-```bash
-# Enable
-touch /data/adb/cleverestricky/rkp_bypass
-
-# Disable
-rm /data/adb/cleverestricky/rkp_bypass
-```
-
-The module runs a **Local RKP Proxy** that generates valid COSE/CBOR structures signed by a rotating root secret. The cryptographic identity mutates every 24 hours to prevent fingerprint-based banning.
-
-> RKP is intentionally **disabled by default**. Built-in profiles keep it off unless you manually enable it for beta testing.
-
-### AutoPIF - Automatic Fingerprint Updates
-
-```bash
-# Manual
-sh /data/adb/modules/cleverestricky/autopif.sh
-
-# Automatic (24h interval)
-touch /data/adb/cleverestricky/auto_beta_fetch
-```
-
-### DRM / Netflix Fix
-
-```bash
-touch /data/adb/cleverestricky/drm_fix
-```
-
-### Randomize on Boot
-
-```bash
-touch /data/adb/cleverestricky/random_on_boot
-```
-
-### Location Spoofing via WebUI or File
-
-```bash
-touch /data/adb/cleverestricky/spoof_location
-```
-
-### Per-Feature Global Modes
-
-```bash
-touch /data/adb/cleverestricky/imei_global
-touch /data/adb/cleverestricky/network_global
-```
-
-### Play Integrity API Protection
-
-The module includes comprehensive countermeasures against **all** Play Integrity API verdict categories, as documented in Google's November 2025 update and the Device Recall beta (2026).
-
-```bash
-# Enable (also auto-enables when random_on_boot or random_drm_on_boot is active)
-touch /data/adb/cleverestricky/device_recall_protection
-
-# Disable
-rm /data/adb/cleverestricky/device_recall_protection
-```
-
-**Verdict categories covered:**
-
-| Verdict | Threat | Our Defense |
-|---------|--------|-------------|
-| **deviceIntegrity** | Detects rooted/uncertified/emulated devices | Spoofed build props, locked bootloader, verified boot state, security patch |
-| **appIntegrity** | Detects modified/unsigned APKs | Keystore interception injects valid attestation chains |
-| **accountDetails** | Checks Play Store license | Handled by legitimate Play Store installation |
-| **recentDeviceActivity** | Flags anomalous token request volume | Built-in rate limiter caps requests to avoid anomaly detection |
-| **deviceRecall** | 3 persistent bits per device surviving factory resets | All device identifiers (IMEI, serial, DRM ID, fingerprint) randomized to break association |
-| **appAccessRiskVerdict** | Detects overlay/screen-capture apps | Module runs as native daemon, not as overlay |
-| **playProtectVerdict** | Checks Play Protect malware scan status | Module is not flagged as malware (native process) |
-| **deviceAttributes** | Attested SDK version | SDK version spoofed to match legitimate device |
-| **Remediation dialogs** | GET_INTEGRITY, GET_STRONG_INTEGRITY, GET_LICENSED force re-verification | Dialog intent detection at Binder level |
-| **Platform key rotation** | Google rotating root certificates (Feb 2026) | Adaptive key handling via rotating keybox pool |
-
-**How identity randomization defeats Device Recall:**
-
-Device Recall needs a stable device identifier to associate the 3 persistent bits. When all identifiers are randomized (IMEI, serial, DRM ID, fingerprint, security patch), the device appears as a completely new device to Google's servers. The 3-year retention period becomes irrelevant because previous bits cannot be matched to the new identity.
-
-**Best practice:** Enable `random_on_boot` + `random_drm_on_boot` for maximum protection. This gives you a fresh device identity on every boot.
-
-### Adaptive Binder Interceptor
-
-The native Binder hook uses an **Adaptive Interception** architecture that is immune to Android version updates and kernel struct changes. Instead of hardcoding kernel struct layouts, it discovers them dynamically at runtime.
-
-**Strategy priority (automatic fallback):**
-
-| Priority | Strategy | When |
-|----------|----------|------|
-| 1 | **BTF Kernel Introspection** | Kernel 5.4+ with `CONFIG_DEBUG_INFO_BTF` -- reads `/sys/kernel/btf/vmlinux` for exact struct layouts |
-| 2 | **Runtime Heuristic Probing** | Sends a dummy `PING_TRANSACTION` at startup and analyzes the response to discover struct field positions |
-| 3 | **Static Fallback Database** | Known offset maps for Android 8 (API 26) through Android 16+ (API 36) across kernel 4.4 -- 6.6 |
-
-**Safety guarantees:**
-
-- All buffer accesses are **bounds-checked** before read/write
-- A **state-machine stream parser** processes binder commands without assuming fixed struct sizes
-- **SIGSEGV/SIGBUS-safe memory probing** prevents kernel panics on malformed data
-- No raw C-style struct casts -- all field access uses dynamically discovered offsets
-- Unknown/new fields are **skipped safely** instead of causing crashes
-
----
-
-## AI Agent Engineering Policies
-
-To ensure the long-term viability and unbreakability of this module, AI Agents contributing to this project must adhere to strict policies:
-- **No Hardcoding:** Offsets, sizes, and struct layouts must be discovered dynamically (e.g., via BTF or heuristic probing). No blind reliance on fixed values.
-- **Dynamic Adaptability:** The architecture must withstand kernel updates and Android version changes without crashing.
-- **Deep Testing:** Tests must cover edge cases deeply. Write tests before writing code.
-- **Robust Architectures:** No shortcuts or band-aid fixes. Provide serious, international-level engineering solutions.
-
-## Roadmap
-
-- [ ] AOSP Full Compatibility
-- [ ] Zygisk-less standalone mode
-- [ ] Enhanced KernelSU native integration
-- [ ] Advanced detection evasion independent of Zygisk injection
-
-## Acknowledgements
-
-- [PlayIntegrityFix](https://github.com/chiteroman/PlayIntegrityFix) - Original inspiration
-- [FrameworkPatch](https://github.com/chiteroman/FrameworkPatch) - Framework patching
-- [BootloaderSpoofer](https://github.com/chiteroman/BootloaderSpoofer) - Bootloader state spoofing
-- [KeystoreInjection](https://github.com/aviraxp/Zygisk-KeystoreInjection) - Zygisk-based injection
-- [LSPosed](https://github.com/LSPosed/LSPosed) - Xposed framework
-
-## Community
-
-**Telegram:** [Cleverestech Group](https://telegram.me/cleverestech)
-
-## Support
-
-If you find this project useful, consider supporting its development: [DONATE.md](DONATE.md)
+Android attestation and Play Integrity can change independently of this project. The official [Android attestation documentation](https://source.android.com/docs/security/features/keystore/attestation), [Play Integrity verdict documentation](https://developer.android.com/google/play/integrity/verdicts), and [KernelSU module guide](https://kernelsu.org/guide/module.html) remain authoritative.
