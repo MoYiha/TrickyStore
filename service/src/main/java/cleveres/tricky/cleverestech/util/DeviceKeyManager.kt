@@ -21,7 +21,6 @@ object DeviceKeyManager {
     private const val AES_MODE = "AES/GCM/NoPadding"
     private const val TAG = "DeviceKeyManager"
 
-    // Fallback if AndroidKeyStore is unavailable (e.g. some root environments)
     @Volatile
     private var fallbackKey: SecretKey? = null
 
@@ -46,26 +45,34 @@ object DeviceKeyManager {
             throw IOException("Fallback key path is not a regular file")
         }
         try {
-            val ks = KeyStore.getInstance(ANDROID_KEYSTORE)
-            ks.load(null)
-            if (!ks.containsAlias(KEY_ALIAS)) {
-                val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-                keyGenerator.init(
-                    KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                        .setKeySize(256)
-                        .build(),
-                )
-                keyGenerator.generateKey()
-            }
-            require(ks.getEntry(KEY_ALIAS, null) is KeyStore.SecretKeyEntry) {
-                "AndroidKeyStore did not return the generated AES key"
-            }
-        } catch (e: Throwable) {
-            Logger.e("$TAG: AndroidKeyStore failed, using fallback file key: ${e.message}")
+            initializeAndroidKeyStore()
+        } catch (error: Exception) {
+            Logger.e("$TAG: AndroidKeyStore failed, using fallback file key: ${error.message}")
             useFallback = true
             loadFallbackKey(rootDir)
+        } catch (error: LinkageError) {
+            Logger.e("$TAG: AndroidKeyStore API unavailable, using fallback file key: ${error.message}")
+            useFallback = true
+            loadFallbackKey(rootDir)
+        }
+    }
+
+    private fun initializeAndroidKeyStore() {
+        val ks = KeyStore.getInstance(ANDROID_KEYSTORE)
+        ks.load(null)
+        if (!ks.containsAlias(KEY_ALIAS)) {
+            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            keyGenerator.init(
+                KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .build(),
+            )
+            keyGenerator.generateKey()
+        }
+        require(ks.getEntry(KEY_ALIAS, null) is KeyStore.SecretKeyEntry) {
+            "AndroidKeyStore did not return the generated AES key"
         }
     }
 
@@ -125,7 +132,6 @@ object DeviceKeyManager {
                 val encrypted = cipher.doFinal(data)
                 ciphertext = encrypted
 
-                // Format: [1 byte IV len] [IV] [ciphertext + GCM tag]
                 val result = ByteArray(1 + iv.size + encrypted.size)
                 result[0] = iv.size.toByte()
                 System.arraycopy(iv, 0, result, 1, iv.size)
