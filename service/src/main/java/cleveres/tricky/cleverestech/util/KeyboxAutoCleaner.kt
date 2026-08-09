@@ -32,6 +32,7 @@ object KeyboxAutoCleaner {
     private val keyboxDir = File(configDir, "keyboxes")
     private val revokedDir = File(keyboxDir, "revoked")
     private val toggleFile = File(configDir, "auto_keybox_check")
+    private val spoofEnabledFile = File(configDir, "spoof_enabled")
     private val webPortFile = File(configDir, "web_port")
 
     fun start() {
@@ -71,16 +72,24 @@ object KeyboxAutoCleaner {
         }
     }
 
+    private fun isEnabledNow(): Boolean =
+        Config.isSpoofEnabled && isRegularFile(spoofEnabledFile) && isRegularFile(toggleFile)
+
     private fun runCheck() {
-        if (!isRegularFile(toggleFile)) return
+        if (!isEnabledNow()) return
 
         Logger.i("AutoCleaner: Starting daily revocation check...")
         val results = KeyboxVerifier.verify(configDir)
         var revokedCount = 0
+        var cancelled = false
 
         SecureFile.mkdirs(revokedDir, 448)
 
         for (res in results) {
+            if (!isEnabledNow()) {
+                cancelled = true
+                break
+            }
             if (res.status == KeyboxVerifier.Status.REVOKED || res.status == KeyboxVerifier.Status.INVALID) {
                 Logger.i("AutoCleaner: Keybox ${res.filename} is ${res.status}. Moving to revoked.")
                 val file = res.file
@@ -110,15 +119,18 @@ object KeyboxAutoCleaner {
             }
         }
 
-        cleveres.tricky.cleverestech.Config.updateKeyBoxesSync()
-        if (revokedCount > 0) notifyUser(revokedCount)
-        Logger.i("AutoCleaner: Finished check. Revoked/Invalid files moved: $revokedCount")
+        Config.updateKeyBoxesSync()
+        if (!cancelled && revokedCount > 0) notifyUser(revokedCount)
+        if (cancelled) {
+            Logger.i("AutoCleaner: Check stopped because automatic cleanup was disabled")
+        } else {
+            Logger.i("AutoCleaner: Finished check. Revoked/Invalid files moved: $revokedCount")
+        }
     }
 
     private fun notifyUser(count: Int) {
         try {
             val url = readWebUiUrl() ?: return
-            // Post a high-priority, actionable notification
             val cmd =
                 arrayOf(
                     "cmd",
@@ -155,12 +167,6 @@ object KeyboxAutoCleaner {
         }
     }
 
-    /**
-     * Reads the `web_port` metadata file (`port|token`) and returns the tokenized WebUI URL.
-     *
-     * Returns null if the file is missing or malformed so a notification never
-     * exposes a guessed or unauthenticated endpoint.
-     */
     private fun readWebUiUrl(): String? {
         return try {
             if (!isRegularFile(webPortFile) || webPortFile.length() !in 1..256) return null
