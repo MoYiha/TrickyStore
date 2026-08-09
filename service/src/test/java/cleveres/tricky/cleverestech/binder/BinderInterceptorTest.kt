@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech.binder
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
+import cleveres.tricky.cleverestech.binder.BinderInterceptor.Continue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -27,9 +28,7 @@ class BinderInterceptorTest {
                     data: Parcel,
                     reply: Parcel?,
                     resultCode: Int,
-                ): Result {
-                    return BinderInterceptor.Continue
-                }
+                ): Result = Continue
             }
 
         val data = Parcel.obtain()
@@ -62,9 +61,7 @@ class BinderInterceptorTest {
                     data: Parcel,
                     reply: Parcel?,
                     resultCode: Int,
-                ): Result {
-                    return BinderInterceptor.Continue
-                }
+                ): Result = Continue
             }
 
         val data = Parcel.obtain()
