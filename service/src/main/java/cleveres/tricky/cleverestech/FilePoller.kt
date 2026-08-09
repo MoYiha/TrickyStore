@@ -44,11 +44,8 @@ class FilePoller(
         if (isRunning) return
         isRunning = true
         lastSnapshot = snapshot()
-
-        val observerStarted = startObserver()
-        if (!observerStarted) {
-            scheduleFallbackPolling()
-        }
+        startObserver()
+        scheduleFallbackPolling()
     }
 
     private fun startObserver(): Boolean {
@@ -71,14 +68,19 @@ class FilePoller(
                         event: Int,
                         path: String?,
                     ) {
-                        if (path == file.name) checkForChange()
+                        if (path != file.name) return
+                        try {
+                            checkForChange()
+                        } catch (error: Throwable) {
+                            Logger.e("FilePoller: Observer check failed for ${file.name}", error)
+                        }
                     }
                 }
             fileObserver.startWatching()
             observer = fileObserver
             true
         } catch (error: Throwable) {
-            Logger.e("FilePoller: Could not start FileObserver for ${file.name}; enabling fallback polling", error)
+            Logger.e("FilePoller: Could not start FileObserver for ${file.name}; periodic polling remains active", error)
             false
         }
     }
@@ -90,7 +92,7 @@ class FilePoller(
                     try {
                         checkForChange()
                     } catch (error: Throwable) {
-                        Logger.e("FilePoller: Fallback check failed for ${file.name}", error)
+                        Logger.e("FilePoller: Periodic check failed for ${file.name}", error)
                     }
                 },
                 intervalMs,
