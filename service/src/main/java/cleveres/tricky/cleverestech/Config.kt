@@ -36,8 +36,12 @@ object Config {
     private val rkpInfrastructurePackages =
         setOf(
             "com.android.rkpd",
+            "com.android.rkpdapp",
+            "com.android.remoteprovisioner",
             "com.google.android.rkpd",
+            "com.google.android.rkpdapp",
             "com.google.android.go.rkpd",
+            "com.google.android.remoteprovisioner",
         )
 
     private fun <T> putBoundedUidCache(
@@ -816,6 +820,9 @@ object Config {
     @OptIn(ExperimentalStdlibApi::class)
     internal fun updateBuildVars(f: File?) =
         runCatching {
+            if (f == null || f.absoluteFile == File(root, SPOOF_BUILD_VARS_FILE).absoluteFile) {
+                discardStagedRandomization()
+            }
             val newVars = mutableMapOf<String, String>()
             val newIds = mutableMapOf<String, ByteArray>()
             if (f?.exists() == true) {
@@ -1252,6 +1259,7 @@ object Config {
     private const val DRM_PASSTHROUGH_FILE = "drm_passthrough"
     private const val DRM_PACKAGES_FILE = "drm_packages.txt"
     private const val SPOOF_BUILD_VARS_FILE = "spoof_build_vars"
+    private const val STAGED_BUILD_VARS_FILE = "spoof_build_vars.next"
     private const val MODULE_HASH_FILE = "module_hash"
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
     private const val APP_CONFIG_FILE = "app_config"
@@ -1449,9 +1457,20 @@ object Config {
         KeyboxAutoCleaner.setEnabled(isSpoofEnabled && isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
     }
 
+    private fun discardStagedRandomization() {
+        val staged = File(root, STAGED_BUILD_VARS_FILE)
+        val path = staged.toPath()
+        when {
+            Files.isSymbolicLink(path) || Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ->
+                Files.deleteIfExists(path)
+            staged.exists() -> Logger.w("Refusing to remove non-regular staged identity file")
+        }
+    }
+
     private fun enforceRandomization() {
         try {
             val spoofFile = File(root, SPOOF_BUILD_VARS_FILE)
+            val stagedFile = File(root, STAGED_BUILD_VARS_FILE)
             val replacements =
                 linkedMapOf(
                     "ATTESTATION_ID_IMEI" to RandomUtils.generateLuhn(15, "35"),
@@ -1462,7 +1481,9 @@ object Config {
                     "ATTESTATION_ID_ICCID" to RandomUtils.generateLuhn(20, "8901"),
                     "ATTESTATION_ID_ICCID2" to RandomUtils.generateLuhn(20, "8901"),
                 )
-            templates.keys.randomOrNull()?.let { templateName ->
+            val currentTemplate = buildVars["TEMPLATE"]
+            val templateCandidates = templates.keys.filterNot { it.equals(currentTemplate, ignoreCase = true) }
+            RandomUtils.choose(templateCandidates.ifEmpty { templates.keys.toList() })?.let { templateName ->
                 replacements["TEMPLATE"] = templateName
                 templates[templateName]?.forEach { (key, value) ->
                     if (key in supportedTemplateProperties) replacements[key] = value
@@ -1474,16 +1495,15 @@ object Config {
                 spoofFile.useLines { lines ->
                     lines.forEach { line ->
                         val key = line.substringBefore('=', "").trim()
-                        if (key !in replacements) retainedLines += line
+                        if (key !in replacements && line != "# Prepared by random_on_boot") retainedLines += line
                     }
                 }
             }
-            retainedLines += "# Refreshed by random_on_boot"
+            retainedLines += "# Prepared by random_on_boot"
             replacements.forEach { (key, value) -> retainedLines += "$key=$value" }
 
-            SecureFile.writeText(spoofFile, retainedLines.joinToString("\n", postfix = "\n"))
-            updateBuildVars(spoofFile)
-            Logger.i("Refreshed attestation and telephony identifiers")
+            SecureFile.writeText(stagedFile, retainedLines.joinToString("\n", postfix = "\n"))
+            Logger.i("Prepared a synchronized identity snapshot for the next boot")
         } catch (e: Exception) {
             Logger.e("Failed to enforce randomization", e)
         }
@@ -1572,7 +1592,6 @@ object Config {
         if (isSpoofEnabled && isRegularFlagFile(File(root, RANDOM_ON_BOOT_FILE))) {
             enforceRandomization()
         }
-        updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)

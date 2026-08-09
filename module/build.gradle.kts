@@ -32,11 +32,9 @@ android {
                     "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF",
                     "-DMODULE_NAME=$moduleId",
                     "-DCMAKE_CXX_STANDARD=20",
-                    "-DCMAKE_C_STANDARD=17",
                     "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
                     "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
                     "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
-                    "-DCMAKE_C_VISIBILITY_PRESET=hidden",
                 )
             }
         }
@@ -107,7 +105,7 @@ tasks.register<Exec>("installRustTargets") {
 
 tasks.register<Exec>("cargoBuild") {
     group = "rust"
-    description = "Builds the Rust static library for all Android targets using cargo-ndk"
+    description = "Builds the Rust native library and injector for all Android targets using cargo-ndk"
     workingDir = file("../rust")
 
     doFirst {
@@ -130,7 +128,9 @@ tasks.register<Exec>("cargoBuild") {
         "build",
         "--release",
         "-p",
-        "cleverestricky-cbor-cose",
+        "cleverestricky-native-core",
+        "-p",
+        "cleverestricky-injector-core",
     )
 }
 
@@ -208,25 +208,16 @@ afterEvaluate {
                     into("lib")
                 }
 
-                from(layout.buildDirectory.dir("intermediates/cxx")) {
-                    include("**/inject")
-                    eachFile {
-                        val segments = relativePath.segments
-                        if (buildTypeLowered == "release" && segments.contains("Debug")) {
-                            exclude()
-                            return@eachFile
+                abiList.forEach { abi ->
+                    val rustTarget =
+                        when (abi) {
+                            "arm64-v8a" -> "aarch64-linux-android"
+                            "x86_64" -> "x86_64-linux-android"
+                            else -> error("unsupported Rust injector ABI $abi")
                         }
-                        if (buildTypeLowered == "debug" && !segments.contains("Debug")) {
-                            exclude()
-                            return@eachFile
-                        }
-
-                        val abi = segments.find { it in abiList }
-                        if (abi != null) {
-                            relativePath = RelativePath(true, "lib", abi, "inject")
-                        }
+                    from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/inject")) {
+                        into("lib/$abi")
                     }
-                    includeEmptyDirs = false
                 }
 
                 doLast {

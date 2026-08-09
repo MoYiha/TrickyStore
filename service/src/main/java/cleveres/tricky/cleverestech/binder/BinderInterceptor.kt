@@ -23,6 +23,7 @@ open class BinderInterceptor : Binder() {
         private const val REGISTER_INTERCEPTOR = 1
         private const val UNREGISTER_INTERCEPTOR = 2
         private const val PARK_HOOK = 3
+        private const val CLEAR_AND_PARK = 4
         private const val CONTROL_ENDPOINT_TRANSACTION = 0xdeadbeef.toInt()
         private const val MAX_FILTERED_CODES = 1024
         private const val MAX_INTERCEPT_PARCEL_BYTES = 8L * 1024 * 1024
@@ -108,6 +109,22 @@ open class BinderInterceptor : Binder() {
                 handled && status == 0
             } catch (error: Throwable) {
                 Logger.e("Failed to park an idle Binder hook", error)
+                false
+            } finally {
+                data.recycle()
+                reply.recycle()
+            }
+        }
+
+        fun clearAndParkBinderHook(controlEndpoint: IBinder): Boolean {
+            val data = Parcel.obtain()
+            val reply = Parcel.obtain()
+            return try {
+                val handled = controlEndpoint.transact(CLEAR_AND_PARK, data, reply, 0)
+                val status = if (reply.dataAvail() >= Int.SIZE_BYTES) reply.readInt() else -1
+                handled && status == 0
+            } catch (error: Throwable) {
+                Logger.e("Failed to clear and park Binder interceptors", error)
                 false
             } finally {
                 data.recycle()

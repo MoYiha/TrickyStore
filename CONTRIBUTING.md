@@ -1,6 +1,6 @@
 # Contributing
 
-Changes should preserve the module's fail-closed security model and its supported Android 12–16 / KernelSU–APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
+Changes should preserve the module's fail-closed security model and its supported Android 12 to 16 and KernelSU plus APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
 
 ## Development checks
 
@@ -21,7 +21,8 @@ For a complete module build, install Android SDK 36, NDK `27.3.13750724`, Rust, 
 
 ## Expectations
 
-- Kotlin and Java follow Android conventions; Rust must pass `rustfmt` and Clippy; native code builds with `-Wall -Wextra -Werror`.
+- Kotlin and Java follow Android conventions; Rust must pass `rustfmt` and Clippy; the remaining native bridge builds with `-Wall -Wextra -Werror`.
+- Write every portable native addition in Rust. First-party C is prohibited, and `binder_interceptor.cpp` is the only permitted first-party C++ implementation because it crosses the Android libbinder and LSPlt ABI boundary.
 - Treat Binder parcels, XML, ZIP/CBOX input, HTTP responses, file paths, and process IDs as untrusted.
 - Keep input and memory bounds explicit and fail closed on unknown Binder layouts or incomplete validation.
 - Add focused regression tests for changed behavior, including malformed input and failure paths.

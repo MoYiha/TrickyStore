@@ -88,21 +88,27 @@ fun main(args: Array<String>) {
         // lifecycle, including native registration teardown when it is paused.
         var previousEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
+        var engineStopPending = false
+        var telephonyStopPending = false
         while (true) {
             val engineEnabled = Config.isSpoofEnabled
             if (!engineEnabled) {
-                if (previousEngineState != false) {
+                if (previousEngineState != false || engineStopPending) {
+                    val wasPending = engineStopPending
                     val telephonyStopped = TelephonyInterceptor.stopTelephonyInterceptor()
                     val keystoreStopped = KeystoreInterceptor.stopKeystoreInterceptor()
-                    if (!telephonyStopped || !keystoreStopped) {
-                        Logger.w("One or more Binder registrations had already disappeared while pausing")
+                    engineStopPending = !telephonyStopped || !keystoreStopped
+                    if (engineStopPending) {
+                        if (!wasPending) Logger.w("Spoof Engine cleanup is incomplete; retry scheduled")
+                    } else {
+                        telephonyStopPending = false
+                        Logger.i("Spoof Engine paused; Binder hooks are parked")
                     }
-                    Logger.i("Spoof Engine paused; Binder hooks are parked")
                 }
-                previousEngineState = false
+                previousEngineState = if (engineStopPending) null else false
                 previousTelephonyState = Config.isTelephonyEnabled
                 try {
-                    Config.awaitRuntimeController(30_000)
+                    Config.awaitRuntimeController(if (engineStopPending) 1_000 else 30_000)
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return@runBlocking
@@ -110,6 +116,7 @@ fun main(args: Array<String>) {
                 continue
             }
 
+            engineStopPending = false
             if (previousEngineState == false) {
                 Logger.i("Spoof Engine resumed; restoring configured Binder interceptors")
             }
@@ -149,10 +156,16 @@ fun main(args: Array<String>) {
             telJob?.join()
 
             val telephonyEnabled = Config.isTelephonyEnabled
-            if (!telephonyEnabled && previousTelephonyState != false) {
-                TelephonyInterceptor.stopTelephonyInterceptor()
+            if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
+                val wasPending = telephonyStopPending
+                telephonyStopPending = !TelephonyInterceptor.stopTelephonyInterceptor()
+                if (telephonyStopPending && !wasPending) {
+                    Logger.w("Telephony hook cleanup is incomplete; retry scheduled")
+                }
+            } else if (telephonyEnabled) {
+                telephonyStopPending = false
             }
-            previousTelephonyState = telephonyEnabled
+            previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
             if (!ksSuccess) Logger.d("Keystore interceptor is not ready; retry scheduled")
             if (!telSuccess) {
@@ -160,7 +173,9 @@ fun main(args: Array<String>) {
             }
 
             try {
-                Config.awaitRuntimeController(if (ksSuccess && telSuccess) 30_000 else 1_000)
+                Config.awaitRuntimeController(
+                    if (ksSuccess && telSuccess && !telephonyStopPending) 30_000 else 1_000,
+                )
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 Logger.i("Main: Runtime controller interrupted, shutting down")

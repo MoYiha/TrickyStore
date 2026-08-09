@@ -149,6 +149,7 @@ class BinderInterceptorTest {
 
         assertTrue(BinderInterceptor.unregisterBinderInterceptor(control, Binder(), interceptor))
         assertTrue(BinderInterceptor.parkBinderHook(control))
-        assertEquals(listOf(2, 3), seenCodes)
+        assertTrue(BinderInterceptor.clearAndParkBinderHook(control))
+        assertEquals(listOf(2, 3, 4), seenCodes)
     }
 }

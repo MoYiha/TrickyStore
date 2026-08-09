@@ -17,6 +17,54 @@ fi
 # Apply boot-only property views before Zygote snapshots android.os.Build.
 # Every value comes from a fixed property name or a strictly bounded config
 # field, and resetprop receives it as a quoted argument rather than shell code.
+promote_staged_identity() {
+  staged_file="$CONFIG_DIR/spoof_build_vars.next"
+  active_file="$CONFIG_DIR/spoof_build_vars"
+
+  if [ ! -e "$staged_file" ] && [ ! -L "$staged_file" ]; then
+    return 0
+  fi
+  if [ ! -d "$CONFIG_DIR" ] || [ -L "$CONFIG_DIR" ]; then
+    log -t CleveresTricky "Unsafe config directory; staged identity was ignored"
+    return 0
+  fi
+  if [ -L "$staged_file" ]; then
+    rm -f "$staged_file"
+    log -t CleveresTricky "Removed an unsafe staged identity link"
+    return 0
+  fi
+  if [ ! -f "$staged_file" ]; then
+    log -t CleveresTricky "Non-regular staged identity was ignored"
+    return 0
+  fi
+
+  if [ ! -f "$CONFIG_DIR/spoof_enabled" ] || [ -L "$CONFIG_DIR/spoof_enabled" ] ||
+    [ ! -f "$CONFIG_DIR/random_on_boot" ] || [ -L "$CONFIG_DIR/random_on_boot" ]; then
+    rm -f "$staged_file"
+    return 0
+  fi
+  if [ -L "$active_file" ] || { [ -e "$active_file" ] && [ ! -f "$active_file" ]; }; then
+    log -t CleveresTricky "Unsafe active identity path; staged identity was ignored"
+    return 0
+  fi
+
+  staged_size=$(wc -c < "$staged_file" 2>/dev/null) || return 0
+  if [ "$staged_size" -lt 1 ] || [ "$staged_size" -gt 1048576 ]; then
+    rm -f "$staged_file"
+    log -t CleveresTricky "Invalid staged identity size; staged identity was removed"
+    return 0
+  fi
+
+  chown 0:0 "$staged_file" 2>/dev/null
+  chmod 600 "$staged_file" || return 0
+  chcon u:object_r:system_file:s0 "$staged_file" 2>/dev/null
+  if mv -f "$staged_file" "$active_file"; then
+    log -t CleveresTricky "Activated the prepared identity snapshot"
+  else
+    log -t CleveresTricky "Could not activate the prepared identity snapshot"
+  fi
+}
+
 apply_early_properties() {
   [ -f "$CONFIG_DIR/spoof_enabled" ] || return 0
   [ ! -L "$CONFIG_DIR/spoof_enabled" ] || return 0
@@ -176,6 +224,7 @@ apply_early_properties() {
   fi
 }
 
+promote_staged_identity
 apply_early_properties
 
 # Label the service archive and injected native payloads for platform access.

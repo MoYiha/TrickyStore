@@ -335,25 +335,36 @@ object KeystoreInterceptor : BinderInterceptor() {
 
     @Synchronized
     fun stopKeystoreInterceptor(): Boolean {
-        val control = binderBackdoor
-        var success = true
-        if (control != null) {
+        val targetAlive = ::keystore.isInitialized && keystore.isBinderAlive
+        val control =
+            binderBackdoor
+                ?: if (targetAlive) getBinderControlEndpoint(keystore) else null
+        var stopped = control?.let(::clearAndParkBinderHook) == true
+        if (!stopped && control != null) {
             strongBoxInterceptor?.let { interceptor ->
                 strongBoxTarget?.let { target ->
-                    success = unregisterBinderInterceptor(control, target, interceptor) && success
+                    unregisterBinderInterceptor(control, target, interceptor)
                 }
             }
             teeInterceptor?.let { interceptor ->
                 teeTarget?.let { target ->
-                    success = unregisterBinderInterceptor(control, target, interceptor) && success
+                    unregisterBinderInterceptor(control, target, interceptor)
                 }
             }
             if (keystoreRegistered && ::keystore.isInitialized) {
-                success = unregisterBinderInterceptor(control, keystore, this) && success
+                unregisterBinderInterceptor(control, keystore, this)
             }
-        } else if (registered || keystoreRegistered) {
-            success = false
+            stopped = parkBinderHook(control)
         }
+        val hasKnownRegistration =
+            registered || keystoreRegistered || teeInterceptor != null || strongBoxInterceptor != null
+        if (!targetAlive || (!hasKnownRegistration && control == null)) stopped = true
+        if (!stopped) {
+            binderBackdoor = control
+            Logger.d("Keystore Binder hook cleanup remains pending")
+            return false
+        }
+
         if (deathRecipientLinked && ::keystore.isInitialized) {
             try {
                 keystore.unlinkToDeath(Killer, 0)
@@ -370,7 +381,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         keystoreRegistered = false
         registered = false
         binderBackdoor = null
-        return success
+        return true
     }
 
     override fun onInterceptorReplaced() {
