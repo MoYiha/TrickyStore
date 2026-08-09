@@ -3,7 +3,7 @@ name: Apply Runtime Readiness Patch
 on:
   pull_request:
     branches: [ "master" ]
-    types: [synchronize]
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
