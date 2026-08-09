@@ -54,6 +54,12 @@ target_include_directories(${MODULE_NAME} PRIVATE
     ../../../../rust/native-core/include
 )
 target_link_libraries(${MODULE_NAME} PRIVATE log dl lsplt rust_native_core)
+target_link_options(${MODULE_NAME} PRIVATE
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map"
+)
+set_property(TARGET ${MODULE_NAME} APPEND PROPERTY LINK_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/exports.map
+)
 
 set_target_properties(${MODULE_NAME} PROPERTIES LINK_FLAGS
     "-Wl,--unresolved-symbols=ignore-all"
