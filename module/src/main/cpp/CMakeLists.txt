@@ -48,13 +48,41 @@ set_target_properties(rust_native_core PROPERTIES IMPORTED_LOCATION
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../rust/target/${RUST_TARGET_TRIPLE}/release/libcleverestricky_native_core.a
 )
 
+# The private Binder bridge intentionally leaves platform libbinder/libutils
+# symbols unresolved until it is loaded inside an Android system process. Keep
+# explicit DT_NEEDED entries so RTLD_NOW places those platform DSOs in this
+# object's relocation scope even when the process loaded them in another local
+# linker group. The generated stubs exist only at link time and are excluded
+# from the module payload by module/build.gradle.kts.
+set(PLATFORM_LINK_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/platform_link_stubs")
+file(MAKE_DIRECTORY "${PLATFORM_LINK_STUB_DIR}")
+file(WRITE "${PLATFORM_LINK_STUB_DIR}/binder_link_stub.cpp"
+    "extern \"C\" __attribute__((visibility(\"hidden\"))) void cleverestricky_binder_link_stub() {}\n"
+)
+file(WRITE "${PLATFORM_LINK_STUB_DIR}/utils_link_stub.cpp"
+    "extern \"C\" __attribute__((visibility(\"hidden\"))) void cleverestricky_utils_link_stub() {}\n"
+)
+
+add_library(platform_binder_link_stub SHARED "${PLATFORM_LINK_STUB_DIR}/binder_link_stub.cpp")
+set_target_properties(platform_binder_link_stub PROPERTIES OUTPUT_NAME binder)
+add_library(platform_utils_link_stub SHARED "${PLATFORM_LINK_STUB_DIR}/utils_link_stub.cpp")
+set_target_properties(platform_utils_link_stub PROPERTIES OUTPUT_NAME utils)
+
 add_library(${MODULE_NAME} SHARED binder_interceptor.cpp)
 target_include_directories(${MODULE_NAME} PRIVATE
     binder/include
     ../../../../rust/native-core/include
 )
-target_link_libraries(${MODULE_NAME} PRIVATE log dl lsplt rust_native_core)
+target_link_libraries(${MODULE_NAME} PRIVATE
+    log
+    dl
+    platform_binder_link_stub
+    platform_utils_link_stub
+    lsplt
+    rust_native_core
+)
 target_link_options(${MODULE_NAME} PRIVATE
+    "-Wl,--no-as-needed"
     "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map"
 )
 set_property(TARGET ${MODULE_NAME} APPEND PROPERTY LINK_DEPENDS
