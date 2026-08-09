@@ -9,8 +9,17 @@ object Verification {
     private val MODULE_PATH = getModuleDir()
     private val IGNORED_FILES = setOf("disable", "remove", "update", "system.prop", "tampered", "web_port")
 
-    @OptIn(ExperimentalStdlibApi::class)
     fun check(root: File = File(MODULE_PATH)): Boolean {
+        return try {
+            checkInternal(root)
+        } catch (error: Exception) {
+            Logger.e("Module verification failed with an I/O or parsing error", error)
+            false
+        }
+    }
+
+    @OptIn(ExperimentalStdlibApi::class)
+    private fun checkInternal(root: File): Boolean {
         if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             Logger.e("Module directory not found: ${root.absolutePath}")
             return false
@@ -53,9 +62,7 @@ object Verification {
         var isTampered = false
 
         allFiles.forEach { file ->
-            // Skip checksum files themselves
             if (file.name.endsWith(".sha256")) return@forEach
-            // Skip ignored files
             if (file.parentFile?.absolutePath == root.absolutePath && IGNORED_FILES.contains(file.name)) return@forEach
 
             if (file.length() !in 0..MAX_MODULE_FILE_BYTES) {
@@ -75,7 +82,6 @@ object Verification {
             if (!expected.equals(actual, ignoreCase = true)) {
                 Logger.e("Verification failed: Checksum mismatch for file: ${file.path}. Expected $expected, got $actual")
                 isTampered = true
-                return@forEach
             }
         }
 

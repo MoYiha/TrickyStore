@@ -12,7 +12,13 @@ private const val CONFIG_DIR_MODE = 448
 
 fun main(args: Array<String>) {
     Logger.i("Welcome to Service!")
-    val isTampered = !Verification.check()
+    val isTampered =
+        try {
+            !Verification.check()
+        } catch (error: Exception) {
+            Logger.e("Module verification failed unexpectedly", error)
+            true
+        }
     if (isTampered) {
         Logger.e("TAMPER DETECTED: Disabling all interceptors and running in safe mode.")
     }
@@ -64,8 +70,8 @@ fun main(args: Array<String>) {
             BootLogic.run()
         } catch (e: Exception) {
             Logger.e("Failed to initialize Config/BootLogic", e)
-            Logger.e("Main: Interceptors remain disabled because initialization did not complete")
-            while (true) delay(60_000)
+            Logger.e("Main: Exiting so the module supervisor can retry initialization")
+            return@runBlocking
         }
 
         KeyboxAutoCleaner.start()

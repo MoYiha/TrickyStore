@@ -31,7 +31,6 @@ fun execute(
 val gitCommitCount = execute("git", "rev-list", "HEAD", "--count").toInt()
 val gitCommitHash = execute("git", "rev-parse", "--verify", "--short", "HEAD")
 
-// also the soname
 val moduleId by extra("cleverestricky")
 val moduleName by extra("CleveresTricky")
 val author by extra("tryigitx")
@@ -62,7 +61,7 @@ fun Project.configureBaseExtension() {
 
         defaultConfig {
             minSdk = androidMinSdkVersion
-            targetSdk = androidCompileSdkVersion
+            targetSdk = androidTargetSdkVersion
             versionCode = verCode
             versionName = verName
         }

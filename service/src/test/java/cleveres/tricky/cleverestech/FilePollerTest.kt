@@ -7,6 +7,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.lang.reflect.InvocationTargetException
 
 class FilePollerTest {
     @get:Rule
@@ -69,5 +70,25 @@ class FilePollerTest {
         checkForChange()
 
         assertEquals(0, callbackCount)
+    }
+
+    @Test
+    fun testFailedCallbackRetriesSameChange() {
+        var callbackCount = 0
+        poller =
+            FilePoller(testFile, 60_000L) {
+                callbackCount++
+                if (callbackCount == 1) throw IllegalStateException("first attempt fails")
+            }
+        poller.start()
+
+        testFile.writeText("modified-content")
+        try {
+            checkForChange()
+        } catch (_: InvocationTargetException) {
+        }
+        checkForChange()
+
+        assertEquals(2, callbackCount)
     }
 }
