@@ -4,6 +4,7 @@ import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -136,8 +137,9 @@ class ConfigInitializationLogicTest {
 
     @Test
     fun `randomization stages one synchronized snapshot for early boot`() {
-        val randomOnBootFile = File(tempDir, "random_on_boot")
-        randomOnBootFile.createNewFile()
+        val spoofEnabledFile = File(tempDir, "spoof_enabled")
+        spoofEnabledFile.createNewFile()
+        Config.refreshRuntimeSetting("spoof_enabled")
 
         val spoofFile = File(tempDir, "spoof_build_vars")
         spoofFile.writeText("TEMPLATE=pixel8pro\nATTESTATION_ID_IMEI=490154203237518\n")
@@ -155,7 +157,9 @@ class ConfigInitializationLogicTest {
         assertEquals("490154203237518", Config.getBuildVar("ATTESTATION_ID_IMEI"))
         assertEquals("pixel8pro", Config.getBuildVar("TEMPLATE"))
 
-        callEnforceRandomization()
+        val randomOnBootFile = File(tempDir, "random_on_boot")
+        randomOnBootFile.createNewFile()
+        Config.refreshRuntimeSetting("random_on_boot")
 
         val stagedFile = File(tempDir, "spoof_build_vars.next")
         assertTrue("Next-boot snapshot should be staged", stagedFile.isFile)
@@ -173,6 +177,12 @@ class ConfigInitializationLogicTest {
         callUpdateBuildVars(spoofFile)
         assertEquals(nextImei, Config.getBuildVar("ATTESTATION_ID_IMEI"))
         assertEquals(nextTemplate, Config.getBuildVar("TEMPLATE"))
+
+        Config.refreshRuntimeSetting("random_on_boot")
+        assertTrue("An enabled refresh must keep one pending snapshot", stagedFile.isFile)
+        randomOnBootFile.delete()
+        Config.refreshRuntimeSetting("random_on_boot")
+        assertFalse("Disabling refresh must remove a pending snapshot", stagedFile.exists())
     }
 
     private fun callUpdateBuildVars(file: File) {
@@ -186,9 +196,4 @@ class ConfigInitializationLogicTest {
         method.invoke(Config, file)
     }
 
-    private fun callEnforceRandomization() {
-        val method = Config::class.java.getDeclaredMethod("enforceRandomization")
-        method.isAccessible = true
-        method.invoke(Config)
-    }
 }

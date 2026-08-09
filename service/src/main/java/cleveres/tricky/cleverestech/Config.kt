@@ -522,7 +522,10 @@ object Config {
         val candidate = File(root, name)
         val file = candidate.takeIf { isRegularFlagFile(it) }
         when (name) {
-            SPOOF_ENABLED_FILE -> updateSpoofEnabled(file)
+            SPOOF_ENABLED_FILE -> {
+                updateSpoofEnabled(file)
+                updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
+            }
             BUILD_IDENTITY_FILE -> updateBuildIdentity(file)
             GLOBAL_MODE_FILE -> {
                 updateGlobalMode(file)
@@ -535,6 +538,7 @@ object Config {
             TELEPHONY_FILE -> updateTelephony(file)
             RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(file)
             DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(file)
+            RANDOM_ON_BOOT_FILE -> updateRandomOnBoot(file)
             AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isSpoofEnabled && file != null)
         }
     }
@@ -886,6 +890,7 @@ object Config {
             stringToBytesCache.clear()
 
             CertHack.clearCertificateCache()
+            updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
             Logger.i { "update build vars (keys): ${buildVars.keys}, attestation ids: ${attestationIds.keys}" }
         }.onFailure {
             Logger.e("failed to update build vars", it)
@@ -1454,6 +1459,7 @@ object Config {
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateTargetPackages(File(root, TARGET_FILE))
+        updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
         KeyboxAutoCleaner.setEnabled(isSpoofEnabled && isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
     }
 
@@ -1509,6 +1515,20 @@ object Config {
         }
     }
 
+    @Synchronized
+    private fun updateRandomOnBoot(f: File?) {
+        if (!isSpoofEnabled || !isRegularFlagFile(f)) {
+            discardStagedRandomization()
+            return
+        }
+
+        val stagedPath = File(root, STAGED_BUILD_VARS_FILE).toPath()
+        if (Files.isRegularFile(stagedPath, LinkOption.NOFOLLOW_LINKS)) {
+            return
+        }
+        enforceRandomization()
+    }
+
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
         override fun onEvent(
             event: Int,
@@ -1532,7 +1552,10 @@ object Config {
                     DeviceTemplateManager.initialize(root)
                     updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
                 }
-                SPOOF_ENABLED_FILE -> updateSpoofEnabled(f)
+                SPOOF_ENABLED_FILE -> {
+                    updateSpoofEnabled(f)
+                    updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
+                }
                 BUILD_IDENTITY_FILE -> updateBuildIdentity(f)
                 GLOBAL_MODE_FILE -> {
                     updateGlobalMode(f)
@@ -1547,6 +1570,7 @@ object Config {
                 TELEPHONY_FILE -> updateTelephony(f)
                 RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(f)
                 DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(f)
+                RANDOM_ON_BOOT_FILE -> updateRandomOnBoot(f)
                 DRM_PACKAGES_FILE -> updateDrmPackages(f)
                 MODULE_HASH_FILE -> updateModuleHash(f)
                 AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isSpoofEnabled && isRegularFlagFile(f))
@@ -1589,9 +1613,7 @@ object Config {
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         updateAppConfigs(File(root, APP_CONFIG_FILE))
 
-        if (isSpoofEnabled && isRegularFlagFile(File(root, RANDOM_ON_BOOT_FILE))) {
-            enforceRandomization()
-        }
+        updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
 
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)

@@ -57,6 +57,7 @@ const IOC_DIRECTION_SHIFT: u32 = IOC_SIZE_SHIFT + IOC_SIZE_BITS;
 const IOC_READ: u32 = 2;
 const BINDER_TYPE: u32 = b'r' as u32;
 const TRANSACTION_NUMBER: u32 = 2;
+const REPLY_NUMBER: u32 = 3;
 
 const fn ioctl_direction(command: u32) -> u32 {
     (command >> IOC_DIRECTION_SHIFT) & ((1 << IOC_DIRECTION_BITS) - 1)
@@ -76,6 +77,12 @@ fn is_transaction_command(command: u32) -> bool {
         && ioctl_number(command) == TRANSACTION_NUMBER
 }
 
+fn is_probe_layout_command(command: u32) -> bool {
+    ioctl_direction(command) == IOC_READ
+        && ioctl_type(command) == BINDER_TYPE
+        && matches!(ioctl_number(command), TRANSACTION_NUMBER | REPLY_NUMBER)
+}
+
 pub fn validate_binder_probe(buffer: &[u8], transaction_size: usize) -> bool {
     if buffer.len() < mem::size_of::<u32>() || !(40..=512).contains(&transaction_size) {
         return false;
@@ -93,7 +100,7 @@ pub fn validate_binder_probe(buffer: &[u8], transaction_size: usize) -> bool {
         if end > buffer.len() {
             return false;
         }
-        if is_transaction_command(command) {
+        if is_probe_layout_command(command) {
             return payload_size == transaction_size;
         }
         position = end;
@@ -394,7 +401,7 @@ mod tests {
         let command = (IOC_READ << IOC_DIRECTION_SHIFT)
             | (payload_size as u32) << IOC_SIZE_SHIFT
             | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | TRANSACTION_NUMBER;
+            | REPLY_NUMBER;
         let mut probe = vec![0u8; mem::size_of::<u32>() + payload_size];
         write_at(&mut probe, 0, command);
         assert!(validate_binder_probe(&probe, payload_size));
