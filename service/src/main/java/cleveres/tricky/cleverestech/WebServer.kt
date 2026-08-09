@@ -121,6 +121,68 @@ private fun isValidFilename(s: String): Boolean {
     return true
 }
 
+private fun parseUnsignedLong(
+    value: CharSequence,
+    start: Int,
+    endExclusive: Int,
+): Long? {
+    if (start >= endExclusive) return null
+    var result = 0L
+    for (index in start until endExclusive) {
+        val digit = value[index] - '0'
+        if (digit !in 0..9 || result > (Long.MAX_VALUE - digit) / 10L) return null
+        result = result * 10L + digit
+    }
+    return result
+}
+
+internal fun parseProcessCpuTicks(stat: CharSequence): Long? {
+    val commandEnd = stat.lastIndexOf(')')
+    if (commandEnd < 0) return null
+
+    var index = commandEnd + 1
+    var fieldIndex = 0
+    var userTicks: Long? = null
+    var systemTicks: Long? = null
+    while (index < stat.length && fieldIndex <= 12) {
+        while (index < stat.length && stat[index].isWhitespace()) index++
+        if (index >= stat.length) break
+        val start = index
+        while (index < stat.length && !stat[index].isWhitespace()) index++
+        if (fieldIndex == 11) userTicks = parseUnsignedLong(stat, start, index) ?: return null
+        if (fieldIndex == 12) systemTicks = parseUnsignedLong(stat, start, index) ?: return null
+        fieldIndex++
+    }
+
+    val user = userTicks ?: return null
+    val system = systemTicks ?: return null
+    return if (user <= Long.MAX_VALUE - system) user + system else null
+}
+
+internal fun parseTotalCpuTicks(stat: CharSequence): Long? {
+    var index = 0
+    while (index < stat.length && stat[index].isWhitespace()) index++
+    if (index + 3 > stat.length || stat[index] != 'c' || stat[index + 1] != 'p' || stat[index + 2] != 'u') {
+        return null
+    }
+    index += 3
+    if (index >= stat.length || !stat[index].isWhitespace()) return null
+
+    var total = 0L
+    var count = 0
+    while (index < stat.length) {
+        while (index < stat.length && stat[index].isWhitespace()) index++
+        if (index >= stat.length) break
+        val start = index
+        while (index < stat.length && !stat[index].isWhitespace()) index++
+        val value = parseUnsignedLong(stat, start, index) ?: return null
+        if (total > Long.MAX_VALUE - value) return null
+        total += value
+        count++
+    }
+    return if (count >= 4) total else null
+}
+
 private const val WEB_UI_READINESS_TIMEOUT_MS = 15_000L
 private const val WEB_UI_READINESS_POLL_MS = 100L
 private const val WEB_UI_READINESS_CONNECT_TIMEOUT_MS = 250
@@ -218,7 +280,7 @@ class WebServer(
         }
     }
 
-    private class RateLimitEntry(var timestamp: Long, var count: Int)
+    private class RateLimitEntry(var timestampNanos: Long, var count: Int)
 
     private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
 
@@ -233,14 +295,14 @@ class WebServer(
     }
 
     private fun isRateLimited(ip: String): Boolean {
-        val now = System.currentTimeMillis()
+        val now = System.nanoTime()
         if (requestCounts.size > 1000) {
-            requestCounts.entries.removeIf { now - it.value.timestamp > RATE_WINDOW }
+            requestCounts.entries.removeIf { now - it.value.timestampNanos > RATE_WINDOW_NANOS }
             if (requestCounts.size > 1000) requestCounts.clear() // Fallback
         }
         val current =
             requestCounts.compute(ip) { _, v ->
-                if (v == null || now - v.timestamp > RATE_WINDOW) {
+                if (v == null || now - v.timestampNanos > RATE_WINDOW_NANOS) {
                     RateLimitEntry(now, 1)
                 } else {
                     v.count++
@@ -581,41 +643,47 @@ class WebServer(
         return "Unknown Root"
     }
 
-    private var lastCpuTime: Long = 0
-    private var lastSysTime: Long = 0
+    private data class CpuSample(val processTicks: Long, val totalTicks: Long)
+
+    private fun readCpuSample(): CpuSample? {
+        return try {
+            val processStat = File("/proc/self/stat").bufferedReader().use { it.readLine() } ?: return null
+            val systemStat = File("/proc/stat").bufferedReader().use { it.readLine() } ?: return null
+            val processTicks = parseProcessCpuTicks(processStat) ?: return null
+            val totalTicks = parseTotalCpuTicks(systemStat) ?: return null
+            CpuSample(processTicks, totalTicks)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private var lastCpuSample: CpuSample? = readCpuSample()
+    private var lastCpuSampleNanos: Long = System.nanoTime()
     private var lastCpuUsage: Double = 0.0
+    private val availableProcessorCount = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
     @Synchronized
-    private fun getCpuUsagePercent(): Double =
-        try {
-            val processStat = File("/proc/self/stat").readText()
-            val commandEnd = processStat.lastIndexOf(')')
-            require(commandEnd >= 0) { "Malformed process stat" }
-            val processFields =
-                processStat.substring(commandEnd + 1).trim().split(Regex("\\s+"))
-            require(processFields.size > 12) { "Incomplete process stat" }
-            val processTime = processFields[11].toLong() + processFields[12].toLong()
+    private fun getCpuUsagePercent(): Double {
+        val now = System.nanoTime()
+        if (now - lastCpuSampleNanos in 0 until CPU_SAMPLE_MIN_INTERVAL_NANOS) return lastCpuUsage
 
-            val cpuFields =
-                File("/proc/stat").bufferedReader().use { reader ->
-                    reader.readLine().orEmpty().trim().split(Regex("\\s+")).drop(1)
-                }
-            val totalTime = cpuFields.mapNotNull { it.toLongOrNull() }.sum()
-
-            if (lastSysTime > 0 && totalTime > lastSysTime && processTime >= lastCpuTime) {
-                val deltaProcess = processTime - lastCpuTime
-                val deltaSystem = totalTime - lastSysTime
-                val processorCount = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-                lastCpuUsage =
-                    ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * processorCount)
-                        .coerceIn(0.0, processorCount * 100.0)
-            }
-            lastCpuTime = processTime
-            lastSysTime = totalTime
-            lastCpuUsage
-        } catch (_: Exception) {
-            lastCpuUsage
+        val current = readCpuSample() ?: return lastCpuUsage
+        val previous = lastCpuSample
+        if (
+            previous != null &&
+            current.totalTicks > previous.totalTicks &&
+            current.processTicks >= previous.processTicks
+        ) {
+            val deltaProcess = current.processTicks - previous.processTicks
+            val deltaSystem = current.totalTicks - previous.totalTicks
+            lastCpuUsage =
+                ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * availableProcessorCount)
+                    .coerceIn(0.0, availableProcessorCount * 100.0)
         }
+        lastCpuSample = current
+        lastCpuSampleNanos = now
+        return lastCpuUsage
+    }
 
     private fun getRamUsageKb(): Long {
         try {
@@ -2084,6 +2152,7 @@ class WebServer(
         let editorUnsavedBypass = false;
         let currentFile = '';
         let originalContent = '';
+        let resourceUsageController = null;
 
         function togglePassword(btn) {
             const input = btn.previousElementSibling;
@@ -2464,6 +2533,10 @@ class WebServer(
             if (id === 'apps') loadAppConfig();
             if (id === 'keys') loadKeyInfo();
             if (id === 'info') loadResourceUsage();
+            else if (resourceUsageController) {
+                resourceUsageController.abort();
+                resourceUsageController = null;
+            }
             const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
         }
@@ -3536,14 +3609,24 @@ class WebServer(
         }
 
         async function loadResourceUsage() {
+             if (resourceUsageController) resourceUsageController.abort();
+             const controller = new AbortController();
+             resourceUsageController = controller;
              try {
                  const tbody = document.getElementById('resourceBody');
                  if(tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#888;"><div class="inline-spinner"></div> Loading...</td></tr>';
-                 const res = await fetchAuth('/api/resource_usage');
+                 const res = await fetchAuth('/api/resource_usage', { signal: controller.signal });
                  if (!res.ok) throw new Error(await res.text());
                  const data = await res.json();
+                 if (controller.signal.aborted) return;
                  renderResourceTable(data);
-             } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); return; }
+             } catch(e) {
+                 if (controller.signal.aborted) return;
+                 console.error(e);
+                 notify('Error: ' + e.message, 'error');
+             } finally {
+                 if (resourceUsageController === controller) resourceUsageController = null;
+             }
         }
 
         function renderResourceTable(data) {
@@ -3574,6 +3657,7 @@ class WebServer(
                 { id: 'drm_passthrough', name: 'DRM App Passthrough', activity: 'Bounded UID lookup', scope: 'drm_packages.txt rules', desc: 'Leaves configured playback and DRM packages on the original keystore path.' },
                 { id: 'spoof_build_identity', name: 'Template Build Identity', activity: 'Boot only', scope: 'Fingerprint and Build fields', desc: 'Persists the selected template before Zygote; requires reboot.' },
                 { id: 'hide_sensitive_props', name: 'Boot-State Property View', activity: 'Boot only', scope: 'App-visible system properties', desc: 'Does not relock the bootloader or alter hardware attestation.' },
+                { id: 'spoof_region_cn', name: 'Region Property View', activity: 'Boot only', scope: 'Bounded userspace region properties', desc: 'Applies the optional CN region view before Zygote; requires reboot.' },
                 { id: 'keybox_storage', name: 'Keybox Storage', activity: 'Validated bounded cache', scope: data.keybox_count + ' active keyboxes', desc: 'Uses root-only storage and fails closed when revocation data is unavailable.' },
                 { id: 'app_rules', name: 'App Rules', activity: 'Cached package lookup', scope: data.app_config_size + ' B configuration', desc: 'Selects target-specific identity and keybox policy.' }
             ];
@@ -3698,6 +3782,8 @@ class WebServer(
         private const val MAX_LOG_BYTES = 2 * 1024 * 1024
         private const val RATE_LIMIT = 100
         private const val RATE_WINDOW = 60 * 1000L
+        private const val RATE_WINDOW_NANOS = RATE_WINDOW * 1_000_000L
+        private const val CPU_SAMPLE_MIN_INTERVAL_NANOS = 250_000_000L
         private const val MAX_BACKUP_ENTRIES = 128
         private const val MAX_BACKUP_KEYBOXES = 64
         private const val MAX_BACKUP_CONFIG_ENTRY_BYTES = 1024 * 1024

@@ -63,4 +63,9 @@ object RandomUtils {
         }
         return sb.toString()
     }
+
+    fun <T> choose(values: List<T>): T? {
+        if (values.isEmpty()) return null
+        return values[secureRandom.nextInt(values.size)]
+    }
 }

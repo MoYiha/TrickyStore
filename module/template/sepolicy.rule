@@ -1,3 +1,2 @@
-# Permit executable hook trampolines only in processes this module can target.
 allow keystore keystore:process { execmem };
 allow radio radio:process { execmem };

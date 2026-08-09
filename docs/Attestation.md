@@ -1,0 +1,27 @@
+# Attestation
+
+## Purpose
+
+The attestation layer provides controlled certificate chain compatibility for selected applications while preserving genuine Android key creation and later cryptographic operations.
+
+## Request handling
+
+The service observes relevant keystore Binder transactions and resolves the real calling Android user identifier. Policy checks then decide whether the caller is targeted, protected, or assigned an application specific configuration.
+
+Existing key certificate responses can receive a verified replacement chain when an active keybox matches the required algorithm. Generated provisioning key responses can remain entirely on the genuine path through RKP protection.
+
+The underlying private key operation is still performed by Android KeyMint or StrongBox when the device and application request that security level. The module does not replace signing, encryption, or key agreement with a software implementation.
+
+## Validation
+
+Before material becomes active, the module checks private key and certificate correspondence, public key algorithm, chain structure, certificate validity, ambiguity, and revocation state. A mixed or invalid pool is rejected rather than partially accepted.
+
+Application rules, keybox selection, patch rules, and identity values are loaded as immutable snapshots. Updates clear the relevant certificate caches so later requests use the new state.
+
+## Limits
+
+Certificate substitution cannot create a hardware root of trust that the device does not possess. It cannot repair firmware, change verified boot measurements, physically relock a bootloader, or guarantee acceptance by a remote service.
+
+Only use key material that you own or are authorized to test. No usable private attestation key is included in the repository or release package.
+
+[Return to the project overview](../README.md)

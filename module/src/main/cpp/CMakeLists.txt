@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22...3.31)
-project(cleverestricky LANGUAGES C CXX)
+project(cleverestricky LANGUAGES CXX)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_definitions(DEBUG_BUILD)
@@ -33,23 +33,7 @@ add_link_options(
     -Wl,-z,noexecstack
 )
 
-add_library(my_logging STATIC logging/logging.cpp)
-target_include_directories(my_logging PUBLIC logging/include)
-target_link_libraries(my_logging PUBLIC log)
-
 add_subdirectory(external)
-
-# These small ABI stubs provide compile-time types. They are deliberately not
-# packaged; the injected library resolves Android's platform libbinder/libutils.
-add_library(utils SHARED binder/stub_utils.cpp)
-target_include_directories(utils PUBLIC binder/include)
-
-add_library(binder SHARED binder/stub_binder.cpp)
-target_include_directories(binder PUBLIC binder/include)
-target_link_libraries(binder PRIVATE utils)
-
-add_executable(inject inject/main.cpp inject/utils.cpp)
-target_link_libraries(inject PRIVATE lsplt my_logging dl)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(RUST_TARGET_TRIPLE "aarch64-linux-android")
@@ -59,14 +43,46 @@ else()
     message(FATAL_ERROR "Unsupported Rust target ABI: ${ANDROID_ABI}")
 endif()
 
-add_library(rust_core STATIC IMPORTED)
-set_target_properties(rust_core PROPERTIES IMPORTED_LOCATION
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../rust/target/${RUST_TARGET_TRIPLE}/release/libcleverestricky_cbor_cose.a
+add_library(rust_native_core STATIC IMPORTED)
+set_target_properties(rust_native_core PROPERTIES IMPORTED_LOCATION
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../rust/target/${RUST_TARGET_TRIPLE}/release/libcleverestricky_native_core.a
 )
 
-add_library(${MODULE_NAME} SHARED binder_interceptor.cpp)
-target_include_directories(${MODULE_NAME} PRIVATE ../../../../rust/cbor-cose/include)
-target_link_libraries(${MODULE_NAME} PRIVATE log dl binder utils lsplt my_logging rust_core)
+set(PLATFORM_LINK_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/platform_link_stubs")
+file(MAKE_DIRECTORY "${PLATFORM_LINK_STUB_DIR}")
+file(WRITE "${PLATFORM_LINK_STUB_DIR}/binder_link_stub.cpp"
+    "extern \"C\" __attribute__((visibility(\"hidden\"))) void cleverestricky_binder_link_stub() {}\n"
+)
+file(WRITE "${PLATFORM_LINK_STUB_DIR}/utils_link_stub.cpp"
+    "extern \"C\" __attribute__((visibility(\"hidden\"))) void cleverestricky_utils_link_stub() {}\n"
+)
 
-set_target_properties(binder PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")
-set_target_properties(${MODULE_NAME} PROPERTIES LINK_FLAGS "-Wl,--allow-shlib-undefined")
+add_library(platform_binder_link_stub SHARED "${PLATFORM_LINK_STUB_DIR}/binder_link_stub.cpp")
+set_target_properties(platform_binder_link_stub PROPERTIES OUTPUT_NAME binder)
+add_library(platform_utils_link_stub SHARED "${PLATFORM_LINK_STUB_DIR}/utils_link_stub.cpp")
+set_target_properties(platform_utils_link_stub PROPERTIES OUTPUT_NAME utils)
+
+add_library(${MODULE_NAME} SHARED binder_interceptor.cpp)
+target_include_directories(${MODULE_NAME} PRIVATE
+    binder/include
+    ../../../../rust/native-core/include
+)
+target_link_libraries(${MODULE_NAME} PRIVATE
+    log
+    dl
+    platform_binder_link_stub
+    platform_utils_link_stub
+    lsplt
+    rust_native_core
+)
+target_link_options(${MODULE_NAME} PRIVATE
+    "-Wl,--no-as-needed"
+    "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map"
+)
+set_property(TARGET ${MODULE_NAME} APPEND PROPERTY LINK_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/exports.map
+)
+
+set_target_properties(${MODULE_NAME} PROPERTIES LINK_FLAGS
+    "-Wl,--unresolved-symbols=ignore-all"
+)

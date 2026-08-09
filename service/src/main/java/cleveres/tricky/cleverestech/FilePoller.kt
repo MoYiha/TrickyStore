@@ -28,7 +28,7 @@ class FilePoller(
     companion object {
         private val scheduler =
             Executors.newSingleThreadScheduledExecutor { runnable ->
-                Thread(runnable, "FilePoller-Scheduler").apply {
+                Thread(runnable, "FilePoller-Fallback").apply {
                     isDaemon = true
                     priority = Thread.MIN_PRIORITY
                 }
@@ -45,43 +45,52 @@ class FilePoller(
         isRunning = true
         lastSnapshot = snapshot()
 
-        try {
-            val parent = file.parentFile
-            if (parent != null && parent.isDirectory) {
-                val eventMask =
-                    FileObserver.CLOSE_WRITE or
-                        FileObserver.MOVED_TO or
-                        FileObserver.MOVED_FROM or
-                        FileObserver.CREATE or
-                        FileObserver.DELETE or
-                        FileObserver.ATTRIB
-
-                @Suppress("DEPRECATION")
-                val fileObserver =
-                    object : FileObserver(parent.absolutePath, eventMask) {
-                        override fun onEvent(
-                            event: Int,
-                            path: String?,
-                        ) {
-                            if (path == file.name) checkForChange()
-                        }
-                    }
-                fileObserver.startWatching()
-                observer = fileObserver
-            }
-        } catch (error: Throwable) {
-            Logger.e("FilePoller: Could not start FileObserver for ${file.name}", error)
+        val observerStarted = startObserver()
+        if (!observerStarted) {
+            scheduleFallbackPolling()
         }
+    }
 
-        // Poll even when FileObserver is available. Some vendor kernels drop
-        // inotify events during atomic replacement or early boot.
+    private fun startObserver(): Boolean {
+        return try {
+            val parent = file.parentFile
+            if (parent == null || !parent.isDirectory) return false
+
+            val eventMask =
+                FileObserver.CLOSE_WRITE or
+                    FileObserver.MOVED_TO or
+                    FileObserver.MOVED_FROM or
+                    FileObserver.CREATE or
+                    FileObserver.DELETE or
+                    FileObserver.ATTRIB
+
+            @Suppress("DEPRECATION")
+            val fileObserver =
+                object : FileObserver(parent.absolutePath, eventMask) {
+                    override fun onEvent(
+                        event: Int,
+                        path: String?,
+                    ) {
+                        if (path == file.name) checkForChange()
+                    }
+                }
+            fileObserver.startWatching()
+            observer = fileObserver
+            true
+        } catch (error: Throwable) {
+            Logger.e("FilePoller: Could not start FileObserver for ${file.name}; enabling fallback polling", error)
+            false
+        }
+    }
+
+    private fun scheduleFallbackPolling() {
         scheduledFuture =
             scheduler.scheduleWithFixedDelay(
                 {
                     try {
                         checkForChange()
                     } catch (error: Throwable) {
-                        Logger.e("FilePoller: Check failed for ${file.name}", error)
+                        Logger.e("FilePoller: Fallback check failed for ${file.name}", error)
                     }
                 },
                 intervalMs,

@@ -69,19 +69,14 @@ public class XMLParser {
         XmlPullParserFactory xmlFactoryObject = XmlPullParserFactory.newInstance();
         XmlPullParser parser = xmlFactoryObject.newPullParser();
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false);
-        try {
-            parser.setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false);
-        } catch (Exception ignored) {}
-        try {
-            parser.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            parser.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        } catch (Exception ignored) {}
-        try {
-            parser.setFeature(XmlPullParser.FEATURE_VALIDATION, false);
-        } catch (Exception ignored) {}
+        disableFeatureIfSupported(parser, XmlPullParser.FEATURE_PROCESS_DOCDECL);
+        disableFeatureIfSupported(parser, "http://xml.org/sax/features/external-general-entities");
+        disableFeatureIfSupported(parser, "http://xml.org/sax/features/external-parameter-entities");
+        disableFeatureIfSupported(parser, XmlPullParser.FEATURE_VALIDATION);
         parser.setInput(new StringReader(document));
 
         Element currentElement = null;
+        Element parsedRoot = null;
         // Stack to keep track of parents
         List<Element> stack = new ArrayList<>();
 
@@ -99,6 +94,9 @@ public class XMLParser {
                 case XmlPullParser.START_TAG:
                     if (++elementCount > MAX_ELEMENTS || stack.size() >= MAX_DEPTH) {
                         throw new SecurityException("XML structure exceeds safety limits");
+                    }
+                    if (stack.isEmpty() && parsedRoot != null) {
+                        throw new SecurityException("XML document contains multiple root elements");
                     }
                     String elementName = parser.getName();
                     if (elementName == null || elementName.length() > MAX_NAME_LENGTH) {
@@ -126,8 +124,11 @@ public class XMLParser {
                     break;
 
                 case XmlPullParser.TEXT:
-                    if (currentElement != null && parser.getText() != null) {
+                    if (parser.getText() != null) {
                         String text = parser.getText().trim();
+                        if (!text.isEmpty() && currentElement == null) {
+                            throw new SecurityException("XML text is outside the root element");
+                        }
                         if (!text.isEmpty()) {
                             textChars = Math.addExact(textChars, text.length());
                             if (textChars > MAX_TEXT_CHARS) {
@@ -146,18 +147,24 @@ public class XMLParser {
                     throw new SecurityException("XML entities are not allowed");
 
                 case XmlPullParser.END_TAG:
-                    if (!stack.isEmpty()) {
-                        Element finished = stack.remove(stack.size() - 1);
-                        if (stack.isEmpty()) {
-                            return finished;
-                        }
+                    if (stack.isEmpty()) {
+                        throw new SecurityException("XML closing tag has no matching element");
+                    }
+                    Element finished = stack.remove(stack.size() - 1);
+                    if (stack.isEmpty()) {
+                        parsedRoot = finished;
+                        currentElement = null;
+                    } else {
                         currentElement = stack.get(stack.size() - 1);
                     }
                     break;
             }
             eventType = parser.next();
         }
-        return stack.isEmpty() ? null : stack.get(0);
+        if (!stack.isEmpty()) {
+            throw new SecurityException("XML document ended before all elements were closed");
+        }
+        return parsedRoot;
     }
 
     private static String readBounded(Reader reader) throws IOException {
@@ -178,6 +185,15 @@ public class XMLParser {
         return new SecurityException(
                 "DTD is not allowed in this parser to prevent XXE attacks",
                 new XmlPullParserException("docdecl not permitted"));
+    }
+
+    private static void disableFeatureIfSupported(XmlPullParser parser, String feature) {
+        try {
+            parser.setFeature(feature, false);
+        } catch (XmlPullParserException | RuntimeException unsupported) {
+            // Parser implementations expose different optional feature sets.
+            // Raw declarations and entity events are rejected independently.
+        }
     }
 
     public Map<String, String> obtainPath(String path) {
@@ -201,6 +217,10 @@ public class XMLParser {
             if (strict) throw new RuntimeException("XML not parsed");
             return null;
         }
+        if (path.isEmpty() || path.charAt(path.length() - 1) == '.') {
+            if (strict) throw new RuntimeException("Invalid XML path: " + path);
+            return null;
+        }
 
         Element current = root;
         int len = path.length();
@@ -212,7 +232,7 @@ public class XMLParser {
         int bracketIndex = firstPart.indexOf('[');
         String rootName = (bracketIndex == -1) ? firstPart : firstPart.substring(0, bracketIndex);
 
-        if (!root.name.equals(rootName)) {
+        if (bracketIndex != -1 || rootName.isEmpty() || !root.name.equals(rootName)) {
             if (strict) throw new RuntimeException("Path root mismatch: " + rootName + " vs " + root.name);
             return null;
         }
@@ -230,19 +250,22 @@ public class XMLParser {
             if (bracketIndex != -1) {
                 name = rawTag.substring(0, bracketIndex);
                 int closeBracket = rawTag.indexOf(']', bracketIndex);
-                if (closeBracket != -1) {
-                    try {
-                        index = Integer.parseInt(rawTag.substring(bracketIndex + 1, closeBracket));
-                    } catch (NumberFormatException e) {
-                        index = 0; // Fallback to 0 or could throw a RuntimeException
-                    }
+                if (name.isEmpty() || closeBracket != rawTag.length() - 1) {
+                    if (strict) throw new RuntimeException("Invalid indexed path segment: " + rawTag);
+                    return null;
+                }
+                try {
+                    index = Integer.parseInt(rawTag.substring(bracketIndex + 1, closeBracket));
+                } catch (NumberFormatException e) {
+                    if (strict) throw new RuntimeException("Invalid path index: " + rawTag, e);
+                    return null;
                 }
             } else {
                 name = rawTag;
             }
 
             List<Element> children = current.children.get(name);
-            if (children == null || index >= children.size()) {
+            if (name.isEmpty() || children == null || index < 0 || index >= children.size()) {
                 if (strict) throw new RuntimeException("Path not found: " + path);
                 return null;
             }

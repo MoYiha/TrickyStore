@@ -41,6 +41,63 @@ jobs:
       - name: "📱 Android Static Analysis (Lint)"
         run: ./gradlew :service:lintDebug :stub:lintDebug :encryptor-app:lintDebug
 
+      - name: "Native source and documentation policy"
+        run: |
+          unexpected_native=$(find . -type f \
+            \( -name '*.c' -o -name '*.C' -o -name '*.cc' -o -name '*.cpp' \
+               -o -name '*.cxx' -o -name '*.c++' -o -name '*.m' -o -name '*.mm' \
+               -o -name '*.ixx' -o -name '*.cppm' \) \
+            ! -path './.git/*' \
+            ! -path '*/build/*' \
+            ! -path './rust/target/*' \
+            ! -path './module/src/main/cpp/external/*' \
+            ! -path './module/src/main/cpp/binder_interceptor.cpp' -print)
+          if [ -n "$unexpected_native" ]; then
+            echo "::error::Unexpected first party C or C++ source detected"
+            printf '%s\n' "$unexpected_native"
+            exit 1
+          fi
+          unexpected_headers=$(find . -type f \
+            \( -name '*.h' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' \
+               -o -name '*.h++' -o -name '*.inc' -o -name '*.inl' \
+               -o -name '*.ipp' -o -name '*.tpp' \) \
+            ! -path './.git/*' \
+            ! -path '*/build/*' \
+            ! -path './rust/target/*' \
+            ! -path './module/src/main/cpp/external/*' -print | while IFS= read -r header; do
+              case "$header" in
+                './module/src/main/cpp/binder/include/binder/Binder.h'|\
+                './module/src/main/cpp/binder/include/binder/Common.h'|\
+                './module/src/main/cpp/binder/include/binder/IBinder.h'|\
+                './module/src/main/cpp/binder/include/binder/IPCThreadState.h'|\
+                './module/src/main/cpp/binder/include/binder/Parcel.h'|\
+                './module/src/main/cpp/binder/include/binder/unique_fd.h'|\
+                './module/src/main/cpp/binder/include/kernel/binder.h'|\
+                './module/src/main/cpp/binder/include/utils/Errors.h'|\
+                './module/src/main/cpp/binder/include/utils/RefBase.h'|\
+                './module/src/main/cpp/binder/include/utils/String16.h'|\
+                './module/src/main/cpp/binder/include/utils/StrongPointer.h'|\
+                './module/src/main/cpp/binder/include/utils/Vector.h'|\
+                './rust/native-core/include/cleverestricky_native_core.h') ;;
+                *) printf '%s\n' "$header" ;;
+              esac
+            done)
+          if [ -n "$unexpected_headers" ]; then
+            echo "::error::Unexpected first party native header detected"
+            printf '%s\n' "$unexpected_headers"
+            exit 1
+          fi
+          long_dash_pattern=$(printf '\342\200\224|\342\200\223')
+          if grep -RInE --exclude-dir=.git --exclude-dir=build --exclude-dir=target \
+            "$long_dash_pattern" .; then
+            echo "::error::Unsupported long dash character detected"
+            exit 1
+          fi
+          if grep -RIn -- '-' README.md docs; then
+            echo "::error::README and feature documents must not use dash characters"
+            exit 1
+          fi
+
   # ============================================================
   # Phase 2: Rust Tests & Linters
   # ============================================================
@@ -72,13 +129,13 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Check formatting
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --workspace --verbose
 
       - name: Security Audit
         run: |
@@ -157,6 +214,12 @@ jobs:
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
+      - name: Lint Android Rust targets
+        working-directory: rust
+        run: |
+          cargo clippy --workspace --all-targets --target aarch64-linux-android -- -D warnings
+          cargo clippy --workspace --all-targets --target x86_64-linux-android -- -D warnings
+
       - name: Run Module Tests
         run: ./gradlew :module:testDebugUnitTest
 
@@ -176,6 +239,29 @@ jobs:
           ./gradlew zipRelease
           ./gradlew zipDebug
           ./gradlew :encryptor-app:assembleRelease
+
+      - name: Verify native artifact hardening
+        run: |
+          module_root=module/build/outputs/module/release/lib
+          for abi in arm64-v8a x86_64; do
+            injector="$module_root/$abi/inject"
+            library="$module_root/$abi/libcleverestricky.so"
+            for binary in "$injector" "$library"; do
+              test -s "$binary"
+              readelf -W -l "$binary" | grep -q 'GNU_RELRO'
+              readelf -W -d "$binary" | grep -q 'BIND_NOW'
+              readelf -W -l "$binary" | awk '
+                $1 == "GNU_STACK" { found = 1; if ($0 ~ /RWE/) exit 2 }
+                END { if (!found) exit 1 }
+              '
+            done
+            readelf -W -l "$injector" | grep -q '/system/bin/linker64'
+            exports=$(readelf -W --dyn-syms "$library" |
+              awk '$5 == "GLOBAL" && $7 != "UND" && $8 != "" { print $8 }' |
+              sort -u)
+            expected_exports=$(printf 'entry\nresume')
+            test "$exports" = "$expected_exports"
+          done
 
       - name: Upload release zip
         uses: actions/upload-artifact@v7

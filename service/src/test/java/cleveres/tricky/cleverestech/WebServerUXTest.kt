@@ -68,32 +68,22 @@ class WebServerUXTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify App Filter Input uses type="search"
         assertTrue(
             "App Filter should use type='search' for native clear button",
             html.contains(
                 "id=\"appFilter\" placeholder=\"Filter...\" oninput=\"renderAppTable()\" aria-label=\"Filter rules\" style=\"width:150px; padding:5px 10px; font-size:0.85em; background:var(--input-bg); border:1px solid var(--border); color:#fff; border-radius:4px;\" type=\"search\"",
             ) ||
                 html.contains("type=\"search\" id=\"appFilter\"") ||
-                (html.contains("id=\"appFilter\"") && html.contains("type=\"search\"")), // Use looser check if exact string match is hard
+                (html.contains("id=\"appFilter\"") && html.contains("type=\"search\"")),
         )
-        // Let's use a more robust check for the specific line
-        // Current: <input type="text" id="appFilter" ...
-        // Expected: <input type="search" id="appFilter" ... (or similar)
-
-        // Verify Apply System-Wide Button uses runWithState wrapper
         assertTrue(
             "Apply System-Wide button should use runWithState wrapper",
             html.contains("runWithState(this, 'Saving...', applySpoofing)"),
         )
-
-        // Verify JS function signature updated (removed btn arg since runWithState handles it)
         assertTrue(
             "applySpoofing should no longer need btn argument",
             html.contains("async function applySpoofing()") && !html.contains("async function applySpoofing(btn)"),
         )
-
-        // Verify JS loading state logic using wrapper
         assertTrue(
             "applySpoofing should use runWithState wrapper",
             html.contains("runWithState(this, 'Saving...', applySpoofing)"),
@@ -108,13 +98,10 @@ class WebServerUXTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify Save Button has title
         assertTrue(
             "Save button should have title hint for Ctrl+S",
             html.contains("title=\"Ctrl+S\"") && html.contains("id=\"saveBtn\""),
         )
-
-        // Verify Textarea has onkeydown handler
         assertTrue(
             "File editor textarea should have onkeydown handler for Ctrl+S",
             html.contains(
@@ -159,9 +146,12 @@ class WebServerUXTest {
         settings.forEach { setting ->
             assertTrue("Missing synchronized control for $setting", html.contains("data-setting=\"$setting\""))
             assertTrue("Missing source-aware toggle for $setting", html.contains("toggle('$setting', this)"))
+            assertTrue("Missing resource monitor entry for $setting", html.contains("{ id: '$setting'"))
         }
         assertTrue(html.contains("WEB_UI_SETTINGS.includes(f.id)"))
         assertTrue(html.contains("syncSettingControls(setting, !requestedValue)"))
+        assertTrue(html.contains("resourceUsageController.abort()"))
+        assertTrue(html.contains("signal: controller.signal"))
         assertFalse(html.contains(0x2014.toChar()))
     }
 

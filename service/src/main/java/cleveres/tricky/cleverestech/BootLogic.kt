@@ -106,16 +106,9 @@ object BootLogic {
                 val directory = File(path)
                 if (!isDirectory(directory)) return@any false
                 directory.listFiles().orEmpty().any { candidate ->
-                    val id = candidate.name.lowercase()
                     isDirectory(candidate) &&
                         !isRegularFile(File(candidate, "disable")) &&
-                        (
-                            id.contains("playintegrity") ||
-                                id.contains("autopif") ||
-                                id == "pif" ||
-                                id.startsWith("pif_") ||
-                                id.contains("playcurl")
-                        )
+                        isBuildIdentityProviderModuleId(candidate.name)
                 }
             }
         if (conflicts) {
@@ -123,6 +116,17 @@ object BootLogic {
             return false
         }
         return true
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun isBuildIdentityProviderModuleId(moduleId: String): Boolean {
+        val id = moduleId.trim().lowercase()
+        return id.contains("playintegrity") ||
+            id.contains("autopif") ||
+            id.contains("auto_pif") ||
+            id == "pif" ||
+            id.startsWith("pif_") ||
+            id.contains("playcurl")
     }
 
     /**

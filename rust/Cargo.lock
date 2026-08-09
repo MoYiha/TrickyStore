@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
-name = "cleverestricky-cbor-cose"
-version = "0.1.1"
+name = "cleverestricky-injector-core"
+version = "0.1.0"
+dependencies = [
+ "cleverestricky-native-core",
+]
+
+[[package]]
+name = "cleverestricky-native-core"
+version = "0.2.0"

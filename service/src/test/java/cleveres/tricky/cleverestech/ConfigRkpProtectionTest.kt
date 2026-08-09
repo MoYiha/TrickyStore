@@ -28,19 +28,27 @@ class ConfigRkpProtectionTest {
     fun `RKP service packages stay outside global substitution scope`() {
         invokeUpdater("updateGlobalMode", File(tempDir, "global_mode").apply { createNewFile() })
         cachePackages(10_100, arrayOf("com.android.rkpd"))
-        cachePackages(10_101, arrayOf("com.google.android.rkpd"))
-        cachePackages(10_102, arrayOf("com.google.android.go.rkpd"))
-        cachePackages(10_103, arrayOf("com.android.rkpd.example"))
-        cachePackages(10_104, emptyArray())
+        cachePackages(10_101, arrayOf("com.android.rkpdapp"))
+        cachePackages(10_102, arrayOf("com.google.android.rkpd"))
+        cachePackages(10_103, arrayOf("com.google.android.rkpdapp"))
+        cachePackages(10_104, arrayOf("com.google.android.go.rkpd"))
+        cachePackages(10_105, arrayOf("com.android.remoteprovisioner"))
+        cachePackages(10_106, arrayOf("com.google.android.remoteprovisioner"))
+        cachePackages(10_107, arrayOf("com.android.rkpd.example"))
+        cachePackages(10_108, emptyArray())
 
         assertFalse(Config.needHack(10_100))
         assertFalse(Config.needHack(10_101))
         assertFalse(Config.needHack(10_102))
-        assertTrue(Config.needHack(10_103))
+        assertFalse(Config.needHack(10_103))
         assertFalse(Config.needHack(10_104))
+        assertFalse(Config.needHack(10_105))
+        assertFalse(Config.needHack(10_106))
+        assertTrue(Config.needHack(10_107))
+        assertFalse(Config.needHack(10_108))
 
         invokeUpdater("updateSpoofEnabled", null)
-        assertFalse(Config.needHack(10_103))
+        assertFalse(Config.needHack(10_107))
     }
 
     private fun invokeUpdater(

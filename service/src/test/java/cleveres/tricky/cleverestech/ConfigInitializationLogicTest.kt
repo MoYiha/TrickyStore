@@ -4,11 +4,14 @@ import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 class ConfigInitializationLogicTest {
     private lateinit var tempDir: File
@@ -133,12 +136,15 @@ class ConfigInitializationLogicTest {
     }
 
     @Test
-    fun testRandomizeOnBootBug() {
-        val randomOnBootFile = File(tempDir, "random_on_boot")
-        randomOnBootFile.createNewFile()
+    fun `randomization stages one synchronized snapshot for early boot`() {
+        val spoofEnabledFile = File(tempDir, "spoof_enabled")
+        spoofEnabledFile.createNewFile()
+        Config.refreshRuntimeSetting("spoof_enabled")
 
         val spoofFile = File(tempDir, "spoof_build_vars")
-        spoofFile.writeText("ATTESTATION_ID_IMEI=490154203237518\n")
+        spoofFile.writeText("TEMPLATE=pixel8pro\nATTESTATION_ID_IMEI=490154203237518\n")
+
+        Config.updateCustomTemplates(null)
 
         try {
             callUpdateBuildVars(spoofFile)
@@ -149,26 +155,34 @@ class ConfigInitializationLogicTest {
         }
 
         assertEquals("490154203237518", Config.getBuildVar("ATTESTATION_ID_IMEI"))
+        assertEquals("pixel8pro", Config.getBuildVar("TEMPLATE"))
 
-        callEnforceRandomization()
+        val randomOnBootFile = File(tempDir, "random_on_boot")
+        randomOnBootFile.createNewFile()
+        Config.refreshRuntimeSetting("random_on_boot")
 
-        // Mirror the fix: Call updateBuildVars again to load the new values
-        try {
-            callUpdateBuildVars(spoofFile)
-        } catch (e: NoSuchMethodException) {
-            throw e
-        }
+        val stagedFile = File(tempDir, "spoof_build_vars.next")
+        assertTrue("Next-boot snapshot should be staged", stagedFile.isFile)
+        assertEquals("Active snapshot must stay unchanged during this boot", "TEMPLATE=pixel8pro\nATTESTATION_ID_IMEI=490154203237518\n", spoofFile.readText())
+        assertEquals("Current attestation snapshot must stay synchronized", "490154203237518", Config.getBuildVar("ATTESTATION_ID_IMEI"))
+        assertEquals("Current build snapshot must stay synchronized", "pixel8pro", Config.getBuildVar("TEMPLATE"))
 
-        val fileContent = spoofFile.readText()
-        assertNotEquals("File should have been randomized", "ATTESTATION_ID_IMEI=490154203237518\n", fileContent)
-        assertTrue("File should contain ATTESTATION_ID_IMEI", fileContent.contains("ATTESTATION_ID_IMEI="))
+        val stagedContent = stagedFile.readText()
+        val nextImei = stagedContent.lineSequence().first { it.startsWith("ATTESTATION_ID_IMEI=") }.substringAfter('=')
+        val nextTemplate = stagedContent.lineSequence().first { it.startsWith("TEMPLATE=") }.substringAfter('=')
+        assertNotEquals("Next boot should receive a new IMEI", "490154203237518", nextImei)
+        assertNotEquals("Next boot should receive a different template", "pixel8pro", nextTemplate)
 
-        // Assert Fix: Config should have NEW value (randomized)
-        assertNotEquals("Config should have NEW value", "490154203237518", Config.getBuildVar("ATTESTATION_ID_IMEI"))
+        Files.move(stagedFile.toPath(), spoofFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        callUpdateBuildVars(spoofFile)
+        assertEquals(nextImei, Config.getBuildVar("ATTESTATION_ID_IMEI"))
+        assertEquals(nextTemplate, Config.getBuildVar("TEMPLATE"))
 
-        // Extract IMEI from file content to verify exact match
-        val newImei = fileContent.lines().find { it.startsWith("ATTESTATION_ID_IMEI=") }?.split("=")?.get(1)?.trim()
-        assertEquals("Config should match file content", newImei, Config.getBuildVar("ATTESTATION_ID_IMEI"))
+        Config.refreshRuntimeSetting("random_on_boot")
+        assertTrue("An enabled refresh must keep one pending snapshot", stagedFile.isFile)
+        randomOnBootFile.delete()
+        Config.refreshRuntimeSetting("random_on_boot")
+        assertFalse("Disabling refresh must remove a pending snapshot", stagedFile.exists())
     }
 
     private fun callUpdateBuildVars(file: File) {
@@ -182,9 +196,4 @@ class ConfigInitializationLogicTest {
         method.invoke(Config, file)
     }
 
-    private fun callEnforceRandomization() {
-        val method = Config::class.java.getDeclaredMethod("enforceRandomization")
-        method.isAccessible = true
-        method.invoke(Config)
-    }
 }

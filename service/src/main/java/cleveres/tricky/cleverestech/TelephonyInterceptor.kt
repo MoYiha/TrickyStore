@@ -382,6 +382,7 @@ object TelephonyInterceptor : BinderInterceptor() {
             triedCount.incrementAndGet()
             return false
         }
+        registered = true
         Logger.i("Telephony Binder interceptor registered")
         try {
             iphonesubinfo.linkToDeath(phoneDeathRecipient, 0)
@@ -391,7 +392,6 @@ object TelephonyInterceptor : BinderInterceptor() {
             stopTelephonyInterceptor()
             return false
         }
-        registered = true
         if (!Config.isSpoofEnabled || !Config.isTelephonyEnabled) {
             stopTelephonyInterceptor()
             return true
@@ -405,13 +405,22 @@ object TelephonyInterceptor : BinderInterceptor() {
 
     @Synchronized
     fun stopTelephonyInterceptor(): Boolean {
-        val control = binderBackdoor
-        val success =
-            if (registered && control != null && ::iphonesubinfo.isInitialized) {
-                unregisterBinderInterceptor(control, iphonesubinfo, this)
-            } else {
-                !registered
-            }
+        val targetAlive = ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive
+        val control =
+            binderBackdoor
+                ?: if (targetAlive) getBinderControlEndpoint(iphonesubinfo) else null
+        var stopped = control?.let(::clearAndParkBinderHook) == true
+        if (!stopped && control != null) {
+            if (registered) unregisterBinderInterceptor(control, iphonesubinfo, this)
+            stopped = parkBinderHook(control)
+        }
+        if (!targetAlive || (!registered && control == null)) stopped = true
+        if (!stopped) {
+            binderBackdoor = control
+            Logger.d("Telephony Binder hook cleanup remains pending")
+            return false
+        }
+
         if (deathRecipientLinked && ::iphonesubinfo.isInitialized) {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
@@ -422,7 +431,7 @@ object TelephonyInterceptor : BinderInterceptor() {
         }
         registered = false
         binderBackdoor = null
-        return success
+        return true
     }
 
     override fun onInterceptorReplaced() {

@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- Restored the real native `keystore2` injector and Binder hook, pinned LSPlt as a submodule, and added both arm64 and x86_64 builds.
+- Restored the real `keystore2` Binder hook, replaced the injector with a Rust executable, pinned LSPlt as a submodule, and added both arm64 and x86_64 builds.
 - Kept key generation and all private-key operations on genuine KeyMint/StrongBox paths; certificate responses are changed only after a successful platform operation.
 - Corrected certificate/private-key matching, PKCS#8 handling, patch-level parsing, Luhn generation, per-app keybox selection, Binder parcel bounds, and file-cache invalidation.
 - Added independent OS/vendor/boot attestation patch policies with global and per-package rules, live reload, explicit keep/omit behavior, and date-template validation.
@@ -14,15 +14,19 @@
 - Fixed module consistency verification so missing targets, malformed checksums, symbolic links, and non-regular files are rejected.
 - Fixed WebUI setting synchronization, Android WebView drag and drop, multipart XML uploads, editable templates, boot-property controls, and encrypted backup coverage for local XML/CBOX files.
 - Fixed native injection retry state so failed attempts recover without repeatedly registering healthy hooks; telephony responses now change only when a validated identifier is configured.
+- Fixed next boot identity refresh so Build fields, fingerprint, attestation identifiers, and telephony values activate from one synchronized snapshot.
+- Protected current `rkpdapp` and legacy Remote Provisioner package names, and expanded identity provider coexistence matching to `auto_pif` layouts.
 
 ### Security and performance
 
 - Added root-only atomic configuration writes, symlink defenses, input/count/size limits, constant-time token comparison, loopback-only WebUI binding, security headers, and bounded rate/UID caches.
 - Upgraded CBOX and CTSB output to v2 AES-256-GCM envelopes with PBKDF2-HMAC-SHA256 (250,000 iterations) and authenticated headers; v1 remains read-only for migration.
 - Encrypted server credentials and unlocked keybox caches, disabled redirects, required HTTPS for remote sources, and validated every remote/local key before activation.
-- Added a bounded Rust Binder stream parser and fail-closed native layout validation; native code builds with warnings as errors and hardened visibility/linker settings.
+- Added a bounded Rust Binder stream parser, fail-closed native layout validation, Rust ptrace and process-memory orchestration, and a source policy that prohibits first-party C and limits first-party C++ to the required Android Binder bridge.
+- Added root-authorized atomic Binder cleanup, retryable parked state, a coalesced target stack journal with a guarded call window, executable platform symbol validation, exact descriptor transfer checks, rejected-library cleanup, and chunked kernel memory copies.
+- Moved Binder descriptor classification into Rust with fixed storage and descriptor reuse checks, and copied Binder response streams through a bounded kernel-validated path before parsing.
 - Reduced repeated certificate parsing, PackageManager IPC, template parsing, and keybox reload work with bounded, state-consistent caches; UID targeting decisions now expire to prevent stale package reuse.
-- Reduced retained WebUI and certificate-cache memory, bounded certificate and template inputs, hardened keybox verification against symbolic links, and protected remote-cache deletion.
+- Reduced retained WebUI and certificate-cache memory, bounded certificate and template inputs, hardened keybox verification against symbolic links, protected remote-cache deletion, and removed allocation-heavy CPU parsing from the resource view.
 
 ### Removed or changed
 
@@ -38,7 +42,7 @@
 
 ### Build and maintenance
 
-- Updated Android 12–16/API 31–36 configuration, Java/Rust/native CI, artifact boundaries, least-privilege workflow permissions, documentation, contribution rules, and regression tests.
+- Updated Android 12 to 16 and API 31 to 36 configuration, Java, Rust, native CI, artifact boundaries, least privilege workflow permissions, documentation, contribution rules, and regression tests.
 - Removed repository-root experiments, generated binaries/screenshots, obsolete audits, duplicated implementations, and ignored tests for deleted features.
 
 Earlier release history is available on [GitHub Releases](https://github.com/tryigit/CleveresTricky/releases).
