@@ -262,10 +262,14 @@ object SecureFile {
             try {
                 Os.chmod(file.absolutePath, mode)
                 return
-            } catch (_: Exception) {
-                // Android host-side unit tests do not provide a working Os stub.
-            } catch (_: LinkageError) {
-                // Fall back to java.io permission APIs on non-Android runtimes.
+            } catch (error: Exception) {
+                if (isAndroidRuntime()) {
+                    throw IOException("Could not set mode on $file", error)
+                }
+            } catch (error: LinkageError) {
+                if (isAndroidRuntime()) {
+                    throw IOException("Could not access chmod for $file", error)
+                }
             }
 
             file.setReadable(false, false)
@@ -285,9 +289,15 @@ object SecureFile {
             }
         }
 
+        private fun isAndroidRuntime(): Boolean {
+            val runtimeName = System.getProperty("java.runtime.name").orEmpty()
+            val vmName = System.getProperty("java.vm.name").orEmpty()
+            return runtimeName.contains("Android", ignoreCase = true) || vmName.equals("Dalvik", ignoreCase = true)
+        }
+
         private companion object {
-            const val FILE_MODE = 0b110_000_000 // 0600
-            const val DIRECTORY_MODE = 0b111_000_000 // 0700
+            const val FILE_MODE = 0b110_000_000
+            const val DIRECTORY_MODE = 0b111_000_000
         }
     }
 }
