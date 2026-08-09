@@ -87,7 +87,7 @@ pub fn extract_scm_rights_fd(input: &[u8]) -> Option<i32> {
 
         let step = align_cmsg(header.length)?;
         if step == 0 || step > input.len().saturating_sub(offset) {
-            break;
+            return None;
         }
         offset += step;
     }
@@ -356,6 +356,36 @@ mod tests {
                 .cast::<CmsgHeader>()
                 .write_unaligned(header)
         };
+        assert_eq!(extract_scm_rights_fd(&input), None);
+    }
+
+    #[test]
+    fn rejects_truncated_control_message_padding_after_rights() {
+        let data_offset = align_cmsg(mem::size_of::<CmsgHeader>()).unwrap();
+        let mut input = Vec::new();
+        append_cmsg(
+            &mut input,
+            CmsgHeader {
+                length: data_offset + mem::size_of::<i32>(),
+                level: SOL_SOCKET,
+                kind: SCM_RIGHTS,
+            },
+            &41i32.to_ne_bytes(),
+        );
+        let start = input.len();
+        let header = CmsgHeader {
+            length: mem::size_of::<CmsgHeader>() + 1,
+            level: SOL_SOCKET,
+            kind: 2,
+        };
+        input.resize(start + header.length, 0);
+        unsafe {
+            input
+                .as_mut_ptr()
+                .add(start)
+                .cast::<CmsgHeader>()
+                .write_unaligned(header);
+        }
         assert_eq!(extract_scm_rights_fd(&input), None);
     }
 
