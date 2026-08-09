@@ -103,6 +103,7 @@ object CboxManager {
         if (!isSafeCbox(file)) return false
 
         var sourceDigest: ByteArray? = null
+        var verificationDigest: ByteArray? = null
         return try {
             val digest = MessageDigest.getInstance("SHA-256")
             val payload =
@@ -132,9 +133,23 @@ object CboxManager {
                 return false
             }
 
+            val beforeModified = file.lastModified()
+            val beforeSize = file.length()
+            verificationDigest = digestFile(file)
+            val afterModified = file.lastModified()
+            val afterSize = file.length()
+            if (
+                beforeModified != afterModified ||
+                beforeSize != afterSize ||
+                !MessageDigest.isEqual(sourceDigest, verificationDigest)
+            ) {
+                Logger.e("CBOX source changed while it was being unlocked: $filename")
+                return false
+            }
+
             writeCache(file, payload.xmlContent, sourceDigest)
             unlockedCache[filename] =
-                UnlockedEntry(file.lastModified(), file.length(), verified.toList())
+                UnlockedEntry(afterModified, afterSize, verified.toList())
             lockedFiles.remove(filename)
             true
         } catch (e: Exception) {
@@ -142,6 +157,7 @@ object CboxManager {
             false
         } finally {
             sourceDigest?.fill(0)
+            verificationDigest?.fill(0)
         }
     }
 
@@ -229,8 +245,9 @@ object CboxManager {
                 .toByteArray(StandardCharsets.UTF_8)
         var encrypted: ByteArray? = null
         try {
-            encrypted = DeviceKeyManager.encrypt(plaintext)
-                ?: throw IllegalStateException("Device cache encryption is unavailable")
+            encrypted =
+                DeviceKeyManager.encrypt(plaintext)
+                    ?: throw IllegalStateException("Device cache encryption is unavailable")
             SecureFile.writeBytes(cacheFileFor(file), encrypted)
         } finally {
             plaintext.fill(0)
