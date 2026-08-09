@@ -121,6 +121,8 @@ tasks.register<Exec>("cargoBuild") {
     commandLine(
         "cargo",
         "ndk",
+        "--platform",
+        androidMinSdkVersion.toString(),
         "-t",
         "arm64-v8a",
         "-t",
