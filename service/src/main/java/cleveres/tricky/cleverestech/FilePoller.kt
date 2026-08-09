@@ -106,8 +106,8 @@ class FilePoller(
         if (!isRunning) return
         val current = snapshot()
         if (current == lastSnapshot) return
-        lastSnapshot = current
         onModified(file)
+        lastSnapshot = current
     }
 
     @Synchronized
