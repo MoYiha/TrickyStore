@@ -1,9 +1,7 @@
 package cleveres.tricky.cleverestech.binder
 
 import android.os.Binder
-import android.os.IBinder
 import android.os.Parcel
-import cleveres.tricky.cleverestech.binder.BinderInterceptor.Continue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -17,19 +15,7 @@ class BinderInterceptorTest {
 
     @Test
     fun testOnTransactPostTransact_ZeroSz2_ReducesObtain() {
-        val interceptor =
-            object : BinderInterceptor() {
-                override fun onPostTransact(
-                    target: IBinder,
-                    code: Int,
-                    flags: Int,
-                    callingUid: Int,
-                    callingPid: Int,
-                    data: Parcel,
-                    reply: Parcel?,
-                    resultCode: Int,
-                ): Result = Continue
-            }
+        val interceptor = BinderInterceptor()
 
         val data = Parcel.obtain()
         data.pushBinder(Binder())
@@ -50,19 +36,7 @@ class BinderInterceptorTest {
 
     @Test
     fun testOnTransactPostTransact_NonZeroSz2_AllocatesTwo() {
-        val interceptor =
-            object : BinderInterceptor() {
-                override fun onPostTransact(
-                    target: IBinder,
-                    code: Int,
-                    flags: Int,
-                    callingUid: Int,
-                    callingPid: Int,
-                    data: Parcel,
-                    reply: Parcel?,
-                    resultCode: Int,
-                ): Result = Continue
-            }
+        val interceptor = BinderInterceptor()
 
         val data = Parcel.obtain()
         data.pushBinder(Binder())
