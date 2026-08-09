@@ -1904,6 +1904,14 @@ class WebServer(
                 <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">Global Mode</div>
                 <div id="status_global" style="font-weight: bold; color: var(--danger); margin-top: 5px; background: rgba(239, 68, 68, 0.1); padding: 5px; border-radius: 4px;">INACTIVE</div>
             </div>
+            <div style="flex: 1; min-width: 120px; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
+                <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">RKP Bypass</div>
+                <div id="status_rkp" style="font-weight: bold; color: var(--danger); margin-top: 5px; background: rgba(239, 68, 68, 0.1); padding: 5px; border-radius: 4px;">INACTIVE</div>
+            </div>
+            <div style="flex: 1; min-width: 120px; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
+                <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">DRM Fix</div>
+                <div id="status_drm" style="font-weight: bold; color: var(--danger); margin-top: 5px; background: rgba(239, 68, 68, 0.1); padding: 5px; border-radius: 4px;">INACTIVE</div>
+            </div>
         </div>
 
         <div class="panel">
@@ -2933,6 +2941,23 @@ class WebServer(
             status.style.background = enabled ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)';
         }
 
+        function updateRkpStatus(enabled) {
+            const status = document.getElementById('status_rkp');
+            if (!status) return;
+            status.innerText = enabled ? 'ACTIVE' : 'INACTIVE';
+            status.style.color = enabled ? 'var(--success)' : 'var(--danger)';
+            status.style.background = enabled ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+        }
+
+        function updateDrmStatus(enabled) {
+            const status = document.getElementById('status_drm');
+            if (!status) return;
+            status.innerText = enabled ? 'ACTIVE' : 'INACTIVE';
+            status.style.color = enabled ? 'var(--success)' : 'var(--danger)';
+            status.style.background = enabled ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+        }
+
+
         function syncSettingControls(setting, enabled, disabled = false) {
             document.querySelectorAll('[data-setting="' + setting + '"]').forEach(control => {
                 control.checked = Boolean(enabled);
@@ -2940,6 +2965,8 @@ class WebServer(
             });
             if (setting === 'spoof_enabled') updateEngineStatus(Boolean(enabled));
             if (setting === 'global_mode') updateGlobalStatus(Boolean(enabled));
+            if (setting === 'rkp_passthrough') updateRkpStatus(Boolean(enabled));
+            if (setting === 'drm_passthrough') updateDrmStatus(Boolean(enabled));
         }
 
         async function init() {

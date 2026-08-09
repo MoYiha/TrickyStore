@@ -240,5 +240,11 @@ class WebServerPaletteTest {
 
         // 4. Verify Copy Logs button exists
         assertTrue("Copy Logs button should exist", html.contains("Copy Logs</button>"))
+
+        // 5. Verify RKP and DRM status indicators exist
+        assertTrue(
+            "Dashboard should have RKP and DRM status indicators",
+            html.contains("id=\"status_rkp\"") && html.contains("id=\"status_drm\""),
+        )
     }
 }
