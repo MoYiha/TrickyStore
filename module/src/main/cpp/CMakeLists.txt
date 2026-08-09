@@ -48,12 +48,6 @@ set_target_properties(rust_native_core PROPERTIES IMPORTED_LOCATION
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../rust/target/${RUST_TARGET_TRIPLE}/release/libcleverestricky_native_core.a
 )
 
-# The private Binder bridge intentionally leaves platform libbinder/libutils
-# symbols unresolved until it is loaded inside an Android system process. Keep
-# explicit DT_NEEDED entries so RTLD_NOW places those platform DSOs in this
-# object's relocation scope even when the process loaded them in another local
-# linker group. The generated stubs exist only at link time and are excluded
-# from the module payload by module/build.gradle.kts.
 set(PLATFORM_LINK_STUB_DIR "${CMAKE_CURRENT_BINARY_DIR}/platform_link_stubs")
 file(MAKE_DIRECTORY "${PLATFORM_LINK_STUB_DIR}")
 file(WRITE "${PLATFORM_LINK_STUB_DIR}/binder_link_stub.cpp"
