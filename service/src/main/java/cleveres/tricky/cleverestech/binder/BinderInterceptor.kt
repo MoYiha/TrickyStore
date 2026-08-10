@@ -269,11 +269,14 @@ open class BinderInterceptor : Binder() {
                 Skip
             }
 
-        if (result !is OverrideData || result.data !== request) request.recycle()
-        response?.let { responseParcel ->
-            if (result !is OverrideReply || result.reply !== responseParcel) {
-                responseParcel.recycle()
-            }
+        val retainedData = (result as? OverrideData)?.data
+        val retainedReply = (result as? OverrideReply)?.reply
+
+        if (request !== retainedData && request !== retainedReply) {
+            request.recycle()
+        }
+        if (response != null && response !== retainedData && response !== retainedReply) {
+            response.recycle()
         }
         return result
     }
