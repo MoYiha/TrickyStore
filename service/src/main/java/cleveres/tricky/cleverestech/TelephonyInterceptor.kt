@@ -261,7 +261,6 @@ object TelephonyInterceptor : BinderInterceptor() {
                     }
                 }
             } catch (_: Exception) {
-                Unit
             }
             cachedPhonePid = null
         }
@@ -297,7 +296,6 @@ object TelephonyInterceptor : BinderInterceptor() {
                         }
                     }
                 } catch (_: Exception) {
-                    Unit
                 }
             }
         }
@@ -425,7 +423,6 @@ object TelephonyInterceptor : BinderInterceptor() {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
-                Unit
             }
             deathRecipientLinked = false
         }
@@ -439,7 +436,6 @@ object TelephonyInterceptor : BinderInterceptor() {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
-                Unit
             }
         }
         deathRecipientLinked = false
