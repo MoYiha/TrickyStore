@@ -2,8 +2,10 @@ package cleveres.tricky.cleverestech
 
 import android.os.FileObserver
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
@@ -17,6 +19,7 @@ class FilePoller(
         val exists: Boolean,
         val lastModified: Long,
         val length: Long,
+        val fileKey: Any?,
     )
 
     @Volatile
@@ -125,11 +128,25 @@ class FilePoller(
     }
 
     private fun snapshot(): Snapshot {
-        val exists = Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
-        return Snapshot(
-            exists = exists,
-            lastModified = if (exists) file.lastModified() else 0L,
-            length = if (exists) file.length() else 0L,
-        )
+        return try {
+            val attributes =
+                Files.readAttributes(
+                    file.toPath(),
+                    BasicFileAttributes::class.java,
+                    LinkOption.NOFOLLOW_LINKS,
+                )
+            if (!attributes.isRegularFile) {
+                Snapshot(false, 0L, 0L, null)
+            } else {
+                Snapshot(
+                    exists = true,
+                    lastModified = attributes.lastModifiedTime().toMillis(),
+                    length = attributes.size(),
+                    fileKey = attributes.fileKey(),
+                )
+            }
+        } catch (_: IOException) {
+            Snapshot(false, 0L, 0L, null)
+        }
     }
 }
