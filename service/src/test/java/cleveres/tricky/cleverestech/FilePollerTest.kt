@@ -17,7 +17,7 @@ class FilePollerTest {
 
     private lateinit var testFile: File
     private lateinit var poller: FilePoller
-    private val intervalMs = 100L
+    private val intervalMs = 60_000L
 
     @Before
     fun setUp() {
@@ -112,7 +112,7 @@ class FilePollerTest {
     fun testFailedCallbackRetriesSameChange() {
         var callbackCount = 0
         poller =
-            FilePoller(testFile, 60_000L) {
+            FilePoller(testFile, intervalMs) {
                 callbackCount++
                 if (callbackCount == 1) throw IllegalStateException("first attempt fails")
             }
