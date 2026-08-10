@@ -49,6 +49,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -226,6 +227,14 @@ public final class CertHack {
             if (value != null) selected.put(tag, value);
         }
         return selected;
+    }
+
+    static String signingKeyAlgorithm(String signatureAlgorithm) {
+        if (signatureAlgorithm == null) return null;
+        String normalized = signatureAlgorithm.toUpperCase(Locale.ROOT);
+        if (normalized.contains("ECDSA")) return KeyProperties.KEY_ALGORITHM_EC;
+        if (normalized.contains("RSA")) return KeyProperties.KEY_ALGORITHM_RSA;
+        return null;
     }
 
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
@@ -512,9 +521,9 @@ public final class CertHack {
             X509v3CertificateBuilder builder;
             ContentSigner signer;
 
-            String leafAlgo = normalizeAlgorithm(leaf.getPublicKey().getAlgorithm());
-            if (leafAlgo == null) {
-                Logger.e("Unsupported attestation leaf algorithm");
+            String signerAlgo = signingKeyAlgorithm(leaf.getSigAlgName());
+            if (signerAlgo == null) {
+                Logger.e("Unsupported attestation signing algorithm");
                 return caList;
             }
 
@@ -522,24 +531,24 @@ public final class CertHack {
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
                 list = filterKeyboxesByAlgorithm(
-                        currentState.keyboxFiles.get(appConfig.getKeyboxFilename()), leafAlgo);
+                        currentState.keyboxFiles.get(appConfig.getKeyboxFilename()), signerAlgo);
                 if (list == null || list.isEmpty()) {
                     throw new UnsupportedOperationException("App-requested keybox is unavailable " +
-                            "or does not support " + leafAlgo);
+                            "or does not support attestation signer " + signerAlgo);
                 }
             } else {
-                list = currentState.keyboxes.get(leafAlgo);
+                list = currentState.keyboxes.get(signerAlgo);
             }
 
             if (list == null || list.isEmpty())
-                throw new UnsupportedOperationException("unsupported algorithm " + leafAlgo);
+                throw new UnsupportedOperationException("unsupported attestation signer " + signerAlgo);
 
-            int idx = (rotationCounters.get(leafAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
+            int idx = (rotationCounters.get(signerAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
             var k = list.get(idx);
 
             certificates = new LinkedList<>(k.certificates);
             if (certificates.isEmpty()) {
-                throw new UnsupportedOperationException("Keybox has no certificates for algorithm " + leafAlgo);
+                throw new UnsupportedOperationException("Keybox has no certificates for signer " + signerAlgo);
             }
             builder = new X509v3CertificateBuilder(
                     new X509CertificateHolder(
