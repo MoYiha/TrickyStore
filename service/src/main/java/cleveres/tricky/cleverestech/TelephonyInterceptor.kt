@@ -87,6 +87,9 @@ object TelephonyInterceptor : BinderInterceptor() {
     @Volatile
     private var lastInjectionAttemptMs = 0L
 
+    @Volatile
+    private var cachedPhonePid: Int? = null
+
     private val phoneDeathRecipient =
         object : IBinder.DeathRecipient {
             override fun binderDied() {
@@ -96,6 +99,8 @@ object TelephonyInterceptor : BinderInterceptor() {
                 injected = false
                 injectedPid = null
                 binderBackdoor = null
+                cachedPhonePid = null
+                lastInjectionAttemptMs = 0L
                 triedCount.set(0)
                 Config.signalRuntimeController()
             }
@@ -152,8 +157,6 @@ object TelephonyInterceptor : BinderInterceptor() {
         }
         reply.setDataPosition(replyPosition)
 
-        // Preserve Android's permission and availability decision. A null or empty
-        // platform result must never be upgraded into a readable identifier.
         if (originalValue.isNullOrEmpty()) return Skip
 
         val identifiers = Config.getIdentityOverrides()
@@ -233,9 +236,6 @@ object TelephonyInterceptor : BinderInterceptor() {
         }
     }
 
-    @Volatile
-    private var cachedPhonePid: Int? = null
-
     private fun findPhoneProcessPid(): Int? {
         val cachedPid = cachedPhonePid
         if (cachedPid != null) {
@@ -252,7 +252,7 @@ object TelephonyInterceptor : BinderInterceptor() {
                     var end = 0
                     var start = 0
                     while (end < length && buf[end] != 0.toByte()) {
-                        if (buf[end] == 47.toByte()) start = end + 1 // Track last slash '/'
+                        if (buf[end] == 47.toByte()) start = end + 1
                         end++
                     }
                     val argv0 = String(buf, start, end - start)
@@ -260,8 +260,8 @@ object TelephonyInterceptor : BinderInterceptor() {
                         return cachedPid
                     }
                 }
-            } catch (e: Exception) {
-                // Ignore file read errors
+            } catch (_: Exception) {
+                Unit
             }
             cachedPhonePid = null
         }
@@ -286,7 +286,7 @@ object TelephonyInterceptor : BinderInterceptor() {
                         var end = 0
                         var start = 0
                         while (end < length && buf[end] != 0.toByte()) {
-                            if (buf[end] == 47.toByte()) start = end + 1 // Track last slash '/'
+                            if (buf[end] == 47.toByte()) start = end + 1
                             end++
                         }
                         val argv0 = String(buf, start, end - start)
@@ -296,8 +296,8 @@ object TelephonyInterceptor : BinderInterceptor() {
                             return pid
                         }
                     }
-                } catch (e: Exception) {
-                    // Ignore file read errors
+                } catch (_: Exception) {
+                    Unit
                 }
             }
         }
@@ -425,7 +425,7 @@ object TelephonyInterceptor : BinderInterceptor() {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
-                // The Binder driver already removed the recipient after death.
+                Unit
             }
             deathRecipientLinked = false
         }
@@ -439,7 +439,7 @@ object TelephonyInterceptor : BinderInterceptor() {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
-                // The Binder driver already removed the recipient after death.
+                Unit
             }
         }
         deathRecipientLinked = false
