@@ -173,7 +173,6 @@ public final class CertHack {
         return derOctectString.getOctets();
     }
 
-    /** Stores a fixed-size leaf digest so cache keys do not retain full certificates. */
     private static final class CacheKey {
         private final byte[] leafDigest;
         private final Config.AttestationPatchLevels patchLevels;
@@ -214,6 +213,19 @@ public final class CertHack {
         if (component.getDisposition() == Config.PatchDisposition.REPLACE && component.getValue() > 0) {
             tags.add(new DERTaggedObject(true, tag, new ASN1Integer(component.getValue())));
         }
+    }
+
+    static Map<Integer, byte[]> selectPresentAttestationIdOverrides(
+            Map<Integer, byte[]> configured,
+            List<Integer> originalTags
+    ) {
+        if (configured.isEmpty() || originalTags.isEmpty()) return Collections.emptyMap();
+        Map<Integer, byte[]> selected = new HashMap<>();
+        for (Integer tag : originalTags) {
+            byte[] value = configured.get(tag);
+            if (value != null) selected.put(tag, value);
+        }
+        return selected;
     }
 
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
@@ -417,7 +429,6 @@ public final class CertHack {
                 if (cached != null) return cached.clone();
             }
 
-            // Optimization: Avoid redundant parsing if already X509Certificate
             X509Certificate leaf;
             if (caList[0] instanceof X509Certificate) {
                 leaf = (X509Certificate) caList[0];
@@ -433,7 +444,6 @@ public final class CertHack {
                 return caList;
             }
 
-            // Optimization: Use original encoded bytes to avoid copy/re-encoding
             X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
             Extension ext = leafHolder.getExtension(OID);
             if (ext == null || ext.getExtnValue() == null) {
@@ -448,27 +458,20 @@ public final class CertHack {
             }
             ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
 
-            // List to collect all tags for sorting
             List<ASN1TaggedObject> allTags = new ArrayList<>();
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
 
-            // Check for ID Attestation overrides
-            Map<Integer, byte[]> idAttestationTags = new HashMap<>();
-            boolean hasIdAttestation = false;
-
+            Map<Integer, byte[]> configuredIdAttestationTags = new HashMap<>();
+            List<Integer> originalOverriddenIdTags = new ArrayList<>();
             for (int i = 0; i < ATTESTATION_ID_NAMES.length; i++) {
                 byte[] val = Config.INSTANCE.getAttestationId(ATTESTATION_ID_NAMES[i], uid);
                 if (val != null) {
-                    idAttestationTags.put(ATTESTATION_ID_TAGS[i], val);
-                    hasIdAttestation = true;
+                    configuredIdAttestationTags.put(ATTESTATION_ID_TAGS[i], val);
                 }
             }
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
-                // Skip non-tagged elements gracefully: some OEM implementations may inject
-                // unexpected element types. Silently skipping is safer than crashing the
-                // entire attestation chain for one malformed element.
                 if (!(asn1Encodable instanceof ASN1TaggedObject taggedObject)) {
                     Logger.e("Unexpected ASN1 element type in TEE enforced: " + asn1Encodable.getClass().getName());
                     continue;
@@ -478,17 +481,14 @@ public final class CertHack {
                     rootOfTrust = taggedObject.getBaseObject().toASN1Primitive();
                     continue;
                 }
-                // Component policy decides whether each genuine patch tag is
-                // preserved, replaced, or omitted. Unknown tags remain intact.
                 if ((tag == 724 && moduleHash != null) ||
                         (tag == 706 && replacesOriginal(patchLevels.getSystem())) ||
                         (tag == 718 && replacesOriginal(patchLevels.getVendor())) ||
                         (tag == 719 && replacesOriginal(patchLevels.getBoot()))) {
                     continue;
                 }
-                // Filter ID Attestation tags ONLY if we are overriding THAT specific tag
-                // If hasIdAttestation is true but idAttestationTags doesn't have this tag, we KEEP it (Patch strategy)
-                if (hasIdAttestation && idAttestationTags.containsKey(tag)) {
+                if (configuredIdAttestationTags.containsKey(tag)) {
+                    originalOverriddenIdTags.add(tag);
                     continue;
                 }
                 allTags.add(taggedObject);
@@ -498,11 +498,10 @@ public final class CertHack {
             addPatchTag(allTags, 718, patchLevels.getVendor());
             addPatchTag(allTags, 719, patchLevels.getBoot());
 
-            // Add spoofed ID Attestation tags
-            if (hasIdAttestation) {
-                for (Map.Entry<Integer, byte[]> entry : idAttestationTags.entrySet()) {
-                    allTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
-                }
+            Map<Integer, byte[]> presentIdAttestationTags =
+                    selectPresentAttestationIdOverrides(configuredIdAttestationTags, originalOverriddenIdTags);
+            for (Map.Entry<Integer, byte[]> entry : presentIdAttestationTags.entrySet()) {
+                allTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
             }
 
             if (moduleHash != null) {
@@ -519,7 +518,6 @@ public final class CertHack {
                 return caList;
             }
 
-            // App-specific keybox selection
             List<KeyBox> list = null;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
@@ -589,12 +587,10 @@ public final class CertHack {
             ASN1Sequence hackedRootOfTrust = new DERSequence(rootOfTrustEnc);
             ASN1TaggedObject rootOfTrustTagObj = new DERTaggedObject(704, hackedRootOfTrust);
             allTags.add(rootOfTrustTagObj);
-
-            // Sort tags by tag number to ensure ASN.1 compliance (and correct order for injection)
             allTags.sort(TAG_COMPARATOR);
 
             ASN1EncodableVector vector = new ASN1EncodableVector();
-            for(ASN1TaggedObject t : allTags) vector.add(t);
+            for (ASN1TaggedObject t : allTags) vector.add(t);
 
             ASN1Sequence hackEnforced = new DERSequence(vector);
             encodables[7] = hackEnforced;
@@ -602,13 +598,12 @@ public final class CertHack {
 
             ASN1OctetString hackedSeqOctets = new DEROctetString(hackedSeq);
             Extension hackedExt = new Extension(OID, false, hackedSeqOctets);
-            // builder.addExtension(hackedExt); // Replaced by in-place loop below
 
             for (ASN1ObjectIdentifier extensionOID : leafHolder.getExtensions().getExtensionOIDs()) {
                 if (OID.getId().equals(extensionOID.getId())) {
-                     builder.addExtension(hackedExt);
+                    builder.addExtension(hackedExt);
                 } else {
-                     builder.addExtension(leafHolder.getExtension(extensionOID));
+                    builder.addExtension(leafHolder.getExtension(extensionOID));
                 }
             }
             certificates.addFirst(new JcaX509CertificateConverter().getCertificate(builder.build(signer)));
@@ -649,7 +644,6 @@ public final class CertHack {
         return matches;
     }
 
-
     public record KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
         public KeyBox {
             Objects.requireNonNull(keyPair, "keyPair");
@@ -657,6 +651,4 @@ public final class CertHack {
             filename = Objects.requireNonNull(filename, "filename");
         }
     }
-
-
 }
