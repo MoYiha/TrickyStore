@@ -6,12 +6,14 @@ import cleveres.tricky.cleverestech.util.DeviceKeyManager
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
+import java.io.IOException
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.util.PriorityQueue
 import java.util.concurrent.ConcurrentHashMap
 
 private fun ByteArray.indexOfFrom(
@@ -50,9 +52,14 @@ object CboxManager {
         }
 
         val files =
-            directory.listFiles { file ->
-                validFilename.matches(file.name) && isSafeCbox(file)
-            }?.sortedBy { it.name }.orEmpty()
+            try {
+                listCboxFiles(directory)
+            } catch (error: IOException) {
+                unlockedCache.clear()
+                lockedFiles.clear()
+                Logger.e("Failed to scan CBOX directory", error)
+                return
+            }
         val currentFiles = files.mapTo(HashSet()) { it.name }
         val revoked = if (files.isEmpty()) emptySet() else KeyboxVerifier.fetchCrl()
 
@@ -170,6 +177,24 @@ object CboxManager {
 
     fun isLocked(filename: String): Boolean = lockedFiles.contains(filename)
 
+    @Throws(IOException::class)
+    private fun listCboxFiles(directory: File): List<File> {
+        val files = PriorityQueue<File>(MAX_CBOX_FILES, compareByDescending { it.name })
+        Files.newDirectoryStream(directory.toPath()).use { entries ->
+            for (path in entries) {
+                val file = path.toFile()
+                if (!validFilename.matches(file.name) || !isSafeCbox(file)) continue
+                if (files.size < MAX_CBOX_FILES) {
+                    files.add(file)
+                } else if (file.name < requireNotNull(files.peek()).name) {
+                    files.poll()
+                    files.add(file)
+                }
+            }
+        }
+        return files.sortedBy { it.name }
+    }
+
     private fun loadCached(
         file: File,
         revoked: Set<String>,
@@ -282,12 +307,19 @@ object CboxManager {
         directory: File,
         currentFiles: Set<String>,
     ) {
-        directory
-            .listFiles { file -> file.name.endsWith(".cbox.cache", ignoreCase = true) }
-            ?.forEach { cache ->
-                val sourceName = cache.name.removeSuffix(".cache")
-                if (sourceName !in currentFiles) deleteCacheSafely(cache)
+        try {
+            Files.newDirectoryStream(directory.toPath()) { path ->
+                path.fileName.toString().endsWith(".cbox.cache", ignoreCase = true)
+            }.use { entries ->
+                for (path in entries) {
+                    val cache = path.toFile()
+                    val sourceName = cache.name.removeSuffix(".cache")
+                    if (sourceName !in currentFiles) deleteCacheSafely(cache)
+                }
             }
+        } catch (error: IOException) {
+            Logger.w("Could not scan orphaned CBOX caches")
+        }
     }
 
     private fun deleteCacheSafely(file: File) {
@@ -320,5 +352,6 @@ object CboxManager {
     private const val MIN_CBOX_BYTES = 4L + 4L + 16L + 12L + 16L
     private const val MAX_CBOX_BYTES = 10L * 1024 * 1024 + 36L
     private const val MAX_CACHE_BYTES = 16L * 1024 * 1024
+    private const val MAX_CBOX_FILES = 64
     private const val MAX_PASSWORD_CHARS = 1024
 }
