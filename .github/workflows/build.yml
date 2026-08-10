@@ -11,9 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  # ============================================================
-  # Phase 1: Quality Gate & Linting
-  # ============================================================
   quality-gate:
     name: "🛡️ Quality Gate & Linting"
     runs-on: ubuntu-latest
@@ -98,9 +95,6 @@ jobs:
             exit 1
           fi
 
-  # ============================================================
-  # Phase 2: Rust Tests & Linters
-  # ============================================================
   rust-test:
     name: "🦀 Rust Checks & Tests"
     runs-on: ubuntu-latest
@@ -142,9 +136,6 @@ jobs:
           cargo install cargo-audit --locked
           cargo audit
 
-  # ============================================================
-  # Phase 3: Build artifacts
-  # ============================================================
   build:
     name: "🛠️ Build Module"
     runs-on: ubuntu-latest
@@ -220,19 +211,101 @@ jobs:
           cargo clippy --workspace --all-targets --target aarch64-linux-android -- -D warnings
           cargo clippy --workspace --all-targets --target x86_64-linux-android -- -D warnings
 
-      - name: Run Module Tests
-        run: ./gradlew :module:testDebugUnitTest
-
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest
+        id: unit_tests
+        run: ./gradlew testDebugUnitTest --console=plain --stacktrace
 
-      - name: Print Failed Tests
-        if: failure()
+      - name: Report Failed Tests
+        if: ${{ failure() && steps.unit_tests.outcome == 'failure' }}
+        shell: bash
         run: |
-          find . -path "*/test-results/*" -name "*.xml" -exec grep -l 'failures="[1-9]' {} \; | while read f; do
-            echo "=== FAILED: $f ==="
-            cat "$f"
-          done
+          python3 <<'PY'
+          import glob
+          import os
+          import xml.etree.ElementTree as ET
+
+          def local_name(tag):
+              return tag.rsplit("}", 1)[-1]
+
+          def command_escape(value):
+              return (value or "").replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+          def property_escape(value):
+              return command_escape(value).replace(":", "%3A").replace(",", "%2C")
+
+          reports = sorted(glob.glob("**/build/test-results/**/TEST-*.xml", recursive=True))
+          failures = []
+          parse_errors = []
+          for report in reports:
+              try:
+                  root = ET.parse(report).getroot()
+              except (ET.ParseError, OSError) as exc:
+                  parse_errors.append((report, str(exc)))
+                  continue
+              for case in root.iter():
+                  if local_name(case.tag) != "testcase":
+                      continue
+                  failure = None
+                  for child in case:
+                      if local_name(child.tag) in {"failure", "error"}:
+                          failure = child
+                          break
+                  if failure is None:
+                      continue
+                  failures.append((
+                      report,
+                      case.get("classname", "unknown"),
+                      case.get("name", "unknown"),
+                      (failure.get("message") or "").strip(),
+                      (failure.text or "").strip(),
+                  ))
+
+          for report, error in parse_errors:
+              print(f"::warning title=JUnit parse warning::{command_escape(report + ': ' + error)}")
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          summary = []
+          if not failures:
+              message = "Gradle reported a unit-test failure, but no failed JUnit testcase was found. Inspect the Gradle output above."
+              print(f"::error title=Unit test failure::{command_escape(message)}")
+              summary.extend(["## Unit test failure", "", message, ""])
+          else:
+              summary.extend([f"## Failed unit tests ({len(failures)})", ""])
+              for index, (report, classname, name, message, trace) in enumerate(failures, 1):
+                  label = f"{classname} > {name}"
+                  detail = message or (trace.splitlines()[0] if trace else "Test failed")
+                  print(f"::error title={property_escape(label)}::{command_escape(detail)}")
+                  print(f"\n=== FAILED TEST {index}/{len(failures)}: {label} ===")
+                  print(f"Report: {report}")
+                  if message:
+                      print(f"Message: {message}")
+                  if trace:
+                      print("Stack trace:")
+                      print(trace[:12000])
+                      if len(trace) > 12000:
+                          print("... stack trace truncated after 12000 characters ...")
+                  summary.extend([f"### {index}. `{label}`", "", f"Report: `{report}`", ""])
+                  if message:
+                      summary.extend([f"**Message:** {message}", ""])
+                  if trace:
+                      summary.extend(["```text", trace[:4000], "```", ""])
+
+          print(f"\nParsed {len(reports)} JUnit report files; found {len(failures)} failed test cases.")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as output:
+                  output.write("\n".join(summary) + "\n")
+          PY
+
+      - name: Upload failed test reports
+        if: ${{ failure() && steps.unit_tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: failed-unit-test-reports
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Build Android Artifacts
         run: |
@@ -287,9 +360,6 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
-  # ============================================================
-  # Phase 4: Publish only after a protected master push
-  # ============================================================
   release:
     name: "📦 Publish Release"
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
