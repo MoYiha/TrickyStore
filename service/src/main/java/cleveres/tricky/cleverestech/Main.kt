@@ -29,17 +29,22 @@ fun main(args: Array<String>) {
             Logger.d("Main: Preparing WebUI config directory at ${configDir.absolutePath}")
             val server = WebServer(WEB_UI_PORT, configDir, isTampered)
             Logger.d("Main: Starting WebUI server bootstrap on requested port $WEB_UI_PORT")
-            try {
-                server.startAsync()
-                Logger.d("Main: WebUI server readiness probe succeeded on $WEB_UI_LOOPBACK_HOST:${server.listeningPort}")
-            } catch (e: Exception) {
-                Logger.e("WebServer readiness probe failed; will write port file if server bound (port > 0)", e)
-            }
-            val port = server.listeningPort
-            val token = server.token
-            Logger.i("Web server on port $port (alive=${server.isAlive})")
-            Logger.d("Main: WebUI server on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
-            if (port > 0) {
+            val webReady =
+                try {
+                    server.startAsync()
+                    server.isAlive && server.listeningPort > 0
+                } catch (e: Exception) {
+                    Logger.e("WebServer readiness probe failed; endpoint metadata will not be published", e)
+                    runCatching { server.stop() }
+                        .onFailure { Logger.e("Failed to stop an unready WebServer instance", it) }
+                    false
+                }
+
+            if (webReady) {
+                val port = server.listeningPort
+                val token = server.token
+                Logger.i("Web server on port $port (alive=${server.isAlive})")
+                Logger.d("Main: WebUI server on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
                 val portFile = File(configDir, "web_port")
                 try {
                     SecureFile.mkdirs(configDir, CONFIG_DIR_MODE)
@@ -47,11 +52,10 @@ fun main(args: Array<String>) {
                 } catch (t: Throwable) {
                     Logger.e("failed to set permissions for config dir", t)
                 }
-
                 SecureFile.writeText(portFile, "$port|$token")
                 Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
             } else {
-                Logger.e("Main: Server reported invalid port $port after start; port file not written")
+                Logger.e("Main: WebUI server is not ready; port file not written")
             }
         } catch (e: Exception) {
             Logger.e("Failed to start web server", e)
