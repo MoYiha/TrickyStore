@@ -10,10 +10,6 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
     log -t CleveresTricky "Config root permissions could not be secured; early config processing was skipped"
   fi
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
-  find "$CONFIG_DIR" -xdev -maxdepth 2 -type d -exec chmod 700 {} + 2>/dev/null
-  find "$CONFIG_DIR" -xdev -maxdepth 2 -type f -exec chmod 600 {} + 2>/dev/null
-  find "$CONFIG_DIR" -xdev -maxdepth 2 -type f \
-    -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null
 fi
 
 promote_staged_identity() {
@@ -92,7 +88,10 @@ apply_early_properties() {
   hide_allowed=true
   if [ "$boot_mode" = auto ]; then
     for module_root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
-      [ -d "$module_root/zygisk_shamiko" ] && hide_allowed=false
+      if [ -d "$module_root/zygisk_shamiko" ] && [ ! -L "$module_root/zygisk_shamiko" ]; then
+        hide_allowed=false
+        break
+      fi
     done
     vendor_identity="$(getprop ro.product.manufacturer) $(getprop ro.product.brand) $(getprop ro.product.vendor.manufacturer) $(getprop ro.product.vendor.brand)"
     vendor_identity=$(printf '%s' "$vendor_identity" | tr '[:upper:]' '[:lower:]')
@@ -139,6 +138,7 @@ apply_early_properties() {
   if [ "$boot_mode" = auto ]; then
     identity_conflict=false
     for module_root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
+      [ "$identity_conflict" = false ] || break
       if [ ! -d "$module_root" ] || [ -L "$module_root" ]; then
         continue
       fi
@@ -149,7 +149,10 @@ apply_early_properties() {
         module_id=${candidate##*/}
         module_id=$(printf '%s' "$module_id" | tr '[:upper:]' '[:lower:]')
         case "$module_id" in
-          *playintegrity*|*autopif*|*auto_pif*|pif|pif_*|*playcurl*) identity_conflict=true ;;
+          *playintegrity*|*autopif*|*auto_pif*|pif|pif_*|*playcurl*)
+            identity_conflict=true
+            break
+            ;;
         esac
       done
     done
@@ -225,8 +228,3 @@ apply_early_properties() {
 
 promote_staged_identity
 apply_early_properties
-
-find "$MODDIR" -maxdepth 1 -name '*.apk' -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null
-find "$MODDIR" -maxdepth 1 -name '*.so' -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null
-[ -f "$MODDIR/inject" ] && chcon u:object_r:system_file:s0 "$MODDIR/inject" 2>/dev/null
-[ -f "$MODDIR/daemon" ] && chcon u:object_r:system_file:s0 "$MODDIR/daemon" 2>/dev/null
