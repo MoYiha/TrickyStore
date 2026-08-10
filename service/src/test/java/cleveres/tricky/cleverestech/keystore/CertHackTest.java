@@ -77,4 +77,11 @@ public class CertHackTest {
         assertTrue(selected.containsKey(714));
         assertArrayEquals(imei, selected.get(714));
     }
+
+    @Test
+    public void testSigningKeyAlgorithmUsesCertificateSigner() {
+        assertEquals("EC", CertHack.signingKeyAlgorithm("SHA256withECDSA"));
+        assertEquals("RSA", CertHack.signingKeyAlgorithm("SHA256withRSA"));
+        assertEquals(null, CertHack.signingKeyAlgorithm("Ed25519"));
+    }
 }
