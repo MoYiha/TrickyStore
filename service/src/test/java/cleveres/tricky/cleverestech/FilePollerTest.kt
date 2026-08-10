@@ -8,6 +8,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.lang.reflect.InvocationTargetException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 class FilePollerTest {
     @get:Rule
@@ -43,6 +45,22 @@ class FilePollerTest {
         poller.start()
 
         testFile.writeText("modified-content")
+        checkForChange()
+
+        assertEquals(testFile, callbackFile)
+    }
+
+    @Test
+    fun testAtomicReplacementWithSameMetadataDetected() {
+        var callbackFile: File? = null
+        poller = FilePoller(testFile, intervalMs) { callbackFile = it }
+        poller.start()
+
+        val originalTimestamp = Files.getLastModifiedTime(testFile.toPath())
+        val replacement = tempFolder.newFile("replacement.txt")
+        replacement.writeText("changed")
+        Files.setLastModifiedTime(replacement.toPath(), originalTimestamp)
+        Files.move(replacement.toPath(), testFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
         checkForChange()
 
         assertEquals(testFile, callbackFile)
