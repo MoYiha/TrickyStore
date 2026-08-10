@@ -67,6 +67,24 @@ class FilePollerTest {
     }
 
     @Test
+    fun testCallbackBaselineUpdatePreventsDuplicateTrigger() {
+        var callbackCount = 0
+        poller =
+            FilePoller(testFile, intervalMs) {
+                callbackCount++
+                testFile.writeText("callback-content")
+                poller.updateLastModified()
+            }
+        poller.start()
+
+        testFile.writeText("external-content")
+        checkForChange()
+        checkForChange()
+
+        assertEquals(1, callbackCount)
+    }
+
+    @Test
     fun testNoFalsePositives() {
         var callbackCount = 0
         poller = FilePoller(testFile, intervalMs) { callbackCount++ }
