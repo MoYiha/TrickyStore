@@ -60,7 +60,24 @@ class WebServerIdentityTest {
                     if (!file.exists()) file.createNewFile()
                 }
             }
-        server = WebServer(0, configDir)
+        server =
+            WebServer(
+                0,
+                configDir,
+                autoIdentityFetcher = {
+                    AutoIdentityManager.Result(
+                        model = "Pixel Test",
+                        product = "test_beta",
+                        device = "test",
+                        fingerprint = "google/test_beta/test:CANARY/BP31.260801.001/12345678:user/release-keys",
+                        buildId = "BP31.260801.001",
+                        incremental = "12345678",
+                        release = "17",
+                        securityPatch = "2026-08-05",
+                        securityPatchEstimated = false,
+                    )
+                },
+            )
         server.start()
     }
 
@@ -157,6 +174,32 @@ class WebServerIdentityTest {
         assertFalse(cleared.contains("CLEVERESTRICKY BUILD IDENTITY"))
         assertFalse(cleared.contains("TEMPLATE="))
         assertTrue(cleared.contains("SERIAL=KEEP_ME"))
+    }
+
+    @Test
+    fun `random identity includes every attestation and telephony field`() {
+        val response = request("GET", "/api/random_identity")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(14, json.getString("meid").length)
+        assertEquals(14, json.getString("meid2").length)
+        assertTrue(json.getString("phone_number").startsWith("+1"))
+        assertTrue(json.getString("phone_number2").startsWith("+1"))
+        assertTrue(json.getString("imei").isNotBlank())
+        assertTrue(json.getString("iccid2").isNotBlank())
+    }
+
+    @Test
+    fun `auto identity persists Pixel beta build fields without enabling identity engine`() {
+        val response = request("POST", "/api/auto_identity")
+        assertEquals(200, response.first)
+        val data = JSONObject(response.second)
+        assertEquals("Pixel Test", data.getString("model"))
+        val vars = File(configDir, "spoof_build_vars").readText()
+        assertTrue(vars.contains("FINGERPRINT=google/test_beta/test:CANARY/BP31.260801.001/12345678:user/release-keys"))
+        assertTrue(vars.contains("SECURITY_PATCH=2026-08-05"))
+        assertTrue(File(configDir, "spoof_build_identity").isFile)
+        assertFalse(File(configDir, "spoof_enabled").exists())
     }
 
     @Test

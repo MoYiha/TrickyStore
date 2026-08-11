@@ -4,6 +4,7 @@ import java.security.SecureRandom
 
 object RandomUtils {
     private const val CHAR_POOL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    private const val HEX_POOL = "0123456789ABCDEF"
     private const val MAX_IDENTIFIER_LENGTH = 64
 
     private val secureRandom: SecureRandom
@@ -52,6 +53,14 @@ object RandomUtils {
         val result = StringBuilder(length).append(prefix)
         while (result.length < length) result.append(secureRandom.nextInt(10))
         return result.toString()
+    }
+
+    fun generateHex(length: Int): String {
+        require(length in 1..MAX_IDENTIFIER_LENGTH) { "Hex length must be between 1 and $MAX_IDENTIFIER_LENGTH" }
+        val rng = secureRandom
+        return buildString(length) {
+            repeat(length) { append(HEX_POOL[rng.nextInt(HEX_POOL.length)]) }
+        }
     }
 
     fun generateRandomSerial(length: Int): String {

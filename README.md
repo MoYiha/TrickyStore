@@ -8,7 +8,7 @@ CleveresTricky is a KernelSU and APatch module for Android keystore, attestation
 
 ### Runtime control
 
-The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active interception path. It can stop Binder registrations, park native hooks, stop scheduled keybox work, and avoid native injection when disabled before boot.
+The [Spoof Engine](docs/SpoofEngine.md) controls optional identity substitution. Core Keystore and TEE compatibility plus the boot property protection path remain active independently while the module service is healthy.
 
 [Application Scope](docs/ApplicationScope.md) explains targeted mode, global mode, package rules, shared Android user identifiers, and live cache updates.
 
@@ -20,7 +20,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 [Attestation](docs/Attestation.md) explains certificate substitution, genuine KeyMint operations, StrongBox handling, and the limits of software based compatibility.
 
-[Certificate Safe Mode](docs/CertificateSafeMode.md) explains how to preserve genuine certificate responses while keeping the service available.
+[Certificate Safe Mode](docs/CertificateSafeMode.md) explains the legacy configuration concept for preserving genuine certificate responses. Core targeting no longer depends on this legacy switch.
 
 [Keybox Manager](docs/KeyboxManager.md) explains keybox loading, verification, selection, rotation, revocation checks, and automatic monitoring.
 
@@ -32,7 +32,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 [Patch Levels](docs/PatchLevels.md) explains system, vendor, and boot patch fields with global and per application rules.
 
-[Build Identity](docs/BuildIdentity.md) explains device templates, fingerprints, app visible Build fields, and synchronized early boot activation.
+[Build Identity](docs/BuildIdentity.md) explains device templates, fingerprints, app visible Build fields, synchronized early boot activation, and the optional Pixel beta Auto Identity helper for Custom ROM users.
 
 [Identity Refresh](docs/IdentityRefresh.md) explains next boot generation and snapshot consistency.
 
@@ -40,7 +40,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 ### Platform compatibility
 
-[Boot Properties](docs/BootProperties.md) explains the optional userspace property view and its automatic safety policy.
+[Boot Properties](docs/BootProperties.md) explains the core userspace boot property view and the separate identity compatibility policy.
 
 [Region Properties](docs/RegionProperties.md) explains the optional bounded country and hardware region view.
 
@@ -80,13 +80,13 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 4. Open the CleveresTricky WebUI from the module manager.
 
-5. Start with Daily Compatibility.
+5. Fresh installations start in Global Mode with optional identity spoofing off.
 
 6. Add only key material you own or are authorized to test.
 
-7. Select the applications that need compatibility handling.
+7. Configure identity options only when they are needed.
 
-8. Enable optional identity or boot controls only when they are needed.
+8. Reboot after changing template build identity values.
 
 No usable keybox or private attestation key is bundled with the project.
 
@@ -104,13 +104,13 @@ Telephony values are visible only through supported application APIs. They do no
 
 Android ID on modern Android is scoped by application signing identity, user, and device inside SettingsProvider. CleveresTricky does not present a misleading global Android ID control.
 
-The real kernel version returned by the operating system is unchanged. Boot property controls do not physically relock a bootloader, repair verified boot, rewrite vbmeta, or change the hardware root of trust.
+The real kernel version returned by the operating system is unchanged. The core boot property view does not physically relock a bootloader, repair verified boot, rewrite vbmeta, or change the hardware root of trust.
 
 ## Recommended first setup
 
-Daily Compatibility is the preferred starting profile. It keeps application targeting enabled, uses automatic boot property policy, monitors keyboxes, and preserves RKP and DRM passthrough.
+Use the fresh installation defaults first. Global Mode selects eligible application UIDs while core boot and Keystore protection remain active. Optional identity spoofing stays off until you enable it from the Identity section.
 
-If an application or vendor feature behaves differently, switch to Default or Minimal, reboot, then enable one optional feature at a time. Maximum Compatibility changes the widest scope and is intended for controlled testing.
+If you use a Custom ROM and need a current build identity for Play Integrity testing, Auto Identity can retrieve a Pixel beta or canary identity from Google public metadata and save it locally. Enable Identity Spoof Engine and reboot only when you want those build identity values exposed.
 
 ## Help and project information
 

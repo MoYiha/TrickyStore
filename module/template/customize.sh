@@ -158,18 +158,20 @@ if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
   chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
 fi
 
-FIRST_CONFIG_INIT=false
+# Fresh installs start with the core protection path enabled globally. Identity
+# spoofing stays opt-in; upgrading users keep their existing switch files.
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
-  FIRST_CONFIG_INIT=true
-  ui_print "- Enabling the master Spoof Engine switch"
-  [ -e "$CONFIG_DIR/spoof_enabled" ] || : > "$CONFIG_DIR/spoof_enabled" \
-    || abort "! Could not enable the Spoof Engine"
+  ui_print "- Enabling Global Mode (identity spoofing remains off by default)"
+  [ -e "$CONFIG_DIR/global_mode" ] || : > "$CONFIG_DIR/global_mode" \
+    || abort "! Could not enable Global Mode"
   : > "$CONFIG_DIR/spoof_switch_initialized" \
-    || abort "! Could not write the Spoof Engine migration marker"
+    || abort "! Could not write the default-settings migration marker"
 fi
 chmod 600 "$CONFIG_DIR/spoof_switch_initialized" || abort "! Could not secure migration marker"
+[ ! -e "$CONFIG_DIR/global_mode" ] || chmod 600 "$CONFIG_DIR/global_mode" \
+  || abort "! Could not secure Global Mode switch"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chmod 600 "$CONFIG_DIR/spoof_enabled" \
-  || abort "! Could not secure Spoof Engine switch"
+  || abort "! Could not secure identity Spoof Engine switch"
 
 if [ ! -f "$CONFIG_DIR/spoof_build_vars" ]; then
   ui_print "- Adding default spoof_build_vars"
@@ -195,7 +197,6 @@ if [ ! -f "$CONFIG_DIR/target.txt" ]; then
 fi
 chmod 600 "$CONFIG_DIR/target.txt" || abort "! Could not secure target.txt"
 
-INSTALL_COMPAT_DEFAULTS=$FIRST_CONFIG_INIT
 if [ ! -f "$CONFIG_DIR/drm_packages.txt" ]; then
   ui_print "- Adding default DRM passthrough scope"
   extract "$ZIPFILE" 'drm_packages.txt' "$TMPDIR"
@@ -204,38 +205,31 @@ if [ ! -f "$CONFIG_DIR/drm_packages.txt" ]; then
 fi
 chmod 600 "$CONFIG_DIR/drm_packages.txt" || abort "! Could not secure drm_packages.txt"
 
+# Kept as an internal identity-build compatibility policy. Core bootloader/TEE
+# property protection ignores this file and is always applied.
 if [ ! -f "$CONFIG_DIR/boot_props_mode" ]; then
-  ui_print "- Adding automatic boot-property policy"
+  ui_print "- Adding automatic identity-build compatibility policy"
   extract "$ZIPFILE" 'boot_props_mode' "$TMPDIR"
   mv "$TMPDIR/boot_props_mode" "$CONFIG_DIR/boot_props_mode" \
     || abort "! Could not install boot_props_mode"
 fi
 chmod 600 "$CONFIG_DIR/boot_props_mode" || abort "! Could not secure boot_props_mode"
 
-if [ "$INSTALL_COMPAT_DEFAULTS" = true ] && [ ! -e "$CONFIG_DIR/auto_keybox_check" ]; then
-  ui_print "- Enabling daily keybox revocation checks"
-  : > "$CONFIG_DIR/auto_keybox_check" \
-    || abort "! Could not enable keybox revocation checks"
-fi
-[ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chmod 600 "$CONFIG_DIR/auto_keybox_check" \
-  || abort "! Could not secure keybox revocation switch"
-for default_flag in rkp_passthrough drm_passthrough hide_sensitive_props; do
-  if [ "$INSTALL_COMPAT_DEFAULTS" = true ] && [ ! -e "$CONFIG_DIR/$default_flag" ]; then
-    ui_print "- Enabling $default_flag"
-    : > "$CONFIG_DIR/$default_flag" \
-      || abort "! Could not enable $default_flag"
-  fi
-  [ ! -e "$CONFIG_DIR/$default_flag" ] || chmod 600 "$CONFIG_DIR/$default_flag" \
-    || abort "! Could not secure $default_flag"
+for optional_flag in auto_keybox_check rkp_passthrough drm_passthrough hide_sensitive_props; do
+  [ ! -e "$CONFIG_DIR/$optional_flag" ] || chmod 600 "$CONFIG_DIR/$optional_flag" \
+    || abort "! Could not secure $optional_flag"
 done
+
 chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   "$CONFIG_DIR/target.txt" "$CONFIG_DIR/drm_packages.txt" \
   "$CONFIG_DIR/boot_props_mode" "$CONFIG_DIR/spoof_switch_initialized" \
   || abort "! Could not set configuration file ownership"
+[ ! -e "$CONFIG_DIR/global_mode" ] || chown 0:0 "$CONFIG_DIR/global_mode" \
+  || abort "! Could not set Global Mode switch ownership"
 [ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chown 0:0 "$CONFIG_DIR/auto_keybox_check" \
   || abort "! Could not set keybox revocation switch ownership"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chown 0:0 "$CONFIG_DIR/spoof_enabled" \
-  || abort "! Could not set Spoof Engine switch ownership"
+  || abort "! Could not set identity Spoof Engine switch ownership"
 [ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity"
 [ ! -e "$CONFIG_DIR/rkp_passthrough" ] || chown 0:0 "$CONFIG_DIR/rkp_passthrough"
 [ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough"

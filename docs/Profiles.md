@@ -2,30 +2,32 @@
 
 ## Purpose
 
-Profiles apply a coherent group of settings in one transaction. They provide known starting points while keeping every individual control available for later adjustment.
+Profiles apply a coherent group of optional settings in one transaction. They remain available as advanced presets while core boot and Keystore protection stay active independently.
 
 ## Daily Compatibility
 
-Daily Compatibility is the recommended starting profile. It uses targeted application scope, enables keybox monitoring, keeps the optional telephony layer off, applies the automatic boot property policy, and preserves genuine RKP and DRM paths.
+Daily Compatibility uses targeted application scope, keeps optional identity features off, enables keybox monitoring, and preserves genuine RKP and DRM paths. Core certificate and boot protection remain active.
 
 ## Default
 
-Default is a conservative attestation setup. It keeps targeted certificate handling and automatic keybox checks active while leaving build identity, telephony, global mode, and optional boot property changes disabled. RKP and DRM passthrough remain enabled.
+Default is a conservative optional identity setup. It uses targeted application scope, leaves build identity and telephony off, enables automatic keybox checks, and preserves RKP and DRM passthrough. Core Keystore and TEE compatibility are unchanged.
 
 ## Maximum Compatibility
 
-Maximum Compatibility enables global scope, build identity, identity refresh, telephony handling, and userspace boot property compatibility. It disables RKP and DRM passthrough so the widest configured substitution scope can be tested.
+Maximum Compatibility enables Global Mode together with build identity, identity refresh, and telephony handling. It disables RKP and DRM passthrough so the widest configured compatibility scope can be tested.
 
-This profile changes the most behavior and should be used for focused testing. It does not alter hardware trust state or guarantee a remote verdict.
+This profile changes the most optional behavior and should be used for focused testing. It does not alter hardware trust state or guarantee a remote verdict.
 
 ## Minimal
 
-Minimal stops certificate substitution and active spoofing features while preserving genuine RKP and DRM paths. It is the preferred diagnostic baseline when the source of a regression is unclear.
+Minimal disables optional identity, build identity, telephony, and scheduled keybox checks while preserving genuine RKP and DRM paths. It does not disable the core Keystore interceptor, certificate compatibility, TEE handling, or boot property protection.
+
+Older configurations can still contain the legacy certificate safe mode flag. Core targeting no longer depends on that flag.
 
 ## Applying a profile
 
-The WebUI sends a bounded profile request to the service. The service validates the name, moves the request into a processing state, updates protected configuration flags, reloads policy, and removes the request. Unknown names are rejected.
+The service accepts a bounded validated profile request, updates protected configuration flags, reloads policy, and removes the request. Unknown names are rejected.
 
-Profile application does not replace keyboxes, application lists, templates, or user backups. Reboot after a profile changes early boot identity or property behavior.
+Profile application does not replace keyboxes, application lists, templates, or user backups. Reboot after a profile changes early boot identity behavior.
 
 [Return to the project overview](../README.md)

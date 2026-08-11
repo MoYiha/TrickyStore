@@ -118,10 +118,8 @@ class WebServerUXTest {
                 "spoof_enabled",
                 "spoof_build_identity",
                 "global_mode",
-                "tee_broken_mode",
                 "auto_keybox_check",
                 "random_on_boot",
-                "hide_sensitive_props",
                 "spoof_region_cn",
                 "telephony",
                 "rkp_passthrough",
@@ -140,8 +138,10 @@ class WebServerUXTest {
         assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
         assertFalse(html.contains("kbFilePicker').files = files"))
         assertTrue(html.contains("rel=\"noopener noreferrer\""))
-        assertTrue(html.contains("id=\"bootPropsMode\""))
-        assertTrue(html.contains("saveBootPropsMode(this)"))
+        assertFalse(html.contains("id=\"bootPropsMode\""))
+        assertFalse(html.contains("data-setting=\"tee_broken_mode\""))
+        assertFalse(html.contains("data-setting=\"hide_sensitive_props\""))
+        assertTrue(html.contains(".tabs { position: fixed; top: auto; bottom: 0;"))
         assertTrue(html.contains("<option value=\"templates.json\">templates.json</option>"))
 
         settings.forEach { setting ->
@@ -177,6 +177,7 @@ class WebServerUXTest {
                 "/api/templates",
                 "/api/identity",
                 "/api/random_identity",
+                "/api/auto_identity",
                 "/api/packages",
                 "/api/app_config_structured",
                 "/api/file",

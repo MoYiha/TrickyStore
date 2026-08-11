@@ -186,6 +186,7 @@ class WebServer(
     private val configDir: File,
     private val isTampered: Boolean = false,
     private val crlFetcher: () -> Set<String>? = { KeyboxVerifier.fetchCrl() },
+    private val autoIdentityFetcher: () -> AutoIdentityManager.Result = { AutoIdentityManager.fetchLatest() },
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
             Os.chmod(f.absolutePath, m)
@@ -1126,9 +1127,47 @@ class WebServer(
                 json.put("imsi2", RandomUtils.generateDigits(15, "310260"))
                 json.put("iccid", RandomUtils.generateLuhn(20, "8901"))
                 json.put("iccid2", RandomUtils.generateLuhn(20, "8901"))
+                json.put("meid", RandomUtils.generateHex(14))
+                json.put("meid2", RandomUtils.generateHex(14))
+                json.put("phone_number", "+1${RandomUtils.generateDigits(10)}")
+                json.put("phone_number2", "+1${RandomUtils.generateDigits(10)}")
                 return secureResponse(Response.Status.OK, "application/json", json.toString())
             }
             return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
+        }
+
+        if (uri == "/api/auto_identity" && method == Method.POST) {
+            return try {
+                val resolved = autoIdentityFetcher()
+                val updates = linkedMapOf<String, String?>("TEMPLATE" to null)
+                resolved.buildVars().forEach { (key, value) ->
+                    require(Config.isValidBuildVarEntry(key, value)) { "Auto Identity returned an invalid build field" }
+                    updates[key] = value
+                }
+                if (!saveIdentityUpdates(updates)) {
+                    return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Auto Identity could not be saved")
+                }
+                SecureFile.touch(File(configDir, "spoof_build_identity"), 384)
+                Config.refreshRuntimeSetting("spoof_build_identity")
+                val json =
+                    JSONObject()
+                        .put("model", resolved.model)
+                        .put("product", resolved.product)
+                        .put("device", resolved.device)
+                        .put("fingerprint", resolved.fingerprint)
+                        .put("build_id", resolved.buildId)
+                        .put("incremental", resolved.incremental)
+                        .put("release", resolved.release ?: "")
+                        .put("security_patch", resolved.securityPatch)
+                        .put("security_patch_estimated", resolved.securityPatchEstimated)
+                secureResponse(Response.Status.OK, "application/json", json.toString())
+            } catch (error: IOException) {
+                Logger.e("Auto Identity source lookup failed", error)
+                secureResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "Auto Identity source is unavailable")
+            } catch (error: Exception) {
+                Logger.e("Auto Identity failed", error)
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Auto Identity failed")
+            }
         }
 
         if (uri == "/api/packages" && method == Method.GET) {
@@ -1545,6 +1584,10 @@ class WebServer(
                             "ATTESTATION_ID_IMSI2" to RandomUtils.generateDigits(15, "310260"),
                             "ATTESTATION_ID_ICCID" to RandomUtils.generateLuhn(20, "8901"),
                             "ATTESTATION_ID_ICCID2" to RandomUtils.generateLuhn(20, "8901"),
+                            "ATTESTATION_ID_MEID" to RandomUtils.generateHex(14),
+                            "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
+                            "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
+                            "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
                         )
                     val lines =
                         if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -1869,10 +1912,8 @@ class WebServer(
                 "spoof_enabled",
                 "spoof_build_identity",
                 "global_mode",
-                "tee_broken_mode",
                 "auto_keybox_check",
                 "random_on_boot",
-                "hide_sensitive_props",
                 "spoof_region_cn",
                 "telephony",
                 "rkp_passthrough",

@@ -29,6 +29,8 @@ promote_staged_identity() {
     return 0
   fi
 
+  # Identity refresh is optional and belongs to Spoof Engine. Core boot protection
+  # below never depends on either of these files.
   if [ ! -f "$CONFIG_DIR/spoof_enabled" ] || [ -L "$CONFIG_DIR/spoof_enabled" ] ||
     [ ! -f "$CONFIG_DIR/random_on_boot" ] || [ -L "$CONFIG_DIR/random_on_boot" ]; then
     rm -f "$staged_file"
@@ -60,22 +62,10 @@ promote_staged_identity() {
 
 apply_early_properties() {
   [ "$CONFIG_ROOT_SAFE" = true ] || return 0
-  [ -f "$CONFIG_DIR/spoof_enabled" ] || return 0
-  [ ! -L "$CONFIG_DIR/spoof_enabled" ] || return 0
   command -v resetprop >/dev/null 2>&1 || {
-    log -t CleveresTricky "resetprop is unavailable; boot property controls were skipped"
+    log -t CleveresTricky "resetprop is unavailable; boot property protection was skipped"
     return 0
   }
-
-  boot_mode=auto
-  if [ -f "$CONFIG_DIR/boot_props_mode" ] && [ ! -L "$CONFIG_DIR/boot_props_mode" ]; then
-    IFS= read -r boot_mode < "$CONFIG_DIR/boot_props_mode"
-  fi
-  case "$boot_mode" in
-    force|disable|auto) ;;
-    *) boot_mode=auto ;;
-  esac
-  [ "$boot_mode" != disable ] || return 0
 
   apply_prop() {
     resetprop -n "$1" "$2" >/dev/null 2>&1 || {
@@ -91,48 +81,58 @@ apply_early_properties() {
     }
   }
 
-  hide_allowed=true
-  if [ "$boot_mode" = auto ]; then
-    for module_root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
-      if [ -d "$module_root/zygisk_shamiko" ] && [ ! -L "$module_root/zygisk_shamiko" ]; then
-        hide_allowed=false
-        break
-      fi
-    done
-    vendor_identity="$(getprop ro.product.manufacturer) $(getprop ro.product.brand) $(getprop ro.product.vendor.manufacturer) $(getprop ro.product.vendor.brand)"
-    vendor_identity=$(printf '%s' "$vendor_identity" | tr '[:upper:]' '[:lower:]')
-    case "$vendor_identity" in
-      *oplus*|*oppo*|*oneplus*|*realme*) hide_allowed=false ;;
+  hide_boot_mode() {
+    current_value=$(getprop "$1")
+    case "$current_value" in
+      *recovery*|*RECOVERY*) apply_prop "$1" unknown || return 1 ;;
     esac
-  fi
+  }
 
-  if [ "$hide_allowed" = true ] && [ -f "$CONFIG_DIR/hide_sensitive_props" ] && [ ! -L "$CONFIG_DIR/hide_sensitive_props" ]; then
-    apply_prop ro.boot.vbmeta.device_state locked || return 0
-    apply_prop ro.boot.verifiedbootstate green || return 0
-    apply_prop ro.boot.flash.locked 1 || return 0
-    apply_prop ro.boot.warranty_bit 0 || return 0
-    apply_prop ro.warranty_bit 0 || return 0
-    apply_prop ro.debuggable 0 || return 0
-    apply_prop ro.force.debuggable 0 || return 0
-    apply_prop ro.secure 1 || return 0
-    apply_prop ro.adb.secure 1 || return 0
-    apply_prop ro.build.type user || return 0
-    apply_prop ro.build.tags release-keys || return 0
-    apply_prop ro.vendor.boot.warranty_bit 0 || return 0
-    apply_prop ro.vendor.warranty_bit 0 || return 0
-    android_sdk=$(getprop ro.build.version.sdk)
-    case "$android_sdk" in
-      ''|*[!0-9]*) android_sdk=0 ;;
-    esac
-    if [ "$android_sdk" -ge 36 ]; then
-      remove_prop sys.oem_unlock_allowed || return 0
-    else
-      apply_prop sys.oem_unlock_allowed 0 || return 0
-    fi
-    apply_prop ro.secureboot.lockstate locked || return 0
-    apply_prop ro.boot.realmebootstate green || return 0
-    apply_prop ro.boot.realme.lockstate 1 || return 0
+  # Core bootloader / verified-boot property protection. This is intentionally
+  # unconditional: Spoof Engine controls identity only, and legacy
+  # hide_sensitive_props / boot_props_mode files cannot disable this path.
+  apply_prop ro.boot.vbmeta.device_state locked || return 0
+  apply_prop ro.boot.verifiedbootstate green || return 0
+  apply_prop ro.boot.flash.locked 1 || return 0
+  apply_prop ro.boot.warranty_bit 0 || return 0
+  apply_prop ro.warranty_bit 0 || return 0
+  apply_prop ro.debuggable 0 || return 0
+  apply_prop ro.force.debuggable 0 || return 0
+  apply_prop ro.secure 1 || return 0
+  apply_prop ro.adb.secure 1 || return 0
+  apply_prop ro.build.type user || return 0
+  apply_prop ro.build.tags release-keys || return 0
+  apply_prop ro.vendor.boot.warranty_bit 0 || return 0
+  apply_prop ro.vendor.warranty_bit 0 || return 0
+  android_sdk=$(getprop ro.build.version.sdk)
+  case "$android_sdk" in
+    ''|*[!0-9]*) android_sdk=0 ;;
+  esac
+  if [ "$android_sdk" -ge 36 ]; then
+    remove_prop sys.oem_unlock_allowed || return 0
+  else
+    apply_prop sys.oem_unlock_allowed 0 || return 0
   fi
+  apply_prop ro.secureboot.lockstate locked || return 0
+  apply_prop ro.boot.realmebootstate green || return 0
+  apply_prop ro.boot.realme.lockstate 1 || return 0
+  hide_boot_mode ro.bootmode || return 0
+  hide_boot_mode ro.boot.bootmode || return 0
+  hide_boot_mode vendor.boot.bootmode || return 0
+
+  # Everything below this point is optional identity spoofing.
+  [ -f "$CONFIG_DIR/spoof_enabled" ] || return 0
+  [ ! -L "$CONFIG_DIR/spoof_enabled" ] || return 0
+
+  boot_mode=auto
+  if [ -f "$CONFIG_DIR/boot_props_mode" ] && [ ! -L "$CONFIG_DIR/boot_props_mode" ]; then
+    IFS= read -r boot_mode < "$CONFIG_DIR/boot_props_mode"
+  fi
+  case "$boot_mode" in
+    force|disable|auto) ;;
+    *) boot_mode=auto ;;
+  esac
+  [ "$boot_mode" != disable ] || return 0
 
   if [ -f "$CONFIG_DIR/spoof_region_cn" ] && [ ! -L "$CONFIG_DIR/spoof_region_cn" ]; then
     apply_prop ro.boot.hwc CN || return 0

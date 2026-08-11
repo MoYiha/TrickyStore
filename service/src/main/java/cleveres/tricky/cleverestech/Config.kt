@@ -133,13 +133,11 @@ object Config {
         private set
 
     /**
-     * Master runtime gate for every spoofing interceptor and boot-time property
-     * override. Installations create the flag by default; keeping the in-memory
-     * default enabled preserves safe behavior until the initial configuration
-     * snapshot has been loaded.
+     * Opt-in identity gate. Core Keystore/TEE interception and boot protection
+     * remain active independently of this switch.
      */
     @Volatile
-    var isSpoofEnabled = true
+    var isSpoofEnabled = false
         private set
 
     /** Applies the selected template to Android's app-visible build identity at boot. */
@@ -247,7 +245,9 @@ object Config {
         get() = isSpoofEnabled && (isTelephonyEnabled || appConfigState.hasPrivacyRules)
 
     fun shouldApplyTelephonyPrivacy(uid: Int): Boolean =
-        (isTelephonyEnabled || getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT) && isTargetedUid(uid)
+        isSpoofEnabled &&
+            (isTelephonyEnabled || getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT) &&
+            isTargetedUid(uid)
 
     internal fun updateAppConfigs(f: File?) =
         runCatching {
@@ -574,8 +574,8 @@ object Config {
             rkpInfrastructureCache.clear()
         }
         isSpoofEnabled = enabled
-        KeyboxAutoCleaner.setEnabled(enabled && isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
-        Logger.i("Spoof engine is ${if (enabled) "enabled" else "disabled"}")
+        KeyboxAutoCleaner.setEnabled(isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
+        Logger.i("Identity Spoof Engine is ${if (enabled) "enabled" else "disabled"}; core protection is unchanged")
         if (changed) signalRuntimeController()
     }
 
@@ -586,7 +586,7 @@ object Config {
 
     private fun updateTeeBrokenMode(f: File?) {
         isTeeBrokenMode = isRegularFlagFile(f)
-        Logger.i("TEE broken mode is ${if (isTeeBrokenMode) "enabled" else "disabled"}")
+        Logger.i("Legacy TEE safe mode flag is ${if (isTeeBrokenMode) "present" else "absent"}; core protection is unchanged")
     }
 
     private fun updateTelephony(f: File?) {
@@ -631,7 +631,7 @@ object Config {
             RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(file)
             DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(file)
             RANDOM_ON_BOOT_FILE -> updateRandomOnBoot(file)
-            AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isSpoofEnabled && file != null)
+            AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(file != null)
         }
     }
 
@@ -743,6 +743,7 @@ object Config {
         tag: String,
         uid: Int,
     ): ByteArray? {
+        if (!isSpoofEnabled) return null
         when (getAppPrivacyMode(uid)) {
             AppPrivacyMode.REDACT -> return ByteArray(0)
             AppPrivacyMode.ISOLATE -> {
@@ -1861,12 +1862,12 @@ object Config {
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
                 removeConfigFiles(
                     TEE_BROKEN_MODE_FILE,
+                    BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
                     RKP_PASSTHROUGH_FILE,
                     DRM_PASSTHROUGH_FILE,
                 )
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
-                SecureFile.touch(File(root, BootLogic.FILE_HIDE_PROPS), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, TELEPHONY_FILE), 384)
@@ -1877,22 +1878,22 @@ object Config {
                     GLOBAL_MODE_FILE,
                     TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE,
+                    BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
                     TELEPHONY_FILE,
                     BUILD_IDENTITY_FILE,
                 )
-                SecureFile.touch(File(root, BootLogic.FILE_HIDE_PROPS), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, RKP_PASSTHROUGH_FILE), 384)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "minimal" -> {
-                SecureFile.touch(File(root, TEE_BROKEN_MODE_FILE), 384)
                 removeConfigFiles(
                     SPOOF_ENABLED_FILE,
                     BUILD_IDENTITY_FILE,
                     GLOBAL_MODE_FILE,
+                    TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE,
                     BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
@@ -1929,7 +1930,7 @@ object Config {
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateTargetPackages(File(root, TARGET_FILE))
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
-        KeyboxAutoCleaner.setEnabled(isSpoofEnabled && isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
+        KeyboxAutoCleaner.setEnabled(isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
     }
 
     private fun discardStagedRandomization() {
@@ -1955,6 +1956,10 @@ object Config {
                     "ATTESTATION_ID_IMSI2" to RandomUtils.generateDigits(15, "310260"),
                     "ATTESTATION_ID_ICCID" to RandomUtils.generateLuhn(20, "8901"),
                     "ATTESTATION_ID_ICCID2" to RandomUtils.generateLuhn(20, "8901"),
+                    "ATTESTATION_ID_MEID" to RandomUtils.generateHex(14),
+                    "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
+                    "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
+                    "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
                 )
             val currentTemplate = buildVars["TEMPLATE"]
             val templateCandidates = templates.keys.filterNot { it.equals(currentTemplate, ignoreCase = true) }
@@ -2046,7 +2051,7 @@ object Config {
                 RANDOM_ON_BOOT_FILE -> updateRandomOnBoot(f)
                 DRM_PACKAGES_FILE -> updateDrmPackages(f)
                 MODULE_HASH_FILE -> updateModuleHash(f)
-                AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isSpoofEnabled && isRegularFlagFile(f))
+                AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
 
                 APPLY_PROFILE_FILE -> applyProfileFromFile(f)
             }
@@ -2290,7 +2295,7 @@ object Config {
     }
 
     private fun isTargetedUid(callingUid: Int): Boolean {
-        if (!isSpoofEnabled || callingUid < FIRST_APPLICATION_UID) return false
+        if (callingUid < FIRST_APPLICATION_UID) return false
         if (isProtectedInfrastructureUid(callingUid)) return false
         if (isDrmPassthroughEnabled) {
             val state = drmState
@@ -2313,7 +2318,7 @@ object Config {
         return result
     }
 
-    fun needHack(callingUid: Int): Boolean = !isTeeBrokenMode && isTargetedUid(callingUid)
+    fun needHack(callingUid: Int): Boolean = isTargetedUid(callingUid)
 
     @androidx.annotation.VisibleForTesting
     fun reset() {
@@ -2343,7 +2348,7 @@ object Config {
         cachedPackageList = null
         lastPackageFetchTime = 0
         isGlobalMode = false
-        isSpoofEnabled = true
+        isSpoofEnabled = false
         isBuildIdentityEnabled = false
         isTeeBrokenMode = false
         isTelephonyEnabled = false

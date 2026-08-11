@@ -20,6 +20,20 @@ class ConfigIdentityOverridesTest {
     }
 
     @Test
+    fun `identity engine gates attestation ids without clearing stored values`() {
+        val root = createTempDir(prefix = "identity_engine_").apply { deleteOnExit() }
+        Config.setRootForTesting(root)
+        val imei = RandomUtils.generateLuhn(15, "35")
+        val vars = File(root, "spoof_build_vars").apply { writeText("ATTESTATION_ID_IMEI=$imei\n") }
+        Config.updateBuildVars(vars)
+
+        assertNull(Config.getAttestationId("IMEI", 10_001))
+        File(root, "spoof_enabled").createNewFile()
+        Config.refreshRuntimeSetting("spoof_enabled")
+        assertEquals(imei, String(requireNotNull(Config.getAttestationId("IMEI", 10_001))))
+    }
+
+    @Test
     fun `identity snapshot is atomic and slot aware`() {
         val imei = RandomUtils.generateLuhn(15, "35")
         val imei2 = RandomUtils.generateLuhn(15, "35")

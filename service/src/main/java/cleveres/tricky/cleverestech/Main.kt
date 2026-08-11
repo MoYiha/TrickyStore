@@ -59,42 +59,24 @@ fun main(args: Array<String>) {
 
         KeyboxAutoCleaner.start()
 
-        var previousEngineState: Boolean? = null
+        var previousIdentityEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
-        var engineStopPending = false
         var telephonyStopPending = false
         while (true) {
-            val engineEnabled = Config.isSpoofEnabled
-            if (!engineEnabled) {
-                if (previousEngineState != false || engineStopPending) {
-                    val wasPending = engineStopPending
-                    val telephonyStopped = TelephonyInterceptor.stopTelephonyInterceptor()
-                    val keystoreStopped = KeystoreInterceptor.stopKeystoreInterceptor()
-                    engineStopPending = !telephonyStopped || !keystoreStopped
-                    if (engineStopPending) {
-                        if (!wasPending) Logger.w("Spoof Engine cleanup is incomplete; retry scheduled")
+            val identityEngineEnabled = Config.isSpoofEnabled
+            if (previousIdentityEngineState != identityEngineEnabled) {
+                Logger.i(
+                    if (identityEngineEnabled) {
+                        "Identity Spoof Engine enabled; identity overrides may be applied"
                     } else {
-                        telephonyStopPending = false
-                        Logger.i("Spoof Engine paused; Binder hooks are parked")
-                    }
-                }
-                previousEngineState = if (engineStopPending) null else false
-                previousTelephonyState = Config.shouldInterceptTelephony
-                try {
-                    Config.awaitRuntimeController(if (engineStopPending) 1_000 else 30_000)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    return@runBlocking
-                }
-                continue
+                        "Identity Spoof Engine disabled; core Keystore/TEE protection remains active"
+                    },
+                )
+                previousIdentityEngineState = identityEngineEnabled
             }
 
-            engineStopPending = false
-            if (previousEngineState == false) {
-                Logger.i("Spoof Engine resumed; restoring configured Binder interceptors")
-            }
-            previousEngineState = true
-
+            // Keystore interception is the always-on core path. Disabling identity
+            // spoofing must never unregister it or park the native Binder hook.
             var ksSuccess = KeystoreInterceptor.isRunning()
             var telSuccess = !Config.shouldInterceptTelephony || TelephonyInterceptor.isRunning()
 
@@ -110,13 +92,13 @@ fun main(args: Array<String>) {
                 } else {
                     null
                 }
+
+            val telephonyEnabled = Config.shouldInterceptTelephony
             val telJob =
-                if (!telSuccess) {
+                if (telephonyEnabled && !telSuccess) {
                     launch(Dispatchers.IO) {
                         try {
-                            if (Config.shouldInterceptTelephony) {
-                                telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
-                            }
+                            telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
                         } catch (e: Exception) {
                             Logger.e("Telephony interceptor threw unexpected exception", e)
                         }
@@ -128,22 +110,20 @@ fun main(args: Array<String>) {
             ksJob?.join()
             telJob?.join()
 
-            val telephonyEnabled = Config.shouldInterceptTelephony
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
                 val wasPending = telephonyStopPending
                 telephonyStopPending = !TelephonyInterceptor.stopTelephonyInterceptor()
                 if (telephonyStopPending && !wasPending) {
                     Logger.w("Telephony hook cleanup is incomplete; retry scheduled")
                 }
+                telSuccess = !telephonyStopPending
             } else if (telephonyEnabled) {
                 telephonyStopPending = false
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
-            if (!ksSuccess) Logger.d("Keystore interceptor is not ready; retry scheduled")
-            if (!telSuccess) {
-                Logger.d("Telephony interceptor not ready yet")
-            }
+            if (!ksSuccess) Logger.d("Core Keystore interceptor is not ready; retry scheduled")
+            if (!telSuccess) Logger.d("Telephony interceptor not ready yet")
 
             try {
                 Config.awaitRuntimeController(
