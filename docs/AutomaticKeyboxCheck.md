@@ -6,7 +6,7 @@ Automatic Keybox Check keeps authorized key material and revocation state curren
 
 ## Lifecycle
 
-The worker starts only when Spoof Engine and Automatic Keybox Check are both enabled. It stops when either control is disabled. A service shutdown also cancels scheduled work.
+The worker starts when Automatic Keybox Check is enabled. Its lifecycle is independent from Spoof Engine because keybox and certificate handling belong to the core Keystore protection path. A service shutdown still cancels scheduled work.
 
 File observers react to normal keybox updates. A low frequency fallback poll covers filesystems where an observer event may be missed. Repeated failures do not create overlapping workers.
 
@@ -18,6 +18,6 @@ Cached parsed material is bounded by file count and file size. Unchanged files r
 
 ## Resource use
 
-The worker sleeps between scheduled checks and does not busy poll. Disabling Spoof Engine stops it entirely. Targeted mode and a small keybox set provide the lowest routine memory and processor cost.
+The worker sleeps between scheduled checks and does not busy poll. Disable Automatic Keybox Check when scheduled revocation work is not wanted. Spoof Engine can remain off without stopping core keybox maintenance.
 
 [Return to the project overview](../README.md)
