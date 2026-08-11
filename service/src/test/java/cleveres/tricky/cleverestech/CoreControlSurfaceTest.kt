@@ -14,6 +14,8 @@ class CoreControlSurfaceTest {
 
         assertTrue("WebUI setting allowlist was not found", start >= 0 && end > start)
         val settings = source.substring(start, end)
+        assertTrue("Identity Spoof Engine must remain user controllable", settings.contains("\"spoof_enabled\""))
+        assertTrue("Global Mode must remain user controllable", settings.contains("\"global_mode\""))
         assertFalse("TEE safe mode must not be remotely toggleable", settings.contains("\"tee_broken_mode\""))
         assertFalse("Core property hiding must not be remotely toggleable", settings.contains("\"hide_sensitive_props\""))
     }
