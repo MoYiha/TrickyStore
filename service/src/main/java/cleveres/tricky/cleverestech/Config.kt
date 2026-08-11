@@ -2125,7 +2125,7 @@ object Config {
     }
 
     fun getCallerPackageDigest(uid: Int): ByteArray {
-        val digest = callerPackageDigest.get()
+        val digest = requireNotNull(callerPackageDigest.get())
         digest.reset()
         getPackages(uid).forEach { packageName ->
             digest.update(packageName.toByteArray(Charsets.UTF_8))
