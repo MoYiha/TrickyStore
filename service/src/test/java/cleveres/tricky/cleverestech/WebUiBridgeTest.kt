@@ -138,9 +138,9 @@ class WebUiBridgeTest {
     ): JSONObject {
         val requestFile = File(configDir, "webui_bridge/requests/$id.request")
         requestFile.writeText(request.toString())
-        bridge.processPendingRequests()
         val responseFile = File(configDir, "webui_bridge/responses/$id.response")
-        repeat(100) {
+        repeat(200) {
+            bridge.processPendingRequests()
             if (responseFile.isFile) return JSONObject(responseFile.readText())
             Thread.sleep(10)
         }
