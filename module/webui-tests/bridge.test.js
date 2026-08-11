@@ -20,7 +20,38 @@ function envelope(body = '{"status":"ok"}') {
     });
 }
 
-function createBridge(callbackFactory) {
+function createElement(tagName) {
+    return {
+        tagName: tagName.toUpperCase(),
+        id: '',
+        style: {},
+        children: [],
+        attributes: Object.create(null),
+        appendChild(child) { this.children.push(child); return child; },
+        setAttribute(name, value) { this.attributes[name] = String(value); }
+    };
+}
+
+function createDocument() {
+    const body = createElement('body');
+    return {
+        readyState: 'complete',
+        body,
+        createElement,
+        getElementById(id) {
+            const queue = [...body.children];
+            while (queue.length) {
+                const node = queue.shift();
+                if (node.id === id) return node;
+                queue.push(...node.children);
+            }
+            return null;
+        },
+        addEventListener() {}
+    };
+}
+
+function createBridge(callbackFactory, document = null) {
     const context = {
         console,
         setTimeout,
@@ -39,6 +70,7 @@ function createBridge(callbackFactory) {
         atob: value => Buffer.from(value, 'base64').toString('binary'),
         btoa: value => Buffer.from(value, 'binary').toString('base64')
     };
+    if (document) context.document = document;
     context.window = context;
     context.ksu = {
         exec(_command, _options, callbackName) {
@@ -118,6 +150,20 @@ async function main() {
         JSON.parse(JSON.stringify(await resourceResponse.json())),
         JSON.parse(resourceBody)
     );
+
+    const communityDocument = createDocument();
+    createBridge(() => {}, communityDocument);
+    const communityCard = communityDocument.getElementById('cleveresCommunityCard');
+    assert.ok(communityCard, 'Telegram community card was not appended');
+    assert.strictEqual(communityDocument.body.children.at(-1), communityCard, 'Community card must stay at the bottom');
+    const communityPanel = communityCard.children[0];
+    const communityCopy = communityPanel.children[1];
+    const communityLink = communityPanel.children[2];
+    assert.match(communityCopy.textContent, /mutual help.*development/i);
+    assert.strictEqual(communityLink.href, 'https://t.me/cleverestech');
+    assert.strictEqual(communityLink.target, '_blank');
+    assert.strictEqual(communityLink.rel, 'noopener noreferrer');
+    assert.strictEqual(communityLink.textContent, 'Join Telegram Community');
 
     const normalizeUiMessage = loadMessageNormalizer();
     assert.strictEqual(normalizeUiMessage(envelope('{"error":"keybox rejected"}')), 'keybox rejected');
