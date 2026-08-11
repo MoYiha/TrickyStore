@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import org.junit.After;
 import org.junit.Test;
 import java.io.StringReader;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -7,6 +8,11 @@ import static org.junit.Assert.*;
 import cleveres.tricky.cleverestech.TestKeyboxFixtures;
 
 public class ConcurrencyTest {
+
+    @After
+    public void tearDown() {
+        CertHack.readFromXml(null);
+    }
 
     private static final String VALID_XML = "<?xml version=\"1.0\"?>\n" +
             "<AndroidAttestation>\n" +
@@ -28,7 +34,6 @@ public class ConcurrencyTest {
 
     @Test
     public void testKeyboxesConcurrency() throws InterruptedException {
-        // Initialize with valid keybox
         CertHack.readFromXml(new StringReader(VALID_XML));
         assertTrue(CertHack.canHack());
 
@@ -39,17 +44,20 @@ public class ConcurrencyTest {
             while (running.get()) {
                 if (!CertHack.canHack()) {
                     failed.set(true);
-                    // running.set(false); // Don't stop immediately to stress more
                 }
-                // Also could try hackCertificateChain if I could mock args, but canHack() checks !keyboxes.isEmpty()
-                // If readFromXml clears it, canHack() returns false.
             }
         });
 
         Thread writer = new Thread(() -> {
             for (int i = 0; i < 100; i++) {
                 CertHack.readFromXml(new StringReader(VALID_XML));
-                try { Thread.sleep(1); } catch (InterruptedException e) {}
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    failed.set(true);
+                    break;
+                }
             }
             running.set(false);
         });
