@@ -48,7 +48,7 @@ internal object DrmPrivacyIdentity {
     ): ByteArray {
         require(uid >= FIRST_APPLICATION_UID) { "DRM privacy identity requires an application UID" }
         require(length in MIN_IDENTIFIER_BYTES..MAX_IDENTIFIER_BYTES) { "Unsupported DRM identifier length" }
-        require(components.isNotEmpty() && components.all(String::isNotEmpty)) {
+        require(components.isNotEmpty() && components.all { it.isNotEmpty() }) {
             "DRM privacy identity requires non-empty identity components"
         }
 
@@ -59,7 +59,7 @@ internal object DrmPrivacyIdentity {
             val md = digest.get()
             md.reset()
             md.update(domain)
-            md.update(0)
+            md.update(0.toByte())
             updateInt(md, uid)
             updateInt(md, length)
             for (component in components) {
