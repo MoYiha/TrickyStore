@@ -506,7 +506,7 @@ jobs:
         id: release_version
         shell: bash
         run: |
-          version=$(sed -n 's/^val verName by extra("[vV]\{0,1\}\([^"]*\)").*/\1/p' build.gradle.kts)
+          version=$(sed -n 's/^val verName = "[vV]\{0,1\}\([^"]*\)".*/\1/p' build.gradle.kts)
           if [ -z "$version" ]; then
             echo "::error::Could not read verName from build.gradle.kts"
             exit 1
