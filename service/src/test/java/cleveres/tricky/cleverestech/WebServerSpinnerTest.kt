@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -72,8 +73,21 @@ class WebServerSpinnerTest {
         // Verify HTML for Spinner
         assertTrue("Missing Spinner Div", html.contains("<div class=\"spinner\"></div>"))
 
-        // Verify JS Logic
-        assertTrue("Missing notifyTimeout logic", html.contains("if (notifyTimeout) clearTimeout(notifyTimeout);"))
-        assertTrue("Missing type working check", html.contains("if (type === 'working') {"))
+        // Verify notification lifecycle. Working notifications remain visible until a later
+        // notify() call clears them; normal and error notifications receive bounded timeouts.
+        assertTrue("Missing notifyTimeout cleanup", html.contains("if (notifyTimeout) clearTimeout(notifyTimeout);"))
+        assertTrue("Working notifications must not auto dismiss", html.contains("if (type !== 'working') {"))
+        assertTrue(
+            "Missing bounded error notification timeout",
+            html.contains("type === 'error' ? 6000 : 3000"),
+        )
+
+        // Safe-area ownership is singular: the sticky offset handles the top inset. A mobile
+        // padding rule would apply the same inset a second time on notched devices.
+        assertTrue("Missing sticky safe-area offset", html.contains("top: env(safe-area-inset-top);"))
+        assertFalse(
+            "Mobile tabs must not apply the top safe-area inset twice",
+            html.contains(".tabs { padding-top: env(safe-area-inset-top); }"),
+        )
     }
 }
