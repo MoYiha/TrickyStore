@@ -357,7 +357,7 @@ bool AdaptiveBinderInterceptor::parseKernelVersion(int &major, int &minor) {
 
 bool AdaptiveBinderInterceptor::initFallback(OffsetCache &cache,
                                              int api_level) {
-  if (api_level < 31 || api_level > 36) {
+  if (api_level < 31 || api_level > 37) {
     LOGE("Fallback layout rejected unsupported Android API %d", api_level);
     return false;
   }
@@ -374,7 +374,7 @@ bool AdaptiveBinderInterceptor::initialize() {
   OffsetCache &cache = OffsetCache::instance();
 
   const int android_api_level = detectApiLevel();
-  if (android_api_level < 31 || android_api_level > 36) {
+  if (android_api_level < 31 || android_api_level > 37) {
     LOGE("AdaptiveBinderInterceptor: unsupported Android API %d",
          android_api_level);
     return false;
@@ -546,7 +546,7 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
 
-    static constexpr size_t kMaxTransactions = 16;
+    static constexpr size_t kMaxTransactions = 64;
     BinderStreamParser::ParsedTransaction txns[kMaxTransactions];
     size_t txn_count = 0;
 

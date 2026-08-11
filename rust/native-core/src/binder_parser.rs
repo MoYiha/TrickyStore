@@ -4,7 +4,8 @@ use crate::layout::{validate_transaction_layout, RustOffsetCacheView};
 use std::mem;
 
 const MAX_TRANSACTIONS_PER_CALL: usize = 1_024;
-const MAXIMUM_BINDER_STREAM_BYTES: usize = 16 * 1_024;
+const STACK_BINDER_STREAM_BYTES: usize = 16 * 1_024;
+const MAXIMUM_BINDER_STREAM_BYTES: usize = 8 * 1_024 * 1_024;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
@@ -187,8 +188,17 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
             Some(value) => value,
             None => return false,
         };
-        let mut local_buffer = mem::MaybeUninit::<[u8; MAXIMUM_BINDER_STREAM_BYTES]>::uninit();
-        let local_pointer = local_buffer.as_mut_ptr().cast::<u8>();
+        let mut stack_buffer = mem::MaybeUninit::<[u8; STACK_BINDER_STREAM_BYTES]>::uninit();
+        let mut heap_buffer = Vec::new();
+        let local_pointer = if consumed <= STACK_BINDER_STREAM_BYTES {
+            stack_buffer.as_mut_ptr().cast::<u8>()
+        } else {
+            if heap_buffer.try_reserve_exact(consumed).is_err() {
+                return false;
+            }
+            heap_buffer.resize(consumed, 0);
+            heap_buffer.as_mut_ptr()
+        };
         if !pipe.copy(buffer_pointer as usize, local_pointer as usize, consumed) {
             return false;
         }
@@ -216,10 +226,10 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
             if is_transaction_command(command) && !known_transaction_size {
                 return false;
             }
-            if is_transaction_command(command) && known_transaction_size {
-                if count_slice[0] >= output.len() {
-                    return false;
-                }
+            if is_transaction_command(command)
+                && known_transaction_size
+                && count_slice[0] < output.len()
+            {
                 let transaction = &buffer[position..position + payload_size];
                 let (
                     Some(target_ptr),
@@ -357,6 +367,66 @@ mod tests {
             )
         };
         assert!(!parsed);
+    }
+
+    #[test]
+    fn parses_a_transaction_after_a_large_driver_command() {
+        let payload_size = 64usize;
+        let prefix_size = 0x3fffusize;
+        let prefix_command = (IOC_READ << IOC_DIRECTION_SHIFT)
+            | (prefix_size as u32) << IOC_SIZE_SHIFT
+            | (b'x' as u32) << IOC_TYPE_SHIFT
+            | 1;
+        let transaction_command = (IOC_READ << IOC_DIRECTION_SHIFT)
+            | (payload_size as u32) << IOC_SIZE_SHIFT
+            | (BINDER_TYPE << IOC_TYPE_SHIFT)
+            | TRANSACTION_NUMBER;
+        let transaction_command_offset = mem::size_of::<u32>() + prefix_size;
+        let transaction_offset = transaction_command_offset + mem::size_of::<u32>();
+        let mut input = vec![0u8; transaction_offset + payload_size];
+        write_at(&mut input, 0, prefix_command);
+        write_at(&mut input, transaction_command_offset, transaction_command);
+        write_at(&mut input, transaction_offset + 16, 77u32);
+
+        let cache = RustOffsetCacheView {
+            target_ptr_offset: 0,
+            cookie_offset: 8,
+            code_offset: 16,
+            flags_offset: 20,
+            sender_pid_offset: 24,
+            sender_euid_offset: 28,
+            data_size_offset: 36,
+            data_ptr_offset: 44,
+            transaction_data_size: payload_size,
+            transaction_data_secctx_size: payload_size,
+            bwr_write_size_offset: 0,
+            bwr_write_consumed_offset: 8,
+            bwr_write_buffer_offset: 16,
+            bwr_read_size_offset: 24,
+            bwr_read_consumed_offset: 32,
+            bwr_read_buffer_offset: 40,
+            bwr_total_size: 48,
+            valid: 1,
+        };
+        let mut output = [RustParsedTransaction::default(); 1];
+        let mut count = 0usize;
+
+        let parsed = unsafe {
+            rust_parse_binder_stream(
+                input.as_ptr(),
+                input.len(),
+                input.len(),
+                &cache,
+                output.as_mut_ptr(),
+                output.len(),
+                &mut count,
+            )
+        };
+
+        assert!(input.len() > STACK_BINDER_STREAM_BYTES);
+        assert!(parsed);
+        assert_eq!(count, 1);
+        assert_eq!(output[0].code, 77);
     }
 
     #[test]

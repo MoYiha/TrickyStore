@@ -1,6 +1,6 @@
 # Contributing
 
-Changes should preserve the module's fail-closed security model and its supported Android 12 to 16 and KernelSU plus APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
+Changes should preserve the module's fail-closed security model and its supported Android 12 to 17 and KernelSU plus APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
 
 ## Development checks
 

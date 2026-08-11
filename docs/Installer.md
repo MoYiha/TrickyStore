@@ -6,7 +6,7 @@ The installer creates a complete KernelSU or APatch module with the service, nat
 
 ## Supported path
 
-Installation must run from KernelSU or APatch while Android is active. Android 12 through Android 16 are supported on ARM64 and x86 64. Recovery and Magisk paths stop with an explanation before a partial module is left behind.
+Installation must run from KernelSU or APatch while Android is active. Android 12 through Android 17 are supported on ARM64 and x86 64. Recovery and Magisk paths stop with an explanation before a partial module is left behind.
 
 The installer selects the architecture specific Rust `inject` and `webui_bridge` executables and the `libcleverestricky.so` library. It also installs the daemon, service APK, module metadata, installer script, early boot script, service script, native `webroot`, and SELinux policy required by their lifecycle stage.
 

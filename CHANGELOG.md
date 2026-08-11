@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Preserved stable isolated identities across backup and restore by materializing and synchronizing the privacy seed before export.
+- Restored keyboxes, module hashes, settings, and runtime configuration as one exact state without retaining stale files or caches.
+- Corrected KeyMint 4 module hash placement, preserved authorization lists, and allowed valid EC and RSA cross-algorithm certificate signing.
+- Added Android 17 installation and Binder runtime support, bounded large Binder response parsing, and expanded the interception queue capacity.
+
 ## V2.5.0
 
 ### Fixed

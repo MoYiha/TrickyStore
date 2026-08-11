@@ -1701,10 +1701,7 @@ class WebServer(
                             }
                             WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
                             DeviceTemplateManager.initialize(configDir)
-                            Config.updateCustomTemplates(File(configDir, "custom_templates"))
-                            Config.updateBuildVars(File(configDir, "spoof_build_vars"))
-                            Config.updateAppConfigs(File(configDir, "app_config")).getOrThrow()
-                            Config.refreshPrivacySeed().getOrThrow()
+                            Config.refreshRestoredConfiguration().getOrThrow()
                             Config.updateKeyBoxesSync(crlFetcher())
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
@@ -1884,6 +1881,8 @@ class WebServer(
                 "spoof_build_vars",
                 "app_config",
                 "privacy_seed",
+                "keybox.xml",
+                "module_hash",
                 "templates.json",
                 "custom_templates",
                 "spoof_enabled",
@@ -2021,6 +2020,10 @@ class WebServer(
             }
             if (filename == "boot_props_mode") {
                 return content.trim().lowercase() in setOf("auto", "force", "disable")
+            }
+            if (filename == "module_hash") {
+                val value = content.trim()
+                return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
             }
             if (filename == "security_patch.txt") {
                 var inPackageSection = false
@@ -2225,6 +2228,7 @@ class WebServer(
         }
 
         fun createBackupZip(configDir: File): ByteArray {
+            Config.ensurePrivacySeed(configDir).getOrThrow()
             val bos = ByteArrayOutputStream()
             ZipOutputStream(bos).use { zos ->
                 var totalBytes = 0L
@@ -2232,7 +2236,8 @@ class WebServer(
                     val file = File(configDir, name)
                     if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
                     val size = file.length()
-                    if (size !in 0..MAX_BACKUP_CONFIG_ENTRY_BYTES.toLong()) {
+                    val entryLimit = backupEntryLimit(name)
+                    if (size !in 0..entryLimit.toLong()) {
                         throw IOException("Backup entry exceeds size limit: $name")
                     }
                     totalBytes += size
@@ -2303,12 +2308,7 @@ class WebServer(
                             throw IOException("Backup contains too many keyboxes")
                         }
 
-                        val entryLimit =
-                            if (isValidKeyboxBackupPath(name)) {
-                                MAX_BACKUP_KEYBOX_ENTRY_BYTES
-                            } else {
-                                MAX_BACKUP_CONFIG_ENTRY_BYTES
-                            }
+                        val entryLimit = backupEntryLimit(name)
                         val bytes = readZipEntry(zis, entryLimit)
                         totalBytes += bytes.size
                         if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
@@ -2323,30 +2323,98 @@ class WebServer(
                 }
                 if (staged.isEmpty()) throw IOException("Backup is empty")
 
-                staged.forEach { (name, bytes) ->
-                    val file =
+                val destinations =
+                    staged.keys.associateWith { name ->
                         getSafeFile(configDir, name)
                             ?: throw SecurityException("Backup path escaped the configuration directory: $name")
-                    if (Files.isSymbolicLink(file.toPath())) {
-                        throw SecurityException("Refusing symbolic-link backup destination: $name")
                     }
-                    if (name.startsWith("keyboxes/")) {
-                        SecureFile.mkdirs(File(configDir, "keyboxes"), 448)
+                destinations.forEach { (name, file) ->
+                    val path = file.toPath()
+                    if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+                        !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                    ) {
+                        throw SecurityException("Refusing non-regular backup destination: $name")
                     }
+                }
+
+                val staleConfigFiles =
+                    BACKUP_CONFIG_FILES
+                        .asSequence()
+                        .filter { it !in staged && it != "privacy_seed" }
+                        .map { File(configDir, it) }
+                        .filter { file ->
+                            val path = file.toPath()
+                            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return@filter false
+                            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                                throw SecurityException("Refusing non-regular stale configuration: ${file.name}")
+                            }
+                            true
+                        }.toList()
+
+                val keyboxDir = File(configDir, "keyboxes")
+                val staleKeyboxFiles = ArrayList<File>()
+                val invalidatedCacheFiles = ArrayList<File>()
+                if (Files.exists(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    if (!Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        throw SecurityException("Refusing non-directory keybox destination")
+                    }
+                    Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
+                        var existingKeyboxCount = 0
+                        for (entry in entries) {
+                            val name = entry.fileName.toString()
+                            val backupPath = "keyboxes/$name"
+                            if (!isValidKeyboxBackupPath(backupPath)) continue
+                            if (++existingKeyboxCount > MAX_LISTED_KEYBOX_FILES) {
+                                throw IOException("Too many existing keybox files")
+                            }
+                            if (!Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+                                throw SecurityException("Refusing non-regular stale keybox: $name")
+                            }
+                            if (backupPath !in staged) staleKeyboxFiles.add(entry.toFile())
+                        }
+                    }
+                }
+
+                staged.keys
+                    .asSequence()
+                    .filter { it.startsWith("keyboxes/") && it.endsWith(".cbox", ignoreCase = true) }
+                    .map { File(keyboxDir, "${it.substringAfter('/')}.cache") }
+                    .forEach { invalidatedCacheFiles.add(it) }
+                staleKeyboxFiles
+                    .asSequence()
+                    .filter { it.name.endsWith(".cbox", ignoreCase = true) }
+                    .map { File(keyboxDir, "${it.name}.cache") }
+                    .forEach { invalidatedCacheFiles.add(it) }
+                invalidatedCacheFiles.forEach { cacheFile ->
+                    val path = cacheFile.toPath()
+                    if (Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+                        !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                    ) {
+                        throw SecurityException("Refusing non-regular keybox cache")
+                    }
+                }
+
+                staged.forEach { (name, bytes) ->
+                    val file = requireNotNull(destinations[name])
+                    if (name.startsWith("keyboxes/")) SecureFile.mkdirs(keyboxDir, 448)
                     SecureFile.writeStream(
                         file,
                         ByteArrayInputStream(bytes),
-                        if (isValidKeyboxBackupPath(name)) {
-                            MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong()
-                        } else {
-                            MAX_BACKUP_CONFIG_ENTRY_BYTES.toLong()
-                        },
+                        backupEntryLimit(name).toLong(),
                     )
                 }
+                staleConfigFiles.forEach { Files.deleteIfExists(it.toPath()) }
+                staleKeyboxFiles.forEach { Files.deleteIfExists(it.toPath()) }
+                invalidatedCacheFiles.forEach { Files.deleteIfExists(it.toPath()) }
             } finally {
                 staged.values.forEach { it.fill(0) }
             }
         }
+
+        private fun isBackupKeyboxEntry(name: String): Boolean = name == "keybox.xml" || isValidKeyboxBackupPath(name)
+
+        private fun backupEntryLimit(name: String): Int =
+            if (isBackupKeyboxEntry(name)) MAX_BACKUP_KEYBOX_ENTRY_BYTES else MAX_BACKUP_CONFIG_ENTRY_BYTES
 
         private fun isValidKeyboxBackupPath(name: String): Boolean {
             if (!name.startsWith("keyboxes/") || name.count { it == '/' } != 1) return false
@@ -2390,7 +2458,7 @@ class WebServer(
             if (!content.toByteArray(Charsets.UTF_8).contentEquals(bytes)) {
                 throw IOException("Backup entry is not valid UTF-8: $name")
             }
-            if (name.startsWith("keyboxes/")) {
+            if (isBackupKeyboxEntry(name)) {
                 if (CertHack.parseKeyboxXml(StringReader(content), name).isEmpty()) {
                     throw IOException("Backup keybox is empty: $name")
                 }
