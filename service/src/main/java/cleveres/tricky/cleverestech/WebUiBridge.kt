@@ -413,6 +413,7 @@ class WebUiBridge(
 
         override fun getMethod(): NanoHTTPD.Method = requestMethod
 
+        @Deprecated("NanoHTTPD API")
         override fun getParms(): Map<String, String> = requestParameters.mapValues { it.value.first() }
 
         override fun getParameters(): Map<String, List<String>> = requestParameters
