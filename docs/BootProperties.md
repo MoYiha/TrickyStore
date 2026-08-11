@@ -2,25 +2,27 @@
 
 ## Purpose
 
-Boot Properties provides an optional userspace property view for application compatibility. It can reduce exposure of common unlocked, debug, warranty, and regional indicators that applications read through Android properties.
+Boot Properties provides the core userspace property view used for application compatibility. It reduces exposure of common unlocked, debug, warranty, verified boot, and recovery indicators that applications read through Android properties.
 
 ## Early boot behavior
 
-Property updates run before Zygote so later application processes inherit a consistent view. Every property name is fixed in code. Every configurable value is bounded and passed as a quoted argument to the property tool.
+Core property updates run before Zygote so later application processes inherit a consistent view. Every property name and every core value is fixed in code.
 
-The Hide Sensitive Props control covers common verified boot state, flash lock, warranty, debug, build type, build tags, secure boot, and original equipment manufacturer unlock indicators. The optional region control applies a small fixed set of country and hardware region properties.
+The core view covers common verified boot state, flash lock, warranty, debug, build type, build tags, secure boot, original equipment manufacturer unlock, and recovery boot mode indicators. This protection is always active while the module is installed and its early boot script can use the property tool.
 
-## Policy modes
+Optional region identity and template build identity remain separate. Those identity values require Spoof Engine.
 
-The `boot_props_mode` setting accepts `auto`, `force`, or `disable`.
+## Identity compatibility policy
 
-Automatic mode skips overlapping property providers and vendor families known to be sensitive to these changes. Force mode applies the configured view even when automatic conflict checks would defer. Disable mode leaves the feature off without deleting the saved controls.
+The `boot_props_mode` setting is retained only for optional template build identity compatibility. It accepts `auto`, `force`, or `disable`.
+
+Automatic mode avoids overlapping build identity providers. Force mode applies configured template build identity even when automatic conflict checks would defer. Disable mode skips optional build identity properties. None of these values disables the core boot property protection path.
 
 ## Safety and recovery
 
-The master Spoof Engine control takes precedence. Disabling it before boot prevents property changes. If the property tool is unavailable or a required input is unsafe, the script logs the condition and leaves the property path unchanged.
+If the property tool is unavailable, the script logs the condition and leaves the property path unchanged. Unsafe configuration files are ignored or rejected according to the module file safety rules.
 
-If a vendor feature behaves differently, set the mode to `disable` and reboot. Reenable one control at a time after the device returns to a stable state.
+The core property view has no WebUI off switch. Identity controls can still be disabled independently without stopping boot protection.
 
 ## Limits
 
