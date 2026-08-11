@@ -182,10 +182,6 @@ object KeystoreInterceptor : BinderInterceptor() {
 
     @Synchronized
     fun tryRunKeystoreInterceptor(): Boolean {
-        if (!Config.isSpoofEnabled) {
-            stopKeystoreInterceptor()
-            return true
-        }
         if (registered && ::keystore.isInitialized && keystore.isBinderAlive) return true
         registered = false
         Logger.d("trying to register keystore interceptor (attempt=${triedCount.get()}) ...")
@@ -249,10 +245,6 @@ object KeystoreInterceptor : BinderInterceptor() {
                 Logger.e("failed to run the keystore injector", error)
                 return false
             }
-        }
-        if (!Config.isSpoofEnabled) {
-            parkBinderHook(bd)
-            return true
         }
         val ks = IKeystoreService.Stub.asInterface(b)
         val tee =
@@ -326,10 +318,6 @@ object KeystoreInterceptor : BinderInterceptor() {
             return false
         }
         registered = true
-        if (!Config.isSpoofEnabled) {
-            stopKeystoreInterceptor()
-            return true
-        }
         triedCount.set(0)
         return true
     }
