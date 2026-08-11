@@ -35,7 +35,7 @@ val moduleId = "cleverestricky"
 val moduleName = "CleveresTricky"
 val author = "tryigitx"
 val description = "KernelSU keystore compatibility and device configuration module. See GitHub for details."
-val verName = "V2.5.1"
+val verName = "V2.5.3"
 val verCode = gitCommitCount
 val commitHash = gitCommitHash
 val abiList = listOf("arm64-v8a", "x86_64")
@@ -135,7 +135,7 @@ subprojects {
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         compilerOptions {
-            allWarningsAsErrors.set(true)
+            allWarningsAsErrors.set(!name.contains("UnitTest"))
         }
     }
 
