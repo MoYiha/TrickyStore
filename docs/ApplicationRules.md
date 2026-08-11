@@ -8,13 +8,15 @@ Application Rules assigns a template, a specific keybox source, or an applicatio
 
 Each rule begins with a validated package pattern. The optional template field selects one known device template. The optional keybox field selects one verified local source. A null field preserves the normal global choice for that part of the request.
 
-Privacy mode `inherit` keeps the global identity policy. Privacy mode `isolate` derives stable application scoped IMEI, IMSI, ICCID, MEID, phone, serial, and supported attestation identifiers from a protected random seed. Values remain stable across service restarts and differ between unrelated application identities. Privacy mode `redact` returns blank supported identity values while preserving Android permission failures.
+Privacy mode `inherit` keeps the global identity policy. Privacy mode `isolate` derives stable application scoped IMEI, IMSI, ICCID, MEID, phone, serial, supported attestation identifiers, and the supported modern DRM `deviceUniqueId` pseudonym from a protected random seed. Values remain stable across service restarts and differ between unrelated application identities. Privacy mode `redact` returns blank supported telephony and attestation identity values while preserving Android permission failures; DRM identifier redaction is not synthesized and therefore remains on the original platform path unless isolation is selected.
 
 Telephony identity policy works independently. Attestation identity replacement requires an active verified keybox because the modified certificate chain must be signed. Without one, the original attestation chain remains unchanged.
 
-Shared Android user identifiers use the sorted set of resolved packages as one derivation context. Redaction takes precedence over isolation when packages sharing one user identifier request different policies.
+DRM identifier isolation is independent from DRM Keystore Passthrough. A streaming application can remain on Android's genuine Keystore certificate path while its stable-AIDL `IDrmPlugin.getPropertyByteArray("deviceUniqueId")` result is replaced with an application-scoped pseudonym. The DRM privacy path does not modify string properties, security level, licenses, provisioning, content keys, or legacy HIDL/vendor-specific DRM interfaces.
 
-Android Package Manager resolves the real packages associated with the calling user identifier. The module never trusts a package name supplied inside an attestation request. Shared Android user identifiers therefore receive one consistent decision.
+Shared Android user identifiers use the sorted set of resolved packages as one derivation context. Redaction takes precedence over isolation when packages sharing one user identifier request different policies for telephony and attestation identity. DRM pseudonymization is enabled only when the Binder caller resolves to an isolate policy.
+
+Android Package Manager resolves the real packages associated with the calling user identifier. The module never trusts a package name supplied inside an attestation or DRM request as the privacy authority. Shared Android user identifiers therefore receive one consistent decision.
 
 ## Reload and caching
 
@@ -24,10 +26,14 @@ Caller package and identity decisions expire with the Package Manager cache so A
 
 The WebUI validates package syntax, template names, keybox names, privacy modes, field count, duplicates, empty rules, and file size before saving. The service repeats the validation when loading the file. The privacy seed is stored as root only configuration and is included only inside an encrypted backup.
 
+DRM pseudonyms do not require a second persistent identifier file or an unbounded per-app DRM cache. They are derived from the already isolated application identity and preserve the supported original DRM identifier length.
+
 ## Guidance
 
 Use Application Scope for callers that need the global policy. Add an Application Rule when one caller needs a different template, authorized key source, or privacy identity. Restart that application after a change because it may cache earlier results.
 
-The privacy policy covers the telephony and attestation identity paths implemented by the module. It does not claim to block sensors, clipboard access, location, VPN checks, accessibility checks, or arbitrary code inside another application process.
+For a media application where the goal is to avoid exposing the genuine DRM `deviceUniqueId`, use `privacy=isolate` and keep DRM Keystore Passthrough enabled if protected playback requires the genuine Keystore certificate path.
+
+The privacy policy covers the telephony, attestation, and supported stable-AIDL DRM identity paths implemented by the module. It does not claim to block sensors, clipboard access, location, VPN checks, accessibility checks, account identifiers, other vendor fingerprinting surfaces, or arbitrary code inside another application process.
 
 [Return to the project overview](../README.md)
