@@ -132,7 +132,28 @@ jobs:
 
       - name: "📱 Android Static Analysis (Lint)"
         if: needs.changes.outputs.gradle == 'true'
-        run: ./gradlew :service:lintDebug :stub:lintDebug :encryptor-app:lintDebug
+        id: android_lint
+        continue-on-error: true
+        run: ./gradlew :service:lintDebug :stub:lintDebug :encryptor-app:lintDebug --continue
+
+      - name: Show Android Lint failures
+        if: steps.android_lint.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=false
+          while IFS= read -r report; do
+            found=true
+            echo "===== $report ====="
+            cat "$report"
+          done < <(find service stub encryptor-app -type f -name 'lint-results-*.txt' -print | sort)
+          if [[ "$found" != "true" ]]; then
+            echo "::warning::Android Lint failed but no text report was found"
+          fi
+
+      - name: Enforce Android Lint result
+        if: steps.android_lint.outcome == 'failure'
+        run: exit 1
 
       - name: Native source and documentation policy
         shell: bash
