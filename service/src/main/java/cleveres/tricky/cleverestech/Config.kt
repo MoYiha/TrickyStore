@@ -586,7 +586,7 @@ object Config {
 
     private fun updateTeeBrokenMode(f: File?) {
         isTeeBrokenMode = isRegularFlagFile(f)
-        Logger.i("TEE broken mode is ${if (isTeeBrokenMode) "enabled" else "disabled"}")
+        Logger.i("Legacy TEE safe mode flag is ${if (isTeeBrokenMode) "present" else "absent"}; core protection is unchanged")
     }
 
     private fun updateTelephony(f: File?) {
@@ -1862,12 +1862,12 @@ object Config {
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
                 removeConfigFiles(
                     TEE_BROKEN_MODE_FILE,
+                    BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
                     RKP_PASSTHROUGH_FILE,
                     DRM_PASSTHROUGH_FILE,
                 )
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
-                SecureFile.touch(File(root, BootLogic.FILE_HIDE_PROPS), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, TELEPHONY_FILE), 384)
@@ -1878,22 +1878,22 @@ object Config {
                     GLOBAL_MODE_FILE,
                     TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE,
+                    BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
                     TELEPHONY_FILE,
                     BUILD_IDENTITY_FILE,
                 )
-                SecureFile.touch(File(root, BootLogic.FILE_HIDE_PROPS), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, RKP_PASSTHROUGH_FILE), 384)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "minimal" -> {
-                SecureFile.touch(File(root, TEE_BROKEN_MODE_FILE), 384)
                 removeConfigFiles(
                     SPOOF_ENABLED_FILE,
                     BUILD_IDENTITY_FILE,
                     GLOBAL_MODE_FILE,
+                    TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE,
                     BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
