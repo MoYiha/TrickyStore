@@ -377,15 +377,20 @@ object Config {
             }
 
             // 2. Directory files (Plain XML)
-            if (Files.isDirectory(keyboxDir.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                val files =
-                    keyboxDir.listFiles { _, name -> name.endsWith(".xml", ignoreCase = true) }
-                        ?.sortedBy { it.name }
-                require(files.orEmpty().size <= MAX_KEYBOX_FILES) { "Too many keybox files" }
-                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files?.size ?: 0} xml files)")
+            if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                val files = ArrayList<File>(MAX_KEYBOX_FILES)
+                Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
+                    for (entry in entries) {
+                        if (!entry.fileName.toString().endsWith(".xml", ignoreCase = true)) continue
+                        require(files.size < MAX_KEYBOX_FILES) { "Too many keybox files" }
+                        files.add(entry.toFile())
+                    }
+                }
+                files.sortBy { it.name }
+                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files.size} xml files)")
                 val currentFiles = HashSet<String>()
 
-                files?.forEach { file ->
+                files.forEach { file ->
                     val filename = file.name
                     currentFiles.add(filename)
                     if (!Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
@@ -1239,10 +1244,36 @@ object Config {
     @OptIn(ExperimentalStdlibApi::class)
     private val hexFormat = HexFormat { upperCase = false }
 
+    private const val MAX_MODULE_HASH_FILE_BYTES = 128
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun updateModuleHash(f: File?) =
         runCatching {
-            moduleHash = f?.readText()?.trim()?.hexToByteArray()
+            moduleHash =
+                f?.let { file ->
+                    val path = file.toPath()
+                    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return@let null
+                    val buffer = ByteArray(MAX_MODULE_HASH_FILE_BYTES + 1)
+                    try {
+                        var total = 0
+                        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+                            while (total < buffer.size) {
+                                val count = input.read(buffer, total, buffer.size - total)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                total += count
+                            }
+                        }
+                        require(total in 1..MAX_MODULE_HASH_FILE_BYTES) { "module_hash exceeds its size limit" }
+                        val value = String(buffer, 0, total, Charsets.US_ASCII).trim()
+                        require(value.length == 64 && value.all { it.digitToIntOrNull(16) != null }) {
+                            "module_hash must contain one SHA-256 digest"
+                        }
+                        value.hexToByteArray()
+                    } finally {
+                        buffer.fill(0)
+                    }
+                }
             CertHack.clearCertificateCache()
             Logger.i("update module hash: ${moduleHash?.toHexString(hexFormat)}")
         }.onFailure {

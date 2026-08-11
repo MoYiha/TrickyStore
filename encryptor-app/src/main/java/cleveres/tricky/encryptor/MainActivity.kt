@@ -68,9 +68,12 @@ import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
 
 // --- Theme Colors ---
+private const val MAX_LOCAL_KEYBOX_FILES = 256
+
 val WebUiBackground = Color(0xFF0B0B0C)
 val WebUiForeground = Color(0xFFE5E7EB)
 val WebUiAccent = Color(0xFFD1D5DB)
@@ -155,8 +158,27 @@ fun KeyboxListScreen(onNavigateToCreate: () -> Unit) {
     var keyboxFiles by remember { mutableStateOf<List<File>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        val dir = context.getExternalFilesDir(null)
-        keyboxFiles = dir?.listFiles { file -> file.name.endsWith(".cbox") }?.toList() ?: emptyList()
+        keyboxFiles =
+            withContext(Dispatchers.IO) {
+                val directory = context.getExternalFilesDir(null) ?: return@withContext emptyList()
+                if (!Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    return@withContext emptyList()
+                }
+                val files = ArrayList<File>(MAX_LOCAL_KEYBOX_FILES)
+                Files.newDirectoryStream(directory.toPath()).use { entries ->
+                    for (entry in entries) {
+                        if (!entry.fileName.toString().endsWith(".cbox", ignoreCase = true) ||
+                            !Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)
+                        ) {
+                            continue
+                        }
+                        if (files.size == MAX_LOCAL_KEYBOX_FILES) break
+                        files.add(entry.toFile())
+                    }
+                }
+                files.sortBy { it.name }
+                files
+            }
     }
 
     Scaffold(
