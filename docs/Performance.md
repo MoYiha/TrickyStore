@@ -6,7 +6,7 @@ Core Keystore interception remains registered while the module service is health
 
 Spoof Engine is the identity resource control. When disabled, optional attestation identity values are not exposed, Telephony Identity is parked when no privacy rule needs it, DRM Identifier Privacy is parked, and optional build and region identity work is skipped. Core certificate handling and boot property protection remain active.
 
-When Spoof Engine is enabled, the DRM privacy controller reconciles modern stable-AIDL DRM factories at a bounded interval. It does not busy-poll. Lazy or restarted DRM services are rediscovered, while an injector retry for the same process is rate limited.
+When Spoof Engine is enabled, the DRM privacy controller reconciles modern stable AIDL DRM factories at a bounded interval. It does not busy poll. Lazy or restarted DRM services are rediscovered, while an injector retry for the same process is rate limited.
 
 Automatic Keybox Check has its own control and is independent from Spoof Engine. Disable that worker directly when scheduled revocation work is not wanted.
 
@@ -20,11 +20,11 @@ The injector is a short lived Rust process. Rust owns its arguments, logs, file 
 
 ## DRM privacy cost
 
-DRM Identifier Privacy registers only the stable-AIDL `IDrmFactory.createDrmPlugin` and `IDrmPlugin.getPropertyByteArray` transaction codes. Requests for licenses, keys, provisioning, sessions, security level, HDCP state, and DRM string properties never enter the replacement path.
+DRM Identifier Privacy registers only the stable AIDL `IDrmFactory.createDrmPlugin` and `IDrmPlugin.getPropertyByteArray` transaction codes. Requests for licenses, keys, provisioning, sessions, security level, HDCP state, and DRM string properties never enter the replacement path.
 
-The controller caps tracked DRM factory services at 16 and plugin Binder objects at 256. Dead Binder objects are pruned before new registrations are accepted. Reconciliation runs no more often than the normal runtime-controller interval when healthy, and native injection attempts for one PID are rate limited.
+The controller caps tracked DRM factory services at 16 and plugin Binder objects at 256. Dead Binder objects are pruned before new registrations are accepted. Reconciliation runs no more often than the normal runtime controller interval when healthy, and native injection attempts for one PID are rate limited.
 
-A pseudonym is derived only when an isolated application reads exactly `deviceUniqueId`. The derivation reuses the already protected application privacy identity and a thread-local SHA-256 instance. There is no persistent DRM-ID file and no growing per-request or per-app DRM pseudonym cache. Output is bounded to 8 through 64 bytes, matching only supported original identifier sizes. Temporary copies of the genuine DRM identifier and the pseudonym are cleared after the replacement Parcel has been constructed.
+A pseudonym is derived only when an isolated application reads exactly `deviceUniqueId`. The derivation reuses the already protected application privacy identity and a thread local SHA 256 instance. There is no persistent DRM ID file and no growing per request or per app DRM pseudonym cache. Output is bounded to 8 through 64 bytes, matching only supported original identifier sizes. Temporary copies of the genuine DRM identifier and the pseudonym are cleared after the replacement Parcel has been constructed.
 
 ## Service memory
 
