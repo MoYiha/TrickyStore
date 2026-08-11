@@ -7,12 +7,14 @@ on:
     paths:
       - .github/agent_edit.py
       - .github/workflows/agent-apply.yml
+      - .github/agent_edit_version
   pull_request:
     branches:
       - master
     paths:
       - .github/agent_edit.py
       - .github/workflows/agent-apply.yml
+      - .github/agent_edit_version
 
 permissions:
   contents: write
@@ -30,7 +32,7 @@ jobs:
         run: python3 .github/agent_edit.py
       - name: Commit generated edits
         run: |
-          rm -f .github/agent_edit.py .github/workflows/agent-apply.yml
+          rm -f .github/agent_edit.py .github/agent_edit_version .github/workflows/agent-apply.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
