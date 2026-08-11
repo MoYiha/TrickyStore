@@ -694,26 +694,35 @@ try {
 }
         }
         let notifyTimeout;
+        const maxEncodedUiMessageLength = 16 * 1024;
         function normalizeUiMessage(value) {
 let message = String(value ?? '');
 try {
     const envelope = JSON.parse(message);
     if (envelope && envelope.version === 1 && Number.isInteger(envelope.status) && typeof envelope.body === 'string') {
-        const padded = envelope.body.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((envelope.body.length + 3) % 4);
-        const bytes = Uint8Array.from(atob(padded), char => char.charCodeAt(0));
-        const body = new TextDecoder('utf-8', { fatal: false }).decode(bytes).trim();
-        if (body) {
-            try {
-                const parsedBody = JSON.parse(body);
-                message = parsedBody.error || parsedBody.message || parsedBody.details || body;
-            } catch (_) {
-                message = body;
-            }
+        const status = `HTTP ${envelope.status} ${envelope.statusText || ''}`.trim();
+        if (envelope.body.length > maxEncodedUiMessageLength) {
+            message = `${status}: response body is too large to display`;
         } else {
-            message = `HTTP ${envelope.status} ${envelope.statusText || ''}`.trim();
+            if (!/^[A-Za-z0-9_-]*$/.test(envelope.body)) throw new Error('Invalid response payload');
+            const padded = envelope.body.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((envelope.body.length + 3) % 4);
+            const bytes = Uint8Array.from(atob(padded), char => char.charCodeAt(0));
+            const body = new TextDecoder('utf-8', { fatal: false }).decode(bytes).trim();
+            if (body) {
+                try {
+                    const parsedBody = JSON.parse(body);
+                    const detail = parsedBody.error || parsedBody.message || parsedBody.details;
+                    message = typeof detail === 'string' ? detail : body;
+                } catch (_) {
+                    message = body;
+                }
+            } else {
+                message = status;
+            }
         }
     }
 } catch (_) {}
+message = String(message);
 if (message.length > 1200) message = message.slice(0, 1197) + '...';
 return message;
         }

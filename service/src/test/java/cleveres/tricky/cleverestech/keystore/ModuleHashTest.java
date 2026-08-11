@@ -146,14 +146,35 @@ public class ModuleHashTest {
                 }
             }
             Assert.assertTrue("ModuleHash tag 724 not found", found);
+            boolean foundRootOfTrust = false;
             for (ASN1Encodable encodable : teeEnforced) {
-                Assert.assertNotEquals(724, ((ASN1TaggedObject) encodable).getTagNo());
+                ASN1TaggedObject taggedObject = (ASN1TaggedObject) encodable;
+                Assert.assertNotEquals(724, taggedObject.getTagNo());
+                if (taggedObject.getTagNo() == 704) {
+                    foundRootOfTrust = true;
+                    ASN1Sequence rootOfTrust = ASN1Sequence.getInstance(taggedObject.getBaseObject());
+                    byte[] bootKey = ASN1OctetString.getInstance(rootOfTrust.getObjectAt(0)).getOctets();
+                    byte[] bootHash = ASN1OctetString.getInstance(rootOfTrust.getObjectAt(3)).getOctets();
+                    Assert.assertEquals(32, bootKey.length);
+                    Assert.assertEquals(32, bootHash.length);
+                    Assert.assertFalse("Verified boot key must not be all zero", isAllZero(bootKey));
+                    Assert.assertFalse("Verified boot hash must not be all zero", isAllZero(bootHash));
+                    Assert.assertTrue(ASN1Boolean.getInstance(rootOfTrust.getObjectAt(1)).isTrue());
+                    Assert.assertEquals(0, ASN1Enumerated.getInstance(rootOfTrust.getObjectAt(2)).getValue().intValue());
+                }
             }
+            Assert.assertTrue("RootOfTrust tag 704 not found", foundRootOfTrust);
         } finally {
             state.set(null, previousState);
             moduleHash.set(Config.INSTANCE, previousHash);
             CertHack.clearCertificateCache();
         }
+    }
+
+    private static boolean isAllZero(byte[] value) {
+        int aggregate = 0;
+        for (byte current : value) aggregate |= current & 0xFF;
+        return aggregate == 0;
     }
 
     @Test
