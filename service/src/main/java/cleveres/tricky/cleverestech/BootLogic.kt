@@ -16,7 +16,6 @@ object BootLogic {
     private val nullDevice = File("/dev/null")
     private val ran = AtomicBoolean(false)
 
-    @Suppress("VisibleForTests")
     private val configDir: File
         get() = Config.getConfigRoot().takeIf { it.path.isNotEmpty() } ?: File(CONFIG_PATH)
 
