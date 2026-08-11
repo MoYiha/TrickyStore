@@ -52,8 +52,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.Logger;
@@ -122,11 +120,8 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
-    private static final Map<String, AtomicInteger> rotationCounters = new ConcurrentHashMap<>();
 
     static {
-        rotationCounters.put(KeyProperties.KEY_ALGORITHM_EC, new AtomicInteger(0));
-        rotationCounters.put(KeyProperties.KEY_ALGORITHM_RSA, new AtomicInteger(0));
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.addProvider(new BouncyCastleProvider());
         }
@@ -176,18 +171,16 @@ public final class CertHack {
 
     private static final class CacheKey {
         private final byte[] leafDigest;
-        private final byte[] callerPackageDigest;
-        private final Config.AttestationPatchLevels patchLevels;
-        private final int uid;
         private final int hashCode;
 
-        public CacheKey(byte[] leafEncoded, Config.AttestationPatchLevels patchLevels, int uid) {
+        public CacheKey(byte[] leafEncoded) {
             this.leafDigest = SHA256_DIGEST.get().digest(leafEncoded);
-            this.callerPackageDigest = Config.INSTANCE.getCallerPackageDigest(uid);
-            this.patchLevels = Objects.requireNonNull(patchLevels, "patchLevels");
-            this.uid = uid;
-            this.hashCode = 31 * (31 * (31 * Arrays.hashCode(leafDigest) + Arrays.hashCode(callerPackageDigest)) +
-                    patchLevels.hashCode()) + uid;
+            this.hashCode = Arrays.hashCode(leafDigest);
+        }
+
+        int indexForPool(int size) {
+            if (size <= 0) throw new IllegalArgumentException("Keybox pool is empty");
+            return (hashCode & 0x7FFFFFFF) % size;
         }
 
         @Override
@@ -195,9 +188,7 @@ public final class CertHack {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             CacheKey cacheKey = (CacheKey) o;
-            return uid == cacheKey.uid && patchLevels.equals(cacheKey.patchLevels) &&
-                    MessageDigest.isEqual(leafDigest, cacheKey.leafDigest) &&
-                    MessageDigest.isEqual(callerPackageDigest, cacheKey.callerPackageDigest);
+            return MessageDigest.isEqual(leafDigest, cacheKey.leafDigest);
         }
 
         @Override
@@ -406,7 +397,7 @@ public final class CertHack {
         }
     }
 
-    public static void setKeyboxes(List<KeyBox> boxes) {
+    public static synchronized void setKeyboxes(List<KeyBox> boxes) {
         if (boxes == null || boxes.isEmpty()) {
             Logger.i("clear all keyboxes");
             state = new State(Collections.emptyMap(), Collections.emptyMap());
@@ -445,14 +436,36 @@ public final class CertHack {
         setKeyboxes(parseKeyboxXml(reader));
     }
 
-    public static void clearCertificateCache() {
+    public static synchronized void clearCertificateCache() {
         State currentState = state;
         synchronized (currentState.certificateCache) {
             currentState.certificateCache.clear();
         }
     }
 
-    public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
+    public static synchronized boolean hasCachedCertificateChains() {
+        return !state.certificateCache.isEmpty();
+    }
+
+    public static synchronized Certificate[] getCachedCertificateChain(Certificate[] caList) {
+        if (caList == null || caList.length == 0 || caList[0] == null) return null;
+        try {
+            byte[] leafEncoded = caList[0].getEncoded();
+            if (leafEncoded.length == 0 || leafEncoded.length > MAX_LEAF_CERTIFICATE_BYTES) return null;
+            Certificate[] cached = state.certificateCache.get(new CacheKey(leafEncoded));
+            return cached == null ? null : cached.clone();
+        } catch (Throwable error) {
+            Logger.e("Could not resolve a cached attestation chain", error);
+            return null;
+        }
+    }
+
+    /**
+     * Rewrites one key's attestation chain exactly once per active policy snapshot. The cache is
+     * keyed by the genuine leaf identity, not the reader UID: a granted alias must return the same
+     * certificate chain from generateKey and every later getKeyEntry path, including isolated UIDs.
+     */
+    public static synchronized Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
         if (caList == null || caList.length == 0 || caList[0] == null) {
             throw new UnsupportedOperationException("Certificate chain is empty");
         }
@@ -463,14 +476,15 @@ public final class CertHack {
                 Logger.e("Attestation leaf certificate has an invalid size");
                 return caList;
             }
-            Config.AttestationPatchLevels patchLevels = Config.INSTANCE.getAttestationPatchLevels(uid);
-            CacheKey cacheKey = new CacheKey(leafEncoded, patchLevels, uid);
+            CacheKey cacheKey = new CacheKey(leafEncoded);
 
             Map<CacheKey, Certificate[]> cache = currentState.certificateCache;
             synchronized (cache) {
                 Certificate[] cached = cache.get(cacheKey);
                 if (cached != null) return cached.clone();
             }
+
+            Config.AttestationPatchLevels patchLevels = Config.INSTANCE.getAttestationPatchLevels(uid);
 
             X509Certificate leaf;
             if (caList[0] instanceof X509Certificate) {
@@ -602,10 +616,7 @@ public final class CertHack {
             List<KeyBox> list = selectKeyboxPool(candidates, preferredSignerAlgorithm);
             if (list.isEmpty()) throw new UnsupportedOperationException("No compatible keybox is available");
 
-            String selectedAlgorithm = normalizeAlgorithm(list.get(0).keyPair.getPrivate().getAlgorithm());
-            AtomicInteger rotationCounter = rotationCounters.get(selectedAlgorithm);
-            if (rotationCounter == null) throw new UnsupportedOperationException("Unsupported keybox algorithm");
-            int idx = (rotationCounter.getAndIncrement() & 0x7FFFFFFF) % list.size();
+            int idx = cacheKey.indexForPool(list.size());
             var k = list.get(idx);
             String signatureAlgorithm = signatureAlgorithmForKeybox(k);
             if (signatureAlgorithm == null) throw new UnsupportedOperationException("Unsupported keybox algorithm");

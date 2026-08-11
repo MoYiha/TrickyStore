@@ -7,6 +7,7 @@ import android.system.keystore2.KeyMetadata
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.keystore.Utils
+import java.util.concurrent.locks.LockSupport
 
 /**
  * Rewrites only the certificate chain returned by a successful, genuine
@@ -15,6 +16,7 @@ import cleveres.tricky.cleverestech.keystore.Utils
  */
 class SecurityLevelInterceptor : BinderInterceptor() {
     companion object {
+        private const val GENERATE_KEY_EQUALIZATION_NANOS = 2_000_000L
         private val generateKeyTransaction =
             getTransactCode(IKeystoreSecurityLevel.Stub::class.java, "generateKey")
 
@@ -28,17 +30,22 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         callingUid: Int,
         callingPid: Int,
         data: Parcel,
-    ): Result =
-        if (
+    ): Result {
+        return if (
             code == generateKeyTransaction &&
             !Config.isRkpPassthroughEnabled &&
             CertHack.canHack() &&
             Config.needHack(callingUid)
         ) {
+            // Keep attested and non-attested generateKey calls on the same small timing base.
+            // Certificate rewriting happens only for attested replies; without this common delay
+            // repeated samples expose that branch even though both operations otherwise succeed.
+            LockSupport.parkNanos(GENERATE_KEY_EQUALIZATION_NANOS)
             Continue
         } else {
             Skip
         }
+    }
 
     override fun onPostTransact(
         target: IBinder,

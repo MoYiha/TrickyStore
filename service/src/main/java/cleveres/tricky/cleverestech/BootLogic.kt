@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 object BootLogic {
     private const val CONFIG_PATH = "/data/adb/cleverestricky"
     private const val COMMAND_TIMEOUT_SECONDS = 10L
+    private const val ANDROID_16_SDK = 36
+    private const val OEM_UNLOCK_ALLOWED_PROPERTY = "sys.oem_unlock_allowed"
     private val nullDevice = File("/dev/null")
     private val ran = AtomicBoolean(false)
     private val configDir: File
@@ -160,12 +162,15 @@ object BootLogic {
                     "ro.build.tags" to "release-keys",
                     "ro.vendor.boot.warranty_bit" to "0",
                     "ro.vendor.warranty_bit" to "0",
-                    "sys.oem_unlock_allowed" to "0",
                     "ro.secureboot.lockstate" to "locked",
                     "ro.boot.realmebootstate" to "green",
                     "ro.boot.realme.lockstate" to "1",
                 ),
             )
+            val sdk = getSystemProperty("ro.build.version.sdk").toIntOrNull()
+            if (sdk != null && sdk < ANDROID_16_SDK) {
+                properties[OEM_UNLOCK_ALLOWED_PROPERTY] = "0"
+            }
         }
 
         if (spoofCn) {
@@ -206,6 +211,7 @@ object BootLogic {
 
         resetPropBatch(properties)
         if (hideSensitive) {
+            removeLegacyOemUnlockProperty()
             listOf("ro.bootmode", "ro.boot.bootmode", "vendor.boot.bootmode").forEach(::hideBootMode)
         }
         val mismatches = properties.count { (name, value) -> getSystemProperty(name) != value }
@@ -213,6 +219,16 @@ object BootLogic {
             throw IOException("Could not verify $mismatches boot-property overrides")
         }
         Logger.i("Verified ${properties.size} app-visible boot-property overrides")
+    }
+
+    private fun removeLegacyOemUnlockProperty() {
+        val sdk = getSystemProperty("ro.build.version.sdk").toIntOrNull() ?: return
+        if (sdk < ANDROID_16_SDK) return
+
+        execChecked(arrayOf("resetprop", "--delete", OEM_UNLOCK_ALLOWED_PROPERTY))
+        if (getSystemProperty(OEM_UNLOCK_ALLOWED_PROPERTY).isNotEmpty()) {
+            throw IOException("Could not remove a legacy OEM-unlock property")
+        }
     }
 
     /** Uses one bounded shell process; all names and values are module constants. */

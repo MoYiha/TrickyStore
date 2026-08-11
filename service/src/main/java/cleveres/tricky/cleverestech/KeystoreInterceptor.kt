@@ -15,6 +15,7 @@ import kotlin.system.exitProcess
 
 @SuppressLint("BlockedPrivateApi")
 object KeystoreInterceptor : BinderInterceptor() {
+    private const val FIRST_APPLICATION_UID = 10_000
     private const val INJECTION_RETRY_INTERVAL_MS = 15_000L
 
     private val getKeyEntryTransaction =
@@ -43,7 +44,10 @@ object KeystoreInterceptor : BinderInterceptor() {
         data: Parcel,
     ): Result {
         if (target != keystore || code != getKeyEntryTransaction || !CertHack.canHack()) return Skip
-        return if (Config.needHack(callingUid)) Continue else Skip
+        val targeted = Config.needHack(callingUid)
+        val mayReadGrantedChain =
+            callingUid >= FIRST_APPLICATION_UID && CertHack.hasCachedCertificateChains()
+        return if (targeted || mayReadGrantedChain) Continue else Skip
     }
 
     override fun onPostTransact(
@@ -61,8 +65,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             code != getKeyEntryTransaction ||
             reply == null ||
             resultCode != 0 ||
-            !CertHack.canHack() ||
-            !Config.needHack(callingUid)
+            !CertHack.canHack()
         ) {
             return Skip
         }
@@ -75,11 +78,16 @@ object KeystoreInterceptor : BinderInterceptor() {
         try {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
             val originalChain = Utils.getCertificateChain(response)
+            val targeted = Config.needHack(callingUid)
             val newChain =
                 if (originalChain == null) {
                     null
-                } else {
+                } else if (targeted) {
                     CertHack.hackCertificateChain(originalChain, callingUid).takeUnless { it === originalChain }
+                } else {
+                    // A grant or isolated process is allowed to observe the chain already returned
+                    // to the key owner, but it must not synthesize a new per-reader chain.
+                    CertHack.getCachedCertificateChain(originalChain)
                 }
 
             if (newChain != null) {

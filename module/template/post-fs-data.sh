@@ -84,6 +84,13 @@ apply_early_properties() {
     }
   }
 
+  remove_prop() {
+    resetprop --delete "$1" >/dev/null 2>&1 || {
+      log -t CleveresTricky "Failed to remove a legacy boot property"
+      return 1
+    }
+  }
+
   hide_allowed=true
   if [ "$boot_mode" = auto ]; then
     for module_root in /data/adb/modules /data/adb/ksu/modules /data/adb/ap/modules; do
@@ -113,7 +120,15 @@ apply_early_properties() {
     apply_prop ro.build.tags release-keys || return 0
     apply_prop ro.vendor.boot.warranty_bit 0 || return 0
     apply_prop ro.vendor.warranty_bit 0 || return 0
-    apply_prop sys.oem_unlock_allowed 0 || return 0
+    android_sdk=$(getprop ro.build.version.sdk)
+    case "$android_sdk" in
+      ''|*[!0-9]*) android_sdk=0 ;;
+    esac
+    if [ "$android_sdk" -ge 36 ]; then
+      remove_prop sys.oem_unlock_allowed || return 0
+    else
+      apply_prop sys.oem_unlock_allowed 0 || return 0
+    fi
     apply_prop ro.secureboot.lockstate locked || return 0
     apply_prop ro.boot.realmebootstate green || return 0
     apply_prop ro.boot.realme.lockstate 1 || return 0
