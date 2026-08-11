@@ -1,0 +1,49 @@
+name: Agent Fix Privacy Seed Regression
+
+on:
+  push:
+    branches:
+      - agent/fix-privacy-seed-regression
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply narrow regression fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("service/src/main/java/cleveres/tricky/cleverestech/Config.kt")
+          text = path.read_text()
+          removals = [
+              "            var hasIsolationRules = false\n",
+              "                            if (privacyMode == AppPrivacyMode.ISOLATE) hasIsolationRules = true\n",
+              "            if (hasIsolationRules) getPrivacySeed().fill(0)\n",
+          ]
+          for line in removals:
+              if line not in text:
+                  raise SystemExit(f"Expected regression line not found: {line!r}")
+              text = text.replace(line, "", 1)
+          path.write_text(text)
+
+      - name: Run targeted unit tests
+        run: ./gradlew :service:testDebugUnitTest --tests 'cleveres.tricky.cleverestech.ConfigAppPrivacyTest' --tests 'cleveres.tricky.cleverestech.WebServerXssTest'
+
+      - name: Commit fix when needed
+        run: |
+          if git diff --quiet -- service/src/main/java/cleveres/tricky/cleverestech/Config.kt; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add service/src/main/java/cleveres/tricky/cleverestech/Config.kt
+          git commit -m "fix: lazily materialize privacy seed"
+          git push origin HEAD:${GITHUB_REF_NAME}
