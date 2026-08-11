@@ -138,7 +138,7 @@ done
 for config_file in spoof_build_vars security_patch.txt target.txt drm_packages.txt boot_props_mode \
   spoof_enabled spoof_switch_initialized spoof_build_identity global_mode tee_broken_mode \
   auto_keybox_check random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
-  spoof_region_cn telephony privacy_seed app_config templates.json custom_templates module_hash \
+  spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile; do
   config_path="$CONFIG_DIR/$config_file"
   if [ -e "$config_path" ] || [ -L "$config_path" ]; then

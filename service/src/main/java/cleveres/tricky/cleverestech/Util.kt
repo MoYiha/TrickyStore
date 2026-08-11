@@ -5,7 +5,12 @@ package cleveres.tricky.cleverestech
 import android.content.pm.IPackageManager
 import android.os.Build
 import android.os.SystemProperties
+import cleveres.tricky.cleverestech.util.SecureFile
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.LocalDate
 
 var systemPropertiesGet: (String, String?) -> String? = { key, def -> SystemProperties.get(key, def) }
@@ -52,6 +57,14 @@ val bootKey by lazy {
     getBootKeyFromProp() ?: getVerifiedBootKeyDigest()
 }
 
+val persistentBootKey by lazy {
+    BootIdentityStore.bootKey()
+}
+
+val persistentBootHash by lazy {
+    BootIdentityStore.bootHash()
+}
+
 private fun getVerifiedBootKeyDigest(): ByteArray? {
     val slot = systemPropertiesGet("ro.boot.slot_suffix", "") ?: ""
     val paths = mutableListOf<String>()
@@ -75,9 +88,91 @@ private fun getVerifiedBootKeyDigest(): ByteArray? {
 private fun decodeBootDigest(value: String?): ByteArray? {
     if (value?.length != 64) return null
     val decoded = runCatching { value.hexToByteArray() }.getOrNull() ?: return null
-    if (decoded.size == 32 && decoded.any { it != 0.toByte() }) return decoded
+    if (decoded.isUsableBootDigest()) return decoded
     decoded.fill(0)
     return null
+}
+
+internal fun ByteArray?.isUsableBootDigest(): Boolean =
+    this != null && size == BOOT_DIGEST_BYTES && any { it != 0.toByte() }
+
+internal object BootIdentityStore {
+    private const val BOOT_KEY_FILE = "boot_key"
+    private const val BOOT_HASH_FILE = "boot_hash"
+    private val lock = Any()
+
+    @Volatile
+    private var root = File("/data/adb/cleverestricky")
+
+    fun bootKey(): ByteArray? = getOrCreate(BOOT_KEY_FILE)
+
+    fun bootHash(): ByteArray? = getOrCreate(BOOT_HASH_FILE)
+
+    private fun getOrCreate(filename: String): ByteArray? =
+        synchronized(lock) {
+            val file = File(root, filename)
+            readDigest(file)?.let { return@synchronized it }
+
+            val generated = generateDigest() ?: return@synchronized null
+            try {
+                SecureFile.writeText(file, generated.toHexString())
+            } catch (error: Exception) {
+                Logger.e("Could not persist $filename; using an in-memory boot identity for this runtime", error)
+            }
+            generated
+        }
+
+    private fun readDigest(file: File): ByteArray? {
+        val path = file.toPath()
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
+        val size = runCatching { Files.size(path) }.getOrNull() ?: return null
+        if (size !in 64L..65L) return null
+
+        val encoded = ByteArray(66)
+        return try {
+            var total = 0
+            Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+                while (total < encoded.size) {
+                    val count = input.read(encoded, total, encoded.size - total)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    total += count
+                }
+            }
+            if (total > 65) return null
+            decodeBootDigest(encoded.copyOf(total).toString(Charsets.UTF_8).trim())
+        } catch (error: Exception) {
+            Logger.e("Could not read persisted ${file.name}", error)
+            null
+        } finally {
+            encoded.fill(0)
+        }
+    }
+
+    private fun generateDigest(): ByteArray? =
+        runCatching {
+            val random = SecureRandom()
+            repeat(4) {
+                val generated = ByteArray(BOOT_DIGEST_BYTES)
+                random.nextBytes(generated)
+                if (generated.isUsableBootDigest()) return@runCatching generated
+                generated.fill(0)
+            }
+            error("SecureRandom repeatedly returned an invalid boot digest")
+        }.onFailure { Logger.e("Could not generate a boot identity fallback", it) }
+            .getOrNull()
+
+    @androidx.annotation.VisibleForTesting
+    fun setRootForTesting(newRoot: File) {
+        synchronized(lock) {
+            root = newRoot
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun resetRootForTesting() {
+        setRootForTesting(File("/data/adb/cleverestricky"))
+    }
 }
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -91,6 +186,8 @@ fun getBootKeyFromProp(): ByteArray? {
 
 @OptIn(ExperimentalStdlibApi::class)
 fun getBootHashFromProp(): ByteArray? = decodeBootDigest(systemPropertiesGet("ro.boot.vbmeta.digest", null))
+
+private const val BOOT_DIGEST_BYTES = 32
 
 val patchLevel by lazy {
     runCatching { Build.VERSION.SECURITY_PATCH.convertPatchLevel(false) }

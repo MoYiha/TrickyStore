@@ -627,7 +627,7 @@ public final class CertHack {
             signer = new JcaContentSignerBuilder(signatureAlgorithm)
                     .build(k.keyPair.getPrivate());
 
-            byte[] verifiedBootKey = UtilKt.getBootKey();
+            byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
             byte[] verifiedBootHash = null;
             try {
                 if (rootOfTrust == null || !(rootOfTrust instanceof ASN1Sequence r)) {
@@ -635,15 +635,21 @@ public final class CertHack {
                             + (rootOfTrust == null ? "null" : rootOfTrust.getClass().getName()));
                 }
                 if (verifiedBootKey == null) {
-                    verifiedBootKey = getByteArrayFromAsn1(r.getObjectAt(0));
+                    verifiedBootKey = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(0)));
                 }
-                verifiedBootHash = getByteArrayFromAsn1(r.getObjectAt(3));
+                verifiedBootHash = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(3)));
             } catch (Throwable t) {
                 Logger.e("Failed to read the original root-of-trust fields", t);
             }
 
+            if (verifiedBootKey == null) {
+                verifiedBootKey = usableBootDigest(UtilKt.getPersistentBootKey());
+            }
             if (verifiedBootHash == null) {
-                verifiedBootHash = UtilKt.getBootHash();
+                verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
+            }
+            if (verifiedBootHash == null) {
+                verifiedBootHash = usableBootDigest(UtilKt.getPersistentBootHash());
             }
             if (verifiedBootKey == null || verifiedBootHash == null) {
                 Logger.e("Verified boot key/hash is unavailable; preserving the original certificate chain");
@@ -694,6 +700,13 @@ public final class CertHack {
             Logger.e("Exception in hackCertificateChain", t);
         }
         return caList;
+    }
+
+    private static byte[] usableBootDigest(byte[] value) {
+        if (value == null || value.length != 32) return null;
+        int aggregate = 0;
+        for (byte current : value) aggregate |= current & 0xFF;
+        return aggregate == 0 ? null : value;
     }
 
     private static String normalizeAlgorithm(String algorithm) {

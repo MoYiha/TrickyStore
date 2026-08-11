@@ -48,9 +48,19 @@
 
         if (values.length === 1 && errno && typeof errno === 'object' && !Array.isArray(errno)) {
             const result = errno;
-            errno = result.errno ?? result.code ?? 0;
-            stdout = result.stdout ?? result.out ?? '';
-            stderr = result.stderr ?? result.err ?? '';
+            if ('errno' in result || 'stdout' in result || 'stderr' in result || 'code' in result || 'out' in result || 'err' in result) {
+                errno = result.errno ?? result.code ?? 0;
+                stdout = result.stdout ?? result.out ?? '';
+                stderr = result.stderr ?? result.err ?? '';
+            } else if (result.version === 1 && Number.isInteger(result.status)) {
+                errno = 0;
+                stdout = JSON.stringify(result);
+                stderr = '';
+            } else {
+                errno = -1;
+                stdout = '';
+                stderr = 'Unsupported native exec result';
+            }
         } else if (values.length === 1 && typeof errno === 'string') {
             const raw = errno.trim();
             let parsed = null;
@@ -95,7 +105,13 @@
                 settled = true;
                 clearTimeout(timer);
                 delete global[callbackName];
-                const result = normalizeExecResult(values);
+                let result;
+                try {
+                    result = normalizeExecResult(values);
+                } catch (error) {
+                    reject(error);
+                    return;
+                }
                 if (result.errno === 0) resolve(result.stdout);
                 else reject(new Error(result.stderr || result.stdout || `Native bridge failed with code ${result.errno}`));
             };

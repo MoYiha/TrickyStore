@@ -3,6 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 
 const bridgeSource = fs.readFileSync('module/template/webroot/bridge.js', 'utf8');
+const indexSource = fs.readFileSync('module/template/webroot/index.html', 'utf8');
 
 function encodeBody(value) {
     return Buffer.from(value, 'utf8').toString('base64url');
@@ -52,6 +53,20 @@ function createBridge(callbackFactory) {
     return context.CleveresBridge;
 }
 
+function loadMessageNormalizer() {
+    const start = indexSource.indexOf('const maxEncodedUiMessageLength');
+    const end = indexSource.indexOf('\n        function notify', start);
+    assert.ok(start >= 0 && end > start, 'UI message normalizer source is missing');
+    const context = {
+        TextDecoder,
+        Uint8Array,
+        atob: value => Buffer.from(value, 'base64').toString('binary')
+    };
+    vm.createContext(context);
+    vm.runInContext(`${indexSource.slice(start, end)}; this.normalizeUiMessage = normalizeUiMessage;`, context);
+    return context.normalizeUiMessage;
+}
+
 async function main() {
     const raw = envelope();
 
@@ -59,7 +74,8 @@ async function main() {
         callback => callback(0, raw, ''),
         callback => callback(raw),
         callback => callback({ errno: 0, stdout: raw, stderr: '' }),
-        callback => callback(JSON.stringify({ errno: 0, stdout: raw, stderr: '' }))
+        callback => callback(JSON.stringify({ errno: 0, stdout: raw, stderr: '' })),
+        callback => callback(JSON.parse(raw))
     ]) {
         const bridge = createBridge(callbackFactory);
         const response = await bridge.fetch('/api/config');
@@ -73,6 +89,21 @@ async function main() {
 
     const malformed = createBridge(callback => callback('{"version":1,"status":200}'));
     await assert.rejects(() => malformed.fetch('/api/config'), /Invalid response/);
+
+    const unsupported = createBridge(callback => callback({ unexpected: true }));
+    await assert.rejects(() => unsupported.fetch('/api/config'), /Unsupported native exec result/);
+
+    const normalizeUiMessage = loadMessageNormalizer();
+    assert.strictEqual(normalizeUiMessage(envelope('{"error":"keybox rejected"}')), 'keybox rejected');
+    assert.strictEqual(normalizeUiMessage('<img src=x onerror=alert(1)>'), '<img src=x onerror=alert(1)>');
+    const oversized = JSON.stringify({
+        version: 1,
+        status: 500,
+        statusText: 'Server Error',
+        body: 'A'.repeat(16 * 1024 + 1)
+    });
+    assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
+    assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
 
     console.log('Native WebUI bridge compatibility tests passed');
 }

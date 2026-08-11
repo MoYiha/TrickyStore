@@ -2,12 +2,19 @@ package cleveres.tricky.cleverestech
 
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 @OptIn(ExperimentalStdlibApi::class)
 class UtilTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
     private val originalFetcher = systemPropertiesGet
     private val properties = mutableMapOf<String, String>()
 
@@ -22,6 +29,7 @@ class UtilTest {
     @After
     fun tearDown() {
         systemPropertiesGet = originalFetcher
+        BootIdentityStore.resetRootForTesting()
     }
 
     private fun setProp(
@@ -96,5 +104,34 @@ class UtilTest {
 
         val result = getBootKeyFromProp()
         assertNull(result)
+    }
+
+    @Test
+    fun testPersistentBootDigests_areStableDistinctAndNonZero() {
+        val root = temporaryFolder.newFolder("boot-identity")
+        BootIdentityStore.setRootForTesting(root)
+
+        val firstKey = requireNotNull(BootIdentityStore.bootKey())
+        val secondKey = requireNotNull(BootIdentityStore.bootKey())
+        val bootHash = requireNotNull(BootIdentityStore.bootHash())
+
+        assertTrue(firstKey.isUsableBootDigest())
+        assertTrue(bootHash.isUsableBootDigest())
+        assertArrayEquals(firstKey, secondKey)
+        assertFalse(firstKey.contentEquals(bootHash))
+        assertTrue(root.resolve("boot_key").readText().matches(Regex("[0-9a-f]{64}")))
+        assertTrue(root.resolve("boot_hash").readText().matches(Regex("[0-9a-f]{64}")))
+    }
+
+    @Test
+    fun testPersistentBootDigest_replacesZeroSentinel() {
+        val root = temporaryFolder.newFolder("zero-boot-identity")
+        root.resolve("boot_key").writeText("0".repeat(64))
+        BootIdentityStore.setRootForTesting(root)
+
+        val bootKey = requireNotNull(BootIdentityStore.bootKey())
+
+        assertTrue(bootKey.isUsableBootDigest())
+        assertFalse(root.resolve("boot_key").readText().trim().all { it == '0' })
     }
 }
