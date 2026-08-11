@@ -48,7 +48,9 @@ The [Spoof Engine](docs/SpoofEngine.md) controls optional identity substitution.
 
 [RKP Protection](docs/RkpProtection.md) explains protected Android infrastructure and genuine generated key response passthrough.
 
-[DRM Passthrough](docs/DrmPassthrough.md) explains how selected media applications remain on the genuine keystore path.
+[DRM Passthrough and Privacy](docs/DrmPassthrough.md) explains two deliberately separate controls: selected media applications can remain on Android's genuine Keystore certificate path, while an application configured with `privacy=isolate` can receive a stable application-scoped pseudonym instead of the modern DRM HAL `deviceUniqueId` byte-array property. This narrow privacy hook is intended to stop that raw device identifier from becoming another persistent application tracking value; for example, a streaming application such as Netflix cannot use the genuine `deviceUniqueId` returned through this supported path while isolation is active.
+
+The DRM hook is intentionally not a Widevine/DRM bypass. It does not rewrite the reported security level, licenses, provisioning messages, content keys, sessions, HDCP state, or string properties. Building and maintaining a general DRM-protection bypass would require substantially broader, vendor-specific work and is not a primary project goal.
 
 ### Interface and operation
 
@@ -106,11 +108,15 @@ Android ID on modern Android is scoped by application signing identity, user, an
 
 The real kernel version returned by the operating system is unchanged. The core boot property view does not physically relock a bootloader, repair verified boot, rewrite vbmeta, or change the hardware root of trust.
 
+An unlocked bootloader does not by itself mean that every DRM implementation is unusable. Actual DRM behavior depends on the device, vendor implementation, provisioning state, security level, service policy, and firmware. Because many devices can retain functional protected playback despite an unlocked bootloader, CleveresTricky treats DRM bypass as a separate vendor-specific problem rather than a primary objective. The current DRM work is privacy-oriented: it narrows exposure of `deviceUniqueId` on the supported modern stable-AIDL path without pretending to upgrade or defeat the underlying DRM security state.
+
 ## Recommended first setup
 
 Use the fresh installation defaults first. Global Mode selects eligible application UIDs while core boot and Keystore protection remain active. Optional identity spoofing stays off until you enable it from the Identity section.
 
 If you use a Custom ROM and need a current build identity for Play Integrity testing, Auto Identity can retrieve a Pixel beta or canary identity from Google public metadata and save it locally. Enable Identity Spoof Engine and reboot only when you want those build identity values exposed.
+
+For DRM identifier privacy, create an Application Rule for the media application and set its privacy mode to `isolate`. DRM Keystore Passthrough can remain enabled: the genuine Keystore certificate path and the pseudonymous DRM device-ID path are intentionally independent.
 
 ## Help and project information
 
