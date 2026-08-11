@@ -118,7 +118,7 @@ class ConfigTargetStateTest {
         val cachedPackageClass = Class.forName("cleveres.tricky.cleverestech.Config\$CachedPackage")
         val constructor = cachedPackageClass.getDeclaredConstructor(Array<String>::class.java, Long::class.javaPrimitiveType)
         constructor.isAccessible = true
-        val cachedPkg = constructor.newInstance(packages, System.currentTimeMillis())
+        val cachedPkg = constructor.newInstance(packages, Config.clockSource())
 
         packageCache[uid] = cachedPkg
     }

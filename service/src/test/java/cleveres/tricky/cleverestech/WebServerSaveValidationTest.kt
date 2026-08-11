@@ -104,16 +104,19 @@ class WebServerSaveValidationTest {
 
     @Test
     fun testAppConfigValid() {
-        val content = "com.example.app pixel8pro keybox.xml\n# Comment\ncom.foo.bar\n"
+        val content = "com.example.app pixel8pro keybox.xml\n# Comment\ncom.foo.bar null null isolate\n"
         val response = webServer.serve(mockSession("app_config", content))
         assertEquals(NanoHTTPD.Response.Status.OK, response.status)
         assertTrue(File(configDir, "app_config").exists())
 
         val threeColumnContent =
             "com.example.app template1 keybox1.xml\n" +
-                "com.test.pkg null null\n" +
+                "com.test.pkg null null redact\n" +
                 "com.another.one template-2 keybox-2.xml"
         assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("app_config", threeColumnContent)).status)
+
+        val privacyContent = "com.private.app null null isolate\ncom.redacted.app pixel8pro null redact"
+        assertEquals(NanoHTTPD.Response.Status.OK, webServer.serve(mockSession("app_config", privacyContent)).status)
     }
 
     @Test
@@ -126,12 +129,19 @@ class WebServerSaveValidationTest {
         val invalidPackage = "com.ex@mple.app template1 keybox1.xml"
         val invalidTemplate = "com.example.app template*1 keybox1.xml"
         val invalidKeybox = "com.example.app template1 keybox/1.xml"
+        val unsupportedKeyboxExtension = "com.example.app template1 keybox.txt"
         val unsupportedFourthColumn = "com.example.app template1 keybox1.xml CONTACTS"
+        val fifthColumn = "com.example.app template1 keybox1.xml isolate extra"
 
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidPackage)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidTemplate)).status)
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", invalidKeybox)).status)
+        assertEquals(
+            NanoHTTPD.Response.Status.BAD_REQUEST,
+            webServer.serve(mockSession("app_config", unsupportedKeyboxExtension)).status,
+        )
         assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", unsupportedFourthColumn)).status)
+        assertEquals(NanoHTTPD.Response.Status.BAD_REQUEST, webServer.serve(mockSession("app_config", fifthColumn)).status)
     }
 
     @Test

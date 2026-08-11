@@ -134,6 +134,8 @@ tasks.register<Exec>("cargoBuild") {
         "cleverestricky-native-core",
         "-p",
         "cleverestricky-injector-core",
+        "-p",
+        "cleverestricky-webui-bridge",
     )
 }
 
@@ -172,7 +174,7 @@ afterEvaluate {
                 into(moduleDir)
                 from(rootProject.layout.projectDirectory.file("README.md"))
                 from(layout.projectDirectory.file("template")) {
-                    exclude("module.prop", "customize.sh", "post-fs-data.sh", "service.sh", "daemon")
+                    exclude("module.prop", "customize.sh", "post-fs-data.sh", "service.sh", "daemon", "webroot/index.html")
                     filter<FixCrLfFilter>("eol" to FixCrLfFilter.CrLf.newInstance("lf"))
                 }
                 from(layout.projectDirectory.file("template")) {
@@ -187,7 +189,7 @@ afterEvaluate {
                     )
                 }
                 from(layout.projectDirectory.file("template")) {
-                    include("customize.sh", "post-fs-data.sh", "service.sh", "daemon")
+                    include("customize.sh", "post-fs-data.sh", "service.sh", "daemon", "webroot/index.html")
                     val tokens =
                         mapOf(
                             "DEBUG" to if (buildTypeLowered == "debug") "true" else "false",
@@ -222,6 +224,9 @@ afterEvaluate {
                     from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/inject")) {
                         into("lib/$abi")
                     }
+                    from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/webui_bridge")) {
+                        into("lib/$abi")
+                    }
                 }
 
                 doLast {
@@ -234,6 +239,10 @@ afterEvaluate {
                         val injectPath = file("${moduleDir.get().asFile}/lib/$abi/inject")
                         if (!injectPath.exists()) {
                             throw GradleException("inject binary for $abi is missing at $injectPath")
+                        }
+                        val webUiBridgePath = file("${moduleDir.get().asFile}/lib/$abi/webui_bridge")
+                        if (!webUiBridgePath.exists()) {
+                            throw GradleException("WebUI bridge binary for $abi is missing at $webUiBridgePath")
                         }
                     }
 

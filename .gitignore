@@ -21,6 +21,7 @@ encryptor-app/build/
 
 # Test artifacts
 index.html
+!module/template/webroot/index.html
 server.log
 build_log.txt
 final_verification.txt

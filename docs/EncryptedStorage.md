@@ -12,7 +12,7 @@ Password based containers derive their encryption key through a bounded key deri
 
 ## Unlock behavior
 
-Unlock requests are accepted only through the authenticated local WebUI. The selected file name, password data, and optional public key information are validated. Successful decryption does not bypass keybox verification. The resulting material must still pass private key, certificate, chain, date, algorithm, and revocation checks.
+Unlock requests are accepted only through the native module manager WebUI transport. The selected file name, password data, and optional public key information are validated. Successful decryption does not bypass keybox verification. The resulting material must still pass private key, certificate, chain, date, algorithm, and revocation checks.
 
 Locked files remain visible as locked state without exposing their content. Unlocked material is tracked separately from server supplied material so the interface can report a clear source and status.
 

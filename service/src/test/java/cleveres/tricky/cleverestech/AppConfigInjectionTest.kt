@@ -84,7 +84,7 @@ class AppConfigInjectionTest {
         val obj = JSONObject()
         obj.put("package", maliciousPkg)
         obj.put("template", "valid_template")
-        obj.put("keybox", "valid_keybox")
+        obj.put("keybox", "valid_keybox.xml")
         jsonArray.put(obj)
 
         val postData = "data=" + java.net.URLEncoder.encode(jsonArray.toString(), "UTF-8")
@@ -117,7 +117,7 @@ class AppConfigInjectionTest {
         val obj = JSONObject()
         obj.put("package", pkg)
         obj.put("template", "valid_template")
-        obj.put("keybox", "valid_keybox")
+        obj.put("keybox", "valid_keybox.xml")
         jsonArray.put(obj)
 
         val postData = "data=" + java.net.URLEncoder.encode(jsonArray.toString(), "UTF-8")
@@ -132,6 +132,6 @@ class AppConfigInjectionTest {
         assertTrue(appConfigFile.exists())
 
         val content = appConfigFile.readText()
-        assertTrue(content.contains("com.valid.app valid_template valid_keybox"))
+        assertTrue(content.contains("com.valid.app valid_template valid_keybox.xml"))
     }
 }

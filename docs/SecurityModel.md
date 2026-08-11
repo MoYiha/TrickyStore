@@ -24,7 +24,7 @@ The injected Binder control object can be discovered only through a driver repor
 
 ## Web protection
 
-The WebUI listens only on loopback and requires a random token. Host, Origin, method, path, rate, request size, and content validation run before privileged operations. Responses use restrictive browser security headers.
+The WebUI is packaged as a native KernelSU and APatch `webroot` and does not listen on a TCP port. The module manager command API invokes a Rust bridge with fixed arguments. Root only queue directories, random request identifiers, atomic publication, strict file checks, bounded staging, timeouts, path and method allowlists, service side validation, and stale cleanup protect privileged operations. The page applies a restrictive content security policy.
 
 ## Limits
 

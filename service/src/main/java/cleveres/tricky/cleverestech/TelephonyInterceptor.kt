@@ -117,8 +117,8 @@ object TelephonyInterceptor : BinderInterceptor() {
         if (
             target == iphonesubinfo &&
             code in interceptedCodes &&
-            Config.isTelephonyEnabled &&
-            Config.needHack(callingUid)
+            Config.shouldInterceptTelephony &&
+            Config.shouldApplyTelephonyPrivacy(callingUid)
         ) {
             Continue
         } else {
@@ -140,8 +140,8 @@ object TelephonyInterceptor : BinderInterceptor() {
             code !in interceptedCodes ||
             reply == null ||
             resultCode != 0 ||
-            !Config.isTelephonyEnabled ||
-            !Config.needHack(callingUid)
+            !Config.shouldInterceptTelephony ||
+            !Config.shouldApplyTelephonyPrivacy(callingUid)
         ) {
             return Skip
         }
@@ -159,7 +159,7 @@ object TelephonyInterceptor : BinderInterceptor() {
 
         if (originalValue.isNullOrEmpty()) return Skip
 
-        val identifiers = Config.getIdentityOverrides()
+        val identifiers = Config.getTelephonyIdentityOverrides(callingUid)
         val spoofedVal =
             when (code) {
                 getDeviceIdTransaction,
@@ -302,7 +302,7 @@ object TelephonyInterceptor : BinderInterceptor() {
 
     @Synchronized
     fun tryRunTelephonyInterceptor(): Boolean {
-        if (!Config.isSpoofEnabled || !Config.isTelephonyEnabled) {
+        if (!Config.shouldInterceptTelephony) {
             stopTelephonyInterceptor()
             return true
         }
@@ -365,7 +365,7 @@ object TelephonyInterceptor : BinderInterceptor() {
             return false
         }
 
-        if (!Config.isSpoofEnabled || !Config.isTelephonyEnabled) {
+        if (!Config.shouldInterceptTelephony) {
             parkBinderHook(bd)
             return true
         }
@@ -388,7 +388,7 @@ object TelephonyInterceptor : BinderInterceptor() {
             stopTelephonyInterceptor()
             return false
         }
-        if (!Config.isSpoofEnabled || !Config.isTelephonyEnabled) {
+        if (!Config.shouldInterceptTelephony) {
             stopTelephonyInterceptor()
             return true
         }

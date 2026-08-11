@@ -113,7 +113,7 @@ class WebServerXssTest {
         // Also verify wildcard is allowed as per discussion
         val wildcardPkg = "com.example.*"
 
-        val jsonPayload = "[{\"package\": \"$validPkg\", \"template\": \"pixel8pro\", \"keybox\": \"null\"}, {\"package\": \"$wildcardPkg\", \"template\": \"null\", \"keybox\": \"null\"}]"
+        val jsonPayload = "[{\"package\": \"$validPkg\", \"template\": \"pixel8pro\", \"keybox\": \"null\"}, {\"package\": \"$wildcardPkg\", \"template\": \"null\", \"keybox\": \"null\", \"privacy\": \"isolate\"}]"
 
         val session =
             object : NanoHTTPD.IHTTPSession {

@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.Config
 import cleveres.tricky.cleverestech.Logger
-import cleveres.tricky.cleverestech.WEB_UI_LOOPBACK_HOST
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -13,17 +12,6 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 object KeyboxAutoCleaner {
-    private fun isTokenValid(token: String): Boolean {
-        if (token.length !in 32..128) return false
-        for (i in 0 until token.length) {
-            val c = token[i]
-            if (!(c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_')) {
-                return false
-            }
-        }
-        return true
-    }
-
     private val executorLock = Any()
 
     @Volatile
@@ -33,7 +21,6 @@ object KeyboxAutoCleaner {
     private val revokedDir = File(keyboxDir, "revoked")
     private val toggleFile = File(configDir, "auto_keybox_check")
     private val spoofEnabledFile = File(configDir, "spoof_enabled")
-    private val webPortFile = File(configDir, "web_port")
 
     fun start() {
         setEnabled(Config.isSpoofEnabled && isRegularFile(toggleFile))
@@ -72,8 +59,7 @@ object KeyboxAutoCleaner {
         }
     }
 
-    private fun isEnabledNow(): Boolean =
-        Config.isSpoofEnabled && isRegularFile(spoofEnabledFile) && isRegularFile(toggleFile)
+    private fun isEnabledNow(): Boolean = Config.isSpoofEnabled && isRegularFile(spoofEnabledFile) && isRegularFile(toggleFile)
 
     private fun runCheck() {
         if (!isEnabledNow()) return
@@ -130,7 +116,6 @@ object KeyboxAutoCleaner {
 
     private fun notifyUser(count: Int) {
         try {
-            val url = readWebUiUrl() ?: return
             val cmd =
                 arrayOf(
                     "cmd",
@@ -142,10 +127,6 @@ object KeyboxAutoCleaner {
                     "CleveresTricky",
                     "Keybox Revoked Alert",
                     "$count keybox(es) were revoked or invalid and have been disabled. Check WebUI.",
-                    "-a",
-                    "android.intent.action.VIEW",
-                    "-d",
-                    url,
                 )
             val nullDevice = File("/dev/null")
             val process =
@@ -164,26 +145,6 @@ object KeyboxAutoCleaner {
             }
         } catch (e: Exception) {
             Logger.e("AutoCleaner: Failed to send notification", e)
-        }
-    }
-
-    private fun readWebUiUrl(): String? {
-        return try {
-            if (!isRegularFile(webPortFile) || webPortFile.length() !in 1..256) return null
-            val raw = webPortFile.readText().trim()
-            val pipeIdx = raw.indexOf('|')
-            val portStr = if (pipeIdx != -1) raw.substring(0, pipeIdx) else raw
-            val port = portStr.toIntOrNull()
-            val token = if (pipeIdx != -1) raw.substring(pipeIdx + 1).trim() else ""
-            if (port == null || port !in 1..65535 || token.isBlank() || !isTokenValid(token)) {
-                Logger.e("AutoCleaner: Invalid WebUI endpoint metadata")
-                null
-            } else {
-                "http://$WEB_UI_LOOPBACK_HOST:$port/?token=$token"
-            }
-        } catch (e: Exception) {
-            Logger.e("AutoCleaner: Failed to read WebUI endpoint metadata", e)
-            null
         }
     }
 

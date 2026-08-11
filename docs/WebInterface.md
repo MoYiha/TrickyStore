@@ -10,11 +10,13 @@ The layout uses touch sized controls, responsive panels, compact status summarie
 
 Changes that require reboot are identified separately from live runtime controls. Failed writes restore the visible toggle state instead of leaving the screen out of sync with the service.
 
-## Local access protection
+The application selector reads Package Manager through the service and uses the module manager package API as a bounded fallback when the service query is temporarily unavailable.
 
-The server binds only to the loopback interface. KernelSU or APatch opens it with a random protected token. Requests require a constant time token comparison. Host and Origin headers are checked, rate limits are bounded, and responses include same origin and content security headers.
+## Native access protection
 
-The token is stored in a root only regular file. The browser keeps it in session storage for the current WebUI session. Opening the address without the module action token does not grant access.
+KernelSU or APatch loads the packaged `webroot` directly. The page uses the module manager native command API and never opens a local TCP port. A small Rust bridge moves bounded requests through root only queue directories to the existing service router.
+
+Request identifiers use operating system randomness. Queue files are regular files with root only modes, published atomically, claimed before execution, removed after use, and expired when stale. The bridge accepts only fixed API paths, methods, parameter shapes, upload fields, response sizes, timeouts, and safe export names. The page uses a restrictive content security policy.
 
 ## Input handling
 
@@ -24,6 +26,6 @@ Unsafe paths, symbolic links, oversized input, duplicate archive entries, unknow
 
 ## Recommended use
 
-Open the interface from the module Action screen. Begin on Dashboard, apply Daily Compatibility, then configure Applications and Keyboxes. Use Logs after each material change and restart an application that may cache old results.
+Open the interface from the module WebUI button in KernelSU or APatch. Begin on Dashboard, apply Daily Compatibility, then configure Applications and Keyboxes. Use Logs after each material change and restart an application that may cache old results.
 
 [Return to the project overview](../README.md)
