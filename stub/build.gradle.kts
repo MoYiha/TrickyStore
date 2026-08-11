@@ -21,10 +21,11 @@ android {
     lint {
         checkReleaseBuilds = false
         abortOnError = true
+        warningsAsErrors = true
     }
 }
 
 dependencies {
     compileOnly(libs.annotation)
-    implementation("org.json:json:20260719")
+    implementation(libs.json)
 }
