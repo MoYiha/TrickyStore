@@ -5,13 +5,13 @@ plugins {
     alias(libs.plugins.agp.app)
 }
 
-val moduleId: String by rootProject.extra
-val moduleName: String by rootProject.extra
-val verCode: Int by rootProject.extra
-val verName: String by rootProject.extra
-val commitHash: String by rootProject.extra
-val author: String by rootProject.extra
-val description: String by rootProject.extra
+val moduleId = rootProject.extra["moduleId"] as String
+val moduleName = rootProject.extra["moduleName"] as String
+val verCode = rootProject.extra["verCode"] as Int
+val verName = rootProject.extra["verName"] as String
+val commitHash = rootProject.extra["commitHash"] as String
+val author = rootProject.extra["author"] as String
+val description = rootProject.extra["description"] as String
 val moduleDescription = description
 
 fun calculateChecksum(variantLowered: String): String {
@@ -28,7 +28,7 @@ fun calculateChecksum(variantLowered: String): String {
 
 android {
     namespace = "cleveres.tricky.cleverestech"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "cleveres.tricky.cleverestech"
@@ -80,6 +80,8 @@ android {
     lint {
         checkReleaseBuilds = false
         abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = false
     }
 
     buildFeatures {
@@ -108,23 +110,17 @@ kotlin {
     }
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    if (name.contains("UnitTest", ignoreCase = true)) {
-        compilerOptions.allWarningsAsErrors.set(false)
-        compilerOptions.suppressWarnings.set(true)
-    }
-}
-
 dependencies {
     compileOnly(project(":stub"))
     implementation(libs.annotation)
     implementation(libs.bcpkix.jdk18on)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation(libs.bcprov.jdk18on)
+    implementation(libs.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(project(":stub"))
-    testImplementation("net.sf.kxml:kxml2:2.3.0")
-    testImplementation("org.json:json:20260719")
-    testImplementation("org.mockito:mockito-core:5.23.0")
+    testImplementation(libs.kxml)
+    testImplementation(libs.json)
+    testImplementation(libs.mockito.core)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.androidx.test.runner)

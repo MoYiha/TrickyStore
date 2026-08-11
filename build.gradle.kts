@@ -31,23 +31,40 @@ fun execute(
 val gitCommitCount = execute("git", "rev-list", "HEAD", "--count").toInt()
 val gitCommitHash = execute("git", "rev-parse", "--verify", "--short", "HEAD")
 
-val moduleId by extra("cleverestricky")
-val moduleName by extra("CleveresTricky")
-val author by extra("tryigitx")
-val description by extra("KernelSU keystore compatibility and device configuration module. See GitHub for details.")
-val verName by extra("V2.5.3")
-val verCode by extra(gitCommitCount)
-val commitHash by extra(gitCommitHash)
-val abiList by extra(listOf("arm64-v8a", "x86_64"))
+val moduleId = "cleverestricky"
+val moduleName = "CleveresTricky"
+val author = "tryigitx"
+val description = "KernelSU keystore compatibility and device configuration module. See GitHub for details."
+val verName = "V2.5.3"
+val verCode = gitCommitCount
+val commitHash = gitCommitHash
+val abiList = listOf("arm64-v8a", "x86_64")
 
-val androidMinSdkVersion by extra(31)
-val androidTargetSdkVersion by extra(36)
-val androidCompileSdkVersion by extra(36)
-val androidMaxSupportedSdkVersion by extra(37)
-val androidBuildToolsVersion by extra("36.0.0")
-val androidCompileNdkVersion by extra("27.3.13750724")
-val androidSourceCompatibility by extra(JavaVersion.VERSION_17)
-val androidTargetCompatibility by extra(JavaVersion.VERSION_17)
+val androidMinSdkVersion = 31
+val androidTargetSdkVersion = 37
+val androidCompileSdkVersion = 37
+val androidMaxSupportedSdkVersion = 37
+val androidBuildToolsVersion = "36.0.0"
+val androidCompileNdkVersion = "27.3.13750724"
+val androidSourceCompatibility = JavaVersion.VERSION_17
+val androidTargetCompatibility = JavaVersion.VERSION_17
+
+extra.set("moduleId", moduleId)
+extra.set("moduleName", moduleName)
+extra.set("author", author)
+extra.set("description", description)
+extra.set("verName", verName)
+extra.set("verCode", verCode)
+extra.set("commitHash", commitHash)
+extra.set("abiList", abiList)
+extra.set("androidMinSdkVersion", androidMinSdkVersion)
+extra.set("androidTargetSdkVersion", androidTargetSdkVersion)
+extra.set("androidCompileSdkVersion", androidCompileSdkVersion)
+extra.set("androidMaxSupportedSdkVersion", androidMaxSupportedSdkVersion)
+extra.set("androidBuildToolsVersion", androidBuildToolsVersion)
+extra.set("androidCompileNdkVersion", androidCompileNdkVersion)
+extra.set("androidSourceCompatibility", androidSourceCompatibility)
+extra.set("androidTargetCompatibility", androidTargetCompatibility)
 
 tasks.register("Delete", Delete::class) {
     delete(layout.buildDirectory)
@@ -65,6 +82,12 @@ fun Project.configureBaseExtension() {
             targetSdk = androidTargetSdkVersion
             versionCode = verCode
             versionName = verName
+        }
+
+        lint {
+            checkReleaseBuilds = false
+            abortOnError = true
+            warningsAsErrors = true
         }
 
         compileOptions {
@@ -86,6 +109,7 @@ fun Project.configureBaseExtension() {
         lint {
             checkReleaseBuilds = false
             abortOnError = true
+            warningsAsErrors = true
         }
 
         compileOptions {
@@ -111,7 +135,7 @@ subprojects {
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         compilerOptions {
-            allWarningsAsErrors.set(!name.contains("UnitTest") && !project.name.contains("encryptor-app"))
+            allWarningsAsErrors.set(!name.contains("UnitTest"))
         }
     }
 

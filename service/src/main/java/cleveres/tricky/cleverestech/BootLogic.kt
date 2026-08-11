@@ -15,6 +15,7 @@ object BootLogic {
     private const val OEM_UNLOCK_ALLOWED_PROPERTY = "sys.oem_unlock_allowed"
     private val nullDevice = File("/dev/null")
     private val ran = AtomicBoolean(false)
+
     private val configDir: File
         get() = Config.getConfigRoot().takeIf { it.path.isNotEmpty() } ?: File(CONFIG_PATH)
 
