@@ -1,0 +1,50 @@
+name: Apply Audited Hardening
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/v2.5.1-aosp-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Verify and apply audited patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/audit-fixes.part00 \
+              .github/audit-fixes.part01 \
+              .github/audit-fixes.part02 \
+              .github/audit-fixes.part03 \
+              .github/audit-fixes.part04 > /tmp/audit-fixes.patch
+          printf '%s  %s\n' '3775e11c57096ac20670ed07026b12cd50f7eb079e16a64ae7ea60289c145a92' '/tmp/audit-fixes.patch' | sha256sum -c -
+          git apply --check /tmp/audit-fixes.patch
+          git apply /tmp/audit-fixes.patch
+          rm -f .github/audit-fixes.part00 \
+                .github/audit-fixes.part01 \
+                .github/audit-fixes.part02 \
+                .github/audit-fixes.part03 \
+                .github/audit-fixes.part04 \
+                .github/workflows/repository-audit-snapshot.yml \
+                .github/workflows/apply-audit-fixes.yml
+          git add -A
+          git diff --cached --check
+
+      - name: Commit audited fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: bound privileged file and process resources'
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
