@@ -1,7 +1,6 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
-WEB_PORT_FILE="$CONFIG_DIR/web_port"
 
 (
 retry_delay=2
@@ -19,6 +18,7 @@ fi
 
 chcon u:object_r:system_file:s0 "$MODDIR/daemon" 2>/dev/null
 chcon u:object_r:system_file:s0 "$MODDIR/inject" 2>/dev/null
+chcon u:object_r:system_file:s0 "$MODDIR/webui_bridge" 2>/dev/null
 find "$MODDIR" -maxdepth 1 -type f \( -name '*.apk' -o -name '*.so' \) \
   -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null
 
@@ -34,11 +34,6 @@ while true; do
   if [ ! -x "$MODDIR/daemon" ]; then
     log -t CleveresTricky "Daemon executable is unavailable; daemon supervisor stopped"
     break
-  fi
-
-  if [ -e "$WEB_PORT_FILE" ] || [ -L "$WEB_PORT_FILE" ]; then
-    rm -f "$WEB_PORT_FILE" 2>/dev/null ||
-      log -t CleveresTricky "Could not clear stale WebUI endpoint metadata"
   fi
 
   started_at=$(date +%s)

@@ -172,13 +172,17 @@ jobs:
       - name: "📱 KernelSU/APatch Module Structure Validation"
         run: |
           ERRORS=0
-          for f in module.prop customize.sh service.sh post-fs-data.sh sepolicy.rule; do
+          for f in module.prop customize.sh service.sh post-fs-data.sh sepolicy.rule webroot/index.html webroot/bridge.js; do
             if [ ! -f "module/template/$f" ]; then
               echo "::error::Missing required module file: module/template/$f"
               ERRORS=$((ERRORS + 1))
             fi
           done
-          for script in module/template/action.sh module/template/customize.sh module/template/service.sh module/template/post-fs-data.sh; do
+          if [ -e module/template/action.sh ]; then
+            echo "::error::Legacy external WebUI launcher must not be packaged"
+            ERRORS=$((ERRORS + 1))
+          fi
+          for script in module/template/customize.sh module/template/service.sh module/template/post-fs-data.sh; do
             if [ -f "$script" ]; then
               if ! bash -n "$script" 2>/dev/null; then
                 echo "::error file=$script::Shell syntax error"
@@ -187,6 +191,18 @@ jobs:
             fi
           done
           if [ "$ERRORS" -gt 0 ]; then exit 1; fi
+
+      - name: Native WebUI syntax validation
+        run: |
+          node --check module/template/webroot/bridge.js
+          node <<'NODE'
+          const fs = require('fs')
+          const html = fs.readFileSync('module/template/webroot/index.html', 'utf8')
+          const blocks = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gi)]
+            .filter(match => !/\bsrc\s*=/.test(match[1]))
+          if (blocks.length !== 1) throw new Error('Unexpected inline script count')
+          new Function(blocks[0][2])
+          NODE
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -318,8 +334,9 @@ jobs:
           module_root=module/build/outputs/module/release/lib
           for abi in arm64-v8a x86_64; do
             injector="$module_root/$abi/inject"
+            webui_bridge="$module_root/$abi/webui_bridge"
             library="$module_root/$abi/libcleverestricky.so"
-            for binary in "$injector" "$library"; do
+            for binary in "$injector" "$webui_bridge" "$library"; do
               test -s "$binary"
               readelf -W -l "$binary" | grep -q 'GNU_RELRO'
               readelf -W -d "$binary" | grep -q 'BIND_NOW'
@@ -329,6 +346,7 @@ jobs:
               '
             done
             readelf -W -l "$injector" | grep -q '/system/bin/linker64'
+            readelf -W -l "$webui_bridge" | grep -q '/system/bin/linker64'
             exports=$(readelf -W --dyn-syms "$library" |
               awk '$5 == "GLOBAL" && $7 != "UND" && $8 != "" { print $8 }' |
               sort -u)

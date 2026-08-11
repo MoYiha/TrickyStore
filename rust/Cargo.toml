@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "injector-core",
-    "native-core"
+    "native-core",
+    "webui-bridge"
 ]
 resolver = "2"
 

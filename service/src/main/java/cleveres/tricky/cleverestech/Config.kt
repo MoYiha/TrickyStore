@@ -15,23 +15,28 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 object Config {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val runtimeControllerSignal = Semaphore(0)
     private const val MAX_UID_CACHE_ENTRIES = 4096
-    private const val UID_DECISION_CACHE_TTL_MS = 60 * 1000L
+    private const val UID_DECISION_CACHE_TTL_MS = 5 * 1000L
     private const val FIRST_APPLICATION_UID = 10_000
     private val rkpInfrastructurePackages =
         setOf(
@@ -53,7 +58,22 @@ object Config {
         cache[uid] = value
     }
 
-    data class AppSpoofConfig(val template: String?, val keyboxFilename: String?)
+    enum class AppPrivacyMode(val configValue: String) {
+        INHERIT("inherit"),
+        REDACT("redact"),
+        ISOLATE("isolate"),
+        ;
+
+        companion object {
+            fun parse(value: String): AppPrivacyMode? = entries.firstOrNull { it.configValue.equals(value, ignoreCase = true) }
+        }
+    }
+
+    data class AppSpoofConfig(
+        val template: String?,
+        val keyboxFilename: String?,
+        val privacyMode: AppPrivacyMode = AppPrivacyMode.INHERIT,
+    )
 
     internal data class IdentityOverrides(
         val template: String? = null,
@@ -92,6 +112,8 @@ object Config {
     }
 
     private data class CachedDecision(val value: Boolean, val timestamp: Long)
+
+    private data class CachedValue<T>(val value: T, val timestamp: Long)
 
     // Keep the ruleset and its lookup cache in one state holder so readers
     // never observe cached results for an older ruleset.
@@ -165,11 +187,12 @@ object Config {
     // The cache is bundled with the Trie in a state object to ensure consistency during updates.
     private class AppConfigState(
         val configs: PackageTrie<AppSpoofConfig>,
+        val hasPrivacyRules: Boolean = false,
     ) {
-        val cache = ConcurrentHashMap<Int, Any>()
+        val cache = ConcurrentHashMap<Int, CachedValue<AppSpoofConfig?>>()
+        val privacyCache = ConcurrentHashMap<Int, CachedValue<AppPrivacyMode>>()
+        val identityCache = ConcurrentHashMap<Int, CachedValue<IdentityOverrides>>()
     }
-
-    private val NULL_CONFIG = Any()
 
     @Volatile
     private var appConfigState = AppConfigState(PackageTrie())
@@ -178,17 +201,12 @@ object Config {
 
     fun getAppConfig(uid: Int): AppSpoofConfig? {
         val state = appConfigState
-        val cached = state.cache[uid]
-        if (cached != null) {
-            return if (cached === NULL_CONFIG) null else cached as AppSpoofConfig
-        }
-
         if (state.configs.isEmpty()) {
-            putBoundedUidCache(state.cache, uid, NULL_CONFIG)
+            cacheValue(state.cache, uid, null)
             return null
         }
-
         val pkgs = getPackages(uid)
+        getCachedValue(state.cache, uid)?.let { return it.value }
         var result: AppSpoofConfig? = null
         val len = pkgs.size
         for (i in 0 until len) {
@@ -198,13 +216,44 @@ object Config {
                 break
             }
         }
-        putBoundedUidCache(state.cache, uid, result ?: NULL_CONFIG)
+        cacheValue(state.cache, uid, result)
         return result
     }
 
-    private fun updateAppConfigs(f: File?) =
+    fun getAppPrivacyMode(uid: Int): AppPrivacyMode {
+        val state = appConfigState
+        if (!state.hasPrivacyRules) {
+            cacheValue(state.privacyCache, uid, AppPrivacyMode.INHERIT)
+            return AppPrivacyMode.INHERIT
+        }
+        val packages = getPackages(uid)
+        getCachedValue(state.privacyCache, uid)?.let { return it.value }
+        var selected = AppPrivacyMode.INHERIT
+        for (packageName in packages) {
+            when (state.configs.get(packageName)?.privacyMode) {
+                AppPrivacyMode.REDACT -> {
+                    selected = AppPrivacyMode.REDACT
+                    break
+                }
+                AppPrivacyMode.ISOLATE -> selected = AppPrivacyMode.ISOLATE
+                else -> Unit
+            }
+        }
+        cacheValue(state.privacyCache, uid, selected)
+        return selected
+    }
+
+    val shouldInterceptTelephony: Boolean
+        get() = isSpoofEnabled && (isTelephonyEnabled || appConfigState.hasPrivacyRules)
+
+    fun shouldApplyTelephonyPrivacy(uid: Int): Boolean =
+        (isTelephonyEnabled || getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT) && isTargetedUid(uid)
+
+    internal fun updateAppConfigs(f: File?) =
         runCatching {
             val newConfigs = PackageTrie<AppSpoofConfig>()
+            val seenPackages = HashSet<String>()
+            var hasPrivacyRules = false
             if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "app_config must be a regular file"
@@ -230,6 +279,7 @@ object Config {
 
                             var template: String? = null
                             var keybox: String? = null
+                            var privacyMode = AppPrivacyMode.INHERIT
 
                             while (idx < len && trimmed[idx].isWhitespace()) idx++
                             if (idx < len) {
@@ -244,25 +294,46 @@ object Config {
                                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
                                     val kStr = trimmed.substring(start, idx)
                                     if (kStr != "null") keybox = kStr
+
+                                    while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                    if (idx < len) {
+                                        start = idx
+                                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                        privacyMode =
+                                            AppPrivacyMode.parse(trimmed.substring(start, idx))
+                                                ?: throw IllegalArgumentException("Invalid app privacy mode")
+                                    }
                                 }
                             }
 
-                            if (template != null || keybox != null) {
-                                newConfigs.add(pkg, AppSpoofConfig(template, keybox))
+                            while (idx < len && trimmed[idx].isWhitespace()) idx++
+                            require(idx == len) { "app_config contains too many columns" }
+                            require(APP_PACKAGE_PATTERN.matches(pkg)) { "app_config contains an invalid package" }
+                            require(seenPackages.add(pkg)) { "app_config contains duplicate packages" }
+                            require(template == null || validTemplateName.matches(template)) {
+                                "app_config contains an invalid template"
                             }
+                            require(keybox == null || isValidAppKeybox(keybox)) {
+                                "app_config contains an invalid keybox"
+                            }
+                            require(template != null || keybox != null || privacyMode != AppPrivacyMode.INHERIT) {
+                                "app_config contains an empty rule"
+                            }
+                            if (privacyMode != AppPrivacyMode.INHERIT) hasPrivacyRules = true
+                            newConfigs.add(pkg, AppSpoofConfig(template, keybox, privacyMode))
                         }
                     }
                 }
             }
-            appConfigState = AppConfigState(newConfigs)
+            appConfigState = AppConfigState(newConfigs, hasPrivacyRules)
             CertHack.clearCertificateCache()
+            signalRuntimeController()
             Logger.i { "update app configs: ${newConfigs.size}" }
         }.onFailure {
             Logger.e("failed to update app configs", it)
         }
 
-    fun parsePackages(lines: Sequence<String>): PackageTrie<Boolean> =
-        parsePackages(lines, Int.MAX_VALUE)
+    fun parsePackages(lines: Sequence<String>): PackageTrie<Boolean> = parsePackages(lines, Int.MAX_VALUE)
 
     private fun parsePackages(
         lines: Sequence<String>,
@@ -624,6 +695,24 @@ object Config {
 
     @Volatile
     private var identityOverrides = IdentityOverrides()
+    private val REDACTED_IDENTITY =
+        IdentityOverrides(
+            imei = "",
+            imei2 = "",
+            imsi = "",
+            imsi2 = "",
+            iccid = "",
+            iccid2 = "",
+            meid = "",
+            meid2 = "",
+            phoneNumber = "",
+            phoneNumber2 = "",
+            serial = "",
+        )
+    private val privacySeedLock = Any()
+
+    @Volatile
+    private var privacySeed: ByteArray? = null
     private const val MAX_BUILD_VARS_BYTES = 1024 * 1024L
     private const val MAX_BUILD_VAR_ENTRIES = 512
     private const val MAX_BUILD_VAR_VALUE_LENGTH = 512
@@ -637,6 +726,21 @@ object Config {
         tag: String,
         uid: Int,
     ): ByteArray? {
+        when (getAppPrivacyMode(uid)) {
+            AppPrivacyMode.REDACT -> return ByteArray(0)
+            AppPrivacyMode.ISOLATE -> {
+                val isolated = getIsolatedIdentity(uid)
+                val value =
+                    when (tag) {
+                        "SERIAL" -> isolated.serial
+                        "IMEI" -> isolated.imei
+                        "MEID" -> isolated.meid
+                        else -> null
+                    }
+                if (value != null) return value.toByteArray(Charsets.UTF_8)
+            }
+            AppPrivacyMode.INHERIT -> Unit
+        }
         // Explicit attestation-ID overrides take precedence over template values.
         val global = attestationIds[tag]
         if (global != null) return global
@@ -752,6 +856,218 @@ object Config {
     }
 
     internal fun getIdentityOverrides(): IdentityOverrides = identityOverrides
+
+    internal fun getTelephonyIdentityOverrides(uid: Int): IdentityOverrides =
+        when (getAppPrivacyMode(uid)) {
+            AppPrivacyMode.INHERIT -> identityOverrides
+            AppPrivacyMode.REDACT -> REDACTED_IDENTITY
+            AppPrivacyMode.ISOLATE -> getIsolatedIdentity(uid)
+        }
+
+    private fun getIsolatedIdentity(uid: Int): IdentityOverrides {
+        val packages = getPackages(uid).asSequence().distinct().sorted().toList()
+        val state = appConfigState
+        getCachedValue(state.identityCache, uid)?.let { return it.value }
+        val context = if (packages.isEmpty()) "uid:$uid" else packages.joinToString("\u0000")
+
+        fun derived(field: String): ByteArray = derivePrivacyBytes(context, field)
+
+        val identity =
+            IdentityOverrides(
+                template = getAppConfig(uid)?.template,
+                imei = deterministicLuhn(15, "35", derived("imei:0")),
+                imei2 = deterministicLuhn(15, "35", derived("imei:1")),
+                imsi = deterministicDigits(15, "310260", derived("imsi:0")),
+                imsi2 = deterministicDigits(15, "310260", derived("imsi:1")),
+                iccid = deterministicLuhn(20, "8901", derived("iccid:0")),
+                iccid2 = deterministicLuhn(20, "8901", derived("iccid:1")),
+                meid = deterministicHex(14, derived("meid:0")),
+                meid2 = deterministicHex(14, derived("meid:1")),
+                phoneNumber = "+1${deterministicDigits(10, "", derived("phone:0"))}",
+                phoneNumber2 = "+1${deterministicDigits(10, "", derived("phone:1"))}",
+                serial = deterministicSerial(12, derived("serial")),
+            )
+        cacheValue(state.identityCache, uid, identity)
+        return identity
+    }
+
+    private fun derivePrivacyBytes(
+        context: String,
+        field: String,
+    ): ByteArray {
+        val seed = getPrivacySeed()
+        return try {
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(seed, "HmacSHA256"))
+            mac.update(PRIVACY_DERIVATION_DOMAIN.toByteArray(Charsets.UTF_8))
+            mac.update(0.toByte())
+            mac.update(context.toByteArray(Charsets.UTF_8))
+            mac.update(0.toByte())
+            mac.doFinal(field.toByteArray(Charsets.UTF_8))
+        } finally {
+            seed.fill(0)
+        }
+    }
+
+    private fun deterministicDigits(
+        length: Int,
+        prefix: String,
+        entropy: ByteArray,
+    ): String {
+        require(prefix.length <= length)
+        val output = StringBuilder(length).append(prefix)
+        var index = 0
+        while (output.length < length) {
+            output.append((entropy[index % entropy.size].toInt() and 0xff) % 10)
+            index++
+        }
+        entropy.fill(0)
+        return output.toString()
+    }
+
+    private fun deterministicLuhn(
+        length: Int,
+        prefix: String,
+        entropy: ByteArray,
+    ): String {
+        val partial = deterministicDigits(length - 1, prefix, entropy)
+        var sum = 0
+        var doubleDigit = true
+        for (index in partial.lastIndex downTo 0) {
+            var digit = partial[index] - '0'
+            if (doubleDigit) {
+                digit *= 2
+                if (digit > 9) digit -= 9
+            }
+            sum += digit
+            doubleDigit = !doubleDigit
+        }
+        return partial + ((10 - sum % 10) % 10)
+    }
+
+    private fun deterministicHex(
+        length: Int,
+        entropy: ByteArray,
+    ): String {
+        val alphabet = "0123456789ABCDEF"
+        val output = StringBuilder(length)
+        for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % 16])
+        entropy.fill(0)
+        return output.toString()
+    }
+
+    private fun deterministicSerial(
+        length: Int,
+        entropy: ByteArray,
+    ): String {
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        val output = StringBuilder(length)
+        for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % alphabet.length])
+        entropy.fill(0)
+        return output.toString()
+    }
+
+    private fun getPrivacySeed(): ByteArray =
+        synchronized(privacySeedLock) {
+            privacySeed?.let { return@synchronized it.clone() }
+            val loaded = loadPrivacySeed(true) ?: throw IOException("Privacy seed is unavailable")
+            privacySeed = loaded
+            loaded.clone()
+        }
+
+    internal fun refreshPrivacySeed(): Result<Unit> =
+        runCatching {
+            synchronized(privacySeedLock) {
+                val loaded = loadPrivacySeed(false)
+                val previous = privacySeed
+                privacySeed = loaded
+                previous?.fill(0)
+                appConfigState.identityCache.clear()
+                CertHack.clearCertificateCache()
+            }
+        }.onFailure { Logger.e("Failed to refresh application privacy seed", it) }
+
+    private fun loadPrivacySeed(createIfMissing: Boolean): ByteArray? {
+        val file = File(root, PRIVACY_SEED_FILE)
+        val path = file.toPath()
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || file.length() !in 64..65) {
+                throw IOException("Privacy seed path is invalid")
+            }
+            val encoded = ByteArray(66)
+            var total = 0
+            try {
+                Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+                    while (total < encoded.size) {
+                        val count = input.read(encoded, total, encoded.size - total)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        total += count
+                    }
+                    if (total == encoded.size || input.read() >= 0) throw IOException("Privacy seed is too large")
+                }
+                return decodePrivacySeed(encoded, total) ?: throw IOException("Privacy seed is invalid")
+            } finally {
+                encoded.fill(0)
+            }
+        }
+        if (!createIfMissing) return null
+        val generated = ByteArray(PRIVACY_SEED_BYTES)
+        SecureRandom().nextBytes(generated)
+        val encoded = encodePrivacySeed(generated)
+        try {
+            SecureFile.writeStream(file, ByteArrayInputStream(encoded), encoded.size.toLong())
+        } catch (error: Throwable) {
+            generated.fill(0)
+            throw error
+        } finally {
+            encoded.fill(0)
+        }
+        return generated
+    }
+
+    private fun decodePrivacySeed(
+        value: ByteArray,
+        length: Int,
+    ): ByteArray? {
+        var start = 0
+        var end = length
+        while (start < end && (value[start].toInt() and 0xff) <= 0x20) start++
+        while (end > start && (value[end - 1].toInt() and 0xff) <= 0x20) end--
+        if (end - start != PRIVACY_SEED_BYTES * 2) return null
+        val output = ByteArray(PRIVACY_SEED_BYTES)
+        for (index in output.indices) {
+            val high = decodeHex(value[start + index * 2])
+            val low = decodeHex(value[start + index * 2 + 1])
+            if (high < 0 || low < 0) {
+                output.fill(0)
+                return null
+            }
+            output[index] = ((high shl 4) or low).toByte()
+        }
+        return output
+    }
+
+    private fun decodeHex(value: Byte): Int {
+        val unsigned = value.toInt() and 0xff
+        return when (unsigned) {
+            in '0'.code..'9'.code -> unsigned - '0'.code
+            in 'a'.code..'f'.code -> unsigned - 'a'.code + 10
+            in 'A'.code..'F'.code -> unsigned - 'A'.code + 10
+            else -> -1
+        }
+    }
+
+    private fun encodePrivacySeed(value: ByteArray): ByteArray {
+        val alphabet = "0123456789abcdef".toByteArray(Charsets.US_ASCII)
+        val output = ByteArray(value.size * 2)
+        value.forEachIndexed { index, byte ->
+            val unsigned = byte.toInt() and 0xff
+            output[index * 2] = alphabet[unsigned ushr 4]
+            output[index * 2 + 1] = alphabet[unsigned and 0x0f]
+        }
+        return output
+    }
 
     fun getBuildVar(
         key: String,
@@ -1315,6 +1631,7 @@ object Config {
     private const val MODULE_HASH_FILE = "module_hash"
     private const val SECURITY_PATCH_FILE = "security_patch.txt"
     private const val APP_CONFIG_FILE = "app_config"
+    private const val PRIVACY_SEED_FILE = "privacy_seed"
     private const val CUSTOM_TEMPLATES_FILE = "custom_templates"
     private const val TEMPLATES_JSON_FILE = "templates.json"
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
@@ -1326,6 +1643,18 @@ object Config {
     private const val MAX_TARGET_PACKAGE_RULES = 2048
     private const val MAX_APP_CONFIG_BYTES = 1024L * 1024
     private const val MAX_APP_CONFIG_RULES = 1024
+    private const val PRIVACY_SEED_BYTES = 32
+    private const val PRIVACY_DERIVATION_DOMAIN = "CleveresTricky/AppPrivacy/v1"
+    private val APP_PACKAGE_PATTERN = Regex("[A-Za-z0-9_.*]{1,255}")
+    private val APP_KEYBOX_PATTERN = Regex("[A-Za-z0-9_.-]{1,128}")
+
+    private fun isValidAppKeybox(value: String): Boolean {
+        val lowered = value.lowercase()
+        return APP_KEYBOX_PATTERN.matches(value) &&
+            !value.startsWith('.') &&
+            (lowered.endsWith(".xml") || lowered.endsWith(".cbox"))
+    }
+
     private var root = File(CONFIG_PATH)
     private val keyboxDir get() = File(root, KEYBOX_DIR)
 
@@ -1333,6 +1662,8 @@ object Config {
 
     @androidx.annotation.VisibleForTesting
     fun setRootForTesting(newRoot: File) {
+        privacySeed?.fill(0)
+        privacySeed = null
         root = newRoot
     }
 
@@ -1355,13 +1686,15 @@ object Config {
     fun getInstalledPackages(): List<String> {
         val now = clockSource()
         val cached = cachedPackageList
-        if (cached != null && (now - lastPackageFetchTime) < PACKAGE_CACHE_TTL) {
+        val cachedAge = now - lastPackageFetchTime
+        if (cached != null && cachedAge >= 0 && cachedAge < PACKAGE_CACHE_TTL) {
             return cached
         }
 
         return synchronized(packageListLock) {
             val doubleCheck = cachedPackageList
-            if (doubleCheck != null && (now - lastPackageFetchTime) < PACKAGE_CACHE_TTL) {
+            val doubleCheckAge = now - lastPackageFetchTime
+            if (doubleCheck != null && doubleCheckAge >= 0 && doubleCheckAge < PACKAGE_CACHE_TTL) {
                 doubleCheck
             } else {
                 val pm = getPm()
@@ -1381,7 +1714,17 @@ object Config {
                         emptyList()
                     }
 
-                val sortedPackages = packages.sorted()
+                if (packages.size > MAX_INSTALLED_PACKAGES) {
+                    Logger.w("PackageManager returned too many installed packages; truncating")
+                }
+                val sortedPackages =
+                    packages
+                        .asSequence()
+                        .filter(INSTALLED_PACKAGE_PATTERN::matches)
+                        .distinct()
+                        .take(MAX_INSTALLED_PACKAGES)
+                        .sorted()
+                        .toList()
                 cachedPackageList = sortedPackages
                 lastPackageFetchTime = now
                 sortedPackages
@@ -1601,6 +1944,7 @@ object Config {
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
                 APP_CONFIG_FILE -> updateAppConfigs(f)
+                PRIVACY_SEED_FILE -> refreshPrivacySeed()
                 CUSTOM_TEMPLATES_FILE -> updateCustomTemplates(f)
                 TEMPLATES_JSON_FILE -> {
                     DeviceTemplateManager.initialize(root)
@@ -1666,6 +2010,7 @@ object Config {
         updateModuleHash(File(root, MODULE_HASH_FILE))
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         updateAppConfigs(File(root, APP_CONFIG_FILE))
+        refreshPrivacySeed().getOrThrow()
 
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
 
@@ -1721,8 +2066,11 @@ object Config {
     private val uidLocks = Array(64) { Any() }
 
     internal var clockSource: () -> Long = { System.currentTimeMillis() }
-    private const val CACHE_TTL_MS = 60 * 1000L // 1 minute
+    private const val CACHE_TTL_MS = 5 * 1000L
     private const val MAX_PACKAGES_PER_UID = 128
+    private const val MAX_INSTALLED_PACKAGES = 100_000
+    private val INSTALLED_PACKAGE_PATTERN = Regex("[A-Za-z0-9_.]{1,255}")
+    private val callerPackageDigest = ThreadLocal.withInitial { MessageDigest.getInstance("SHA-256") }
 
     /**
      * Retrieves the list of packages for a given UID, using a cache to avoid frequent IPC calls.
@@ -1732,7 +2080,8 @@ object Config {
         val now = clockSource()
         // Fast path: optimistic read for valid cache
         val cached = packageCache[uid]
-        if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
+        val cachedAge = cached?.let { now - it.timestamp }
+        if (cached != null && cachedAge != null && cachedAge >= 0 && cachedAge < CACHE_TTL_MS) {
             return cached.value
         }
 
@@ -1741,7 +2090,8 @@ object Config {
         val lock = uidLocks[(uid and Int.MAX_VALUE) % uidLocks.size]
         synchronized(lock) {
             val current = packageCache[uid]
-            if (current != null && (now - current.timestamp) < CACHE_TTL_MS) {
+            val currentAge = current?.let { now - it.timestamp }
+            if (current != null && currentAge != null && currentAge >= 0 && currentAge < CACHE_TTL_MS) {
                 return current.value
             }
 
@@ -1751,13 +2101,18 @@ object Config {
             } else {
                 try {
                     val resolved = pm.getPackagesForUid(uid) ?: emptyArray()
-                    val packages =
-                        if (resolved.size <= MAX_PACKAGES_PER_UID) {
-                            resolved
-                        } else {
-                            Logger.w("PackageManager returned too many packages for one UID; truncating")
-                            resolved.copyOf(MAX_PACKAGES_PER_UID)
-                        }
+                    val normalized =
+                        resolved
+                            .asSequence()
+                            .filter(INSTALLED_PACKAGE_PATTERN::matches)
+                            .distinct()
+                            .take(MAX_PACKAGES_PER_UID + 1)
+                            .toList()
+                    if (normalized.size > MAX_PACKAGES_PER_UID) {
+                        Logger.w("PackageManager returned too many packages for one UID; truncating")
+                    }
+                    val packages = normalized.take(MAX_PACKAGES_PER_UID).sorted().toTypedArray()
+                    if (current == null || !current.value.contentEquals(packages)) invalidateUidPolicyCaches(uid)
                     putBoundedUidCache(packageCache, uid, CachedPackage(packages, now))
                     packages
                 } catch (error: Exception) {
@@ -1767,6 +2122,26 @@ object Config {
                 }
             }
         }
+    }
+
+    fun getCallerPackageDigest(uid: Int): ByteArray {
+        val digest = callerPackageDigest.get()
+        digest.reset()
+        getPackages(uid).forEach { packageName ->
+            digest.update(packageName.toByteArray(Charsets.UTF_8))
+            digest.update(0.toByte())
+        }
+        return digest.digest()
+    }
+
+    private fun invalidateUidPolicyCaches(uid: Int) {
+        val appState = appConfigState
+        appState.cache.remove(uid)
+        appState.privacyCache.remove(uid)
+        appState.identityCache.remove(uid)
+        targetState.hackCache.remove(uid)
+        drmState.cache.remove(uid)
+        rkpInfrastructureCache.remove(uid)
     }
 
     private fun checkPackages(
@@ -1799,6 +2174,25 @@ object Config {
         return null
     }
 
+    private fun <T> getCachedValue(
+        cache: ConcurrentHashMap<Int, CachedValue<T>>,
+        uid: Int,
+    ): CachedValue<T>? {
+        val cached = cache[uid] ?: return null
+        val age = clockSource() - cached.timestamp
+        if (age >= 0 && age < UID_DECISION_CACHE_TTL_MS) return cached
+        cache.remove(uid, cached)
+        return null
+    }
+
+    private fun <T> cacheValue(
+        cache: ConcurrentHashMap<Int, CachedValue<T>>,
+        uid: Int,
+        value: T,
+    ) {
+        putBoundedUidCache(cache, uid, CachedValue(value, clockSource()))
+    }
+
     private fun cacheDecision(
         cache: ConcurrentHashMap<Int, CachedDecision>,
         uid: Int,
@@ -1820,8 +2214,8 @@ object Config {
         return protected
     }
 
-    fun needHack(callingUid: Int): Boolean {
-        if (!isSpoofEnabled || callingUid < FIRST_APPLICATION_UID || isTeeBrokenMode) return false
+    private fun isTargetedUid(callingUid: Int): Boolean {
+        if (!isSpoofEnabled || callingUid < FIRST_APPLICATION_UID) return false
         if (isProtectedInfrastructureUid(callingUid)) return false
         if (isDrmPassthroughEnabled) {
             val state = drmState
@@ -1832,6 +2226,7 @@ object Config {
                 }
             if (isDrm) return false
         }
+        if (getAppConfig(callingUid) != null) return true
         if (isGlobalMode) return true
 
         val state = targetState
@@ -1842,6 +2237,8 @@ object Config {
         cacheDecision(state.hackCache, callingUid, result)
         return result
     }
+
+    fun needHack(callingUid: Int): Boolean = !isTeeBrokenMode && isTargetedUid(callingUid)
 
     @androidx.annotation.VisibleForTesting
     fun reset() {
@@ -1862,6 +2259,8 @@ object Config {
         buildVars = emptyMap()
         attestationIds = emptyMap()
         identityOverrides = IdentityOverrides()
+        privacySeed?.fill(0)
+        privacySeed = null
         stringToBytesCache.clear()
         templates = emptyMap()
         moduleHash = null

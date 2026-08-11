@@ -95,14 +95,12 @@ class ConfigPackageCacheStalenessTest {
         assertEquals("Should return OldApp (cache hit)", "com.example.oldapp", result2.firstOrNull())
         assertEquals("Should NOT call PM again", 1, callCounts[uid])
 
-        // 5. Advance time by 30 seconds (t=31000). Still within 60s TTL.
-        currentTime += 30000
+        currentTime += 2000
         val result3 = Config.getPackages(uid)
         assertEquals("Should return OldApp (within TTL)", "com.example.oldapp", result3.firstOrNull())
         assertEquals("Should NOT call PM again", 1, callCounts[uid])
 
-        // 6. Advance time by another 31 seconds (total 61s > 60s TTL).
-        currentTime += 31000 // t=62000
+        currentTime += 4000
         val result4 = Config.getPackages(uid)
 
         // 7. Should now return "NewApp" because cache expired

@@ -24,44 +24,16 @@ fun main(args: Array<String>) {
     }
     runBlocking {
         val configDir = File("/data/adb/cleverestricky")
-
         try {
-            Logger.d("Main: Preparing WebUI config directory at ${configDir.absolutePath}")
-            val server = WebServer(WEB_UI_PORT, configDir, isTampered)
-            Logger.d("Main: Starting WebUI server bootstrap on requested port $WEB_UI_PORT")
-            val webReady =
-                try {
-                    server.startAsync()
-                    server.isAlive && server.listeningPort > 0
-                } catch (e: Exception) {
-                    Logger.e("WebServer readiness probe failed; endpoint metadata will not be published", e)
-                    runCatching { server.stop() }
-                        .onFailure { Logger.e("Failed to stop an unready WebServer instance", it) }
-                    false
-                }
-
-            if (webReady) {
-                val port = server.listeningPort
-                val token = server.token
-                Logger.i("Web server on port $port (alive=${server.isAlive})")
-                Logger.d("Main: WebUI server on $WEB_UI_LOOPBACK_HOST:$port (tokenLength=${token.length})")
-                val portFile = File(configDir, "web_port")
-                try {
-                    SecureFile.mkdirs(configDir, CONFIG_DIR_MODE)
-                    Logger.d("Main: Ensured WebUI config directory permissions for ${configDir.absolutePath}")
-                } catch (t: Throwable) {
-                    Logger.e("failed to set permissions for config dir", t)
-                }
-                SecureFile.writeText(portFile, "$port|$token")
-                Logger.d("Main: Wrote WebUI port metadata to ${portFile.absolutePath}")
-            } else {
-                Logger.e("Main: WebUI server is not ready; port file not written")
-            }
+            SecureFile.mkdirs(configDir, CONFIG_DIR_MODE)
         } catch (e: Exception) {
-            Logger.e("Failed to start web server", e)
+            Logger.e("Failed to prepare configuration directory", e)
+            return@runBlocking
         }
 
         if (isTampered) {
+            runCatching { WebUiBridge(WebServer(0, configDir, true), configDir).start() }
+                .onFailure { Logger.e("Failed to start native WebUI lockdown endpoint", it) }
             Logger.e("Main: Running in tamper lockdown; native interceptors will not be registered")
             while (true) {
                 delay(60000)
@@ -69,12 +41,19 @@ fun main(args: Array<String>) {
         }
 
         try {
-            SecureFile.mkdirs(configDir, CONFIG_DIR_MODE)
             Config.initialize()
             BootLogic.run()
         } catch (e: Exception) {
             Logger.e("Failed to initialize Config/BootLogic", e)
             Logger.e("Main: Exiting so the module supervisor can retry initialization")
+            return@runBlocking
+        }
+
+        try {
+            WebUiBridge(WebServer(0, configDir), configDir).start()
+        } catch (e: Exception) {
+            Logger.e("Failed to start native WebUI bridge", e)
+            Logger.e("Main: Exiting so the module supervisor can restore native WebUI service")
             return@runBlocking
         }
 
@@ -100,7 +79,7 @@ fun main(args: Array<String>) {
                     }
                 }
                 previousEngineState = if (engineStopPending) null else false
-                previousTelephonyState = Config.isTelephonyEnabled
+                previousTelephonyState = Config.shouldInterceptTelephony
                 try {
                     Config.awaitRuntimeController(if (engineStopPending) 1_000 else 30_000)
                 } catch (_: InterruptedException) {
@@ -117,7 +96,7 @@ fun main(args: Array<String>) {
             previousEngineState = true
 
             var ksSuccess = KeystoreInterceptor.isRunning()
-            var telSuccess = !Config.isTelephonyEnabled || TelephonyInterceptor.isRunning()
+            var telSuccess = !Config.shouldInterceptTelephony || TelephonyInterceptor.isRunning()
 
             val ksJob =
                 if (!ksSuccess) {
@@ -135,7 +114,7 @@ fun main(args: Array<String>) {
                 if (!telSuccess) {
                     launch(Dispatchers.IO) {
                         try {
-                            if (Config.isTelephonyEnabled) {
+                            if (Config.shouldInterceptTelephony) {
                                 telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
                             }
                         } catch (e: Exception) {
@@ -149,7 +128,7 @@ fun main(args: Array<String>) {
             ksJob?.join()
             telJob?.join()
 
-            val telephonyEnabled = Config.isTelephonyEnabled
+            val telephonyEnabled = Config.shouldInterceptTelephony
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
                 val wasPending = telephonyStopPending
                 telephonyStopPending = !TelephonyInterceptor.stopTelephonyInterceptor()

@@ -1,0 +1,12 @@
+[package]
+name = "cleverestricky-webui-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded native transport for the CleveresTricky module WebUI"
+license = "GPL-3.0"
+
+[[bin]]
+name = "webui_bridge"
+path = "src/main.rs"
+
+[dependencies]

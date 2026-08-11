@@ -12,7 +12,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 [Application Scope](docs/ApplicationScope.md) explains targeted mode, global mode, package rules, shared Android user identifiers, and live cache updates.
 
-[Application Rules](docs/ApplicationRules.md) explains application specific templates and keybox selection.
+[Application Rules](docs/ApplicationRules.md) explains application specific templates, keybox selection, and stable privacy identities.
 
 [Profiles](docs/Profiles.md) explains the Daily Compatibility, Default, Maximum Compatibility, and Minimal presets.
 
@@ -52,7 +52,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 ### Interface and operation
 
-[Web Interface](docs/WebInterface.md) explains mobile navigation, local authentication, live status, validation, and accessibility.
+[Web Interface](docs/WebInterface.md) explains the native module manager transport, mobile navigation, live status, validation, and accessibility.
 
 [Backup and Restore](docs/BackupRestore.md) explains encrypted exports, bounded imports, and safe recovery.
 
@@ -78,7 +78,7 @@ The [Spoof Engine](docs/SpoofEngine.md) is the master control for every active i
 
 3. Install the ZIP and reboot.
 
-4. Open the CleveresTricky Action screen.
+4. Open the CleveresTricky WebUI from the module manager.
 
 5. Start with Daily Compatibility.
 

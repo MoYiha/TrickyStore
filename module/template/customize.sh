@@ -79,26 +79,40 @@ extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
 chmod 755 "$MODPATH/daemon" || abort "! Could not make daemon executable"
-extract "$ZIPFILE" 'action.sh'       "$MODPATH"
-chmod 755 "$MODPATH/action.sh" || abort "! Could not make action.sh executable"
+if [ -L "$MODPATH/webroot" ] || { [ -e "$MODPATH/webroot" ] && [ ! -d "$MODPATH/webroot" ]; }; then
+  abort "! Existing native WebUI path is unsafe"
+fi
+if [ -d "$MODPATH/webroot" ]; then
+  rm -rf "$MODPATH/webroot" || abort "! Could not replace the native WebUI"
+fi
+extract "$ZIPFILE" 'webroot/index.html' "$MODPATH"
+extract "$ZIPFILE" 'webroot/bridge.js'  "$MODPATH"
+if [ -L "$MODPATH/webroot" ] || [ ! -d "$MODPATH/webroot" ] || \
+  [ -L "$MODPATH/webroot/index.html" ] || [ ! -f "$MODPATH/webroot/index.html" ] || \
+  [ -L "$MODPATH/webroot/bridge.js" ] || [ ! -f "$MODPATH/webroot/bridge.js" ]; then
+  abort "! Native WebUI files are unsafe"
+fi
+rm -f "$MODPATH/action.sh" "$MODPATH/action.sh.sha256" || abort "! Could not remove legacy WebUI launcher"
 
 case "$ARCH" in
   "x64")
     ui_print "- Extracting x64 libraries"
     extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/webui_bridge" "$MODPATH" true
     ;;
   "arm64")
     ui_print "- Extracting arm64 libraries"
     extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/webui_bridge" "$MODPATH" true
     ;;
   *)
     abort "! Unsupported ARCH: $ARCH"
     ;;
 esac
 
-chmod 755 "$MODPATH/inject" "$MODPATH/daemon" "$MODPATH/service.sh" \
+chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/daemon" "$MODPATH/service.sh" \
   "$MODPATH/post-fs-data.sh" || abort "! Could not set module executable permissions"
 
 CONFIG_DIR=/data/adb/cleverestricky
@@ -115,14 +129,34 @@ fi
 chmod 700 "$CONFIG_DIR" || abort "! Could not secure configuration directory"
 chown 0:0 "$CONFIG_DIR" || abort "! Could not set configuration directory ownership"
 
+for legacy_webui_file in web_port web_token.txt; do
+  if [ -e "$CONFIG_DIR/$legacy_webui_file" ] || [ -L "$CONFIG_DIR/$legacy_webui_file" ]; then
+    rm -f "$CONFIG_DIR/$legacy_webui_file" || abort "! Could not remove legacy WebUI metadata"
+  fi
+done
+
 for config_file in spoof_build_vars security_patch.txt target.txt drm_packages.txt boot_props_mode \
   spoof_enabled spoof_switch_initialized spoof_build_identity global_mode tee_broken_mode \
   auto_keybox_check random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
-  spoof_region_cn telephony; do
-  if [ -L "$CONFIG_DIR/$config_file" ]; then
-    abort "! Refusing symlinked configuration file: $config_file"
+  spoof_region_cn telephony privacy_seed app_config templates.json custom_templates module_hash \
+  servers.json keybox.xml lang.json spoof_build_vars.next apply_profile; do
+  config_path="$CONFIG_DIR/$config_file"
+  if [ -e "$config_path" ] || [ -L "$config_path" ]; then
+    if [ -L "$config_path" ] || [ ! -f "$config_path" ]; then
+      abort "! Refusing unsafe configuration file: $config_file"
+    fi
+    chmod 600 "$config_path" || abort "! Could not secure configuration file: $config_file"
+    chown 0:0 "$config_path" || abort "! Could not set configuration ownership: $config_file"
   fi
 done
+
+if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
+  if [ -L "$CONFIG_DIR/keyboxes" ] || [ ! -d "$CONFIG_DIR/keyboxes" ]; then
+    abort "! Refusing unsafe keybox directory"
+  fi
+  chmod 700 "$CONFIG_DIR/keyboxes" || abort "! Could not secure keybox directory"
+  chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
+fi
 
 FIRST_CONFIG_INIT=false
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then

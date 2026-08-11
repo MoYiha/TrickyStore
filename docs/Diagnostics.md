@@ -8,7 +8,7 @@ Diagnostics provides a controlled way to isolate installation, configuration, ke
 
 Open Dashboard and confirm the module version, Spoof Engine state, active profile, keybox count, target rule size, RKP state, DRM state, and native feature state. Then open Logs and look for the first failure rather than the last repeated retry.
 
-Use Android logcat with the `CleveresTricky` tag when the WebUI cannot start. Confirm that the daemon remains running and that the module manager did not disable the module after boot.
+Use Android logcat with the `CleveresTricky` tag when the WebUI cannot start. Confirm that the daemon remains running, the `webroot` files are present, the architecture specific `webui_bridge` is executable, and the module manager did not disable the module after boot.
 
 ## Controlled isolation
 

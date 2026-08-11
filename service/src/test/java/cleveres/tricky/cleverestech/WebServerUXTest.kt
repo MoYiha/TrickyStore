@@ -105,7 +105,7 @@ class WebServerUXTest {
         assertTrue(
             "File editor textarea should have onkeydown handler for Ctrl+S",
             html.contains(
-                "onkeydown=\"if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}\"",
+                "onkeydown=\"if((event.ctrlKey||event.metaKey)&amp;&amp;event.key.toLowerCase()==='s'){event.preventDefault();handleSave(document.getElementById('saveBtn'));}\"",
             ),
         )
     }
@@ -134,7 +134,8 @@ class WebServerUXTest {
         assertTrue(html.contains("min-height: 48px"))
         assertTrue(html.contains("height: min(500px, 60dvh) !important"))
         assertTrue(html.contains("async function fetchAuth"))
-        assertTrue(html.contains("const timeoutId = setTimeout"))
+        assertTrue(html.contains("window.CleveresBridge.fetch(url, options)"))
+        assertTrue(html.contains("<script src=\"bridge.js\"></script>"))
         assertTrue(html.contains("function downloadBlob"))
         assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
         assertFalse(html.contains("kbFilePicker').files = files"))

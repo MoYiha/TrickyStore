@@ -176,15 +176,18 @@ public final class CertHack {
 
     private static final class CacheKey {
         private final byte[] leafDigest;
+        private final byte[] callerPackageDigest;
         private final Config.AttestationPatchLevels patchLevels;
         private final int uid;
         private final int hashCode;
 
         public CacheKey(byte[] leafEncoded, Config.AttestationPatchLevels patchLevels, int uid) {
             this.leafDigest = SHA256_DIGEST.get().digest(leafEncoded);
+            this.callerPackageDigest = Config.INSTANCE.getCallerPackageDigest(uid);
             this.patchLevels = Objects.requireNonNull(patchLevels, "patchLevels");
             this.uid = uid;
-            this.hashCode = 31 * (31 * Arrays.hashCode(leafDigest) + patchLevels.hashCode()) + uid;
+            this.hashCode = 31 * (31 * (31 * Arrays.hashCode(leafDigest) + Arrays.hashCode(callerPackageDigest)) +
+                    patchLevels.hashCode()) + uid;
         }
 
         @Override
@@ -193,7 +196,8 @@ public final class CertHack {
             if (o == null || getClass() != o.getClass()) return false;
             CacheKey cacheKey = (CacheKey) o;
             return uid == cacheKey.uid && patchLevels.equals(cacheKey.patchLevels) &&
-                    MessageDigest.isEqual(leafDigest, cacheKey.leafDigest);
+                    MessageDigest.isEqual(leafDigest, cacheKey.leafDigest) &&
+                    MessageDigest.isEqual(callerPackageDigest, cacheKey.callerPackageDigest);
         }
 
         @Override

@@ -12,3 +12,7 @@ dependencies = [
 [[package]]
 name = "cleverestricky-native-core"
 version = "0.2.0"
+
+[[package]]
+name = "cleverestricky-webui-bridge"
+version = "0.1.0"
