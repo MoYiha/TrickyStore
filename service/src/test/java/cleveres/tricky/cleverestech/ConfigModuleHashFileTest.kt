@@ -38,7 +38,11 @@ class ConfigModuleHashFileTest {
     }
 
     private fun updateModuleHash(file: File?) {
-        val method = Config::class.java.getDeclaredMethod("updateModuleHash", File::class.java)
+        val method =
+            Config::class.java.declaredMethods.single {
+                it.name.startsWith("updateModuleHash-") &&
+                    it.parameterTypes.contentEquals(arrayOf(File::class.java))
+            }
         method.isAccessible = true
         method.invoke(Config, file)
     }
