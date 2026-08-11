@@ -10,6 +10,8 @@
     const chunkBytes = 48 * 1024;
     const maxUploadBytes = 20 * 1024 * 1024;
     const maxResponseBytes = 20 * 1024 * 1024;
+    const maxEnvelopeChars = 1024 * 1024;
+    const responseFields = new Set(['version', 'status', 'statusText', 'mimeType', 'size', 'body', 'downloadId']);
     let callbackCounter = 0;
 
     function encodeBytes(bytes) {
@@ -41,7 +43,54 @@
         return `CT_BRIDGE=''; for CT_PATH in ${paths}; do [ -x "$CT_PATH" ] && { CT_BRIDGE="$CT_PATH"; break; }; done; [ -n "$CT_BRIDGE" ] || { echo 'Native WebUI bridge is unavailable' >&2; exit 127; }; exec "$CT_BRIDGE" ${args.map(value => `'${value}'`).join(' ')}`;
     }
 
-    function normalizeExecResult(values) {
+    function validateResponseEnvelope(envelope) {
+        if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('Invalid response envelope');
+        const keys = Object.keys(envelope);
+        if (!keys.every(key => responseFields.has(key)) || envelope.version !== 1 || !Number.isInteger(envelope.status) || envelope.status < 100 || envelope.status > 599) throw new Error('Invalid response envelope');
+        if (typeof envelope.statusText !== 'string' || envelope.statusText.length > 256 || /[\u0000-\u001F\u007F]/.test(envelope.statusText) || typeof envelope.mimeType !== 'string' || envelope.mimeType.length < 1 || envelope.mimeType.length > 256 || /[\u0000-\u001F\u007F]/.test(envelope.mimeType)) throw new Error('Invalid response metadata');
+        if (!Number.isSafeInteger(envelope.size) || envelope.size < 0 || envelope.size > maxResponseBytes) throw new Error('Invalid response size');
+        const hasBody = typeof envelope.body === 'string';
+        const hasDownload = typeof envelope.downloadId === 'string';
+        if (hasBody === hasDownload || (hasDownload && !/^[0-9a-f]{32}$/.test(envelope.downloadId))) throw new Error('Invalid response payload');
+        if (hasBody && (envelope.body.length > maxEnvelopeChars || !/^[A-Za-z0-9_-]*$/.test(envelope.body))) throw new Error('Invalid response payload');
+        return envelope;
+    }
+
+    function extractResponseEnvelope(value, depth = 0) {
+        if (value === null || value === undefined || depth > 4) return null;
+        if (typeof value === 'string') {
+            const raw = value.trim();
+            if (!raw || raw.length > maxEnvelopeChars) return null;
+            try {
+                return extractResponseEnvelope(JSON.parse(raw), depth + 1);
+            } catch (_) {
+                return null;
+            }
+        }
+        if (typeof value !== 'object' || Array.isArray(value)) return null;
+        try {
+            return JSON.stringify(validateResponseEnvelope(value));
+        } catch (_) {
+        }
+        for (const key of ['stdout', 'out', 'stderr', 'err', 'message', 'result', 'data', 'output']) {
+            if (key in value) {
+                const envelope = extractResponseEnvelope(value[key], depth + 1);
+                if (envelope) return envelope;
+            }
+        }
+        return null;
+    }
+
+    function normalizeExecResult(values, expectEnvelope = false) {
+        if (expectEnvelope) {
+            // Some WebUI hosts report a non-zero callback code while still returning the
+            // completed bridge response on stdout/stderr. Only recover an exact, bounded
+            // protocol envelope; normal command failures continue down the errno path.
+            for (const value of [values[1], values[0], values[2]]) {
+                const envelope = extractResponseEnvelope(value);
+                if (envelope) return { errno: 0, stdout: envelope, stderr: '' };
+            }
+        }
         let errno = values[0];
         let stdout = values[1];
         let stderr = values[2];
@@ -88,7 +137,7 @@
         };
     }
 
-    function execNative(args, timeoutMs) {
+    function execNative(args, timeoutMs, expectEnvelope = false) {
         if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the KernelSU or APatch WebUI button'));
         const boundedTimeout = Math.min(Math.max(Number(timeoutMs) || 60000, 1000), 125000);
         return new Promise((resolve, reject) => {
@@ -107,7 +156,7 @@
                 delete global[callbackName];
                 let result;
                 try {
-                    result = normalizeExecResult(values);
+                    result = normalizeExecResult(values, expectEnvelope);
                 } catch (error) {
                     reject(error);
                     return;
@@ -290,12 +339,12 @@
         if (bytes.length > 1024 * 1024) throw new Error('Request is too large');
         let raw;
         if (bytes.length <= chunkBytes) {
-            raw = await execNative(['call', encodeBytes(bytes), String(timeoutMs)], timeoutMs);
+            raw = await execNative(['call', encodeBytes(bytes), String(timeoutMs)], timeoutMs, true);
         } else {
             const stageId = await createStage('request', timeoutMs);
             try {
                 await appendStage('request', stageId, bytes, timeoutMs);
-                raw = await execNative(['call-file', stageId, String(timeoutMs)], timeoutMs);
+                raw = await execNative(['call-file', stageId, String(timeoutMs)], timeoutMs, true);
             } catch (error) {
                 await dropStage('request', stageId);
                 throw error;
@@ -307,15 +356,9 @@
         } catch (_) {
             throw new Error('Invalid response from native bridge');
         }
-        if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) throw new Error('Invalid response envelope');
-        const keys = Object.keys(envelope);
-        const allowedFields = new Set(['version', 'status', 'statusText', 'mimeType', 'size', 'body', 'downloadId']);
-        if (!keys.every(key => allowedFields.has(key)) || envelope.version !== 1 || !Number.isInteger(envelope.status) || envelope.status < 100 || envelope.status > 599) throw new Error('Invalid response envelope');
-        if (typeof envelope.statusText !== 'string' || envelope.statusText.length > 256 || /[\u0000-\u001F\u007F]/.test(envelope.statusText) || typeof envelope.mimeType !== 'string' || envelope.mimeType.length < 1 || envelope.mimeType.length > 256 || /[\u0000-\u001F\u007F]/.test(envelope.mimeType)) throw new Error('Invalid response metadata');
-        if (!Number.isSafeInteger(envelope.size) || envelope.size < 0 || envelope.size > maxResponseBytes) throw new Error('Invalid response size');
+        validateResponseEnvelope(envelope);
         const hasBody = typeof envelope.body === 'string';
         const hasDownload = typeof envelope.downloadId === 'string';
-        if (hasBody === hasDownload || (hasDownload && !/^[0-9a-f]{32}$/.test(envelope.downloadId))) throw new Error('Invalid response payload');
         const response = new NativeResponse(envelope, timeoutMs);
         if (hasBody) {
             const decoded = decodeBytes(envelope.body);
@@ -388,5 +431,5 @@
     } catch (_) {
     }
 
-    global.CleveresBridge = Object.freeze({ fetch: nativeFetch, exportBlob, exportResponse, listPackages });
+    global.CleveresBridge = Object.freeze({ revision: 4, fetch: nativeFetch, exportBlob, exportResponse, listPackages });
 })(window);

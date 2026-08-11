@@ -75,7 +75,12 @@ async function main() {
         callback => callback(raw),
         callback => callback({ errno: 0, stdout: raw, stderr: '' }),
         callback => callback(JSON.stringify({ errno: 0, stdout: raw, stderr: '' })),
-        callback => callback(JSON.parse(raw))
+        callback => callback(JSON.parse(raw)),
+        callback => callback(1, raw, ''),
+        callback => callback(1, '', raw),
+        callback => callback(raw, '', 0),
+        callback => callback({ errno: 1, stderr: raw }),
+        callback => callback(new Error(raw))
     ]) {
         const bridge = createBridge(callbackFactory);
         const response = await bridge.fetch('/api/config');
@@ -93,6 +98,27 @@ async function main() {
     const unsupported = createBridge(callback => callback({ unexpected: true }));
     await assert.rejects(() => unsupported.fetch('/api/config'), /Unsupported native exec result/);
 
+    const incompleteErrorEnvelope = createBridge(callback => callback(1, '', '{"version":1,"status":200}'));
+    await assert.rejects(() => incompleteErrorEnvelope.fetch('/api/config'), /version.*status|Native bridge failed|Invalid response/i);
+
+    const emptyListRaw = envelope('[]');
+    const errorChannelSuccess = createBridge(callback => callback(1, '', emptyListRaw));
+    const emptyListResponse = await errorChannelSuccess.fetch('/api/keyboxes');
+    assert.strictEqual(emptyListResponse.ok, true);
+    assert.deepStrictEqual(Array.from(await emptyListResponse.json()), []);
+
+    const bootPolicyBridge = createBridge(callback => callback(1, '', envelope('auto\n')));
+    const bootPolicyResponse = await bootPolicyBridge.fetch('/api/file?filename=boot_props_mode');
+    assert.strictEqual((await bootPolicyResponse.text()).trim(), 'auto');
+
+    const resourceBody = JSON.stringify({ real_ram_kb: 4096, real_cpu: 1.5, environment: 'KernelSU' });
+    const resourceBridge = createBridge(callback => callback(1, envelope(resourceBody), ''));
+    const resourceResponse = await resourceBridge.fetch('/api/resource_usage');
+    assert.deepStrictEqual(
+        JSON.parse(JSON.stringify(await resourceResponse.json())),
+        JSON.parse(resourceBody)
+    );
+
     const normalizeUiMessage = loadMessageNormalizer();
     assert.strictEqual(normalizeUiMessage(envelope('{"error":"keybox rejected"}')), 'keybox rejected');
     assert.strictEqual(normalizeUiMessage('<img src=x onerror=alert(1)>'), '<img src=x onerror=alert(1)>');
@@ -104,6 +130,7 @@ async function main() {
     });
     assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
     assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
+    assert.ok(indexSource.includes('<script src="bridge.js?revision=4"></script>'));
 
     console.log('Native WebUI bridge compatibility tests passed');
 }
