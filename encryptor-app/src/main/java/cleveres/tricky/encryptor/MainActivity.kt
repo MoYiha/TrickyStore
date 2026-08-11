@@ -103,6 +103,7 @@ import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.ln
 import kotlin.math.pow
 
@@ -1291,9 +1292,9 @@ private fun formatBytes(bytes: Long): String {
     val value = bytes / unit.pow(exponent.toDouble())
     val suffix = arrayOf("B", "KiB", "MiB", "GiB", "TiB")[exponent]
     return if (value >= 10) {
-        String.format("%.0f %s", value, suffix)
+        String.format(Locale.ROOT, "%.0f %s", value, suffix)
     } else {
-        String.format("%.1f %s", value, suffix)
+        String.format(Locale.ROOT, "%.1f %s", value, suffix)
     }
 }
 
