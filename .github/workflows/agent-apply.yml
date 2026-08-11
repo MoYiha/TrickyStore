@@ -29,10 +29,25 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - name: Apply exact edits
-        run: python3 .github/agent_edit.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/agent_edit.py')
+          text = source.read_text()
+          text = text.replace('    count=2,\n', '    count=1,\n', 1)
+          source.write_text(text)
+          auto = Path('service/src/main/java/cleveres/tricky/cleverestech/AutoIdentityManager.kt')
+          text = auto.read_text()
+          old = '                    if (year in 2020..2099 && month in 1..12) LocalDate.of(year, month!!, 5) else null\n'
+          new = '                    if (year in 2020..2099 && month != null && month in 1..12) LocalDate.of(year, month, 5) else null\n'
+          if text.count(old) != 1:
+              raise RuntimeError('unexpected second Auto Identity month check')
+          auto.write_text(text.replace(old, new, 1))
+          PY
+          python3 .github/agent_edit.py
       - name: Commit generated edits
         run: |
-          rm -f .github/agent_edit.py .github/agent_edit_version .github/workflows/agent-apply.yml
+          rm -f .github/agent_edit.py .github/agent_edit_version .github/agent_pr_marker .github/workflows/agent-apply.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
