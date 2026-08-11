@@ -7,6 +7,12 @@ on:
     paths:
       - .github/agent_edit.py
       - .github/workflows/agent-apply.yml
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/agent_edit.py
+      - .github/workflows/agent-apply.yml
 
 permissions:
   contents: write
@@ -18,6 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - name: Apply exact edits
         run: python3 .github/agent_edit.py
@@ -29,4 +36,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "refactor: separate core protection from identity spoofing"
-          git push
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
