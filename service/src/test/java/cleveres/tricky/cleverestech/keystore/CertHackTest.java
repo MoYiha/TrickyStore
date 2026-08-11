@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import org.junit.After;
 import org.junit.Test;
 
 import java.io.StringReader;
@@ -16,6 +17,11 @@ import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.TestKeyboxFixtures;
 
 public class CertHackTest {
+
+    @After
+    public void tearDown() {
+        CertHack.readFromXml(null);
+    }
 
     private static final String EC_KEY = TestKeyboxFixtures.INSTANCE.getEcPrivateKey();
     private static final String TEST_CERT = TestKeyboxFixtures.INSTANCE.getCertificate();
