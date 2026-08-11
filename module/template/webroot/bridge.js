@@ -12,6 +12,7 @@
     const maxResponseBytes = 20 * 1024 * 1024;
     const maxEnvelopeChars = 1024 * 1024;
     const responseFields = new Set(['version', 'status', 'statusText', 'mimeType', 'size', 'body', 'downloadId']);
+    const communityUrl = 'https://t.me/cleverestech';
     let callbackCounter = 0;
 
     function encodeBytes(bytes) {
@@ -422,6 +423,50 @@
         }
     }
 
+    function installCommunityCard() {
+        const document = global.document;
+        if (!document || !document.body || document.getElementById('cleveresCommunityCard')) return;
+
+        const card = document.createElement('section');
+        card.id = 'cleveresCommunityCard';
+        card.setAttribute('aria-label', 'CleveresTech Telegram community');
+        card.style.cssText = 'box-sizing:border-box;max-width:800px;margin:0 auto;padding:0 20px max(28px,env(safe-area-inset-bottom));text-align:center;';
+
+        const panel = document.createElement('div');
+        panel.style.cssText = 'background:#161616;border:1px solid #333;border-radius:12px;padding:20px;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+
+        const title = document.createElement('strong');
+        title.textContent = 'CleveresTech Community';
+        title.style.cssText = 'display:block;color:#E5E7EB;font-size:1.05em;margin-bottom:8px;';
+
+        const copy = document.createElement('p');
+        copy.textContent = 'Join our Telegram group for mutual help, testing, discussion, and development of CleveresTricky.';
+        copy.style.cssText = 'color:#999;line-height:1.5;margin:0 0 16px;';
+
+        const link = document.createElement('a');
+        link.href = communityUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'Join Telegram Community';
+        link.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 22px;border-radius:6px;background:#D1D5DB;color:#000;text-decoration:none;font-weight:600;letter-spacing:.3px;';
+
+        panel.appendChild(title);
+        panel.appendChild(copy);
+        panel.appendChild(link);
+        card.appendChild(panel);
+        document.body.appendChild(card);
+    }
+
+    function scheduleCommunityCard() {
+        const document = global.document;
+        if (!document) return;
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', installCommunityCard, { once: true });
+        } else {
+            installCommunityCard();
+        }
+    }
+
     try {
         if (nativeApi && typeof nativeApi.enableEdgeToEdge === 'function') nativeApi.enableEdgeToEdge(true);
     } catch (_) {
@@ -431,5 +476,6 @@
     } catch (_) {
     }
 
+    scheduleCommunityCard();
     global.CleveresBridge = Object.freeze({ revision: 4, fetch: nativeFetch, exportBlob, exportResponse, listPackages });
 })(window);

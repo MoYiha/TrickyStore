@@ -14,21 +14,33 @@ Binary and script payloads are intentional parts of the module template. KernelS
 
 ## Integrity and permissions
 
-The build adds a SHA 256 record for each packaged payload. Installation verifies extracted content, sets executable modes only where required, creates the private configuration directory with root ownership, and refuses a symbolic link in that location.
+The build adds a SHA 256 record for every packaged payload. Installation verifies each file it extracts against that record. Runtime verification then walks the installed module with bounded input, rejects symbolic links and non regular entries, requires integrity records for normal payloads, rejects unexpected unchecked payloads including `system.prop`, and enters tamper lockdown when a required file is missing or changed.
+
+Manager owned state files named `disable`, `remove`, `update`, and the module tamper marker may exist without payload checksums because they are control state rather than executable or property payloads.
 
 Runtime scripts restore conservative file modes and SELinux labels without recursively following unexpected links or crossing mounts.
 
+## Official release authenticity
+
+Archive internal SHA 256 records prove consistency of the installed payload but they are not by themselves proof of who created an archive. A person who can replace every file inside a ZIP can also replace checksum records and the installer script inside that same ZIP.
+
+Official release builds therefore publish a separate `SHA256SUMS` file for the release ZIP, debug ZIP, and Encryptor APK. The release workflow also creates GitHub signed build provenance for those digests through the repository Actions identity. This external provenance is the trust anchor that distinguishes an official build from a repack that merely recalculates archive internal hashes.
+
+When authenticity matters, download from the official project release page and verify the release digest and GitHub attestation before installation. A modified archive cannot retain the official digest or provenance for its changed bytes.
+
 ## Installation sequence
 
-1. Download the release ZIP for the project.
+1. Download the release ZIP from the official project release page.
 
-2. Install it through KernelSU or APatch.
+2. Verify its entry in `SHA256SUMS` and GitHub build provenance when source authenticity is required.
 
-3. Confirm that the manager reports success.
+3. Install it through KernelSU or APatch.
 
-4. Reboot Android.
+4. Confirm that the manager reports success.
 
-5. Open the module WebUI and review Dashboard and Logs.
+5. Reboot Android.
+
+6. Open the module WebUI and review Dashboard and Logs.
 
 Do not extract or delete template binaries manually. An incomplete payload will fail verification or prevent native runtime activation.
 

@@ -7,7 +7,7 @@ import java.security.MessageDigest
 
 object Verification {
     private val MODULE_PATH = getModuleDir()
-    private val IGNORED_FILES = setOf("disable", "remove", "update", "system.prop", "tampered")
+    private val IGNORED_FILES = setOf("disable", "remove", "update", "tampered")
 
     fun check(root: File = File(MODULE_PATH)): Boolean {
         return try {

@@ -14,7 +14,6 @@ class VerificationTest {
     @Before
     fun setup() {
         tempDir.mkdir()
-        // Mock logger
         Logger.setImpl(
             object : Logger.LogImpl {
                 override fun d(
@@ -48,16 +47,9 @@ class VerificationTest {
             },
         )
 
-        // Create a dummy file
         val file = File(tempDir, "test.sh")
         file.writeText("original content")
-
-        // Create checksum
-        val md = MessageDigest.getInstance("SHA-256")
-        val bytes = "original content".toByteArray()
-        md.update(bytes)
-        val checksum = md.digest().joinToString("") { "%02x".format(it) }
-        File(tempDir, "test.sh.sha256").writeText(checksum)
+        writeChecksum(file)
     }
 
     @After
@@ -72,18 +64,14 @@ class VerificationTest {
 
     @Test
     fun testVerificationFailsOnModifiedFile() {
-        // Modify file
         File(tempDir, "test.sh").writeText("modified content")
 
         assertFalse(Verification.check(tempDir))
-
-        // And NOT create disable file
         assertFalse(File(tempDir, "disable").exists())
     }
 
     @Test
     fun testVerificationFailsOnMissingChecksum() {
-        // Remove checksum
         File(tempDir, "test.sh.sha256").delete()
 
         assertFalse(Verification.check(tempDir))
@@ -115,5 +103,34 @@ class VerificationTest {
         java.nio.file.Files.createSymbolicLink(File(tempDir, "linked").toPath(), target.toPath().toAbsolutePath())
 
         assertFalse(Verification.check(tempDir))
+    }
+
+    @Test
+    fun testVerificationFailsOnUncheckedInjectedPayload() {
+        File(tempDir, "unexpected.sh").writeText("malicious payload")
+
+        assertFalse(Verification.check(tempDir))
+    }
+
+    @Test
+    fun testVerificationFailsOnUncheckedSystemProp() {
+        File(tempDir, "system.prop").writeText("ro.example.injected=1")
+
+        assertFalse(Verification.check(tempDir))
+    }
+
+    @Test
+    fun managerStateFilesMayRemainUnchecked() {
+        for (name in listOf("disable", "remove", "update", "tampered")) {
+            File(tempDir, name).writeText("")
+        }
+
+        assertTrue(Verification.check(tempDir))
+    }
+
+    private fun writeChecksum(file: File) {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.forEachBlock { buffer, bytesRead -> md.update(buffer, 0, bytesRead) }
+        File(file.path + ".sha256").writeText(md.digest().joinToString("") { "%02x".format(it) })
     }
 }

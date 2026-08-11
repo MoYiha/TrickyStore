@@ -380,11 +380,14 @@ jobs:
           ./gradlew zipDebug
           ./gradlew :encryptor-app:assembleRelease
 
-      - name: Verify module archive layout
+      - name: Verify module archive layout and checksums
         shell: bash
         run: |
           set -euo pipefail
           shopt -s nullglob
+          work=$(mktemp -d)
+          trap 'rm -rf "$work"' EXIT
+
           for variant in release debug; do
             archives=(module/release/*-"$variant".zip)
             if [ "${#archives[@]}" -ne 1 ]; then
@@ -394,12 +397,64 @@ jobs:
             archive="${archives[0]}"
             unzip -tq "$archive" >/dev/null
             entries=$(unzip -Z1 "$archive")
+            duplicates=$(printf '%s\n' "$entries" | sort | uniq -d)
+            if [ -n "$duplicates" ]; then
+              echo "::error file=$archive::Duplicate ZIP entries are not allowed"
+              printf '%s\n' "$duplicates"
+              exit 1
+            fi
+            while IFS= read -r entry; do
+              case "$entry" in
+                /*|../*|*/../*|*/..|*\\*)
+                  echo "::error file=$archive::Unsafe ZIP entry: $entry"
+                  exit 1
+                  ;;
+              esac
+            done <<<"$entries"
             for required in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule; do
               if ! grep -Fx "$required" <<<"$entries" >/dev/null; then
                 echo "::error file=$archive::Missing required root entry: $required"
                 exit 1
               fi
             done
+
+            target="$work/$variant"
+            mkdir -p "$target"
+            unzip -q "$archive" -d "$target"
+            while IFS= read -r -d '' payload; do
+              case "$payload" in
+                *.sha256) continue ;;
+              esac
+              checksum="$payload.sha256"
+              if [ ! -f "$checksum" ]; then
+                echo "::error file=$archive::Missing checksum for ${payload#"$target/"}"
+                exit 1
+              fi
+              expected=$(tr -d '[:space:]' < "$checksum")
+              case "$expected" in
+                ''|*[!0-9A-Fa-f]*)
+                  echo "::error file=$archive::Malformed checksum for ${payload#"$target/"}"
+                  exit 1
+                  ;;
+              esac
+              if [ "${#expected}" -ne 64 ]; then
+                echo "::error file=$archive::Invalid checksum length for ${payload#"$target/"}"
+                exit 1
+              fi
+              actual=$(sha256sum "$payload" | awk '{print $1}')
+              if [ "${expected,,}" != "$actual" ]; then
+                echo "::error file=$archive::Checksum mismatch for ${payload#"$target/"}"
+                exit 1
+              fi
+            done < <(find "$target" -type f -print0)
+
+            while IFS= read -r -d '' checksum; do
+              payload=${checksum%.sha256}
+              if [ ! -f "$payload" ]; then
+                echo "::error file=$archive::Orphan checksum ${checksum#"$target/"}"
+                exit 1
+              fi
+            done < <(find "$target" -type f -name '*.sha256' -print0)
           done
 
       - name: Verify native artifact hardening
@@ -481,6 +536,9 @@ jobs:
     needs: build
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - name: Check out
         uses: actions/checkout@v7
@@ -509,7 +567,7 @@ jobs:
           name: EncryptorApp
           path: release-assets
 
-      - name: Verify release assets
+      - name: Verify release assets and create checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -522,6 +580,11 @@ jobs:
           [ "${#apks[@]}" -ge 1 ] || { echo "::error::Encryptor APK is missing"; exit 1; }
           unzip -tq "${release_zips[0]}" >/dev/null
           unzip -tq "${debug_zips[0]}" >/dev/null
+          (
+            cd release-assets
+            sha256sum -- *-release.zip *-debug.zip *.apk | LC_ALL=C sort -k2 > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
 
       - name: Check release version
         id: release_version
@@ -538,6 +601,12 @@ jobs:
           else
             echo "create=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Attest official release provenance
+        if: steps.release_version.outputs.create == 'true'
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-checksums: release-assets/SHA256SUMS
 
       - name: Create tag and release
         if: steps.release_version.outputs.create == 'true'

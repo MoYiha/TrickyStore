@@ -4,7 +4,9 @@
 
 Core Keystore interception remains registered while the module service is healthy. The native Binder hook therefore stays available for certificate and TEE compatibility even when Spoof Engine is disabled.
 
-Spoof Engine is the identity resource control. When disabled, optional attestation identity values are not exposed, Telephony Identity is parked when no privacy rule needs it, and optional build and region identity work is skipped. Core certificate handling and boot property protection remain active.
+Spoof Engine is the identity resource control. When disabled, optional attestation identity values are not exposed, Telephony Identity is parked when no privacy rule needs it, DRM Identifier Privacy is parked, and optional build and region identity work is skipped. Core certificate handling and boot property protection remain active.
+
+When Spoof Engine is enabled, the DRM privacy controller reconciles modern stable AIDL DRM factories at a bounded interval. It does not busy poll. Lazy or restarted DRM services are rediscovered, while an injector retry for the same process is rate limited.
 
 Automatic Keybox Check has its own control and is independent from Spoof Engine. Disable that worker directly when scheduled revocation work is not wanted.
 
@@ -15,6 +17,14 @@ Rust parses Binder streams into a fixed caller owned array. A fixed local buffer
 The Binder descriptor cache uses 64 fixed slots and no heap growth. The Rust hot path validates device plus inode identity before using a cached classification and checks identity again after procfs resolution. The platform weak pointer handoff uses a fixed per thread queue, so transaction bursts cannot grow a dynamic container. A malformed or oversized stream is passed through without unbounded work.
 
 The injector is a short lived Rust process. Rust owns its arguments, logs, file descriptors, buffers, process maps, symbol resolution, ptrace session, register layouts, process memory, socket transfer, loader calls, cleanup, register restoration, and detach state. Temporary target stack writes and the call stack guard use a fixed upper bound. Overlapping ranges are saved once and restored before detach. C plus plus remains only at the injected Android libbinder and LSPlt boundary.
+
+## DRM privacy cost
+
+DRM Identifier Privacy registers only the stable AIDL `IDrmFactory.createDrmPlugin` and `IDrmPlugin.getPropertyByteArray` transaction codes. Requests for licenses, keys, provisioning, sessions, security level, HDCP state, and DRM string properties never enter the replacement path.
+
+The controller caps tracked DRM factory services at 16 and plugin Binder objects at 256. Dead Binder objects are pruned before new registrations are accepted. Reconciliation runs no more often than the normal runtime controller interval when healthy, and native injection attempts for one PID are rate limited.
+
+A pseudonym is derived only when an isolated application reads exactly `deviceUniqueId`. The derivation reuses the already protected application privacy identity and a thread local SHA 256 instance. There is no persistent DRM ID file and no growing per request or per app DRM pseudonym cache. Output is bounded to 8 through 64 bytes, matching only supported original identifier sizes. Temporary copies of the genuine DRM identifier and the pseudonym are cleared after the replacement Parcel has been constructed.
 
 ## Service memory
 
@@ -32,6 +42,6 @@ Native outputs use section collection, hidden visibility, stack protection, imme
 
 ## Lowest overhead setup
 
-Keep optional Identity Spoof Engine off when identity substitution is not needed. Disable Telephony Identity and Automatic Keybox Check unless required. Core Keystore and boot protection remain active because they are the baseline module behavior.
+Keep optional Identity Spoof Engine off when identity substitution and DRM identifier privacy are not needed. Disable Telephony Identity and Automatic Keybox Check unless required. Core Keystore and boot protection remain active because they are the baseline module behavior.
 
 [Return to the project overview](../README.md)

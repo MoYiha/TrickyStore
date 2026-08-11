@@ -1,35 +1,51 @@
-# DRM Keystore Passthrough
+# DRM Keystore Passthrough and Identifier Privacy
 
 ## Purpose
 
+CleveresTricky has two deliberately separate DRM related behaviors.
+
 DRM Keystore Passthrough keeps selected media applications on Android's genuine Keystore certificate path. It prevents CleveresTricky attestation compatibility handling from leaking into applications where modified certificate chains can interfere with protected playback.
 
-This feature is deliberately scoped to Keystore and attestation compatibility. It does **not** hook or alter MediaDrm, Widevine license exchange, provisioning, content keys, DRM HAL decisions, or the reported Widevine security level.
+DRM Identifier Privacy is narrower and identity focused. On the supported modern stable AIDL DRM HAL path, an application configured with `privacy=isolate` receives a stable application scoped pseudonym when it reads the byte array property `deviceUniqueId`. The genuine DRM device identifier is not used as input to that pseudonym, is not logged, and is not stored in a CleveresTricky DRM ID cache.
 
-## Package policy
+## Why the privacy hook exists
 
-The `drm_packages.txt` file accepts exact package names and bounded wildcard rules. The service resolves the calling Android user identifier and evaluates the package set before global or targeted certificate substitution decisions.
+Android defines `deviceUniqueId` as a DRM byte array property established during provisioning that can uniquely identify a device. A media or streaming application can therefore treat that value as another durable device identifier. The privacy hook prevents this specific supported property from exposing the genuine value to an isolated application while keeping the rest of the DRM transaction on the original platform path.
 
-When passthrough is enabled and a caller matches the DRM list, certificate substitution is skipped. Other CleveresTricky controls remain available for applications outside that list.
+The pseudonym is derived from the same protected random privacy seed used by Application Rules. It is stable for the same isolated application identity, differs across unrelated application identities, and preserves the original DRM identifier length within a bounded supported range. Stable pseudonyms are used instead of generating a new value on every read because changing the identity during normal playback can create avoidable compatibility problems.
 
-Runtime changes to DRM passthrough, the DRM package list, target scope, global mode, or TEE broken mode invalidate previously substituted attestation chain cache entries after the new policy is loaded. This prevents a package that has moved onto the genuine path from receiving a chain cached under an older policy.
+## Keystore passthrough package policy
 
-## Defaults
+The `drm_packages.txt` file accepts exact package names and bounded wildcard rules. The service resolves the calling Android user identifier and evaluates the package set before global or targeted Keystore certificate substitution decisions.
 
-Daily Compatibility, Default, and Minimal enable DRM Keystore Passthrough. Maximum Compatibility disables it for controlled tests that intentionally use the widest scope.
+When passthrough is enabled and a caller matches the DRM list, certificate substitution is skipped. Runtime changes to DRM passthrough, the DRM package list, target scope, global mode, or legacy TEE safe mode state invalidate previously substituted attestation chain cache entries after the new policy is loaded.
 
-The package list has no effect while the dedicated passthrough control is disabled. Changes reload without restarting the service.
+The default list includes common media applications such as Netflix, Amazon Prime Video, Disney+, Max, and YouTube. Keeping one of those packages on the genuine Keystore path does not disable DRM Identifier Privacy. The two controls are intentionally independent: a package can use genuine Keystore certificates while `privacy=isolate` pseudonymizes only its supported DRM `deviceUniqueId` read.
 
-## Safety
+## DRM privacy activation
 
-Package count, file size, line length, and wildcard form are bounded. Invalid input leaves the previous valid policy active. Unknown package resolution does not become a broad substitution decision.
+DRM Identifier Privacy requires Identity Spoof Engine to be enabled and the application's Application Rule privacy mode to be `isolate`. `inherit` leaves the DRM identifier unchanged. The DRM privacy hook does not use the Keystore `drm_passthrough` targeting decision.
 
-The DRM subsystem itself remains owned by Android and the device DRM implementation. CleveresTricky only controls whether its own Keystore certificate substitution is allowed for a configured application.
+The runtime discovers stable AIDL `android.hardware.drm.IDrmFactory/*` services, attaches the existing bounded native Binder hook to the vendor DRM service process, observes newly created `IDrmPlugin` Binder objects, and filters only `getPropertyByteArray` transactions. A request is modified only when its property name is exactly `deviceUniqueId` and the real Binder caller has an explicit isolate policy.
+
+Legacy HIDL DRM implementations and vendor specific paths that do not use the supported stable AIDL interface remain untouched. If the expected AIDL service, transaction shape, process information, or response format is unavailable, the hook fails open and Android's original response is preserved.
+
+## Security boundary
+
+The privacy hook does **not** change `getPropertyString`, reported security level, session security level, HDCP state, provisioning, license requests or responses, content keys, secure stops, offline licenses, encryption or decryption operations, or vendor DRM policy. It does not transform L2 or L3 into L1 and does not claim to upgrade a device's hardware backed DRM capability.
+
+A general DRM protection bypass would require substantially broader and continuously maintained vendor specific work. That is not the current purpose of this feature. Bootloader unlock also does not automatically imply that every DRM implementation has stopped working. Actual behavior depends on the device, vendor DRM stack, provisioning state, security level, firmware, and service policy. CleveresTricky therefore treats DRM bypass as a separate problem rather than a primary module objective.
+
+## Resource and failure behavior
+
+Factory discovery and reconciliation are bounded. The implementation caps tracked factory services and plugin Binder objects, retries native injection at a bounded interval, and periodically rescans so restarted or lazy DRM HAL services can be reattached. It does not busy poll.
+
+Only a matching `deviceUniqueId` read for an isolated application performs pseudonym derivation. The code reuses the existing application privacy seed and a thread local SHA 256 digest, does not create an unbounded per request cache, and zeroes temporary copies of the genuine and pseudonymous DRM identifier after constructing the replacement Binder reply.
 
 ## Limits
 
-This feature does not implement DRM, create licenses, bypass content protection, or spoof a Widevine security level. It cannot repair a device whose DRM provisioning, OEMCrypto implementation, vendor DRM HAL, or hardware backed DRM state is independently broken.
+This feature cannot repair broken DRM provisioning, OEMCrypto, vendor HAL defects, revoked credentials, or hardware trust state. It cannot guarantee that an application has no other fingerprinting or account level identifiers. It only prevents the genuine `deviceUniqueId` value from being returned through the supported modern AIDL property path when isolation is explicitly enabled.
 
-If protected playback behaves differently, enable DRM Keystore Passthrough, confirm the package is listed, restart the application, and review the log for the caller and policy decision.
+If protected playback behaves differently, keep DRM Keystore Passthrough enabled for the affected package, disable or change its privacy rule, restart the application, and review the CleveresTricky log for DRM privacy registration or fail open messages.
 
 [Return to the project overview](../README.md)
