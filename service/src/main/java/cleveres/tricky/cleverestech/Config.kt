@@ -205,44 +205,51 @@ object Config {
     private fun updateAppConfigs(f: File?) =
         runCatching {
             val newConfigs = PackageTrie<AppSpoofConfig>()
-            f?.useLines { lines ->
-                lines.forEach { line ->
-                    if (line.isNotBlank() && !line.startsWith("#")) {
-                        val trimmed = line.trim()
-                        if (trimmed.isEmpty()) return@forEach
+            if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    "app_config must be a regular file"
+                }
+                require(f.length() in 0..MAX_APP_CONFIG_BYTES) {
+                    "app_config has an invalid size"
+                }
+                var ruleCount = 0
+                f.useLines { lines ->
+                    lines.forEach { line ->
+                        if (line.isNotBlank() && !line.startsWith("#")) {
+                            require(++ruleCount <= MAX_APP_CONFIG_RULES) {
+                                "app_config contains too many rules"
+                            }
+                            val trimmed = line.trim()
+                            if (trimmed.isEmpty()) return@forEach
 
-                        // Parse without a regex so large rule files do not create avoidable temporary objects.
-                        val len = trimmed.length
-                        var idx = 0
-
-                        // parse pkg
-                        var start = idx
-                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                        val pkg = trimmed.substring(start, idx)
-
-                        var template: String? = null
-                        var keybox: String? = null
-
-                        // parse template
-                        while (idx < len && trimmed[idx].isWhitespace()) idx++
-                        if (idx < len) {
-                            start = idx
+                            val len = trimmed.length
+                            var idx = 0
+                            var start = idx
                             while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                            val tStr = trimmed.substring(start, idx)
-                            if (tStr != "null") template = tStr.lowercase()
+                            val pkg = trimmed.substring(start, idx)
 
-                            // parse keybox
+                            var template: String? = null
+                            var keybox: String? = null
+
                             while (idx < len && trimmed[idx].isWhitespace()) idx++
                             if (idx < len) {
                                 start = idx
                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                val kStr = trimmed.substring(start, idx)
-                                if (kStr != "null") keybox = kStr
-                            }
-                        }
+                                val tStr = trimmed.substring(start, idx)
+                                if (tStr != "null") template = tStr.lowercase()
 
-                        if (template != null || keybox != null) {
-                            newConfigs.add(pkg, AppSpoofConfig(template, keybox))
+                                while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                if (idx < len) {
+                                    start = idx
+                                    while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                                    val kStr = trimmed.substring(start, idx)
+                                    if (kStr != "null") keybox = kStr
+                                }
+                            }
+
+                            if (template != null || keybox != null) {
+                                newConfigs.add(pkg, AppSpoofConfig(template, keybox))
+                            }
                         }
                     }
                 }
@@ -254,14 +261,20 @@ object Config {
             Logger.e("failed to update app configs", it)
         }
 
-    fun parsePackages(lines: Sequence<String>): PackageTrie<Boolean> {
+    fun parsePackages(lines: Sequence<String>): PackageTrie<Boolean> =
+        parsePackages(lines, Int.MAX_VALUE)
+
+    private fun parsePackages(
+        lines: Sequence<String>,
+        maxRules: Int,
+    ): PackageTrie<Boolean> {
         val hackPackages = PackageTrie<Boolean>()
+        var ruleCount = 0
         lines.forEach { line ->
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
+            require(++ruleCount <= maxRules) { "target.txt contains too many rules" }
 
-            // Migrate the old trailing-'!' software-generation syntax to the
-            // working certificate-substitution path.
             val packageName = trimmed.removeSuffix("!").trim()
             val valid =
                 packageName.isNotEmpty() &&
@@ -291,7 +304,10 @@ object Config {
                     require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         "target.txt must be a regular file"
                     }
-                    f.useLines { lines -> parsePackages(lines) }
+                    require(f.length() in 0..MAX_TARGET_FILE_BYTES) {
+                        "target.txt has an invalid size"
+                    }
+                    f.useLines { lines -> parsePackages(lines, MAX_TARGET_PACKAGE_RULES) }
                 } else {
                     Logger.d("updateTargetPackages: target file missing or null, using empty package list")
                     parsePackages(emptySequence())
@@ -377,15 +393,20 @@ object Config {
             }
 
             // 2. Directory files (Plain XML)
-            if (Files.isDirectory(keyboxDir.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                val files =
-                    keyboxDir.listFiles { _, name -> name.endsWith(".xml", ignoreCase = true) }
-                        ?.sortedBy { it.name }
-                require(files.orEmpty().size <= MAX_KEYBOX_FILES) { "Too many keybox files" }
-                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files?.size ?: 0} xml files)")
+            if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                val files = ArrayList<File>(MAX_KEYBOX_FILES)
+                Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
+                    for (entry in entries) {
+                        if (!entry.fileName.toString().endsWith(".xml", ignoreCase = true)) continue
+                        require(files.size < MAX_KEYBOX_FILES) { "Too many keybox files" }
+                        files.add(entry.toFile())
+                    }
+                }
+                files.sortBy { it.name }
+                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files.size} xml files)")
                 val currentFiles = HashSet<String>()
 
-                files?.forEach { file ->
+                files.forEach { file ->
                     val filename = file.name
                     currentFiles.add(filename)
                     if (!Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
@@ -1239,10 +1260,36 @@ object Config {
     @OptIn(ExperimentalStdlibApi::class)
     private val hexFormat = HexFormat { upperCase = false }
 
+    private const val MAX_MODULE_HASH_FILE_BYTES = 128
+
     @OptIn(ExperimentalStdlibApi::class)
     private fun updateModuleHash(f: File?) =
         runCatching {
-            moduleHash = f?.readText()?.trim()?.hexToByteArray()
+            moduleHash =
+                f?.let { file ->
+                    val path = file.toPath()
+                    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return@let null
+                    val buffer = ByteArray(MAX_MODULE_HASH_FILE_BYTES + 1)
+                    try {
+                        var total = 0
+                        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+                            while (total < buffer.size) {
+                                val count = input.read(buffer, total, buffer.size - total)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                total += count
+                            }
+                        }
+                        require(total in 1..MAX_MODULE_HASH_FILE_BYTES) { "module_hash exceeds its size limit" }
+                        val value = String(buffer, 0, total, Charsets.US_ASCII).trim()
+                        require(value.length == 64 && value.all { it.digitToIntOrNull(16) != null }) {
+                            "module_hash must contain one SHA-256 digest"
+                        }
+                        value.hexToByteArray()
+                    } finally {
+                        buffer.fill(0)
+                    }
+                }
             CertHack.clearCertificateCache()
             Logger.i("update module hash: ${moduleHash?.toHexString(hexFormat)}")
         }.onFailure {
@@ -1275,6 +1322,10 @@ object Config {
     private const val APPLY_PROFILE_FILE = "apply_profile"
     private const val MAX_DRM_PACKAGES_BYTES = 64L * 1024
     private const val MAX_DRM_PACKAGE_RULES = 256
+    private const val MAX_TARGET_FILE_BYTES = 1024L * 1024
+    private const val MAX_TARGET_PACKAGE_RULES = 2048
+    private const val MAX_APP_CONFIG_BYTES = 1024L * 1024
+    private const val MAX_APP_CONFIG_RULES = 1024
     private var root = File(CONFIG_PATH)
     private val keyboxDir get() = File(root, KEYBOX_DIR)
 
@@ -1498,6 +1549,9 @@ object Config {
 
             val retainedLines = mutableListOf<String>()
             if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                require(spoofFile.length() in 0..MAX_BUILD_VARS_BYTES) {
+                    "spoof_build_vars has an invalid size"
+                }
                 spoofFile.useLines { lines ->
                     lines.forEach { line ->
                         val key = line.substringBefore('=', "").trim()

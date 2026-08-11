@@ -1,8 +1,15 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import org.junit.After;
 import org.junit.Test;
-import java.io.StringReader;
 
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -11,12 +18,16 @@ import cleveres.tricky.cleverestech.TestKeyboxFixtures;
 
 public class CertHackTest {
 
+    @After
+    public void tearDown() {
+        CertHack.readFromXml(null);
+    }
+
     private static final String EC_KEY = TestKeyboxFixtures.INSTANCE.getEcPrivateKey();
     private static final String TEST_CERT = TestKeyboxFixtures.INSTANCE.getCertificate();
 
     @Test
     public void testReadFromXml() {
-        // Setup Logger to print to stdout so we can see what happens
         Logger.setImpl(new Logger.LogImpl() {
             @Override public void d(String tag, String msg) { System.out.println("D/" + tag + ": " + msg); }
             @Override public void e(String tag, String msg) { System.out.println("E/" + tag + ": " + msg); }
@@ -55,5 +66,28 @@ public class CertHackTest {
                 .replace("</Keybox>", invalidKey + "</Keybox>");
 
         assertEquals(0, CertHack.parseKeyboxXml(new StringReader(mixedXml)).size());
+    }
+
+    @Test
+    public void testAttestationIdOverridesRequireOriginalTag() {
+        byte[] serial = "serial".getBytes(StandardCharsets.UTF_8);
+        byte[] imei = "imei".getBytes(StandardCharsets.UTF_8);
+        Map<Integer, byte[]> configured = new HashMap<>();
+        configured.put(713, serial);
+        configured.put(714, imei);
+
+        Map<Integer, byte[]> selected =
+                CertHack.selectPresentAttestationIdOverrides(configured, List.of(714, 716));
+
+        assertEquals(1, selected.size());
+        assertTrue(selected.containsKey(714));
+        assertArrayEquals(imei, selected.get(714));
+    }
+
+    @Test
+    public void testSigningKeyAlgorithmUsesCertificateSigner() {
+        assertEquals("EC", CertHack.signingKeyAlgorithm("SHA256withECDSA"));
+        assertEquals("RSA", CertHack.signingKeyAlgorithm("SHA256withRSA"));
+        assertEquals(null, CertHack.signingKeyAlgorithm("Ed25519"));
     }
 }

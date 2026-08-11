@@ -1,22 +1,3 @@
-// =============================================================================
-// Android Binder ABI Bridge
-//
-// This translation unit contains the private libbinder object interactions and
-// variadic ioctl hook that cannot be expressed through the public NDK Binder C
-// interface. Portable parsing, bounds checks, memory copies, and platform input
-// validation are implemented in Rust.
-//
-// Core Design Principles:
-//   1. Live UAPI Validation: A PING_TRANSACTION confirms that the driver and
-//      packaged architecture-specific Binder header agree at runtime.
-//   2. Rust Native Core: Rust validates layouts, live probes, commands, and
-//      fields before C++ performs the Android ABI write-back.
-//   3. Stable-UAPI Fallback: If the live probe is unavailable during process
-//      startup, compiler-calculated layouts are used on Android 12 to 16.
-//   4. Bounds Checking and Safety: Every buffer access is bounds-checked.
-//      Unrecognized layouts fail closed instead of guessing offsets.
-// =============================================================================
-
 #include "kernel/binder.h"
 #include <android/log.h>
 #include <binder/Binder.h>
@@ -35,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <mutex>
@@ -177,9 +159,6 @@ static_assert(offsetof(RustParsedTransaction, valid) == 72);
 static_assert(sizeof(RustBinderReadSnapshot) == 32);
 static_assert(offsetof(RustBinderReadSnapshot, valid) == 24);
 
-// =============================================================================
-// Section 1: OffsetCache Singleton
-// =============================================================================
 OffsetCache &OffsetCache::instance() {
   static OffsetCache cache;
   return cache;
@@ -227,22 +206,15 @@ void populateCompilerLayout(OffsetCache &cache) {
   cache.bwr_total_size = sizeof(binder_write_read);
   cache.valid = true;
 }
-} // namespace
+}
 
 bool OffsetCache::validateOffsets() const {
   const RustOffsetCacheView view = rustOffsetView(*this);
   return rust_validate_offset_cache(&view);
 }
 
-// =============================================================================
-// Section 3: Runtime Binder UAPI Validation
-// =============================================================================
-
 bool RuntimeLayoutValidator::sendPingProbe(uint8_t *out_buf, size_t buf_size,
                                            size_t &out_len) {
-  // Open binder device and send a PING_TRANSACTION to servicemanager (handle 0)
-  // to capture a real BR_REPLY in the read buffer. This gives us a live sample
-  // of binder_transaction_data as the kernel sees it.
   int fd = open("/dev/binder", O_RDWR | O_CLOEXEC);
   if (fd < 0) {
     fd = open("/dev/vndbinder", O_RDWR | O_CLOEXEC);
@@ -252,8 +224,6 @@ bool RuntimeLayoutValidator::sendPingProbe(uint8_t *out_buf, size_t buf_size,
     return false;
   }
 
-  // Prepare a minimal BC_TRANSACTION for PING_TRANSACTION (code 1599098439)
-  // targeting handle 0 (servicemanager)
   struct {
     uint32_t cmd;
     binder_transaction_data txn;
@@ -262,7 +232,7 @@ bool RuntimeLayoutValidator::sendPingProbe(uint8_t *out_buf, size_t buf_size,
   write_data.cmd = BC_TRANSACTION;
   memset(&write_data.txn, 0, sizeof(write_data.txn));
   write_data.txn.target.handle = 0;
-  write_data.txn.code = 1599098439; // PING_TRANSACTION
+  write_data.txn.code = 1599098439;
   write_data.txn.flags = 0;
 
   binder_write_read bwr{};
@@ -271,8 +241,6 @@ bool RuntimeLayoutValidator::sendPingProbe(uint8_t *out_buf, size_t buf_size,
   bwr.read_size = buf_size;
   bwr.read_buffer = reinterpret_cast<binder_uintptr_t>(out_buf);
 
-  // Use raw syscall to bypass any potentially installed ioctl hook.
-  // This probe runs during initialization, before or after hooks may be active.
   int ret = static_cast<int>(syscall(SYS_ioctl, fd, BINDER_WRITE_READ, &bwr));
   close(fd);
 
@@ -324,10 +292,6 @@ bool RuntimeLayoutValidator::validateLayout(OffsetCache &cache) {
   return cache.valid;
 }
 
-// =============================================================================
-// Section 5: Bounds-Checked Rust Stream Parser
-// =============================================================================
-
 bool BinderStreamParser::parse(uintptr_t buffer, size_t consumed,
                                size_t buffer_size, const OffsetCache &cache,
                                ParsedTransaction *out_txns, size_t max_txns,
@@ -361,10 +325,6 @@ bool BinderStreamParser::writeBack(uintptr_t buffer_ptr, size_t consumed,
   return rust_write_binder_transaction(reinterpret_cast<uint8_t *>(buffer_ptr),
                                        consumed, &txn, &rust_cache);
 }
-
-// =============================================================================
-// Section 6: AdaptiveBinderInterceptor Orchestrator
-// =============================================================================
 
 int AdaptiveBinderInterceptor::detectApiLevel() {
   char sdk_str[PROP_VALUE_MAX] = {};
@@ -413,7 +373,6 @@ bool AdaptiveBinderInterceptor::initFallback(OffsetCache &cache,
 bool AdaptiveBinderInterceptor::initialize() {
   OffsetCache &cache = OffsetCache::instance();
 
-  // Detect system info
   const int android_api_level = detectApiLevel();
   if (android_api_level < 31 || android_api_level > 36) {
     LOGE("AdaptiveBinderInterceptor: unsupported Android API %d",
@@ -431,13 +390,11 @@ bool AdaptiveBinderInterceptor::initialize() {
   LOGI("AdaptiveBinderInterceptor: API=%d kernel=%s", android_api_level,
        kernel_version.c_str());
 
-  // Prefer live validation of the stable userspace ABI.
   if (RuntimeLayoutValidator::validateLayout(cache)) {
     LOGI("Strategy: live Binder UAPI validation succeeded");
     return true;
   }
 
-  // The compiler-calculated fallback is restricted to packaged API/ABIs.
   if (initFallback(cache, android_api_level)) {
     LOGI("Strategy: compiler Binder layout fallback activated");
     return true;
@@ -448,17 +405,8 @@ bool AdaptiveBinderInterceptor::initialize() {
   return false;
 }
 
-// Global adaptive interceptor instance
 static AdaptiveBinderInterceptor g_adaptive;
-
-// Private transaction used only to obtain the in-process control Binder. The
-// driver-supplied sender EUID is checked before this code is rewritten.
 static constexpr uint32_t kControlEndpointTransactionCode = 0xdeadbeefU;
-
-// =============================================================================
-// Section 8: Binder Interceptor Core
-// =============================================================================
-
 static sp<BinderInterceptor> gBinderInterceptor = nullptr;
 static std::atomic_bool gHookPaused{false};
 static std::atomic_bool gHooksInitialized{false};
@@ -542,12 +490,8 @@ class BinderStub : public BBinder {
 };
 
 static sp<BinderStub> gBinderStub = nullptr;
-
-// =============================================================================
-// Section 10: Hooked ioctl and Adaptive Stream Parsing
-// =============================================================================
-
 static int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
+
 int new_ioctl(int fd, unsigned long request, ...) {
   va_list list;
   va_start(list, request);
@@ -559,13 +503,10 @@ int new_ioctl(int fd, unsigned long request, ...) {
           : static_cast<int>(syscall(SYS_ioctl, fd, request, arg));
 
   if (result >= 0 && request == BINDER_WRITE_READ) {
-    // Runtime-off fast path. The original ioctl has already completed, so a
-    // parked hook adds only one atomic read and never touches Binder buffers.
     if (gHookPaused.load(std::memory_order_acquire)) {
       return result;
     }
 
-    // Safety: ensure arg is not null before any access
     if (arg == nullptr) {
       return result;
     }
@@ -576,12 +517,9 @@ int new_ioctl(int fd, unsigned long request, ...) {
 
     const OffsetCache &cache = OffsetCache::instance();
     if (!cache.valid) {
-      // The adaptive system is not initialized, so parsing is disabled.
       return result;
     }
 
-    // Safe accessor: read binder_write_read fields via dynamic offsets
-    // instead of raw C-style struct cast
     const RustOffsetCacheView rust_cache = rustOffsetView(cache);
     RustBinderReadSnapshot bwr{};
     if (!rust_read_binder_write_read(reinterpret_cast<const uint8_t *>(arg),
@@ -600,7 +538,6 @@ int new_ioctl(int fd, unsigned long request, ...) {
          (unsigned long long)bwr.read_size,
          (unsigned long long)bwr.read_consumed);
 
-    // Validate consumed is within bounds
     constexpr binder_size_t kMaxBinderReadBytes = 8U * 1024U * 1024U;
     if (bwr.read_consumed <= sizeof(int32_t) ||
         bwr.read_consumed > bwr.read_size ||
@@ -609,7 +546,6 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
 
-    // Use the bounded Rust stream parser to extract transactions.
     static constexpr size_t kMaxTransactions = 16;
     BinderStreamParser::ParsedTransaction txns[kMaxTransactions];
     size_t txn_count = 0;
@@ -620,7 +556,6 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
 
-    // Process each parsed transaction
     for (size_t i = 0; i < txn_count; ++i) {
       auto &txn = txns[i];
       if (!txn.valid)
@@ -662,7 +597,6 @@ int new_ioctl(int fd, unsigned long request, ...) {
         txn.cookie = reinterpret_cast<uintptr_t>(gBinderStub.get());
         txn.code = kControlEndpointTransactionCode;
 
-        // Write the modified transaction back using bounds-checked writer
         if (BinderStreamParser::writeBack(bwr.read_buffer, bwr.read_consumed,
                                           txn, cache)) {
           continue;
@@ -675,10 +609,6 @@ int new_ioctl(int fd, unsigned long request, ...) {
   }
   return result;
 }
-
-// =============================================================================
-// Section 11: BinderInterceptor Methods
-// =============================================================================
 
 bool BinderInterceptor::shouldIntercept(const wp<BBinder> &target,
                                         uint32_t code) {
@@ -980,11 +910,6 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   return true;
 }
 
-// =============================================================================
-// =============================================================================
-// Section 13: Hook Registration & Entry Point
-// =============================================================================
-
 bool initialize_hooks() {
   const std::lock_guard<std::mutex> initialization_guard{
       gHookInitializationMutex};
@@ -1031,8 +956,7 @@ bool initialize_hooks() {
     return false;
   }
   if (old_ioctl == nullptr) {
-    LOGE("libbinder ioctl hook has no original function");
-    return false;
+    LOGW("libbinder ioctl hook has no original function; using raw syscall fallback");
   }
   gHooksInitialized.store(true, std::memory_order_release);
   gHookPaused.store(false, std::memory_order_release);

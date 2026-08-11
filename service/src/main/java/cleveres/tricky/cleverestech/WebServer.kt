@@ -29,6 +29,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
+import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -264,7 +265,9 @@ class WebServer(
                 Files.isRegularFile(tokenFile.toPath(), LinkOption.NOFOLLOW_LINKS) &&
                 tokenFile.length() in 32..256
             ) {
-                tokenFile.readText().trim()
+                Files.newInputStream(tokenFile.toPath(), LinkOption.NOFOLLOW_LINKS).use {
+                    readTextLimited(it, 256)
+                }.trim()
             } else {
                 ""
             }
@@ -327,7 +330,9 @@ class WebServer(
                     Logger.e("Refusing oversized or non-regular config file: $filename")
                     return ""
                 }
-                f.readText()
+                Files.newInputStream(f.toPath(), LinkOption.NOFOLLOW_LINKS).use {
+                    readTextLimited(it, MAX_CONFIG_FILE_SIZE.toInt())
+                }
             } catch (e: Exception) {
                 ""
             }
@@ -513,16 +518,10 @@ class WebServer(
         synchronized(fileLock) {
             val keyboxDir = File(configDir, "keyboxes")
             if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                return keyboxDir.listFiles { file ->
-                    (file.name.endsWith(".xml", ignoreCase = true) || file.name.endsWith(".cbox", ignoreCase = true)) &&
-                        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
-                }
-                    ?.map { it.name }
-                    ?.sorted()
-                    ?: emptyList()
-            } else {
-                return emptyList()
+                return listBoundedKeyboxFiles(keyboxDir, MAX_LISTED_KEYBOX_FILES)
+                    .map { it.name }
             }
+            return emptyList()
         }
     }
 
@@ -577,10 +576,11 @@ class WebServer(
         return File("/data/adb/modules/cleverestricky")
     }
 
-    private fun readTextLimited(
+    private fun readBytesLimited(
         input: InputStream,
         maxBytes: Int,
-    ): String {
+    ): ByteArray {
+        require(maxBytes >= 0) { "maxBytes must not be negative" }
         val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0
@@ -588,11 +588,62 @@ class WebServer(
             val count = input.read(buffer)
             if (count < 0) break
             if (count == 0) continue
-            if (count > maxBytes - total) throw IOException("Command output exceeds limit")
+            if (count > maxBytes - total) throw IOException("Input exceeds limit")
             output.write(buffer, 0, count)
             total += count
         }
-        return output.toString(Charsets.UTF_8.name())
+        return output.toByteArray()
+    }
+
+    private fun readTextLimited(
+        input: InputStream,
+        maxBytes: Int,
+    ): String {
+        val bytes = readBytesLimited(input, maxBytes)
+        return try {
+            String(bytes, Charsets.UTF_8)
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    private fun readFileBytesLimited(
+        file: File,
+        maxBytes: Int,
+    ): ByteArray {
+        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            throw IOException("Refusing non-regular file")
+        }
+        return Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).use {
+            readBytesLimited(it, maxBytes)
+        }
+    }
+
+    private fun readCommandOutput(command: Array<String>): String {
+        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val reader =
+            FutureTask<String> {
+                process.inputStream.use { readTextLimited(it, MAX_LOG_BYTES) }
+            }
+        Thread(reader, "cleverestricky-log-reader").apply {
+            isDaemon = true
+            start()
+        }
+        return try {
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                process.destroy()
+                if (!process.waitFor(500, TimeUnit.MILLISECONDS)) {
+                    process.destroyForcibly()
+                }
+            }
+            runCatching { reader.get(2, TimeUnit.SECONDS) }.getOrDefault("")
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
+            if (!reader.isDone) reader.cancel(true)
+        }
     }
 
     private fun isValidSetting(name: String): Boolean {
@@ -734,7 +785,10 @@ class WebServer(
             if (!Files.isRegularFile(statFile.toPath(), LinkOption.NOFOLLOW_LINKS) || statFile.length() > 16 * 1024) {
                 return@runCatching null
             }
-            val stat = statFile.readText()
+            val stat =
+                Files.newInputStream(statFile.toPath(), LinkOption.NOFOLLOW_LINKS).use {
+                    readTextLimited(it, 16 * 1024)
+                }
             val commandEnd = stat.lastIndexOf(')')
             if (commandEnd < 0) return@runCatching null
             stat.substring(commandEnd + 1)
@@ -1319,7 +1373,7 @@ class WebServer(
                     tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
                 }
-                val bytes = tmpFile.readBytes()
+                val bytes = readFileBytesLimited(tmpFile, MAX_UPLOAD_SIZE.toInt())
                 try {
                     synchronized(fileLock) {
                         val keyboxDir = File(configDir, "keyboxes")
@@ -1542,16 +1596,7 @@ class WebServer(
                         "system" -> arrayOf("logcat", "-d", "-t", "1000")
                         else -> arrayOf("logcat", "-d", "-t", "2000", "-s", "cleverestricky:V")
                     }
-                val p = Runtime.getRuntime().exec(cmd)
-                val logs =
-                    try {
-                        p.inputStream.use { readTextLimited(it, MAX_LOG_BYTES) }
-                    } catch (e: Exception) {
-                        ""
-                    } finally {
-                        p.errorStream.close()
-                    }
-                if (!p.waitFor(10, TimeUnit.SECONDS)) p.destroyForcibly()
+                val logs = readCommandOutput(cmd)
                 secureResponse(Response.Status.OK, "text/plain", logs.ifBlank { "No logs found." })
             } catch (e: Exception) {
                 Logger.e("Failed to fetch logs", e)
@@ -1643,7 +1688,7 @@ class WebServer(
                     ) {
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid backup size")
                     }
-                    val encryptedBytes = tmpFile.readBytes()
+                    val encryptedBytes = readFileBytesLimited(tmpFile, MAX_UPLOAD_SIZE.toInt())
                     uploadedBytes = encryptedBytes
                     if (!BackupEncryptor.isEncryptedBackup(encryptedBytes)) {
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Only encrypted .ctsb backups are accepted")
@@ -3970,6 +4015,7 @@ class WebServer(
         private const val CPU_SAMPLE_MIN_INTERVAL_NANOS = 250_000_000L
         private const val MAX_BACKUP_ENTRIES = 128
         private const val MAX_BACKUP_KEYBOXES = 64
+        private const val MAX_LISTED_KEYBOX_FILES = 128
         private const val MAX_BACKUP_CONFIG_ENTRY_BYTES = 1024 * 1024
         private const val MAX_BACKUP_KEYBOX_ENTRY_BYTES = 10 * 1024 * 1024
         private const val MAX_BACKUP_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
@@ -4365,6 +4411,29 @@ class WebServer(
             return false
         }
 
+        private fun listBoundedKeyboxFiles(
+            directory: File,
+            maxFiles: Int,
+            extraFilter: (File) -> Boolean = { true },
+        ): List<File> {
+            val files = ArrayList<File>(maxFiles)
+            Files.newDirectoryStream(directory.toPath()).use { entries ->
+                for (entry in entries) {
+                    val file = entry.toFile()
+                    if (!isValidKeyboxFilename(file.name) ||
+                        !Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS) ||
+                        !extraFilter(file)
+                    ) {
+                        continue
+                    }
+                    if (files.size >= maxFiles) throw IOException("Too many keybox files")
+                    files.add(file)
+                }
+            }
+            files.sortBy { it.name }
+            return files
+        }
+
         fun createBackupZip(configDir: File): ByteArray {
             val bos = ByteArrayOutputStream()
             ZipOutputStream(bos).use { zos ->
@@ -4381,24 +4450,16 @@ class WebServer(
                         throw IOException("Backup exceeds uncompressed size limit")
                     }
                     zos.putNextEntry(ZipEntry(name))
-                    file.inputStream().use { it.copyTo(zos) }
+                    Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
                     zos.closeEntry()
                 }
 
                 val keyboxDir = File(configDir, "keyboxes")
                 if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     val keyboxes =
-                        keyboxDir.listFiles { file ->
-                            (
-                                file.name.endsWith(".xml", ignoreCase = true) ||
-                                    file.name.endsWith(".cbox", ignoreCase = true)
-                            ) &&
-                                isValidKeyboxBackupPath("keyboxes/${file.name}") &&
-                                Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
-                        }?.sortedBy { it.name }.orEmpty()
-                    if (keyboxes.size > MAX_BACKUP_KEYBOXES) {
-                        throw IOException("Backup contains too many keyboxes")
-                    }
+                        listBoundedKeyboxFiles(keyboxDir, MAX_BACKUP_KEYBOXES) { file ->
+                            isValidKeyboxBackupPath("keyboxes/${file.name}")
+                        }
                     keyboxes.forEach { keybox ->
                         val size = keybox.length()
                         if (size !in 1..MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong()) {
@@ -4409,7 +4470,7 @@ class WebServer(
                             throw IOException("Backup exceeds uncompressed size limit")
                         }
                         zos.putNextEntry(ZipEntry("keyboxes/${keybox.name}"))
-                        keybox.inputStream().use { it.copyTo(zos) }
+                        Files.newInputStream(keybox.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
                         zos.closeEntry()
                     }
                 }

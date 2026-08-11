@@ -1,39 +1,53 @@
 package cleveres.tricky.cleverestech.keystore;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
 import cleveres.tricky.cleverestech.Config;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.Security;
-import java.security.cert.X509Certificate;
-import java.security.cert.Certificate;
-import org.bouncycastle.asn1.*;
-import org.bouncycastle.asn1.x509.*;
+
+import org.bouncycastle.asn1.ASN1Boolean;
+import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1Enumerated;
+import org.bouncycastle.asn1.ASN1Integer;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1OctetString;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.ASN1TaggedObject;
+import org.bouncycastle.asn1.DEROctetString;
+import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.DERTaggedObject;
+import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.asn1.x500.X500Name;
-import java.math.BigInteger;
-import java.util.Date;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
 import org.junit.Assert;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Security;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @RunWith(JUnit4.class)
 public class CertHackOrderTest {
-
     static {
-        Security.addProvider(new BouncyCastleProvider());
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(new BouncyCastleProvider());
+        }
     }
 
     private void setAttestationId(String tag, byte[] value) throws Exception {
@@ -46,7 +60,6 @@ public class CertHackOrderTest {
         field.set(Config.INSTANCE, map);
     }
 
-    // Reset state to avoid pollution
     private void resetConfig() throws Exception {
         setAttestationId("BRAND", null);
         Field moduleHash = Config.class.getDeclaredField("moduleHash");
@@ -54,40 +67,40 @@ public class CertHackOrderTest {
         moduleHash.set(Config.INSTANCE, null);
     }
 
-    private X509Certificate generateCertWith718(KeyPair kp) throws Exception {
+    private X509Certificate generateCertWithBrandAndVendorPatch(KeyPair kp) throws Exception {
         X500Name issuer = new X500Name("CN=Test");
         BigInteger serial = BigInteger.ONE;
         Date notBefore = new Date();
         Date notAfter = new Date(System.currentTimeMillis() + 100000);
 
         X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
-            issuer, serial, notBefore, notAfter, issuer, kp.getPublic());
+                issuer, serial, notBefore, notAfter, issuer, kp.getPublic());
 
         ASN1EncodableVector keyDesc = new ASN1EncodableVector();
-        keyDesc.add(new ASN1Integer(100)); // version
-        keyDesc.add(new ASN1Enumerated(1)); // security level
         keyDesc.add(new ASN1Integer(100));
         keyDesc.add(new ASN1Enumerated(1));
-        keyDesc.add(new DEROctetString(new byte[0])); // challenge
-        keyDesc.add(new DEROctetString(new byte[0])); // uniqueId
-        keyDesc.add(new DERSequence()); // softwareEnforced
+        keyDesc.add(new ASN1Integer(100));
+        keyDesc.add(new ASN1Enumerated(1));
+        keyDesc.add(new DEROctetString(new byte[0]));
+        keyDesc.add(new DEROctetString(new byte[0]));
+        keyDesc.add(new DERSequence());
 
         ASN1EncodableVector teeEnforced = new ASN1EncodableVector();
-        // Add RootOfTrust (704)
         ASN1EncodableVector rootOfTrust = new ASN1EncodableVector();
-        rootOfTrust.add(new DEROctetString(new byte[32])); // key
+        rootOfTrust.add(new DEROctetString(new byte[32]));
         rootOfTrust.add(ASN1Boolean.TRUE);
         rootOfTrust.add(new ASN1Enumerated(0));
-        rootOfTrust.add(new DEROctetString(new byte[32])); // hash
+        rootOfTrust.add(new DEROctetString(new byte[32]));
         teeEnforced.add(new DERTaggedObject(true, 704, new DERSequence(rootOfTrust)));
-
-        // Add Vendor Patch Level (718)
+        teeEnforced.add(new DERTaggedObject(
+                true,
+                710,
+                new DEROctetString("OriginalBrand".getBytes(StandardCharsets.UTF_8))));
         teeEnforced.add(new DERTaggedObject(true, 718, new ASN1Integer(20240101)));
-
         keyDesc.add(new DERSequence(teeEnforced));
 
-        ASN1ObjectIdentifier OID = new ASN1ObjectIdentifier("1.3.6.1.4.1.11129.2.1.17");
-        builder.addExtension(OID, false, new DERSequence(keyDesc));
+        ASN1ObjectIdentifier oid = new ASN1ObjectIdentifier("1.3.6.1.4.1.11129.2.1.17");
+        builder.addExtension(oid, false, new DERSequence(keyDesc));
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA").build(kp.getPrivate());
         return new JcaX509CertificateConverter().getCertificate(builder.build(signer));
@@ -96,25 +109,18 @@ public class CertHackOrderTest {
     @Test
     public void testAttestationIdOrdering() throws Exception {
         resetConfig();
-        // Setup: We override BRAND (710). Original cert has VendorPatchLevel (718).
-        // Result should be: [ ..., 710, ..., 718 ]
-        // Buggy Result: [ ..., 718, 710 ]
-
-        setAttestationId("BRAND", "Google".getBytes());
+        byte[] expectedBrand = "Google".getBytes(StandardCharsets.UTF_8);
+        setAttestationId("BRAND", expectedBrand);
 
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
         kpg.initialize(2048);
         KeyPair kp = kpg.generateKeyPair();
-
-        X509Certificate cert = generateCertWith718(kp);
-
-        // Inject keybox
+        X509Certificate cert = generateCertWithBrandAndVendorPatch(kp);
         CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert), "test.xml");
 
-        // Create new state via reflection
-        Map<String, List<CertHack.KeyBox>> newKeyboxes = new java.util.HashMap<>();
+        Map<String, List<CertHack.KeyBox>> newKeyboxes = new HashMap<>();
         newKeyboxes.put("RSA", Collections.singletonList(keyBox));
-        Map<String, List<CertHack.KeyBox>> newKeyboxFiles = new java.util.HashMap<>();
+        Map<String, List<CertHack.KeyBox>> newKeyboxFiles = new HashMap<>();
 
         Class<?> stateClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack$State");
         Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class, Map.class);
@@ -123,36 +129,47 @@ public class CertHackOrderTest {
 
         Field stateField = CertHack.class.getDeclaredField("state");
         stateField.setAccessible(true);
+        Object previousState = stateField.get(null);
         stateField.set(null, newState);
 
-        Certificate[] hackedChain = CertHack.hackCertificateChain(new Certificate[] { cert }, 0);
+        try {
+            Certificate[] hackedChain = CertHack.hackCertificateChain(new Certificate[]{cert}, 0);
+            X509Certificate hackedCert = (X509Certificate) hackedChain[0];
+            byte[] extBytes = hackedCert.getExtensionValue("1.3.6.1.4.1.11129.2.1.17");
+            ASN1Primitive extStruct = ASN1Primitive.fromByteArray(
+                    ASN1OctetString.getInstance(extBytes).getOctets());
+            ASN1Sequence seq = ASN1Sequence.getInstance(extStruct);
+            ASN1Sequence teeEnforced = (ASN1Sequence) seq.getObjectAt(7);
 
-        X509Certificate hackedCert = (X509Certificate) hackedChain[0];
-        byte[] extBytes = hackedCert.getExtensionValue("1.3.6.1.4.1.11129.2.1.17");
-        ASN1Primitive extStruct = ASN1Primitive.fromByteArray(ASN1OctetString.getInstance(extBytes).getOctets());
-        ASN1Sequence seq = ASN1Sequence.getInstance(extStruct);
-        ASN1Sequence teeEnforced = (ASN1Sequence) seq.getObjectAt(7);
-
-        int lastTag = -1;
-        boolean found710 = false;
-        boolean found718 = false;
-
-        for(ASN1Encodable e : teeEnforced) {
-            ASN1TaggedObject t = (ASN1TaggedObject) e;
-            int tag = t.getTagNo();
-            // Ignore other tags for this check
-            if (tag == 710) found710 = true;
-            if (tag == 718) found718 = true;
-
-            if (tag == 710 || tag == 718) {
-                System.out.println("Found tag: " + tag);
-                if (lastTag != -1) {
-                    Assert.assertTrue("Tags out of order: " + lastTag + " came before " + tag, lastTag < tag);
+            int lastRelevantTag = -1;
+            boolean foundBrand = false;
+            boolean foundVendorPatch = false;
+            for (ASN1Encodable encodable : teeEnforced) {
+                ASN1TaggedObject taggedObject = (ASN1TaggedObject) encodable;
+                int tag = taggedObject.getTagNo();
+                if (tag == 710) {
+                    foundBrand = true;
+                    byte[] actualBrand = ASN1OctetString.getInstance(
+                            taggedObject.getBaseObject()).getOctets();
+                    Assert.assertArrayEquals(expectedBrand, actualBrand);
                 }
-                lastTag = tag;
+                if (tag == 718) {
+                    foundVendorPatch = true;
+                }
+                if (tag == 710 || tag == 718) {
+                    if (lastRelevantTag != -1) {
+                        Assert.assertTrue(
+                                "Tags out of order: " + lastRelevantTag + " came before " + tag,
+                                lastRelevantTag < tag);
+                    }
+                    lastRelevantTag = tag;
+                }
             }
+            Assert.assertTrue("BRAND (710) missing", foundBrand);
+            Assert.assertTrue("VendorPatchLevel (718) missing", foundVendorPatch);
+        } finally {
+            stateField.set(null, previousState);
+            resetConfig();
         }
-        Assert.assertTrue("BRAND (710) missing", found710);
-        Assert.assertTrue("VendorPatchLevel (718) missing", found718);
     }
 }

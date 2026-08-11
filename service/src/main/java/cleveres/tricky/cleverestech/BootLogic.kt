@@ -105,11 +105,16 @@ object BootLogic {
             ).any { path ->
                 val directory = File(path)
                 if (!isDirectory(directory)) return@any false
-                directory.listFiles().orEmpty().any { candidate ->
-                    isDirectory(candidate) &&
-                        !isRegularFile(File(candidate, "disable")) &&
-                        isBuildIdentityProviderModuleId(candidate.name)
-                }
+                runCatching {
+                    Files.newDirectoryStream(directory.toPath()).use { entries ->
+                        entries.any { entry ->
+                            val candidate = entry.toFile()
+                            isDirectory(candidate) &&
+                                !isRegularFile(File(candidate, "disable")) &&
+                                isBuildIdentityProviderModuleId(candidate.name)
+                        }
+                    }
+                }.getOrDefault(false)
             }
         if (conflicts) {
             Logger.i("Another build-identity provider was detected; template properties remain untouched in auto mode")

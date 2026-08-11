@@ -2,20 +2,36 @@
 
 PORT_FILE="/data/adb/cleverestricky/web_port"
 HOST="127.0.0.1"
-MAX_WAIT_SECONDS=10
+MAX_WAIT_SECONDS=15
 
-if [ ! -f "$PORT_FILE" ]; then
-  echo "! Web server port file not found. Is the module running?"
+if [ ! -f "$PORT_FILE" ] || [ -L "$PORT_FILE" ]; then
+  echo "! Web server port file not found or unsafe. Is the module running?"
+  exit 1
+fi
+
+PORT_FILE_SIZE=$(wc -c < "$PORT_FILE" 2>/dev/null) || {
+  echo "! Failed to read WebUI endpoint metadata."
+  exit 1
+}
+if [ "$PORT_FILE_SIZE" -lt 1 ] || [ "$PORT_FILE_SIZE" -gt 256 ]; then
+  echo "! Invalid WebUI endpoint metadata size."
   exit 1
 fi
 
 IFS= read -r CONTENT < "$PORT_FILE"
-PORT=${CONTENT%|*}
+case "$CONTENT" in
+  *'|'*) ;;
+  *)
+    echo "! Invalid port file content."
+    exit 1
+    ;;
+esac
+PORT=${CONTENT%%|*}
 TOKEN=${CONTENT#*|}
 
 if [ -z "$PORT" ] || [ -z "$TOKEN" ]; then
-    echo "! Invalid port file content."
-    exit 1
+  echo "! Invalid port file content."
+  exit 1
 fi
 
 case "$PORT" in
