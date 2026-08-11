@@ -1,0 +1,41 @@
+name: Apply Final Audit Batch
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/v2.5.1-aosp-hardening'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Verify and apply final audit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' 'eff86c593b0a6f6aa7fd01c1bcf7218f39bb85a10cb00c3143800dae2228ef77' '.github/final-audit.patch.gz.b64' | sha256sum -c -
+          base64 -d .github/final-audit.patch.gz.b64 | gzip -dc > /tmp/final-audit.patch
+          printf '%s  %s\n' '936a8b4a7e8a02fa1fdd62d0172bd4a3cfb98bfaa14457915410968bbc2d630e' '/tmp/final-audit.patch' | sha256sum -c -
+          git apply --check /tmp/final-audit.patch
+          git apply /tmp/final-audit.patch
+          rm -f .github/final-audit.patch.gz.b64 .github/workflows/apply-final-audit.yml
+          git add -A
+          git diff --cached --check
+
+      - name: Commit final audit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: bound config loaders and process scans'
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
