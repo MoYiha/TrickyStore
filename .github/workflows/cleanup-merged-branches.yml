@@ -1,0 +1,56 @@
+name: Cleanup merged branches
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/cleanup-merged-branches.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged source branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          deleted=0
+          skipped=0
+          failed=0
+
+          while IFS= read -r branch; do
+            [ -z "$branch" ] && continue
+            [ "$branch" = "$DEFAULT_BRANCH" ] && continue
+
+            encoded_branch="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")"
+
+            if ! gh api "repos/${REPOSITORY}/git/ref/heads/${encoded_branch}" >/dev/null 2>&1; then
+              skipped=$((skipped + 1))
+              continue
+            fi
+
+            echo "Deleting merged branch: $branch"
+            if gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${encoded_branch}"; then
+              deleted=$((deleted + 1))
+            else
+              echo "Failed to delete branch: $branch" >&2
+              failed=$((failed + 1))
+            fi
+          done < <(
+            gh api --paginate "repos/${REPOSITORY}/pulls?state=closed&base=${DEFAULT_BRANCH}&per_page=100" \
+              --jq '.[] | select(.merged_at != null and .head.repo.full_name == "'"${REPOSITORY}"'") | .head.ref' \
+              | sort -u
+          )
+
+          echo "Cleanup complete: deleted=${deleted}, already_absent=${skipped}, failed=${failed}"
+          test "$failed" -eq 0
