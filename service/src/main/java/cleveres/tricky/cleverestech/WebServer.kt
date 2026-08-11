@@ -832,9 +832,23 @@ class WebServer(
                 val warningHtml =
                     """
                     <!DOCTYPE html>
-                    <html>
-                    <head><title>Tamper Warning</title></head>
-                    <body style="font-family: sans-serif; padding: 20px; background: #fff3f3; color: #d00;">
+                    <html lang="en">
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+                        <title>Tamper Warning</title>
+                        <style>
+                            :root { --bg: #fff3f3; --text: #d00; --link: #b00; }
+                            @media (prefers-color-scheme: dark) {
+                                :root { --bg: #1a0505; --text: #ff6b6b; --link: #ff9999; }
+                            }
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+                            h1 { font-size: 1.5em; margin-bottom: 15px; }
+                            p { font-size: 1em; line-height: 1.5; max-width: 600px; }
+                            a { color: var(--link); word-break: break-all; }
+                        </style>
+                    </head>
+                    <body>
                         <h1>Module Modified / Tampering Detected</h1>
                         <p>This module has been modified and is therefore dangerous. Please use the official version from GitHub:</p>
                         <p><a href="https://github.com/tryigit/CleveresTricky/">https://github.com/tryigit/CleveresTricky/</a></p>
