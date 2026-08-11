@@ -62,6 +62,7 @@ fun main(args: Array<String>) {
 
         var previousIdentityEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
+        var previousDrmEngineState: Boolean? = null
         var telephonyStopPending = false
         var drmStopPending = false
         while (true) {
@@ -139,7 +140,7 @@ fun main(args: Array<String>) {
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
-            if (!identityEngineEnabled && (previousIdentityEngineState == false || drmStopPending)) {
+            if (!identityEngineEnabled && (previousDrmEngineState != false || drmStopPending)) {
                 val wasPending = drmStopPending
                 drmStopPending = !DrmInterceptor.stopDrmInterceptor()
                 if (drmStopPending && !wasPending) {
@@ -149,6 +150,7 @@ fun main(args: Array<String>) {
             } else if (identityEngineEnabled) {
                 drmStopPending = false
             }
+            previousDrmEngineState = if (drmStopPending) null else identityEngineEnabled
 
             if (!ksSuccess) Logger.d("Core Keystore interceptor is not ready; retry scheduled")
             if (!telSuccess) Logger.d("Telephony interceptor not ready yet")
