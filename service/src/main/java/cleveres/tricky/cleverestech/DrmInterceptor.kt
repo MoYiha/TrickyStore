@@ -6,7 +6,6 @@ import android.os.ServiceManager
 import android.os.SystemClock
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
-import java.lang.reflect.Array as ReflectArray
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -44,6 +43,8 @@ object DrmInterceptor {
     private const val INJECTION_RETRY_INTERVAL_MS = 15_000L
     private const val RECONCILE_INTERVAL_MS = 30_000L
     private const val INJECT_TIMEOUT_SECONDS = 30L
+    private const val PID_LOOKUP_TIMEOUT_SECONDS = 2L
+    private const val MAX_PID_OUTPUT_BYTES = 32
     private const val MAX_FACTORY_SERVICES = 16
     private const val MAX_PLUGIN_BINDERS = 256
 
@@ -82,9 +83,9 @@ object DrmInterceptor {
     }
 
     /**
-     * Reconciles all currently declared/running stable-AIDL DRM factories.
-     * A missing factory is not an error: devices may expose only a legacy HIDL
-     * DRM implementation. The controller periodically rescans for lazy HALs.
+     * Reconciles currently running stable-AIDL DRM factories. A missing factory
+     * is not an error: devices may expose only a legacy HIDL implementation, and
+     * a lazy AIDL HAL is discovered on the next scan after Android starts it.
      */
     @Synchronized
     fun tryRunDrmInterceptor(): Boolean {
@@ -97,19 +98,17 @@ object DrmInterceptor {
             return true
         }
 
-        val initialPids = getServicePids(serviceNames)
         var needsFastRetry = false
         for (name in serviceNames) {
             val existing = factories[name]
             if (existing != null && existing.binder.isBinderAlive) continue
 
-            // getService also gives servicemanager a chance to start a lazy
-            // declared HAL before the first application opens MediaDrm.
             val service = ServiceManager.checkService(name) ?: ServiceManager.getService(name) ?: continue
             var control = BinderInterceptor.getBinderControlEndpoint(service)
-            val pid = initialPids[name] ?: getServicePids(listOf(name))[name]
+            var pid = 0
             if (control == null) {
-                if (pid == null || pid <= 0) {
+                pid = findServicePid(name) ?: 0
+                if (pid <= 0) {
                     Logger.d("DRM privacy: PID unavailable for $name; will rescan")
                     continue
                 }
@@ -153,7 +152,7 @@ object DrmInterceptor {
                 FactoryRegistration(
                     name = name,
                     binder = service,
-                    pid = pid ?: 0,
+                    pid = pid,
                     control = resolvedControl,
                     interceptor = interceptor,
                     deathRecipient = deathRecipient,
@@ -323,27 +322,15 @@ object DrmInterceptor {
         }
     }
 
-    private fun discoverFactoryServices(): List<String> {
-        val names = LinkedHashSet<String>()
-
-        runCatching {
-            val method = ServiceManager::class.java.getDeclaredMethod("getDeclaredInstances", String::class.java)
-            method.isAccessible = true
-            val instances = method.invoke(null, DRM_FACTORY_DESCRIPTOR) as? kotlin.Array<*>
-            instances?.forEach { instance ->
-                val name = instance as? String
-                if (!name.isNullOrBlank()) names += "$DRM_FACTORY_PREFIX$name"
-            }
-        }
-
+    private fun discoverFactoryServices(): List<String> =
         runCatching { ServiceManager.listServices() }
             .getOrNull()
             ?.asSequence()
-            ?.filter { it.startsWith(DRM_FACTORY_PREFIX) }
-            ?.forEach(names::add)
-
-        return names.asSequence().filter(::isSafeFactoryName).sorted().take(MAX_FACTORY_SERVICES).toList()
-    }
+            ?.filter { it.startsWith(DRM_FACTORY_PREFIX) && isSafeFactoryName(it) }
+            ?.sorted()
+            ?.take(MAX_FACTORY_SERVICES)
+            ?.toList()
+            ?: emptyList()
 
     private fun isSafeFactoryName(name: String): Boolean {
         if (!name.startsWith(DRM_FACTORY_PREFIX) || name.length > 192) return false
@@ -354,40 +341,45 @@ object DrmInterceptor {
             }
     }
 
-    private fun getServicePids(serviceNames: List<String>): Map<String, Int> {
-        if (serviceNames.isEmpty()) return emptyMap()
-        val wanted = serviceNames.toHashSet()
-        val result = HashMap<String, Int>(wanted.size)
-        runCatching {
-            val method = ServiceManager::class.java.getDeclaredMethod("getServiceDebugInfo")
-            method.isAccessible = true
-            val debugArray = method.invoke(null) ?: return@runCatching
-            val length = ReflectArray.getLength(debugArray)
-            for (index in 0 until length) {
-                val item = ReflectArray.get(debugArray, index) ?: continue
-                val clazz = item.javaClass
-                val name = readField(clazz, item, "name") as? String ?: continue
-                if (name !in wanted) continue
-                val pid =
-                    (readField(clazz, item, "debugPid") as? Number)?.toInt()
-                        ?: (readField(clazz, item, "pid") as? Number)?.toInt()
-                        ?: continue
-                if (pid > 0) result[name] = pid
+    private fun findServicePid(serviceName: String): Int? {
+        if (!isSafeFactoryName(serviceName)) return null
+        val process =
+            try {
+                ProcessBuilder("/system/bin/dumpsys", "--pid", serviceName)
+                    .redirectError(File("/dev/null"))
+                    .start()
+            } catch (error: Exception) {
+                Logger.d("DRM privacy: dumpsys PID lookup unavailable (${error.javaClass.simpleName})")
+                return null
             }
-        }.onFailure { error ->
-            Logger.d("DRM privacy: servicemanager debug PID lookup unavailable (${error.javaClass.simpleName})")
-        }
-        return result
-    }
 
-    private fun readField(
-        clazz: Class<*>,
-        instance: Any,
-        name: String,
-    ): Any? =
-        runCatching {
-            clazz.getDeclaredField(name).apply { isAccessible = true }.get(instance)
-        }.getOrNull()
+        val output = ByteArray(MAX_PID_OUTPUT_BYTES)
+        return try {
+            if (!process.waitFor(PID_LOOKUP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                return null
+            }
+            if (process.exitValue() != 0) return null
+
+            var total = 0
+            process.inputStream.use { input ->
+                while (total < output.size) {
+                    val count = input.read(output, total, output.size - total)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    total += count
+                }
+                if (total == output.size && input.read() >= 0) return null
+            }
+            output.copyOf(total).toString(Charsets.UTF_8).trim().toIntOrNull()?.takeIf { it > 0 }
+        } catch (error: Exception) {
+            Logger.d("DRM privacy: PID lookup failed (${error.javaClass.simpleName})")
+            null
+        } finally {
+            output.fill(0)
+            process.destroy()
+        }
+    }
 
     private fun markHealthy() {
         lastReconcileMs = SystemClock.elapsedRealtime()
