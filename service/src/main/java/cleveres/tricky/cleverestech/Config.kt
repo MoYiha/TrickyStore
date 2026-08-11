@@ -254,7 +254,6 @@ object Config {
             val newConfigs = PackageTrie<AppSpoofConfig>()
             val seenPackages = HashSet<String>()
             var hasPrivacyRules = false
-            var hasIsolationRules = false
             if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "app_config must be a regular file"
@@ -321,13 +320,11 @@ object Config {
                                 "app_config contains an empty rule"
                             }
                             if (privacyMode != AppPrivacyMode.INHERIT) hasPrivacyRules = true
-                            if (privacyMode == AppPrivacyMode.ISOLATE) hasIsolationRules = true
                             newConfigs.add(pkg, AppSpoofConfig(template, keybox, privacyMode))
                         }
                     }
                 }
             }
-            if (hasIsolationRules) getPrivacySeed().fill(0)
             appConfigState = AppConfigState(newConfigs, hasPrivacyRules)
             CertHack.clearCertificateCache()
             signalRuntimeController()
