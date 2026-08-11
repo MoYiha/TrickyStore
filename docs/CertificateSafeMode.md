@@ -1,19 +1,19 @@
 # Certificate Safe Mode
 
-## Purpose
+## Current status
 
-Certificate Safe Mode keeps genuine Android certificate responses while leaving the CleveresTricky service and diagnostic interface available. It is useful when isolating a compatibility problem without uninstalling the module.
+Certificate Safe Mode is a legacy configuration concept. The current module does not expose a WebUI switch that disables certificate compatibility because Keystore and TEE protection are core module behavior.
 
 ## Runtime behavior
 
-The keystore control path remains observable, but certificate substitution is skipped. Key creation, KeyMint operations, generated provisioning responses, and application error behavior remain on the platform path.
+Core Keystore interception stays registered while the module service is healthy. Global Mode and application rules decide scope. Spoof Engine controls identity values only and does not disable certificate handling.
 
-The master Spoof Engine control still has priority. Turning the engine off parks native hooks and stops active interception work. Certificate Safe Mode is narrower because it preserves the running service and other explicitly enabled compatibility controls.
+Older installations can still contain the legacy `tee_broken_mode` flag. The service can read that file for migration and compatibility purposes, but core targeting no longer depends on it.
 
-## When to use it
+## Troubleshooting
 
-Enable this mode when testing whether a certificate chain change caused an application regression. Restart the application after changing the mode. If the application captured identity or property values during startup, reboot before drawing a conclusion.
+To isolate an application problem, narrow application scope, use passthrough controls where appropriate, or remove the relevant key material in a controlled test environment. Identity Spoof Engine can be disabled independently when testing identity related behavior.
 
-Safe Mode does not repair a broken hardware trust path and does not modify the TEE. It simply prevents CleveresTricky from replacing supported certificate responses.
+These software controls do not repair a broken hardware trust path and do not modify the physical TEE root of trust.
 
 [Return to the project overview](../README.md)
