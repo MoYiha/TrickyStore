@@ -31,6 +31,16 @@ class DrmPrivacyHookPolicyTest {
         assertTrue(source.contains("getAppPrivacyMode(uid) == Config.AppPrivacyMode.ISOLATE"))
     }
 
+    @Test
+    fun `DRM service discovery avoids blocked ServiceManager reflection`() {
+        val source = sourceFile("DrmInterceptor.kt").readText()
+
+        assertFalse(source.contains("getDeclaredInstances"))
+        assertFalse(source.contains("getServiceDebugInfo"))
+        assertTrue(source.contains("ServiceManager.listServices()"))
+        assertTrue(source.contains("ProcessBuilder(\"/system/bin/dumpsys\", \"--pid\", serviceName)"))
+    }
+
     private fun sourceFile(name: String): File {
         val relative = "cleveres/tricky/cleverestech/$name"
         return listOf(
