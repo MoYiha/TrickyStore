@@ -254,6 +254,7 @@ object Config {
             val newConfigs = PackageTrie<AppSpoofConfig>()
             val seenPackages = HashSet<String>()
             var hasPrivacyRules = false
+            var hasIsolationRules = false
             if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "app_config must be a regular file"
@@ -320,11 +321,13 @@ object Config {
                                 "app_config contains an empty rule"
                             }
                             if (privacyMode != AppPrivacyMode.INHERIT) hasPrivacyRules = true
+                            if (privacyMode == AppPrivacyMode.ISOLATE) hasIsolationRules = true
                             newConfigs.add(pkg, AppSpoofConfig(template, keybox, privacyMode))
                         }
                     }
                 }
             }
+            if (hasIsolationRules) getPrivacySeed().fill(0)
             appConfigState = AppConfigState(newConfigs, hasPrivacyRules)
             CertHack.clearCertificateCache()
             signalRuntimeController()
@@ -634,6 +637,23 @@ object Config {
             AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isSpoofEnabled && file != null)
         }
     }
+
+    internal fun refreshRestoredConfiguration(): Result<Unit> =
+        runCatching {
+            fun restoredFile(name: String): File? {
+                val file = File(root, name)
+                return file.takeIf { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
+            }
+
+            updateDrmPackages(restoredFile(DRM_PACKAGES_FILE)).getOrThrow()
+            updateCustomTemplates(restoredFile(CUSTOM_TEMPLATES_FILE)).getOrThrow()
+            updateBuildVars(restoredFile(SPOOF_BUILD_VARS_FILE)).getOrThrow()
+            updateModuleHash(restoredFile(MODULE_HASH_FILE)).getOrThrow()
+            updateSecurityPatch(restoredFile(SECURITY_PATCH_FILE)).getOrThrow()
+            updateAppConfigs(restoredFile(APP_CONFIG_FILE)).getOrThrow()
+            refreshPrivacySeed().getOrThrow()
+            updateTargetPackages(restoredFile(TARGET_FILE)).getOrThrow()
+        }
 
     /** Wakes the event-driven interceptor controller without accumulating unbounded permits. */
     internal fun signalRuntimeController() {
@@ -987,43 +1007,101 @@ object Config {
             }
         }.onFailure { Logger.e("Failed to refresh application privacy seed", it) }
 
+    internal fun ensurePrivacySeed(directory: File): Result<Unit> =
+        runCatching {
+            synchronized(privacySeedLock) {
+                val file = File(directory, PRIVACY_SEED_FILE)
+                if (directory.canonicalFile != root.canonicalFile) {
+                    if (Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        readPrivacySeed(file).fill(0)
+                    } else {
+                        val generated = generatePrivacySeed()
+                        try {
+                            writePrivacySeed(file, generated)
+                        } finally {
+                            generated.fill(0)
+                        }
+                    }
+                    return@synchronized
+                }
+
+                if (Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    val loaded = readPrivacySeed(file)
+                    val previous = privacySeed
+                    if (previous == null || !MessageDigest.isEqual(previous, loaded)) {
+                        privacySeed = loaded
+                        previous?.fill(0)
+                        appConfigState.identityCache.clear()
+                        CertHack.clearCertificateCache()
+                    } else {
+                        loaded.fill(0)
+                    }
+                } else {
+                    val current = privacySeed
+                    val generated = current ?: generatePrivacySeed()
+                    try {
+                        writePrivacySeed(file, generated)
+                        if (current == null) privacySeed = generated
+                    } catch (error: Throwable) {
+                        if (current == null) generated.fill(0)
+                        throw error
+                    }
+                }
+            }
+        }.onFailure { Logger.e("Failed to materialize application privacy seed", it) }
+
     private fun loadPrivacySeed(createIfMissing: Boolean): ByteArray? {
         val file = File(root, PRIVACY_SEED_FILE)
         val path = file.toPath()
         if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || file.length() !in 64..65) {
-                throw IOException("Privacy seed path is invalid")
-            }
-            val encoded = ByteArray(66)
-            var total = 0
-            try {
-                Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
-                    while (total < encoded.size) {
-                        val count = input.read(encoded, total, encoded.size - total)
-                        if (count < 0) break
-                        if (count == 0) continue
-                        total += count
-                    }
-                    if (total == encoded.size || input.read() >= 0) throw IOException("Privacy seed is too large")
-                }
-                return decodePrivacySeed(encoded, total) ?: throw IOException("Privacy seed is invalid")
-            } finally {
-                encoded.fill(0)
-            }
+            return readPrivacySeed(file)
         }
         if (!createIfMissing) return null
-        val generated = ByteArray(PRIVACY_SEED_BYTES)
-        SecureRandom().nextBytes(generated)
-        val encoded = encodePrivacySeed(generated)
+        val generated = generatePrivacySeed()
         try {
-            SecureFile.writeStream(file, ByteArrayInputStream(encoded), encoded.size.toLong())
+            writePrivacySeed(file, generated)
         } catch (error: Throwable) {
             generated.fill(0)
             throw error
+        }
+        return generated
+    }
+
+    private fun readPrivacySeed(file: File): ByteArray {
+        val path = file.toPath()
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || file.length() !in 64..65) {
+            throw IOException("Privacy seed path is invalid")
+        }
+        val encoded = ByteArray(66)
+        var total = 0
+        try {
+            Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+                while (total < encoded.size) {
+                    val count = input.read(encoded, total, encoded.size - total)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    total += count
+                }
+                if (total == encoded.size || input.read() >= 0) throw IOException("Privacy seed is too large")
+            }
+            return decodePrivacySeed(encoded, total) ?: throw IOException("Privacy seed is invalid")
         } finally {
             encoded.fill(0)
         }
-        return generated
+    }
+
+    private fun generatePrivacySeed(): ByteArray = ByteArray(PRIVACY_SEED_BYTES).also { SecureRandom().nextBytes(it) }
+
+    private fun writePrivacySeed(
+        file: File,
+        seed: ByteArray,
+    ) {
+        val encoded = encodePrivacySeed(seed)
+        try {
+            SecureFile.writeStream(file, ByteArrayInputStream(encoded), encoded.size.toLong())
+        } finally {
+            encoded.fill(0)
+        }
     }
 
     private fun decodePrivacySeed(

@@ -241,6 +241,36 @@ public final class CertHack {
         return null;
     }
 
+    private static boolean containsTag(ASN1Sequence sequence, int targetTag) {
+        for (ASN1Encodable value : sequence) {
+            if (value instanceof ASN1TaggedObject taggedObject && taggedObject.getTagNo() == targetTag) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<KeyBox> selectKeyboxPool(List<KeyBox> candidates, String preferredAlgorithm) {
+        if (candidates == null || candidates.isEmpty()) return Collections.emptyList();
+        if (preferredAlgorithm != null) {
+            List<KeyBox> preferred = filterKeyboxesByAlgorithm(candidates, preferredAlgorithm);
+            if (!preferred.isEmpty()) return preferred;
+        }
+        String fallbackAlgorithm = KeyProperties.KEY_ALGORITHM_EC.equals(preferredAlgorithm)
+                ? KeyProperties.KEY_ALGORITHM_RSA
+                : KeyProperties.KEY_ALGORITHM_EC;
+        List<KeyBox> fallback = filterKeyboxesByAlgorithm(candidates, fallbackAlgorithm);
+        if (!fallback.isEmpty()) return fallback;
+        return filterKeyboxesByAlgorithm(candidates, KeyProperties.KEY_ALGORITHM_RSA);
+    }
+
+    private static String signatureAlgorithmForKeybox(KeyBox keybox) {
+        String algorithm = normalizeAlgorithm(keybox.keyPair.getPrivate().getAlgorithm());
+        if (KeyProperties.KEY_ALGORITHM_EC.equals(algorithm)) return "SHA256withECDSA";
+        if (KeyProperties.KEY_ALGORITHM_RSA.equals(algorithm)) return "SHA256withRSA";
+        return null;
+    }
+
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
         return parseKeyboxXml(reader, "unknown.xml");
     }
@@ -465,15 +495,25 @@ public final class CertHack {
             }
             ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
             ASN1Encodable[] encodables = sequence.toArray();
-            if (encodables.length <= 7 || !(encodables[7] instanceof ASN1Sequence)) {
-                Logger.e("Attestation record is missing the TEE-enforced authorization list");
+            if (encodables.length <= 7 || !(encodables[6] instanceof ASN1Sequence) ||
+                    !(encodables[7] instanceof ASN1Sequence)) {
+                Logger.e("Attestation record is missing an authorization list");
                 return caList;
             }
-            ASN1Sequence teeEnforced = (ASN1Sequence) encodables[7];
+            int teeEnforcedIndex = containsTag((ASN1Sequence) encodables[6], 704) &&
+                    !containsTag((ASN1Sequence) encodables[7], 704) ? 6 : 7;
+            int softwareEnforcedIndex = teeEnforcedIndex == 6 ? 7 : 6;
+            ASN1Sequence teeEnforced = (ASN1Sequence) encodables[teeEnforcedIndex];
+            ASN1Sequence softwareEnforced = (ASN1Sequence) encodables[softwareEnforcedIndex];
+            int attestationVersion = ASN1Integer.getInstance(encodables[0]).getValue().intValueExact();
+            int keyMintVersion = ASN1Integer.getInstance(encodables[2]).getValue().intValueExact();
+            boolean supportsModuleHash = attestationVersion >= 400 && keyMintVersion >= 400;
 
-            List<ASN1TaggedObject> allTags = new ArrayList<>();
+            List<ASN1TaggedObject> teeTags = new ArrayList<>();
+            List<ASN1TaggedObject> softwareTags = new ArrayList<>();
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
+            ASN1TaggedObject originalModuleHash = null;
 
             Map<Integer, byte[]> configuredIdAttestationTags = new HashMap<>();
             List<Integer> originalOverriddenIdTags = new ArrayList<>();
@@ -494,8 +534,11 @@ public final class CertHack {
                     rootOfTrust = taggedObject.getBaseObject().toASN1Primitive();
                     continue;
                 }
-                if ((tag == 724 && moduleHash != null) ||
-                        (tag == 706 && replacesOriginal(patchLevels.getSystem())) ||
+                if (tag == 724 && supportsModuleHash) {
+                    originalModuleHash = taggedObject;
+                    continue;
+                }
+                if ((tag == 706 && replacesOriginal(patchLevels.getSystem())) ||
                         (tag == 718 && replacesOriginal(patchLevels.getVendor())) ||
                         (tag == 719 && replacesOriginal(patchLevels.getBoot()))) {
                     continue;
@@ -504,55 +547,72 @@ public final class CertHack {
                     originalOverriddenIdTags.add(tag);
                     continue;
                 }
-                allTags.add(taggedObject);
+                teeTags.add(taggedObject);
             }
 
-            addPatchTag(allTags, 706, patchLevels.getSystem());
-            addPatchTag(allTags, 718, patchLevels.getVendor());
-            addPatchTag(allTags, 719, patchLevels.getBoot());
+            for (ASN1Encodable asn1Encodable : softwareEnforced) {
+                if (!(asn1Encodable instanceof ASN1TaggedObject taggedObject)) {
+                    Logger.e("Unexpected ASN1 element type in software enforced: " +
+                            asn1Encodable.getClass().getName());
+                    continue;
+                }
+                if (taggedObject.getTagNo() == 724 && supportsModuleHash) {
+                    if (originalModuleHash == null) originalModuleHash = taggedObject;
+                    continue;
+                }
+                softwareTags.add(taggedObject);
+            }
+
+            addPatchTag(teeTags, 706, patchLevels.getSystem());
+            addPatchTag(teeTags, 718, patchLevels.getVendor());
+            addPatchTag(teeTags, 719, patchLevels.getBoot());
 
             Map<Integer, byte[]> presentIdAttestationTags =
                     selectPresentAttestationIdOverrides(configuredIdAttestationTags, originalOverriddenIdTags);
             for (Map.Entry<Integer, byte[]> entry : presentIdAttestationTags.entrySet()) {
-                allTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
+                teeTags.add(new DERTaggedObject(true, entry.getKey(), new DEROctetString(entry.getValue())));
             }
 
-            if (moduleHash != null) {
-                allTags.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
+            if (supportsModuleHash) {
+                if (moduleHash != null) {
+                    softwareTags.add(new DERTaggedObject(true, 724, new DEROctetString(moduleHash)));
+                } else if (originalModuleHash != null) {
+                    softwareTags.add(originalModuleHash);
+                }
             }
 
             LinkedList<Certificate> certificates;
             X509v3CertificateBuilder builder;
             ContentSigner signer;
 
-            String signerAlgo = signingKeyAlgorithm(leaf.getSigAlgName());
-            if (signerAlgo == null) {
-                Logger.e("Unsupported attestation signing algorithm");
-                return caList;
-            }
+            String preferredSignerAlgorithm = signingKeyAlgorithm(leaf.getSigAlgName());
 
-            List<KeyBox> list = null;
+            List<KeyBox> candidates = new ArrayList<>();
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
-                list = filterKeyboxesByAlgorithm(
-                        currentState.keyboxFiles.get(appConfig.getKeyboxFilename()), signerAlgo);
-                if (list == null || list.isEmpty()) {
-                    throw new UnsupportedOperationException("App-requested keybox is unavailable " +
-                            "or does not support attestation signer " + signerAlgo);
-                }
+                List<KeyBox> requested = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+                if (requested != null) candidates.addAll(requested);
             } else {
-                list = currentState.keyboxes.get(signerAlgo);
+                candidates.addAll(currentState.keyboxes.getOrDefault(
+                        KeyProperties.KEY_ALGORITHM_EC, Collections.emptyList()));
+                candidates.addAll(currentState.keyboxes.getOrDefault(
+                        KeyProperties.KEY_ALGORITHM_RSA, Collections.emptyList()));
             }
 
-            if (list == null || list.isEmpty())
-                throw new UnsupportedOperationException("unsupported attestation signer " + signerAlgo);
+            List<KeyBox> list = selectKeyboxPool(candidates, preferredSignerAlgorithm);
+            if (list.isEmpty()) throw new UnsupportedOperationException("No compatible keybox is available");
 
-            int idx = (rotationCounters.get(signerAlgo).getAndIncrement() & 0x7FFFFFFF) % list.size();
+            String selectedAlgorithm = normalizeAlgorithm(list.get(0).keyPair.getPrivate().getAlgorithm());
+            AtomicInteger rotationCounter = rotationCounters.get(selectedAlgorithm);
+            if (rotationCounter == null) throw new UnsupportedOperationException("Unsupported keybox algorithm");
+            int idx = (rotationCounter.getAndIncrement() & 0x7FFFFFFF) % list.size();
             var k = list.get(idx);
+            String signatureAlgorithm = signatureAlgorithmForKeybox(k);
+            if (signatureAlgorithm == null) throw new UnsupportedOperationException("Unsupported keybox algorithm");
 
             certificates = new LinkedList<>(k.certificates);
             if (certificates.isEmpty()) {
-                throw new UnsupportedOperationException("Keybox has no certificates for signer " + signerAlgo);
+                throw new UnsupportedOperationException("Keybox has no certificates");
             }
             builder = new X509v3CertificateBuilder(
                     new X509CertificateHolder(
@@ -564,7 +624,7 @@ public final class CertHack {
                     leafHolder.getSubject(),
                     leafHolder.getSubjectPublicKeyInfo()
             );
-            signer = new JcaContentSignerBuilder(leaf.getSigAlgName())
+            signer = new JcaContentSignerBuilder(signatureAlgorithm)
                     .build(k.keyPair.getPrivate());
 
             byte[] verifiedBootKey = UtilKt.getBootKey();
@@ -599,14 +659,17 @@ public final class CertHack {
 
             ASN1Sequence hackedRootOfTrust = new DERSequence(rootOfTrustEnc);
             ASN1TaggedObject rootOfTrustTagObj = new DERTaggedObject(704, hackedRootOfTrust);
-            allTags.add(rootOfTrustTagObj);
-            allTags.sort(TAG_COMPARATOR);
+            teeTags.add(rootOfTrustTagObj);
+            teeTags.sort(TAG_COMPARATOR);
+            softwareTags.sort(TAG_COMPARATOR);
 
-            ASN1EncodableVector vector = new ASN1EncodableVector();
-            for (ASN1TaggedObject t : allTags) vector.add(t);
+            ASN1EncodableVector teeVector = new ASN1EncodableVector();
+            for (ASN1TaggedObject t : teeTags) teeVector.add(t);
+            ASN1EncodableVector softwareVector = new ASN1EncodableVector();
+            for (ASN1TaggedObject t : softwareTags) softwareVector.add(t);
 
-            ASN1Sequence hackEnforced = new DERSequence(vector);
-            encodables[7] = hackEnforced;
+            encodables[teeEnforcedIndex] = new DERSequence(teeVector);
+            encodables[softwareEnforcedIndex] = new DERSequence(softwareVector);
             ASN1Sequence hackedSeq = new DERSequence(encodables);
 
             ASN1OctetString hackedSeqOctets = new DEROctetString(hackedSeq);

@@ -5,6 +5,7 @@ import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -17,6 +18,7 @@ class WebServerBackupTest {
     private lateinit var testDir: File
     private lateinit var configDir: File
     private lateinit var originalSecureFileImpl: SecureFileOperations
+    private lateinit var originalConfigRoot: File
 
     @Before
     fun setUp() {
@@ -25,6 +27,8 @@ class WebServerBackupTest {
         configDir = File(testDir, "config")
         configDir.mkdirs()
         originalSecureFileImpl = SecureFile.impl
+        originalConfigRoot = Config.getConfigRoot()
+        Config.setRootForTesting(configDir)
 
         // Mock SecureFile to use standard IO
         SecureFile.impl =
@@ -76,6 +80,8 @@ class WebServerBackupTest {
 
     @After
     fun tearDown() {
+        Config.updateAppConfigs(null).getOrThrow()
+        Config.setRootForTesting(originalConfigRoot)
         SecureFile.impl = originalSecureFileImpl
         testDir.deleteRecursively()
     }
@@ -85,7 +91,13 @@ class WebServerBackupTest {
         // Setup initial state
         File(configDir, "target.txt").writeText("com.example.app")
         File(configDir, "spoof_build_vars").writeText("MODEL=Pixel 8")
+        File(configDir, "app_config").writeText("com.example.app null null isolate")
+        File(configDir, "keybox.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+        File(configDir, "module_hash").writeText("ab".repeat(32))
         File(configDir, "ignored_file.txt").writeText("should not be backed up")
+        Config.updateAppConfigs(File(configDir, "app_config")).getOrThrow()
+        val originalPrivacySeed = File(configDir, "privacy_seed").readBytes()
+        assertTrue(File(configDir, "privacy_seed").delete())
 
         val kbDir = File(configDir, "keyboxes")
         kbDir.mkdirs()
@@ -114,6 +126,9 @@ class WebServerBackupTest {
 
         assertTrue(File(configDir, "spoof_build_vars").exists())
         assertEquals("MODEL=Pixel 8", File(configDir, "spoof_build_vars").readText())
+        assertArrayEquals(originalPrivacySeed, File(configDir, "privacy_seed").readBytes())
+        assertEquals(TestKeyboxFixtures.validEcKeyboxXml, File(configDir, "keybox.xml").readText())
+        assertEquals("ab".repeat(32), File(configDir, "module_hash").readText())
 
         assertTrue(File(configDir, "keyboxes/kb1.xml").exists())
         assertEquals(TestKeyboxFixtures.validEcKeyboxXml, File(configDir, "keyboxes/kb1.xml").readText())
@@ -122,5 +137,22 @@ class WebServerBackupTest {
         // Verify ignored files are NOT restored
         assertTrue("Ignored file should not be restored", !File(configDir, "ignored_file.txt").exists())
         assertTrue("Ignored keybox file should not be restored", !File(configDir, "keyboxes/invalid.txt").exists())
+    }
+
+    @Test
+    fun restoreRemovesConfigurationAndKeyboxesMissingFromBackup() {
+        File(configDir, "target.txt").writeText("com.example.app")
+        val zipBytes = WebServer.createBackupZip(configDir)
+        File(configDir, "global_mode").createNewFile()
+        File(configDir, "keybox.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+        val keyboxDir = File(configDir, "keyboxes").apply { mkdirs() }
+        File(keyboxDir, "stale.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+
+        WebServer.restoreBackupZip(configDir, ByteArrayInputStream(zipBytes))
+
+        assertFalse(File(configDir, "global_mode").exists())
+        assertFalse(File(configDir, "keybox.xml").exists())
+        assertFalse(File(keyboxDir, "stale.xml").exists())
+        assertEquals("com.example.app", File(configDir, "target.txt").readText())
     }
 }

@@ -92,7 +92,7 @@ No usable keybox or private attestation key is bundled with the project.
 
 ## Supported environment
 
-CleveresTricky supports Android 12 through Android 16, including API levels 31 through 36. Supported processor targets are ARM64 and x86 64. Installation is supported through KernelSU or APatch while Android is running.
+CleveresTricky supports Android 12 through Android 17, including API levels 31 through 37. Supported processor targets are ARM64 and x86 64. Installation is supported through KernelSU or APatch while Android is running.
 
 Magisk and recovery installation are not supported. The installer stops unsupported paths instead of leaving a partial module.
 

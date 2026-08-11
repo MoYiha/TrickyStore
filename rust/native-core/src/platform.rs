@@ -193,7 +193,7 @@ pub fn parse_android_api_level(value: &[u8]) -> Option<i32> {
             .checked_mul(10)?
             .checked_add(i32::from(digit - b'0'))
     })?;
-    (31..=36).contains(&api).then_some(api)
+    (31..=37).contains(&api).then_some(api)
 }
 
 pub fn parse_kernel_release(value: &[u8]) -> Option<(i32, i32)> {
@@ -317,7 +317,8 @@ mod tests {
     fn parses_supported_platform_versions() {
         assert_eq!(parse_android_api_level(b"31"), Some(31));
         assert_eq!(parse_android_api_level(b"36"), Some(36));
-        assert_eq!(parse_android_api_level(b"37"), None);
+        assert_eq!(parse_android_api_level(b"37"), Some(37));
+        assert_eq!(parse_android_api_level(b"38"), None);
         assert_eq!(parse_kernel_release(b"6.1.75-android14"), Some((6, 1)));
         assert_eq!(parse_kernel_release(b"invalid"), None);
     }
