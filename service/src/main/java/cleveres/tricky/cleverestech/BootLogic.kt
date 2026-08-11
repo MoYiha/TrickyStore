@@ -7,7 +7,7 @@ import java.nio.file.LinkOption
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Applies explicitly enabled boot-time compatibility settings once per service process. */
+/** Applies always-on boot protection plus optional identity compatibility once per service process. */
 object BootLogic {
     private const val CONFIG_PATH = "/data/adb/cleverestricky"
     private const val COMMAND_TIMEOUT_SECONDS = 10L
@@ -18,6 +18,7 @@ object BootLogic {
     private val configDir: File
         get() = Config.getConfigRoot().takeIf { it.path.isNotEmpty() } ?: File(CONFIG_PATH)
 
+    /** Legacy flag retained only so upgrades/backups remain readable; core hiding no longer depends on it. */
     const val FILE_HIDE_PROPS = "hide_sensitive_props"
     const val FILE_SPOOF_CN = "spoof_region_cn"
     const val FILE_BOOT_PROPS_MODE = "boot_props_mode"
@@ -32,23 +33,21 @@ object BootLogic {
         if (!ran.compareAndSet(false, true)) return
 
         try {
-            if (!Config.isSpoofEnabled) {
-                Logger.i("Boot property compatibility is paused by the Spoof Engine switch")
-                return
-            }
-
-            val requestedHideSensitive = isRegularFile(File(configDir, FILE_HIDE_PROPS))
             val mode = readBootPropsMode()
-            val hideSensitive = requestedHideSensitive && shouldApplySensitiveProps(mode)
-            val requestedBuildIdentity = Config.isBuildIdentityEnabled
+            val requestedBuildIdentity = Config.isSpoofEnabled && Config.isBuildIdentityEnabled
             val buildIdentity = requestedBuildIdentity && shouldApplyBuildIdentity(mode)
-            val spoofCn = isRegularFile(File(configDir, FILE_SPOOF_CN)) && mode != BootPropsMode.DISABLE
-            if (hideSensitive || spoofCn || buildIdentity) {
-                applyPropertyCompatibility(hideSensitive, spoofCn, buildIdentity)
-            } else if (requestedHideSensitive || requestedBuildIdentity) {
-                Logger.i("Boot property compatibility was skipped by the ${mode.name.lowercase()} policy")
-            } else {
-                Logger.i("Boot property compatibility is disabled")
+            val spoofCn =
+                Config.isSpoofEnabled &&
+                    isRegularFile(File(configDir, FILE_SPOOF_CN)) &&
+                    mode != BootPropsMode.DISABLE
+
+            // Bootloader / verified-boot property protection is a core module feature.
+            // It is deliberately not tied to Spoof Engine, hide_sensitive_props, or
+            // boot_props_mode. The latter only controls optional identity properties.
+            applyPropertyCompatibility(spoofCn, buildIdentity)
+
+            if (requestedBuildIdentity && !buildIdentity) {
+                Logger.i("Identity build properties were skipped by the ${mode.name.lowercase()} compatibility policy")
             }
         } catch (e: Exception) {
             Logger.e("BootLogic failed", e)
@@ -63,36 +62,6 @@ object BootLogic {
             "disable" -> BootPropsMode.DISABLE
             else -> BootPropsMode.AUTO
         }
-    }
-
-    private fun shouldApplySensitiveProps(mode: BootPropsMode): Boolean {
-        if (mode == BootPropsMode.DISABLE) return false
-        if (mode == BootPropsMode.FORCE) return true
-
-        val shamikoExists =
-            listOf(
-                "/data/adb/modules/zygisk_shamiko",
-                "/data/adb/ksu/modules/zygisk_shamiko",
-                "/data/adb/ap/modules/zygisk_shamiko",
-            ).any { isDirectory(File(it)) }
-        if (shamikoExists) {
-            Logger.i("Shamiko detected; skipping overlapping property overrides in auto mode")
-            return false
-        }
-
-        val vendorIdentity =
-            listOf(
-                "ro.product.manufacturer",
-                "ro.product.brand",
-                "ro.product.vendor.manufacturer",
-                "ro.product.vendor.brand",
-            ).joinToString(" ") { getSystemProperty(it) }.lowercase()
-        val sensitiveVendor = listOf("oplus", "oppo", "oneplus", "realme").any(vendorIdentity::contains)
-        if (sensitiveVendor) {
-            Logger.i("Vendor TEE-sensitive device detected; skipping boot properties in auto mode")
-            return false
-        }
-        return true
     }
 
     private fun shouldApplyBuildIdentity(mode: BootPropsMode): Boolean {
@@ -138,39 +107,34 @@ object BootLogic {
 
     /**
      * Adjusts userspace property views for app compatibility. These values do
-     * not alter verified boot, the bootloader state, or hardware attestation.
+     * not alter verified boot, the physical bootloader state, or hardware roots.
      */
     private fun applyPropertyCompatibility(
-        hideSensitive: Boolean,
         spoofCn: Boolean,
         buildIdentity: Boolean,
     ) {
-        val properties = linkedMapOf<String, String>()
-        if (hideSensitive) {
-            properties.putAll(
-                mapOf(
-                    "ro.boot.vbmeta.device_state" to "locked",
-                    "ro.boot.verifiedbootstate" to "green",
-                    "ro.boot.flash.locked" to "1",
-                    "ro.boot.warranty_bit" to "0",
-                    "ro.warranty_bit" to "0",
-                    "ro.debuggable" to "0",
-                    "ro.force.debuggable" to "0",
-                    "ro.secure" to "1",
-                    "ro.adb.secure" to "1",
-                    "ro.build.type" to "user",
-                    "ro.build.tags" to "release-keys",
-                    "ro.vendor.boot.warranty_bit" to "0",
-                    "ro.vendor.warranty_bit" to "0",
-                    "ro.secureboot.lockstate" to "locked",
-                    "ro.boot.realmebootstate" to "green",
-                    "ro.boot.realme.lockstate" to "1",
-                ),
+        val properties =
+            linkedMapOf(
+                "ro.boot.vbmeta.device_state" to "locked",
+                "ro.boot.verifiedbootstate" to "green",
+                "ro.boot.flash.locked" to "1",
+                "ro.boot.warranty_bit" to "0",
+                "ro.warranty_bit" to "0",
+                "ro.debuggable" to "0",
+                "ro.force.debuggable" to "0",
+                "ro.secure" to "1",
+                "ro.adb.secure" to "1",
+                "ro.build.type" to "user",
+                "ro.build.tags" to "release-keys",
+                "ro.vendor.boot.warranty_bit" to "0",
+                "ro.vendor.warranty_bit" to "0",
+                "ro.secureboot.lockstate" to "locked",
+                "ro.boot.realmebootstate" to "green",
+                "ro.boot.realme.lockstate" to "1",
             )
-            val sdk = getSystemProperty("ro.build.version.sdk").toIntOrNull()
-            if (sdk != null && sdk < ANDROID_16_SDK) {
-                properties[OEM_UNLOCK_ALLOWED_PROPERTY] = "0"
-            }
+        val sdk = getSystemProperty("ro.build.version.sdk").toIntOrNull()
+        if (sdk != null && sdk < ANDROID_16_SDK) {
+            properties[OEM_UNLOCK_ALLOWED_PROPERTY] = "0"
         }
 
         if (spoofCn) {
@@ -210,10 +174,8 @@ object BootLogic {
         }
 
         resetPropBatch(properties)
-        if (hideSensitive) {
-            removeLegacyOemUnlockProperty()
-            listOf("ro.bootmode", "ro.boot.bootmode", "vendor.boot.bootmode").forEach(::hideBootMode)
-        }
+        removeLegacyOemUnlockProperty()
+        listOf("ro.bootmode", "ro.boot.bootmode", "vendor.boot.bootmode").forEach(::hideBootMode)
         val mismatches = properties.count { (name, value) -> getSystemProperty(name) != value }
         if (mismatches != 0) {
             throw IOException("Could not verify $mismatches boot-property overrides")
