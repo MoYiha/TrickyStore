@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import org.junit.After;
 import org.junit.Test;
 import java.io.StringReader;
 import static org.junit.Assert.assertEquals;
@@ -7,6 +8,11 @@ import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.TestKeyboxFixtures;
 
 public class MultiKeyboxTest {
+
+    @After
+    public void tearDown() {
+        CertHack.readFromXml(null);
+    }
 
     private static final String EC_KEY = TestKeyboxFixtures.INSTANCE.getEcPrivateKey();
     private static final String TEST_CERT = TestKeyboxFixtures.INSTANCE.getCertificate();
@@ -20,7 +26,6 @@ public class MultiKeyboxTest {
             @Override public void i(String tag, String msg) { System.out.println("I/" + tag + ": " + msg); }
         });
 
-        // XML with 2 Keybox elements, each containing 1 Key
         String xml = "<?xml version=\"1.0\"?>\n" +
                 "<AndroidAttestation>\n" +
                 "<NumberOfKeyboxes>2</NumberOfKeyboxes>\n" +
