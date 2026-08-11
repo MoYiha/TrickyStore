@@ -2,11 +2,11 @@
 
 ## Runtime lifecycle
 
-Spoof Engine is the primary resource control. When disabled before boot, native injection is skipped. When disabled at runtime, Binder registrations are removed, injected hooks use one atomic paused check, and scheduled keybox work stops.
+Core Keystore interception remains registered while the module service is healthy. The native Binder hook therefore stays available for certificate and TEE compatibility even when Spoof Engine is disabled.
 
-Runtime shutdown normally clears all registrations and parks each injected process with one root authorized Binder control transaction. This reduces teardown calls and gives the service an authoritative parked result. A failed cleanup remains pending and is retried at a bounded interval.
+Spoof Engine is the identity resource control. When disabled, optional attestation identity values are not exposed, Telephony Identity is parked when no privacy rule needs it, and optional build and region identity work is skipped. Core certificate handling and boot property protection remain active.
 
-Telephony injection runs only when both the master control and Telephony Identity are enabled. Certificate work is limited to eligible Binder calls and selected Android user identifiers.
+Automatic Keybox Check has its own control and is independent from Spoof Engine. Disable that worker directly when scheduled revocation work is not wanted.
 
 ## Native path
 
@@ -14,7 +14,7 @@ Rust parses Binder streams into a fixed caller owned array. A fixed local buffer
 
 The Binder descriptor cache uses 64 fixed slots and no heap growth. The Rust hot path validates device plus inode identity before using a cached classification and checks identity again after procfs resolution. The platform weak pointer handoff uses a fixed per thread queue, so transaction bursts cannot grow a dynamic container. A malformed or oversized stream is passed through without unbounded work.
 
-The injector is a short lived Rust process. Rust owns its arguments, logs, file descriptors, buffers, process maps, symbol resolution, ptrace session, register layouts, process memory, socket transfer, loader calls, cleanup, register restoration, and detach state. Temporary target stack writes and the call stack guard use a fixed upper bound. Overlapping ranges are saved once and restored before detach. C++ remains only at the injected Android libbinder and LSPlt boundary.
+The injector is a short lived Rust process. Rust owns its arguments, logs, file descriptors, buffers, process maps, symbol resolution, ptrace session, register layouts, process memory, socket transfer, loader calls, cleanup, register restoration, and detach state. Temporary target stack writes and the call stack guard use a fixed upper bound. Overlapping ranges are saved once and restored before detach. C plus plus remains only at the injected Android libbinder and LSPlt boundary.
 
 ## Service memory
 
@@ -32,6 +32,6 @@ Native outputs use section collection, hidden visibility, stack protection, imme
 
 ## Lowest overhead setup
 
-Use targeted scope, keep Telephony Identity and early property controls disabled unless needed, retain RKP and DRM passthrough, and disable Spoof Engine before boot when no compatibility behavior is required.
+Keep optional Identity Spoof Engine off when identity substitution is not needed. Disable Telephony Identity and Automatic Keybox Check unless required. Core Keystore and boot protection remain active because they are the baseline module behavior.
 
 [Return to the project overview](../README.md)
