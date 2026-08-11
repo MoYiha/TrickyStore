@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Build Identity applies a complete device template to the fingerprint and supported app visible Build fields. It is optional and requires a reboot because Android captures these values before normal applications start.
+Build Identity applies a complete device template to the fingerprint and supported app visible Build fields. It is optional, requires Spoof Engine, and requires a reboot because Android captures these values before normal applications start.
 
 ## Template content
 
@@ -10,17 +10,25 @@ A template contains manufacturer, model, brand, product, device, fingerprint, An
 
 Selecting a template writes the complete supported identity into `spoof_build_vars`. Arbitrary Android properties are rejected. This keeps the feature bounded to fields the module actually consumes.
 
+## Auto Identity
+
+Auto Identity is an optional helper for Custom ROM users. It reads Google public Android developer and Flash Tool metadata, selects a current Pixel beta device, resolves the matching canary build identity, and saves the resulting build fields locally.
+
+The helper is intended for Play Integrity compatibility testing on Custom ROMs. It does not enable Spoof Engine automatically. Enable the identity engine and reboot only when you want the saved build identity exposed.
+
+Auto Identity updates the build identity snapshot. TEE component patch policy remains controlled separately by `security_patch.txt`.
+
 ## Synchronized activation
 
-The early boot script applies the active snapshot before Zygote captures Build fields. The service loads that same snapshot for attestation and application facing identity decisions.
+The early boot script applies the active identity snapshot before Zygote captures Build fields only when Spoof Engine and Build Identity are enabled. The service loads the same snapshot for identity substitution decisions.
 
-When Refresh Identity on Boot is enabled, the running snapshot is never rotated after early boot. The service prepares a separate randomized snapshot with atomic protected storage. The next early boot phase promotes that prepared snapshot before applying any properties. Build fields and attestation therefore use one synchronized identity for the entire boot.
+When Refresh Identity on Boot is enabled, the running snapshot is never rotated after early boot. The service prepares a separate randomized snapshot with atomic protected storage. The next early boot phase promotes that prepared snapshot before applying identity properties. Build fields and attestation identity values therefore use one synchronized identity for the entire boot.
 
 Manual identity edits discard an older prepared snapshot so a stale random value cannot replace a newer user choice.
 
 ## Compatibility policy
 
-Automatic mode detects common overlapping fingerprint providers and leaves Build properties untouched. Other CleveresTricky features can continue operating. Force mode is available for users who intentionally want CleveresTricky to own the property layer.
+Automatic mode detects common overlapping fingerprint providers and leaves optional Build properties untouched. Core boot and Keystore protection continue operating. Force mode is available for users who intentionally want CleveresTricky to own the build identity property layer.
 
 ## Limits
 
