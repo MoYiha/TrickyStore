@@ -6,7 +6,7 @@ import android.os.ServiceManager
 import android.os.SystemClock
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
-import java.lang.reflect.Array
+import java.lang.reflect.Array as ReflectArray
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
@@ -97,15 +97,17 @@ object DrmInterceptor {
             return true
         }
 
-        val pids = getServicePids(serviceNames)
+        val initialPids = getServicePids(serviceNames)
         var needsFastRetry = false
         for (name in serviceNames) {
             val existing = factories[name]
             if (existing != null && existing.binder.isBinderAlive) continue
 
+            // getService also gives servicemanager a chance to start a lazy
+            // declared HAL before the first application opens MediaDrm.
             val service = ServiceManager.checkService(name) ?: ServiceManager.getService(name) ?: continue
             var control = BinderInterceptor.getBinderControlEndpoint(service)
-            val pid = pids[name]
+            val pid = initialPids[name] ?: getServicePids(listOf(name))[name]
             if (control == null) {
                 if (pid == null || pid <= 0) {
                     Logger.d("DRM privacy: PID unavailable for $name; will rescan")
@@ -124,11 +126,11 @@ object DrmInterceptor {
                 }
             }
 
-            val resolvedPid = pid ?: 0
             val interceptor = FactoryInterceptor(name)
+            val resolvedControl = requireNotNull(control)
             if (
                 !BinderInterceptor.registerBinderInterceptor(
-                    requireNotNull(control),
+                    resolvedControl,
                     service,
                     interceptor,
                     intArrayOf(createDrmPluginTransaction),
@@ -138,14 +140,11 @@ object DrmInterceptor {
                 continue
             }
 
-            val deathRecipient =
-                IBinder.DeathRecipient {
-                    onFactoryDied(name, service)
-                }
+            val deathRecipient = IBinder.DeathRecipient { onFactoryDied(name, service) }
             try {
                 service.linkToDeath(deathRecipient, 0)
             } catch (_: android.os.RemoteException) {
-                BinderInterceptor.unregisterBinderInterceptor(control, service, interceptor)
+                BinderInterceptor.unregisterBinderInterceptor(resolvedControl, service, interceptor)
                 needsFastRetry = true
                 continue
             }
@@ -154,8 +153,8 @@ object DrmInterceptor {
                 FactoryRegistration(
                     name = name,
                     binder = service,
-                    pid = resolvedPid,
-                    control = control,
+                    pid = pid ?: 0,
+                    control = resolvedControl,
                     interceptor = interceptor,
                     deathRecipient = deathRecipient,
                 )
@@ -330,10 +329,10 @@ object DrmInterceptor {
         runCatching {
             val method = ServiceManager::class.java.getDeclaredMethod("getDeclaredInstances", String::class.java)
             method.isAccessible = true
-            @Suppress("UNCHECKED_CAST")
-            val instances = method.invoke(null, DRM_FACTORY_DESCRIPTOR) as? Array<String>
+            val instances = method.invoke(null, DRM_FACTORY_DESCRIPTOR) as? kotlin.Array<*>
             instances?.forEach { instance ->
-                if (instance.isNotBlank()) names += "$DRM_FACTORY_PREFIX$instance"
+                val name = instance as? String
+                if (!name.isNullOrBlank()) names += "$DRM_FACTORY_PREFIX$name"
             }
         }
 
@@ -363,9 +362,9 @@ object DrmInterceptor {
             val method = ServiceManager::class.java.getDeclaredMethod("getServiceDebugInfo")
             method.isAccessible = true
             val debugArray = method.invoke(null) ?: return@runCatching
-            val length = Array.getLength(debugArray)
+            val length = ReflectArray.getLength(debugArray)
             for (index in 0 until length) {
-                val item = Array.get(debugArray, index) ?: continue
+                val item = ReflectArray.get(debugArray, index) ?: continue
                 val clazz = item.javaClass
                 val name = readField(clazz, item, "name") as? String ?: continue
                 if (name !in wanted) continue
