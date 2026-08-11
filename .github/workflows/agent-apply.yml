@@ -1,0 +1,32 @@
+name: Apply staged agent refactor
+
+on:
+  push:
+    branches:
+      - agent/core-protection-identity-ui
+    paths:
+      - .github/agent_edit.py
+      - .github/workflows/agent-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply exact edits
+        run: python3 .github/agent_edit.py
+      - name: Commit generated edits
+        run: |
+          rm -f .github/agent_edit.py .github/workflows/agent-apply.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "refactor: separate core protection from identity spoofing"
+          git push
