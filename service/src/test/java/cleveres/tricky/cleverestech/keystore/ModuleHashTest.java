@@ -178,6 +178,72 @@ public class ModuleHashTest {
     }
 
     @Test
+    public void testGeneratedChainRemainsStableForGrantedIsolatedUid() throws Exception {
+        Field moduleHash = moduleHashField();
+        Field state = certHackStateField();
+        byte[] previousHash = (byte[]) moduleHash.get(Config.INSTANCE);
+        Object previousState = state.get(null);
+
+        try {
+            moduleHash.set(Config.INSTANCE, null);
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA", "BC");
+            generator.initialize(2048);
+
+            KeyPair originalPair = generator.generateKeyPair();
+            X509Certificate originalLeaf = generateSelfSignedCert(originalPair);
+            KeyPair firstKeyboxPair = generator.generateKeyPair();
+            KeyPair secondKeyboxPair = generator.generateKeyPair();
+            CertHack.KeyBox firstKeybox = new CertHack.KeyBox(
+                    firstKeyboxPair,
+                    Collections.singletonList(generateSelfSignedCert(firstKeyboxPair)),
+                    "first.xml");
+            CertHack.KeyBox secondKeybox = new CertHack.KeyBox(
+                    secondKeyboxPair,
+                    Collections.singletonList(generateSelfSignedCert(secondKeyboxPair)),
+                    "second.xml");
+
+            List<CertHack.KeyBox> pool = List.of(firstKeybox, secondKeybox);
+            Map<String, List<CertHack.KeyBox>> newKeyboxes = new HashMap<>();
+            newKeyboxes.put("RSA", pool);
+            Map<String, List<CertHack.KeyBox>> newKeyboxFiles = new HashMap<>();
+            newKeyboxFiles.put("first.xml", Collections.singletonList(firstKeybox));
+            newKeyboxFiles.put("second.xml", Collections.singletonList(secondKeybox));
+
+            Class<?> stateClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack$State");
+            Constructor<?> ctor = stateClass.getDeclaredConstructor(Map.class, Map.class);
+            ctor.setAccessible(true);
+            state.set(null, ctor.newInstance(newKeyboxes, newKeyboxFiles));
+
+            Certificate[] original = new Certificate[] {originalLeaf};
+            Certificate[] generated = CertHack.hackCertificateChain(original, 10_001);
+            Assert.assertTrue(CertHack.hasCachedCertificateChains());
+
+            Certificate[] isolatedReadback = CertHack.getCachedCertificateChain(original);
+            Assert.assertNotNull(isolatedReadback);
+            Assert.assertArrayEquals(generated[0].getEncoded(), isolatedReadback[0].getEncoded());
+
+            Certificate[] differentReader = CertHack.hackCertificateChain(original, 99_008);
+            Assert.assertArrayEquals(generated[0].getEncoded(), differentReader[0].getEncoded());
+            Assert.assertEquals(generated.length, differentReader.length);
+            for (int index = 0; index < generated.length; index++) {
+                Assert.assertArrayEquals(generated[index].getEncoded(), differentReader[index].getEncoded());
+            }
+
+            CertHack.clearCertificateCache();
+            Assert.assertFalse(CertHack.hasCachedCertificateChains());
+            Certificate[] regenerated = CertHack.hackCertificateChain(original, 99_008);
+            Assert.assertEquals(generated.length, regenerated.length);
+            for (int index = 0; index < generated.length; index++) {
+                Assert.assertArrayEquals(generated[index].getEncoded(), regenerated[index].getEncoded());
+            }
+        } finally {
+            state.set(null, previousState);
+            moduleHash.set(Config.INSTANCE, previousHash);
+            CertHack.clearCertificateCache();
+        }
+    }
+
+    @Test
     public void testCrossAlgorithmKeyboxFallback() throws Exception {
         Field moduleHash = moduleHashField();
         Field state = certHackStateField();
