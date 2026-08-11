@@ -71,6 +71,17 @@ class ConfigTargetStateTest {
         assertFalse("Expired UID decisions must be recalculated", Config.needHack(uid))
     }
 
+    @Test
+    fun `identity engine and legacy safe mode do not disable core targeting`() {
+        val uid = 10_002
+        mockPackage(uid, arrayOf("com.example.core"))
+        setPrivateField(Config, "isGlobalMode", true)
+        setPrivateField(Config, "isSpoofEnabled", false)
+        setPrivateField(Config, "isTeeBrokenMode", true)
+
+        assertTrue("Core targeting must remain active while identity spoofing is off", Config.needHack(uid))
+    }
+
     private fun createTargetState(hack: PackageTrie<Boolean>): Any {
         val clazz = Class.forName("cleveres.tricky.cleverestech.Config\$TargetState")
         val constructor = clazz.getDeclaredConstructor(PackageTrie::class.java)

@@ -255,12 +255,12 @@ object AutoIdentityManager {
                 digits.length >= 6 && digits.substring(0, 4).toIntOrNull() in 2020..2099 -> {
                     val year = digits.substring(0, 4).toInt()
                     val month = digits.substring(4, 6).toIntOrNull()
-                    if (month in 1..12) LocalDate.of(year, month!!, 5) else null
+                    if (month != null && month in 1..12) LocalDate.of(year, month, 5) else null
                 }
                 digits.length >= 4 -> {
                     val year = 2000 + (digits.substring(0, 2).toIntOrNull() ?: -100)
                     val month = digits.substring(2, 4).toIntOrNull()
-                    if (year in 2020..2099 && month in 1..12) LocalDate.of(year, month!!, 5) else null
+                    if (year in 2020..2099 && month != null && month in 1..12) LocalDate.of(year, month, 5) else null
                 }
                 else -> null
             }

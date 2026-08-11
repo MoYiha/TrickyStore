@@ -4,6 +4,7 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -97,8 +98,10 @@ class WebServerHtmlTest {
         assertTrue("Missing Serial Label", html.contains("<label for=\"inputSerial\""))
         assertTrue("Missing app-facing scope notice", html.contains("id=\"identityScope\""))
         assertTrue("Missing Generate Random Button", html.contains("generateRandomIdentity"))
+        assertTrue("Missing Auto Identity Button", html.contains("Auto Identity (Pixel Beta)"))
+        assertTrue("Missing Custom ROM Auto Identity note", html.contains("Recommended only if you use a Custom ROM"))
         assertTrue("Missing Telephony Toggle", html.contains("id=\"telephony\""))
-        assertTrue("Missing master Spoof Engine Toggle", html.contains("id=\"spoof_enabled\""))
+        assertTrue("Missing identity Spoof Engine Toggle", html.contains("id=\"spoof_enabled\""))
         assertTrue("Missing build identity Toggle", html.contains("id=\"spoof_build_identity\""))
 
         // Verify Apps Logic
@@ -228,7 +231,10 @@ class WebServerHtmlTest {
         // Verify Label Cursor CSS
         assertTrue("Missing label cursor CSS", html.contains("label { font-size: 0.95em; color: #BBB; cursor: pointer; }"))
 
-        assertTrue("Safe mode label is missing", html.contains("Disable Certificate Substitution (Safe Mode)"))
+        assertFalse("Core protection must not expose a safe-mode switch", html.contains("Disable Certificate Substitution (Safe Mode)"))
+        assertFalse("Core property hiding must not expose a toggle", html.contains("id=\"hide_sensitive_props\""))
+        assertTrue("Missing always-active core notice", html.contains("Bootloader/verified-boot property compatibility"))
+        assertTrue("Missing mobile bottom navigation", html.contains(".tabs { position: fixed; top: auto; bottom: 0;"))
     }
 
     @Test

@@ -163,6 +163,11 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
 #info .responsive-table td > div, #info .responsive-table td > span { min-width: 0; max-width: calc(100% - 104px); text-align: left; overflow-wrap: anywhere; }
 #info .responsive-table td input[type="checkbox"].toggle { margin-left: auto; }
         }
+        @media screen and (max-width: 700px) {
+.tabs { position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 1000; border-top: 1px solid var(--border); border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); background: var(--panel); }
+.content { padding-bottom: calc(104px + env(safe-area-inset-bottom)); }
+.tab { min-height: 54px; padding: 12px 16px; }
+        }
         @media screen and (max-width: 380px) {
 .resource-summary { grid-template-columns: 1fr; }
 .resource-stat:first-child { grid-column: auto; }
@@ -173,7 +178,7 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
         }
         @media screen and (max-height: 520px) and (orientation: landscape) {
 #fileEditor, #logViewer { height: 48dvh !important; }
-.content { padding-bottom: max(64px, env(safe-area-inset-bottom)); }
+.content { padding-bottom: max(96px, calc(64px + env(safe-area-inset-bottom))); }
         }
         @media (prefers-reduced-motion: reduce) {
 *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
@@ -195,17 +200,14 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
     </div>
 
     <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
-        <div class="panel master-panel">
-<div class="row" style="margin-bottom:8px;">
-    <label class="master-copy" for="spoof_enabled"><strong>Spoof Engine</strong><span>Master control for attestation, telephony, build identity, and boot-property spoofing.</span></label>
-    <input type="checkbox" class="toggle" id="spoof_enabled" data-setting="spoof_enabled" onchange="toggle('spoof_enabled', this)" aria-describedby="engineRuntimeNote">
-</div>
-<div id="engineRuntimeNote" class="scope-note" style="margin:0;">When paused, Binder interceptors are unregistered, native hooks enter an atomic fast path, and the scheduled keybox worker stops. Reboot once to undo boot-time property views and release injected libraries.</div>
+        <div class="panel">
+<h3>Core Protection</h3>
+<div class="scope-note" style="margin:0;"><strong style="color:var(--success);">Always active.</strong> Bootloader/verified-boot property compatibility and Keystore/TEE certificate protection are core module behavior. They have no on/off switch and continue working when Identity Engine is disabled. Hardware bootloader and root-of-trust state are not physically changed.</div>
         </div>
         <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
 <div style="flex: 1; min-width: 120px; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
-    <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">Spoof Engine</div>
-    <div id="status_engine" style="font-weight: bold; color: var(--danger); margin-top: 5px; background: rgba(239, 68, 68, 0.1); padding: 5px; border-radius: 4px;">PAUSED</div>
+    <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">Identity Engine</div>
+    <div id="status_engine" style="font-weight: bold; color: #888; margin-top: 5px; background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 4px;">OFF</div>
 </div>
 <div style="flex: 1; min-width: 120px; padding: 15px; border-radius: 8px; background: #1a1a1a; border: 1px solid var(--border); text-align: center;">
     <div style="font-size: 0.8em; color: #888; text-transform: uppercase;">Global Mode</div>
@@ -222,36 +224,13 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
         </div>
 
         <div class="panel">
-<h3>Quick Profile</h3>
-<div class="row">
-    <select id="profileSelect" style="flex: 1; margin-right: 10px; min-height: 44px; padding: 12px 14px; background: var(--input-bg); border: 1px solid var(--border); color: #fff; border-radius: 6px;">
-        <option value="">Select a Profile...</option>
-        <option value="maximum">Maximum Compatibility</option>
-        <option value="daily">Daily Compatibility</option>
-        <option value="minimal">Minimal (substitution off)</option>
-        <option value="default">Default (targeted)</option>
-    </select>
-    <button onclick="applySelectedProfile(this)" style="min-height: 44px;">Apply</button>
-</div>
-<div style="font-size:0.8em; color:#888; margin-top:5px;">Applying a profile will overwrite current settings below.</div>
-        </div>
-        <div class="panel">
 <h3>System Control</h3>
 <div class="row"><label for="global_mode">Global Mode</label><input type="checkbox" class="toggle" id="global_mode" data-setting="global_mode" onchange="toggle('global_mode', this)"></div>
-<div class="row"><label for="tee_broken_mode">Disable Certificate Substitution (Safe Mode)</label><input type="checkbox" class="toggle" id="tee_broken_mode" data-setting="tee_broken_mode" onchange="toggle('tee_broken_mode', this)"></div>
 <div class="row"><label for="auto_keybox_check">Auto Keybox Check</label><input type="checkbox" class="toggle" id="auto_keybox_check" data-setting="auto_keybox_check" onchange="toggle('auto_keybox_check', this)"></div>
-<div class="row"><label for="random_on_boot">Refresh Identity on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" data-setting="random_on_boot" onchange="toggle('random_on_boot', this)"></div>
-<div class="row"><label for="telephony">Telephony Identifier Interception</label><input type="checkbox" class="toggle" id="telephony" data-setting="telephony" onchange="toggle('telephony', this)"></div>
 <div class="section-header">Compatibility passthrough</div>
 <div class="row"><label for="rkp_passthrough">RKP Passthrough</label><input type="checkbox" class="toggle" id="rkp_passthrough" data-setting="rkp_passthrough" onchange="toggle('rkp_passthrough', this)"></div>
 <div class="row"><label for="drm_passthrough">DRM App Passthrough</label><input type="checkbox" class="toggle" id="drm_passthrough" data-setting="drm_passthrough" onchange="toggle('drm_passthrough', this)"></div>
-<div style="font-size:0.8em; color:#888; margin-top:5px;">RKP service packages are always protected from substitution. RKP passthrough also preserves generated-key responses. DRM passthrough excludes packages in drm_packages.txt.</div>
-<div class="section-header">Boot Properties</div>
-<div class="row"><label for="spoof_build_identity">Template Build Identity (Fingerprint)</label><input type="checkbox" class="toggle" id="spoof_build_identity" data-setting="spoof_build_identity" onchange="toggle('spoof_build_identity', this)"></div>
-<div class="row"><label for="hide_sensitive_props">Hide Sensitive Props</label><input type="checkbox" class="toggle" id="hide_sensitive_props" data-setting="hide_sensitive_props" onchange="toggle('hide_sensitive_props', this)"></div>
-<div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" data-setting="spoof_region_cn" onchange="toggle('spoof_region_cn', this)"></div>
-<div class="row"><label for="bootPropsMode">Boot Property Policy</label><select id="bootPropsMode" style="width:auto; min-width:150px;" onchange="saveBootPropsMode(this)"><option value="auto">Automatic</option><option value="force">Always apply</option><option value="disable">Disabled</option></select></div>
-<div style="font-size:0.8em; color:#888; margin-top:5px;">Build identity applies the selected template fingerprint and app-visible android.os.Build fields before Zygote. Boot-property changes require a reboot. Automatic mode avoids known vendor and overlapping identity-provider conflicts. These controls do not relock the hardware bootloader or alter the TEE root of trust.</div>
+<div style="font-size:0.8em; color:#888; margin-top:5px;">RKP service packages are always protected from substitution. DRM passthrough excludes packages in drm_packages.txt. Neither setting disables core boot/TEE protection.</div>
 <div style="margin-top:20px; border-top: 1px solid var(--border); padding-top: 15px;">
     <div class="row"><span id="keyboxStatus" style="font-size:0.9em; color:var(--success);">Active</span><button onclick="runWithState(this, 'Reloading...', reloadConfig)">Reload Config</button></div>
 </div>
@@ -268,8 +247,9 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
     <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
     <div class="section-header">Template fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:8px 12px; margin-left:5px; min-height:44px;" title="Copy template fingerprint" aria-label="Copy Template Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
 </div>
-<div class="scope-note">Applying a template persists its fingerprint and build fields. Enable Template Build Identity and reboot to expose them through android.os.Build. Android ID remains Android's per-app SSAID, and the actual kernel uname remains unchanged. System, vendor, and boot/kernel attestation patch levels are controlled in security_patch.txt.</div>
-<div class="grid-2"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary">Generate Random</button><button onclick="runWithState(this, 'Saving...', applySpoofing)">Apply Identity</button></div>
+<div class="scope-note">Applying a template persists its fingerprint and build fields. Build Identity at Boot requires Identity Engine and a reboot. Android ID remains Android's per-app SSAID, and the actual kernel uname remains unchanged.</div>
+<div style="display:flex; gap:10px; flex-wrap:wrap;"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary" style="flex:1;">Randomize All Identifiers</button><button onclick="runWithState(this, 'Fetching...', applyAutoIdentity)" style="flex:1;">Auto Identity (Pixel Beta)</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" style="flex:1;">Apply Identity</button></div>
+<div class="scope-note" style="margin-top:12px; margin-bottom:0;"><strong>Auto Identity:</strong> for Play Integrity it pulls a current Pixel beta/canary ROM identity from Google's public metadata. Recommended only if you use a Custom ROM. The result is saved locally; enable Identity Engine and reboot to expose build fields.</div>
         </div>
         <div class="panel"><h3>Attestation and Telephony Identifiers</h3>
 <div id="identityScope" class="scope-note">These overrides are visible only to selected apps after Android grants the original API request. They do not change modem, SIM, EFS, baseband, or mobile-network identity.</div>
@@ -291,7 +271,16 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
 </div>
 <div class="section-header">Device</div>
 <div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Device serial" maxlength="64" style="font-family:monospace;" enterkeyhint="done" autocapitalize="characters" oninput="validateRealtime(this, 'serial')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off"></div>
-<div class="identity-actions"><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
+<div class="identity-actions" style="flex-wrap:wrap;"><button type="button" onclick="runWithState(this, 'Generating...', generateRandomIdentity)">Randomize All</button><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
+        </div>
+        <div class="panel">
+<h3>Identity Controls</h3>
+<div class="row"><label for="spoof_enabled"><strong style="color:#fff;">Identity Spoof Engine</strong><span class="res-desc">Enables only identity overrides. Core bootloader/TEE protection remains active when this is off.</span></label><input type="checkbox" class="toggle" id="spoof_enabled" data-setting="spoof_enabled" onchange="toggle('spoof_enabled', this)"></div>
+<div class="row"><label for="spoof_build_identity">Build Identity at Boot</label><input type="checkbox" class="toggle" id="spoof_build_identity" data-setting="spoof_build_identity" onchange="toggle('spoof_build_identity', this)"></div>
+<div class="row"><label for="random_on_boot">Refresh Identity on Boot</label><input type="checkbox" class="toggle" id="random_on_boot" data-setting="random_on_boot" onchange="toggle('random_on_boot', this)"></div>
+<div class="row"><label for="telephony">Telephony Identifier Interception</label><input type="checkbox" class="toggle" id="telephony" data-setting="telephony" onchange="toggle('telephony', this)"></div>
+<div class="row"><label for="spoof_region_cn">Spoof Region (CN)</label><input type="checkbox" class="toggle" id="spoof_region_cn" data-setting="spoof_region_cn" onchange="toggle('spoof_region_cn', this)"></div>
+<div class="scope-note" style="margin:0;">These switches affect identity only. Bootloader/verified-boot property hiding and Keystore/TEE certificate protection are always-on core features.</div>
         </div>
     </div>
 
@@ -1220,14 +1209,14 @@ try {
 }
         }
 
-        const WEB_UI_SETTINGS = ['spoof_enabled', 'spoof_build_identity', 'global_mode', 'tee_broken_mode', 'auto_keybox_check', 'random_on_boot', 'hide_sensitive_props', 'spoof_region_cn', 'telephony', 'rkp_passthrough', 'drm_passthrough'];
+        const WEB_UI_SETTINGS = ['spoof_enabled', 'spoof_build_identity', 'global_mode', 'auto_keybox_check', 'random_on_boot', 'spoof_region_cn', 'telephony', 'rkp_passthrough', 'drm_passthrough'];
 
         function updateEngineStatus(enabled) {
 const status = document.getElementById('status_engine');
 if (!status) return;
-status.innerText = enabled ? 'RUNNING' : 'PAUSED';
-status.style.color = enabled ? 'var(--success)' : 'var(--danger)';
-status.style.background = enabled ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+status.innerText = enabled ? 'IDENTITY ON' : 'OFF';
+status.style.color = enabled ? 'var(--success)' : '#888';
+status.style.background = enabled ? 'rgba(74, 222, 128, 0.1)' : 'rgba(255, 255, 255, 0.05)';
         }
 
         function updateGlobalStatus(enabled) {
@@ -1274,7 +1263,6 @@ try {
     const data = await res.json();
     console.log('[CleveresTricky] configuration loaded');
     WEB_UI_SETTINGS.forEach(k => syncSettingControls(k, Boolean(data[k])));
-    determineActiveProfile(data);
     document.getElementById('keyboxStatus').innerText = `${data.keybox_count} Keys Loaded`;
 } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); }
 
@@ -1380,7 +1368,7 @@ try {
     }
     syncSettingControls(setting, requestedValue);
     if (setting === 'spoof_enabled') {
-        notify(requestedValue ? 'Spoof Engine resumed' : 'Spoof Engine paused; reboot to clear boot-time property views');
+        notify(requestedValue ? 'Identity Spoof Engine enabled' : 'Identity Spoof Engine disabled; core protection remains active');
     } else if (setting === 'spoof_build_identity') {
         notify('Build identity setting saved; reboot required');
     } else {
@@ -1446,10 +1434,11 @@ try {
     document.getElementById('inputImsi2').value = t.imsi2 || '';
     document.getElementById('inputIccid').value = t.iccid || '';
     document.getElementById('inputIccid2').value = t.iccid2 || '';
+    document.getElementById('inputMeid').value = t.meid || '';
+    document.getElementById('inputMeid2').value = t.meid2 || '';
+    document.getElementById('inputPhoneNumber').value = t.phone_number || '';
+    document.getElementById('inputPhoneNumber2').value = t.phone_number2 || '';
     document.getElementById('inputSerial').value = t.serial || '';
-    ['inputMeid', 'inputMeid2', 'inputPhoneNumber', 'inputPhoneNumber2'].forEach(id => {
-        document.getElementById(id).value = '';
-    });
     const sel = document.getElementById('templateSelect');
     if ([...sel.options].some(option => option.value === t.id)) sel.value = t.id;
     sel.dataset.lockExtras = 'true';
@@ -1462,6 +1451,20 @@ try {
     console.error(e);
     notify('Error generating identity: ' + e.message, 'error');
 }
+        }
+
+        async function applyAutoIdentity() {
+const res = await fetchAuth('/api/auto_identity', { method: 'POST', timeoutMs: 120000 });
+if (!res.ok) throw new Error(await res.text());
+const data = await res.json();
+const sel = document.getElementById('templateSelect');
+sel.value = '';
+document.getElementById('pModel').innerText = String(data.model || 'Pixel Beta') + ' (Auto Identity)';
+document.getElementById('pManuf').innerText = 'Google';
+document.getElementById('pFing').innerText = String(data.fingerprint || '');
+syncSettingControls('spoof_build_identity', true);
+const patchNote = data.security_patch_estimated ? ' (estimated patch)' : '';
+notify('Auto Identity saved for ' + String(data.model || 'Pixel Beta') + patchNote + '; reboot required');
         }
 
         async function verifyKeyboxes() {
@@ -1767,8 +1770,7 @@ requireConfirm(btn, () => {
         const res = await fetchAuth(getAuthUrl('/api/config'));
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        determineActiveProfile(data);
-    } catch (e) {
+        } catch (e) {
         notify('Error: ' + e.message, 'error');
     }
 });
@@ -2042,11 +2044,7 @@ if (health && healthText && healthBadge) {
     let state = 'ok';
     let badge = 'READY';
     let message;
-    if (!data.spoof_enabled) {
-        state = 'error';
-        badge = 'PAUSED';
-        message = 'Spoof Engine is paused, so runtime interception paths are parked.';
-    } else if (!keystoreRunning) {
+    if (!keystoreRunning) {
         state = 'error';
         if (nativeRuntime.state === 'failed') {
             badge = 'NATIVE FAILED';
@@ -2061,10 +2059,6 @@ if (health && healthText && healthBadge) {
             badge = 'NATIVE OFFLINE';
             message = 'No operational Keystore interceptor is registered and no matching live native activation is available.';
         }
-    } else if (data.tee_broken_mode) {
-        state = 'warn';
-        badge = 'SAFE MODE';
-        message = 'Certificate Safe Mode is enabled, so certificate substitution is intentionally disabled.';
     } else if (keyboxCount <= 0) {
         state = 'warn';
         badge = 'NO KEYS';
@@ -2076,22 +2070,20 @@ if (health && healthText && healthBadge) {
     }
     health.dataset.state = state;
     healthBadge.textContent = badge;
-    healthText.textContent = message + ' Hardware bootloader and root-of-trust state remain genuine.';
+    healthText.textContent = message + ' Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
 }
 
 const features = [
-    { id: 'spoof_enabled', name: 'Spoof Engine', activity: data.spoof_enabled ? (keystoreRunning ? 'Keystore interceptor operational' : (nativeActive ? 'Native active; registration pending' : 'Configured; native runtime unavailable')) : 'Interceptors parked', scope: 'All spoof and hook paths', desc: 'Master switch; operational readiness requires a live Keystore Binder registration.' },
+    { id: 'spoof_enabled', name: 'Identity Spoof Engine', activity: data.spoof_enabled ? 'Identity overrides enabled' : 'Identity overrides off', scope: 'Attestation, telephony and build identity only', desc: 'Does not disable the core Keystore/TEE or boot protection paths.' },
     { id: 'keystore_runtime', name: 'Keystore Runtime', activity: keystoreRunning ? 'Registered and Binder alive' : 'Not operational', scope: 'Keystore2 Binder lifecycle', desc: 'Reports the daemon registration state rather than inferring readiness from configuration.' },
-    { id: 'telephony_runtime', name: 'Telephony Runtime', activity: data.telephony ? (telephonyRunning ? 'Registered and Binder alive' : 'Enabled but not operational') : 'Disabled', scope: 'Phone subscription Binder lifecycle', desc: 'Reports the independent telephony registration state.' },
+    { id: 'telephony_runtime', name: 'Telephony Runtime', activity: data.spoof_enabled && data.telephony ? (telephonyRunning ? 'Registered and Binder alive' : 'Enabled but not operational') : 'Disabled', scope: 'Phone subscription Binder lifecycle', desc: 'Identity-only Binder path; it is parked while Identity Engine is off.' },
     { id: 'global_mode', name: 'Global Mode', activity: 'UID decision only', scope: 'Resolved application UIDs', desc: 'Targets every eligible app while protecting system and RKP infrastructure UIDs.' },
-    { id: 'tee_broken_mode', name: 'Certificate Safe Mode', activity: 'No certificate rewrite', scope: 'Keystore interception', desc: 'Keeps genuine KeyMint responses when certificate substitution is paused.' },
-    { id: 'auto_keybox_check', name: 'Automatic Keybox Check', activity: data.spoof_enabled && data.auto_keybox_check ? 'Scheduled background check' : 'Worker stopped', scope: 'Authorized key material', desc: 'Revalidates key material and revocation state at a bounded interval.' },
+    { id: 'auto_keybox_check', name: 'Automatic Keybox Check', activity: data.auto_keybox_check ? 'Scheduled background check' : 'Worker stopped', scope: 'Authorized key material', desc: 'Core keybox maintenance; independent from Identity Engine.' },
     { id: 'random_on_boot', name: 'Identity Refresh on Boot', activity: 'Boot only', scope: 'Persisted identity fields', desc: 'Refreshes configured attestation and app-visible telephony identifiers.' },
     { id: 'telephony', name: 'Telephony Interception', activity: 'Matching Binder calls only', scope: 'Permission-approved app APIs', desc: 'Overrides configured dual-SIM values without changing modem or carrier identity.' },
     { id: 'rkp_passthrough', name: 'RKP Passthrough', activity: 'Generated-key fast path', scope: 'KeyMint generated-key replies', desc: 'RKP infrastructure UIDs are always protected; this also preserves generated-key responses.' },
     { id: 'drm_passthrough', name: 'DRM App Passthrough', activity: 'Bounded UID lookup', scope: 'drm_packages.txt rules', desc: 'Leaves configured playback and DRM packages on the original keystore path.' },
     { id: 'spoof_build_identity', name: 'Template Build Identity', activity: 'Boot only', scope: 'Fingerprint and Build fields', desc: 'Persists the selected template before Zygote; requires reboot.' },
-    { id: 'hide_sensitive_props', name: 'Boot-State Property View', activity: 'Boot only', scope: 'App-visible system properties', desc: 'Does not relock the bootloader or alter hardware attestation.' },
     { id: 'spoof_region_cn', name: 'Region Property View', activity: 'Boot only', scope: 'Bounded userspace region properties', desc: 'Applies the optional CN region view before Zygote; requires reboot.' },
     { id: 'keybox_storage', name: 'Keybox Storage', activity: 'Validated bounded cache', scope: data.keybox_count + ' active keyboxes', desc: 'Uses root-only storage and fails closed when revocation data is unavailable.' },
     { id: 'app_rules', name: 'App Rules', activity: 'Cached package lookup', scope: data.app_config_size + ' B configuration', desc: 'Selects target-specific identity and keybox policy.' }
