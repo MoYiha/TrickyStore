@@ -63,6 +63,7 @@ fun main(args: Array<String>) {
         var previousIdentityEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
         var telephonyStopPending = false
+        var drmStopPending = false
         while (true) {
             val identityEngineEnabled = Config.isSpoofEnabled
             if (previousIdentityEngineState != identityEngineEnabled) {
@@ -80,6 +81,7 @@ fun main(args: Array<String>) {
             // spoofing must never unregister it or park the native Binder hook.
             var ksSuccess = KeystoreInterceptor.isRunning()
             var telSuccess = !Config.shouldInterceptTelephony || TelephonyInterceptor.isRunning()
+            var drmSuccess = !identityEngineEnabled || DrmInterceptor.isRunning()
 
             val ksJob =
                 if (!ksSuccess) {
@@ -108,8 +110,22 @@ fun main(args: Array<String>) {
                     null
                 }
 
+            val drmJob =
+                if (identityEngineEnabled && !drmSuccess) {
+                    launch(Dispatchers.IO) {
+                        try {
+                            drmSuccess = DrmInterceptor.tryRunDrmInterceptor()
+                        } catch (e: Exception) {
+                            Logger.e("DRM privacy interceptor threw unexpected exception", e)
+                        }
+                    }
+                } else {
+                    null
+                }
+
             ksJob?.join()
             telJob?.join()
+            drmJob?.join()
 
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
                 val wasPending = telephonyStopPending
@@ -123,16 +139,29 @@ fun main(args: Array<String>) {
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
+            if (!identityEngineEnabled && (previousIdentityEngineState == false || drmStopPending)) {
+                val wasPending = drmStopPending
+                drmStopPending = !DrmInterceptor.stopDrmInterceptor()
+                if (drmStopPending && !wasPending) {
+                    Logger.w("DRM privacy hook cleanup is incomplete; retry scheduled")
+                }
+                drmSuccess = !drmStopPending
+            } else if (identityEngineEnabled) {
+                drmStopPending = false
+            }
+
             if (!ksSuccess) Logger.d("Core Keystore interceptor is not ready; retry scheduled")
             if (!telSuccess) Logger.d("Telephony interceptor not ready yet")
+            if (!drmSuccess) Logger.d("DRM privacy interceptor not ready yet")
 
             try {
                 Config.awaitRuntimeController(
-                    if (ksSuccess && telSuccess && !telephonyStopPending) 30_000 else 1_000,
+                    if (ksSuccess && telSuccess && drmSuccess && !telephonyStopPending && !drmStopPending) 30_000 else 1_000,
                 )
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
                 CertificatePolicyWatcher.stop()
+                DrmInterceptor.stopDrmInterceptor()
                 Logger.i("Main: Runtime controller interrupted, shutting down")
                 return@runBlocking
             }
