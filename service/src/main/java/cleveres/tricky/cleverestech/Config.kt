@@ -26,6 +26,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -1427,9 +1428,9 @@ object Config {
                 now.toString()
             } else {
                 value
-                    .replace("YYYY", String.format("%04d", now.year))
-                    .replace("MM", String.format("%02d", now.monthValue))
-                    .replace("DD", String.format("%02d", now.dayOfMonth))
+                    .replace("YYYY", String.format(Locale.ROOT, "%04d", now.year))
+                    .replace("MM", String.format(Locale.ROOT, "%02d", now.monthValue))
+                    .replace("DD", String.format(Locale.ROOT, "%02d", now.dayOfMonth))
             }
 
         val result = effectiveDate.convertPatchLevel(long)
@@ -1743,7 +1744,6 @@ object Config {
         root = newRoot
     }
 
-    @androidx.annotation.VisibleForTesting
     internal fun getConfigRoot(): File = root
 
     private val packageListLock = Any()
