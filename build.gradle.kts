@@ -41,8 +41,8 @@ val commitHash = gitCommitHash
 val abiList = listOf("arm64-v8a", "x86_64")
 
 val androidMinSdkVersion = 31
-val androidTargetSdkVersion = 36
-val androidCompileSdkVersion = 36
+val androidTargetSdkVersion = 37
+val androidCompileSdkVersion = 37
 val androidMaxSupportedSdkVersion = 37
 val androidBuildToolsVersion = "36.0.0"
 val androidCompileNdkVersion = "27.3.13750724"
