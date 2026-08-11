@@ -7,6 +7,12 @@ on:
     paths:
       - .github/finalize_core_controls.py
       - .github/workflows/finalize-core-controls.yml
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/finalize_core_controls.py
+      - .github/workflows/finalize-core-controls.yml
 
 permissions:
   contents: write
@@ -18,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/core-protection-identity-ui
+          ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
       - name: Apply cleanup
         run: python3 .github/finalize_core_controls.py
@@ -30,4 +36,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "refactor: remove legacy core toggles"
-          git push origin HEAD:agent/core-protection-identity-ui
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
