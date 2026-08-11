@@ -268,36 +268,34 @@ object TelephonyInterceptor : BinderInterceptor() {
         val proc = File("/proc")
         if (!proc.exists() || !proc.isDirectory) return null
 
-        val pids = proc.list() ?: return null
         val buf = ByteArray(1024)
-        for (i in 0 until pids.size) {
-            val pidStr = pids[i]
-            if (pidStr.isNotEmpty() && pidStr[0] in '1'..'9') {
-                try {
-                    val stream = java.io.FileInputStream("/proc/$pidStr/cmdline")
-                    val length =
-                        try {
-                            stream.read(buf)
-                        } finally {
-                            stream.close()
-                        }
-                    if (length > 0) {
+        try {
+            java.nio.file.Files.newDirectoryStream(proc.toPath()).use { entries ->
+                for (entry in entries) {
+                    val pidStr = entry.fileName.toString()
+                    if (pidStr.isEmpty() || pidStr[0] !in '1'..'9') continue
+                    try {
+                        val length =
+                            java.nio.file.Files.newInputStream(entry.resolve("cmdline")).use { stream ->
+                                stream.read(buf)
+                            }
+                        if (length <= 0) continue
                         var end = 0
                         var start = 0
                         while (end < length && buf[end] != 0.toByte()) {
                             if (buf[end] == 47.toByte()) start = end + 1
                             end++
                         }
-                        val argv0 = String(buf, start, end - start)
-                        if (argv0 == "com.android.phone") {
+                        if (String(buf, start, end - start) == "com.android.phone") {
                             val pid = pidStr.toInt()
                             cachedPhonePid = pid
                             return pid
                         }
+                    } catch (_: Exception) {
                     }
-                } catch (_: Exception) {
                 }
             }
+        } catch (_: Exception) {
         }
         return null
     }
