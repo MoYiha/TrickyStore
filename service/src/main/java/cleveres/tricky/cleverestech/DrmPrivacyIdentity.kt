@@ -56,7 +56,7 @@ internal object DrmPrivacyIdentity {
         var offset = 0
         var counter = 0
         while (offset < output.size) {
-            val md = digest.get()
+            val md = requireNotNull(digest.get()) { "SHA-256 digest is unavailable" }
             md.reset()
             md.update(domain)
             md.update(0.toByte())
