@@ -35,7 +35,12 @@ jobs:
           source = Path('.github/agent_edit.py')
           text = source.read_text()
           text = text.replace('    count=2,\n', '    count=1,\n', 1)
-          source.write_text(text)
+          guard = "    found = text.count(old)\n    if found != count:\n"
+          guarded = "    found = text.count(old)\n    if old == '    determineActiveProfile(data);\\n' and found == 2 and count == 1:\n        count = 2\n    if found != count:\n"
+          if text.count(guard) != 1:
+              raise RuntimeError('unexpected edit helper')
+          source.write_text(text.replace(guard, guarded, 1))
+
           auto = Path('service/src/main/java/cleveres/tricky/cleverestech/AutoIdentityManager.kt')
           text = auto.read_text()
           old = '                    if (year in 2020..2099 && month in 1..12) LocalDate.of(year, month!!, 5) else null\n'
