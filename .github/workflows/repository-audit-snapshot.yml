@@ -1,0 +1,37 @@
+name: Repository Audit Snapshot
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: "Repository tracked-source snapshot"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Build tracked-source snapshot
+        run: |
+          mkdir -p audit
+          git ls-files > audit/tracked-files.txt
+          git ls-files -s > audit/tracked-index.txt
+          git archive --format=tar.gz --output=audit/tracked-source.tar.gz HEAD
+          printf 'tracked_files=%s\n' "$(wc -l < audit/tracked-files.txt)" > audit/summary.txt
+          printf 'archive_bytes=%s\n' "$(wc -c < audit/tracked-source.tar.gz)" >> audit/summary.txt
+          cat audit/summary.txt
+
+      - name: Upload tracked-source snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: repository-audit-snapshot
+          path: audit/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
