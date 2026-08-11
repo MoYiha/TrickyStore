@@ -1,0 +1,33 @@
+name: Apply core control cleanup
+
+on:
+  push:
+    branches:
+      - agent/core-protection-identity-ui
+    paths:
+      - .github/finalize_core_controls.py
+      - .github/workflows/finalize-core-controls.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/core-protection-identity-ui
+          fetch-depth: 0
+      - name: Apply cleanup
+        run: python3 .github/finalize_core_controls.py
+      - name: Commit cleanup
+        run: |
+          rm -f .github/finalize_core_controls.py .github/workflows/finalize-core-controls.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "refactor: remove legacy core toggles"
+          git push origin HEAD:agent/core-protection-identity-ui
