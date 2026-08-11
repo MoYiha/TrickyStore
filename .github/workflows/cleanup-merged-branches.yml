@@ -9,13 +9,12 @@ on:
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete merged source branches
+      - name: Delete branches fully merged into the default branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -25,32 +24,35 @@ jobs:
           set -uo pipefail
 
           deleted=0
-          skipped=0
+          preserved=0
           failed=0
+          encoded_default="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DEFAULT_BRANCH")"
 
           while IFS= read -r branch; do
             [ -z "$branch" ] && continue
             [ "$branch" = "$DEFAULT_BRANCH" ] && continue
 
             encoded_branch="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$branch")"
+            status="$(gh api "repos/${REPOSITORY}/compare/${encoded_branch}...${encoded_default}" --jq '.status' 2>/dev/null || true)"
 
-            if ! gh api "repos/${REPOSITORY}/git/ref/heads/${encoded_branch}" >/dev/null 2>&1; then
-              skipped=$((skipped + 1))
-              continue
-            fi
-
-            echo "Deleting merged branch: $branch"
-            if gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${encoded_branch}"; then
-              deleted=$((deleted + 1))
-            else
-              echo "Failed to delete branch: $branch" >&2
-              failed=$((failed + 1))
-            fi
+            case "$status" in
+              ahead|identical)
+                echo "Deleting fully merged branch: $branch ($status)"
+                if gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${encoded_branch}"; then
+                  deleted=$((deleted + 1))
+                else
+                  echo "Failed to delete branch: $branch" >&2
+                  failed=$((failed + 1))
+                fi
+                ;;
+              *)
+                echo "Preserving branch with unmerged or unknown state: $branch ($status)"
+                preserved=$((preserved + 1))
+                ;;
+            esac
           done < <(
-            gh api --paginate "repos/${REPOSITORY}/pulls?state=closed&base=${DEFAULT_BRANCH}&per_page=100" \
-              --jq '.[] | select(.merged_at != null and .head.repo.full_name == "'"${REPOSITORY}"'") | .head.ref' \
-              | sort -u
+            gh api --paginate "repos/${REPOSITORY}/branches?per_page=100" --jq '.[].name' | sort -u
           )
 
-          echo "Cleanup complete: deleted=${deleted}, already_absent=${skipped}, failed=${failed}"
+          echo "Ancestry cleanup complete: deleted=${deleted}, preserved=${preserved}, failed=${failed}"
           test "$failed" -eq 0
