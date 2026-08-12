@@ -437,7 +437,7 @@ jobs:
           cargo clippy --workspace --all-targets --target x86_64-linux-android -- -D warnings
 
       - name: Run Unit Tests
-        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gradle == 'true' }}
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gradle == 'true' || needs.changes.outputs.module == 'true' || needs.changes.outputs.android_app == 'true' }}
         id: unit_tests
         shell: bash
         run: |

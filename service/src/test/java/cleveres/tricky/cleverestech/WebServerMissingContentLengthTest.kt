@@ -24,14 +24,14 @@ class WebServerMissingContentLengthTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("D/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
                     tag: String,
                     msg: String,
                 ) {
-                    println("E/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -39,15 +39,15 @@ class WebServerMissingContentLengthTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("E/$tag: $msg")
-                    t?.printStackTrace()
+                    // no-op
+                    // no-op
                 }
 
                 override fun i(
                     tag: String,
                     msg: String,
                 ) {
-                    println("I/$tag: $msg")
+                    // no-op
                 }
             },
         )

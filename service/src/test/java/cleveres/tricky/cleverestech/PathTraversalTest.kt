@@ -38,7 +38,7 @@ class PathTraversalTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    t?.printStackTrace()
+                    // no-op
                 }
 
                 override fun i(
@@ -77,13 +77,13 @@ class PathTraversalTest {
         conn.outputStream.close()
 
         val responseCode = conn.responseCode
-        println("Response Code: $responseCode")
+        // no-op
 
         // In vulnerable state, this creates the file
         if (outsideFile.exists()) {
-            println("VULNERABILITY CONFIRMED: Created file outside config dir")
+            // no-op
         } else {
-            println("File not created.")
+            // no-op
         }
 
         // Assert that the file was NOT created (passes if fixed)

@@ -20,6 +20,6 @@ class BootLogicPerfTest {
                     method.invoke(BootLogic, "ro.build.version.sdk")
                 }
             }
-        System.err.println("BASELINE_TIME_MS: " + time)
+        System.out.println("BASELINE_TIME_MS: " + time)
     }
 }

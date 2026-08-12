@@ -27,7 +27,7 @@ class KeyboxVerifierRevocationTest {
                         tag: String,
                         msg: String,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun e(
@@ -35,7 +35,7 @@ class KeyboxVerifierRevocationTest {
                         msg: String,
                         t: Throwable?,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun i(
@@ -123,8 +123,8 @@ class KeyboxVerifierRevocationTest {
         // 2. Create Revocation List containing the Key ID
         val revokedSerials = setOf(keyIdHex)
 
-        println("Serial Number (Hex): ${cert.serialNumber.toString(16)}")
-        println("Key ID (Hex): $keyIdHex")
+        // no-op: ${cert.serialNumber.toString(16)}")
+        // no-op: $keyIdHex")
 
         // 3. Verify using NEW Logic
         // This assertion should PASS now.

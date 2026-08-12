@@ -1,6 +1,11 @@
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.dsl.LibraryExtension
 import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.testing.TestDescriptor
+import org.gradle.api.tasks.testing.TestOutputEvent
+import org.gradle.api.tasks.testing.TestOutputListener
+import java.util.Collections
 import java.io.ByteArrayOutputStream
 
 plugins {
@@ -151,6 +156,41 @@ subprojects {
                 "-Xlint:-this-escape",
             ),
         )
+    }
+
+    tasks.withType<Test>().configureEach {
+        val forbiddenOutput = Collections.synchronizedList(mutableListOf<String>())
+        val forbiddenMarker = Regex("(?i)(^|[^a-z])(warning|warn|error|exception|failed)([^a-z]|$)")
+        addTestOutputListener(
+            object : TestOutputListener {
+                override fun onOutput(
+                    testDescriptor: TestDescriptor,
+                    outputEvent: TestOutputEvent,
+                ) {
+                    val message = outputEvent.message.trim()
+                    if (message.isEmpty()) return
+                    if (
+                        outputEvent.destination == TestOutputEvent.Destination.StdErr ||
+                        forbiddenMarker.containsMatchIn(message)
+                    ) {
+                        forbiddenOutput +=
+                            "${testDescriptor.className}.${testDescriptor.name} " +
+                            "[${outputEvent.destination}]: $message"
+                    }
+                }
+            },
+        )
+        doLast {
+            val violations = synchronized(forbiddenOutput) { forbiddenOutput.toList() }
+            if (violations.isNotEmpty()) {
+                throw GradleException(
+                    buildString {
+                        appendLine("Tests emitted forbidden warning/error output:")
+                        violations.forEach { appendLine(it) }
+                    }.trimEnd(),
+                )
+            }
+        }
     }
 
     project.plugins.apply("org.jlleitschuh.gradle.ktlint")

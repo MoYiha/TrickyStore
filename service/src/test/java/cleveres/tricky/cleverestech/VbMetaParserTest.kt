@@ -18,14 +18,14 @@ class VbMetaParserTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("DEBUG: $tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
                     tag: String,
                     msg: String,
                 ) {
-                    println("ERROR: $tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -33,15 +33,15 @@ class VbMetaParserTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("ERROR: $tag: $msg")
-                    t?.printStackTrace()
+                    // no-op
+                    // no-op
                 }
 
                 override fun i(
                     tag: String,
                     msg: String,
                 ) {
-                    println("INFO: $tag: $msg")
+                    // no-op
                 }
             },
         )
