@@ -22,7 +22,7 @@ class KeyboxVerifierBugTest {
                         tag: String,
                         msg: String,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun e(
@@ -30,7 +30,7 @@ class KeyboxVerifierBugTest {
                         msg: String,
                         t: Throwable?,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun i(
@@ -58,7 +58,7 @@ class KeyboxVerifierBugTest {
             """.trimIndent()
 
         val revoked = KeyboxVerifier.parseCrl(json)
-        println("Revoked Set: $revoked")
+        // no-op
 
         // Should contain "a" (Decimal 10)
         assertTrue("Should revoke decimal 10 (hex 'a')", revoked.contains("a"))

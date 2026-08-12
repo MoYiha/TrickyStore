@@ -42,7 +42,7 @@ class WebServerUploadTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    t?.printStackTrace()
+                    // no-op
                 }
 
                 override fun i(

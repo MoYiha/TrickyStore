@@ -60,14 +60,14 @@ class ActionTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("D/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
                     tag: String,
                     msg: String,
                 ) {
-                    println("E/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -75,15 +75,15 @@ class ActionTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("E/$tag: $msg")
-                    t?.printStackTrace()
+                    // no-op
+                    // no-op
                 }
 
                 override fun i(
                     tag: String,
                     msg: String,
                 ) {
-                    println("I/$tag: $msg")
+                    // no-op
                 }
             },
         )
@@ -144,7 +144,7 @@ class ActionTest {
         assertEquals(200, conn.responseCode)
 
         val content = conn.inputStream.bufferedReader().readText()
-        println("Config response: $content")
+        // no-op
 
         // Initial state: 0 keys
         val json = JSONObject(content)

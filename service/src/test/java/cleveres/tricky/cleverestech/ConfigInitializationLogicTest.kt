@@ -39,7 +39,7 @@ class ConfigInitializationLogicTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("E/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -47,7 +47,7 @@ class ConfigInitializationLogicTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("E/$tag: $msg")
+                    // no-op
                 }
 
                 override fun i(
@@ -97,7 +97,7 @@ class ConfigInitializationLogicTest {
             rootField.set(Config, tempDir)
             setupDone = true
         } catch (e: Exception) {
-            println("Reflection failed: $e")
+            // no-op
             e.printStackTrace()
             throw e
         }
@@ -115,7 +115,7 @@ class ConfigInitializationLogicTest {
                 rootField.isAccessible = true
                 rootField.set(Config, originalRoot)
             } catch (e: Exception) {
-                println("Failed to restore root: $e")
+                // no-op
             }
         }
 
@@ -149,8 +149,8 @@ class ConfigInitializationLogicTest {
         try {
             callUpdateBuildVars(spoofFile)
         } catch (e: NoSuchMethodException) {
-            println("Methods available in Config:")
-            Config::class.java.declaredMethods.forEach { println(it.name) }
+            // no-op
+            Config::class.java.declaredMethods.forEach { // no-op }
             throw e
         }
 

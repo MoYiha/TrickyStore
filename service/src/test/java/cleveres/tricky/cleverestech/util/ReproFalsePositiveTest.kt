@@ -24,7 +24,7 @@ class ReproFalsePositiveTest {
                         tag: String,
                         msg: String,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun e(
@@ -32,7 +32,7 @@ class ReproFalsePositiveTest {
                         msg: String,
                         t: Throwable?,
                     ) {
-                        println("E/$tag: $msg")
+                        // no-op
                     }
 
                     override fun i(
@@ -62,7 +62,7 @@ class ReproFalsePositiveTest {
 
         // Parse CRL
         val revokedSerials = KeyboxVerifier.parseCrl(json)
-        println("Revoked Set: $revokedSerials")
+        // no-op
 
         // 1. Check that the Decimal interpretation is present (Correct behavior)
         val decimalVal = BigInteger(ambiguousStr)
@@ -79,9 +79,9 @@ class ReproFalsePositiveTest {
 
         // This assertion passes if the security fix is applied
         if (revokedSerials.contains(hexInterpretation)) {
-            println("Ambiguous interpretation '$hexInterpretation' was added to revoked set (Secure behavior).")
+            // no-op.")
         } else {
-            println("FAIL-OPEN: Hex interpretation not present.")
+            // no-op
         }
 
         // Simulate a Keybox Verification

@@ -62,7 +62,7 @@ class ConfigCachingTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("E/$tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -70,15 +70,15 @@ class ConfigCachingTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("E/$tag: $msg")
-                    t?.printStackTrace()
+                    // no-op
+                    // no-op
                 }
 
                 override fun i(
                     tag: String,
                     msg: String,
                 ) {
-                    println("I/$tag: $msg")
+                    // no-op
                 }
             },
         )

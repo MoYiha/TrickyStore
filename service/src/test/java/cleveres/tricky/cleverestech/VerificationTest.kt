@@ -20,14 +20,14 @@ class VerificationTest {
                     tag: String,
                     msg: String,
                 ) {
-                    println("DEBUG: $tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
                     tag: String,
                     msg: String,
                 ) {
-                    println("ERROR: $tag: $msg")
+                    // no-op
                 }
 
                 override fun e(
@@ -35,14 +35,14 @@ class VerificationTest {
                     msg: String,
                     t: Throwable?,
                 ) {
-                    println("ERROR: $tag: $msg $t")
+                    // no-op
                 }
 
                 override fun i(
                     tag: String,
                     msg: String,
                 ) {
-                    println("INFO: $tag: $msg")
+                    // no-op
                 }
             },
         )
