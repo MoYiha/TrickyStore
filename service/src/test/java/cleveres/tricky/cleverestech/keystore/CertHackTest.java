@@ -29,10 +29,10 @@ public class CertHackTest {
     @Test
     public void testReadFromXml() {
         Logger.setImpl(new Logger.LogImpl() {
-            @Override public void d(String tag, String msg) { System.out.println("D/" + tag + ": " + msg); }
-            @Override public void e(String tag, String msg) { System.out.println("E/" + tag + ": " + msg); }
-            @Override public void e(String tag, String msg, Throwable t) { System.out.println("E/" + tag + ": " + msg); t.printStackTrace(); }
-            @Override public void i(String tag, String msg) { System.out.println("I/" + tag + ": " + msg); }
+            @Override public void d(String tag, String msg) { // no-op }
+            @Override public void e(String tag, String msg) { // no-op }
+            @Override public void e(String tag, String msg, Throwable t) { // no-op // no-op }
+            @Override public void i(String tag, String msg) { // no-op }
         });
 
         String xml = "<?xml version=\"1.0\"?>\n" +

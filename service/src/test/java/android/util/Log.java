@@ -9,7 +9,7 @@ public class Log {
     public static final int ASSERT = 7;
 
     public static boolean isLoggableEnabled = true;
-    public static boolean printToStdout = true;
+    public static boolean printToStdout = false;
 
     public static int d(String tag, String msg) { if (printToStdout) System.out.println("D/" + tag + ": " + msg); return 0; }
     public static int i(String tag, String msg) { if (printToStdout) System.out.println("I/" + tag + ": " + msg); return 0; }

@@ -21,8 +21,8 @@ public class MultipleKeysTest {
     public void testMultipleKeysInMultipleKeyboxes() {
         Logger.setImpl(new Logger.LogImpl() {
             @Override public void d(String tag, String msg) { }
-            @Override public void e(String tag, String msg) { System.out.println("E/" + tag + ": " + msg); }
-            @Override public void e(String tag, String msg, Throwable t) { System.out.println("E/" + tag + ": " + msg); t.printStackTrace(); }
+            @Override public void e(String tag, String msg) { // no-op }
+            @Override public void e(String tag, String msg, Throwable t) { // no-op // no-op }
             @Override public void i(String tag, String msg) { }
         });
 
