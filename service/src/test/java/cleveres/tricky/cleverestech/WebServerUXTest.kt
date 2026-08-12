@@ -113,18 +113,16 @@ class WebServerUXTest {
     @Test
     fun testMobileAndSettingContracts() {
         val html = fetchHtml()
-        val settings =
+        val legacySettings =
             listOf(
                 "spoof_enabled",
                 "spoof_build_identity",
-                "global_mode",
-                "auto_keybox_check",
                 "random_on_boot",
                 "spoof_region_cn",
                 "telephony",
-                "rkp_passthrough",
-                "drm_passthrough",
             )
+        val featureCenterSettings = listOf("global_mode", "auto_keybox_check", "drm_passthrough")
+        val monitoredSettings = legacySettings + featureCenterSettings
 
         assertTrue(html.contains("viewport-fit=cover"))
         assertTrue(html.contains("env(safe-area-inset-bottom)"))
@@ -133,7 +131,8 @@ class WebServerUXTest {
         assertTrue(html.contains("height: min(500px, 60dvh) !important"))
         assertTrue(html.contains("async function fetchAuth"))
         assertTrue(html.contains("window.CleveresBridge.fetch(url, options)"))
-        assertTrue(html.contains("<script src=\"bridge.js?revision=4\"></script>"))
+        assertTrue(html.contains("<script src=\"bridge.js?revision=5\"></script>"))
+        assertTrue(html.contains("<script src=\"policy.js?revision=2\"></script>"))
         assertTrue(html.contains("function downloadBlob"))
         assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
         assertFalse(html.contains("kbFilePicker').files = files"))
@@ -141,12 +140,18 @@ class WebServerUXTest {
         assertFalse(html.contains("id=\"bootPropsMode\""))
         assertFalse(html.contains("data-setting=\"tee_broken_mode\""))
         assertFalse(html.contains("data-setting=\"hide_sensitive_props\""))
+        assertFalse(html.contains("data-setting=\"rkp_passthrough\""))
         assertTrue(html.contains(".tabs { position: fixed; top: auto; bottom: 0;"))
         assertTrue(html.contains("<option value=\"templates.json\">templates.json</option>"))
 
-        settings.forEach { setting ->
-            assertTrue("Missing synchronized control for $setting", html.contains("data-setting=\"$setting\""))
+        legacySettings.forEach { setting ->
+            assertTrue("Missing synchronized legacy control for $setting", html.contains("data-setting=\"$setting\""))
             assertTrue("Missing source-aware toggle for $setting", html.contains("toggle('$setting', this)"))
+        }
+        featureCenterSettings.forEach { setting ->
+            assertFalse("Duplicate legacy Feature Center control for $setting", html.contains("data-setting=\"$setting\""))
+        }
+        monitoredSettings.forEach { setting ->
             assertTrue("Missing resource monitor entry for $setting", html.contains("{ id: '$setting'"))
         }
         assertTrue(html.contains("WEB_UI_SETTINGS.includes(f.id)"))
