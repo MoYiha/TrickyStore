@@ -1,9 +1,20 @@
 package cleveres.tricky.cleverestech
 
 import android.util.Log
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 object Logger {
     const val TAG = "cleverestricky"
+    private const val DEBUG_FLAG_REFRESH_NANOS = 2_000_000_000L
+    private val runtimeDebugFlag = File("/data/adb/cleverestricky/debug_logging")
+
+    @Volatile
+    private var cachedRuntimeDebug = false
+
+    @Volatile
+    private var lastRuntimeDebugCheckNanos = Long.MIN_VALUE
 
     interface LogImpl {
         fun d(
@@ -85,7 +96,7 @@ object Logger {
 
     @JvmStatic
     fun d(msg: String) {
-        impl.d(TAG, msg)
+        if (isDebugEnabled()) impl.d(TAG, msg)
     }
 
     @JvmStatic
@@ -93,7 +104,7 @@ object Logger {
         tag: String,
         msg: String,
     ) {
-        impl.d(tag, msg)
+        if (isDebugEnabled()) impl.d(tag, msg)
     }
 
     @JvmStatic
@@ -168,6 +179,25 @@ object Logger {
 
     @JvmStatic
     fun isDebugEnabled(): Boolean {
-        return BuildConfig.DEBUG || Log.isLoggable(TAG, Log.DEBUG)
+        if (BuildConfig.DEBUG || Log.isLoggable(TAG, Log.DEBUG)) return true
+        val now = System.nanoTime()
+        val last = lastRuntimeDebugCheckNanos
+        if (last != Long.MIN_VALUE && now >= last && now - last < DEBUG_FLAG_REFRESH_NANOS) {
+            return cachedRuntimeDebug
+        }
+        return synchronized(this) {
+            val secondLast = lastRuntimeDebugCheckNanos
+            if (secondLast != Long.MIN_VALUE && now >= secondLast && now - secondLast < DEBUG_FLAG_REFRESH_NANOS) {
+                cachedRuntimeDebug
+            } else {
+                val path = runtimeDebugFlag.toPath()
+                cachedRuntimeDebug =
+                    runCatching {
+                        Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(path)
+                    }.getOrDefault(false)
+                lastRuntimeDebugCheckNanos = now
+                cachedRuntimeDebug
+            }
+        }
     }
 }
