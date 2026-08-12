@@ -13,6 +13,7 @@
     const maxEnvelopeChars = 1024 * 1024;
     const responseFields = new Set(['version', 'status', 'statusText', 'mimeType', 'size', 'body', 'downloadId']);
     const communityUrl = 'https://t.me/cleverestech';
+    const debugFlag = '/data/adb/cleverestricky/debug_logging';
     let callbackCounter = 0;
 
     function encodeBytes(bytes) {
@@ -84,9 +85,6 @@
 
     function normalizeExecResult(values, expectEnvelope = false) {
         if (expectEnvelope) {
-            // Some WebUI hosts report a non-zero callback code while still returning the
-            // completed bridge response on stdout/stderr. Only recover an exact, bounded
-            // protocol envelope; normal command failures continue down the errno path.
             for (const value of [values[1], values[0], values[2]]) {
                 const envelope = extractResponseEnvelope(value);
                 if (envelope) return { errno: 0, stdout: envelope, stderr: '' };
@@ -121,9 +119,6 @@
                 stdout = parsed.stdout ?? parsed.out ?? '';
                 stderr = parsed.stderr ?? parsed.err ?? '';
             } else {
-                // Newer/alternate WebUI hosts may deliver stdout as the only callback argument.
-                // Commands are fixed and their outputs are validated by the caller, so preserve
-                // that output instead of treating it as an errno value.
                 errno = 0;
                 stdout = raw;
                 stderr = '';
@@ -136,6 +131,38 @@
             stdout: String(stdout ?? '').trim(),
             stderr: String(stderr ?? '').trim()
         };
+    }
+
+    function execHostCommand(command, timeoutMs = 10000) {
+        if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the KernelSU or APatch WebUI button'));
+        const boundedTimeout = Math.min(Math.max(Number(timeoutMs) || 10000, 1000), 30000);
+        return new Promise((resolve, reject) => {
+            const callbackName = `ct_host_${Date.now()}_${callbackCounter++}`;
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                delete global[callbackName];
+                reject(new Error('Host command timed out'));
+            }, boundedTimeout + 2000);
+            global[callbackName] = (...values) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                delete global[callbackName];
+                const result = normalizeExecResult(values, false);
+                if (result.errno === 0) resolve(result.stdout);
+                else reject(new Error(result.stderr || result.stdout || `Host command failed with code ${result.errno}`));
+            };
+            try {
+                nativeApi.exec(command, '{}', callbackName);
+            } catch (error) {
+                settled = true;
+                clearTimeout(timer);
+                delete global[callbackName];
+                reject(error);
+            }
+        });
     }
 
     function execNative(args, timeoutMs, expectEnvelope = false) {
@@ -174,6 +201,25 @@
                 reject(error);
             }
         });
+    }
+
+    async function openCommunity() {
+        const command = `/system/bin/am start --user current -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d '${communityUrl}' -p com.android.chrome >/dev/null 2>&1 || /system/bin/am start --user current -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d '${communityUrl}' >/dev/null 2>&1`;
+        await execHostCommand(command, 12000);
+        return true;
+    }
+
+    async function getDebugLogging() {
+        const output = await execHostCommand(`[ -f '${debugFlag}' ] && [ ! -L '${debugFlag}' ] && printf on || printf off`, 5000);
+        return output === 'on';
+    }
+
+    async function setDebugLogging(enabled) {
+        const command = enabled
+            ? `umask 077; [ ! -L '${debugFlag}' ] || exit 2; : > '${debugFlag}'; chmod 0600 '${debugFlag}'`
+            : `[ ! -L '${debugFlag}' ] || exit 2; rm -f '${debugFlag}'`;
+        await execHostCommand(command, 5000);
+        return Boolean(enabled);
     }
 
     async function createStage(kind, timeoutMs) {
@@ -359,7 +405,6 @@
         }
         validateResponseEnvelope(envelope);
         const hasBody = typeof envelope.body === 'string';
-        const hasDownload = typeof envelope.downloadId === 'string';
         const response = new NativeResponse(envelope, timeoutMs);
         if (hasBody) {
             const decoded = decodeBytes(envelope.body);
@@ -467,6 +512,16 @@
         }
     }
 
+    function loadUxEnhancements() {
+        const document = global.document;
+        if (!document || !document.head || !document.createElement || document.getElementById('ct_ux_script')) return;
+        const script = document.createElement('script');
+        script.id = 'ct_ux_script';
+        script.src = 'ux.js?revision=1';
+        script.defer = true;
+        document.head.appendChild(script);
+    }
+
     try {
         if (nativeApi && typeof nativeApi.enableEdgeToEdge === 'function') nativeApi.enableEdgeToEdge(true);
     } catch (_) {
@@ -477,5 +532,15 @@
     }
 
     scheduleCommunityCard();
-    global.CleveresBridge = Object.freeze({ revision: 4, fetch: nativeFetch, exportBlob, exportResponse, listPackages });
+    global.CleveresBridge = Object.freeze({
+        revision: 5,
+        fetch: nativeFetch,
+        exportBlob,
+        exportResponse,
+        listPackages,
+        openCommunity,
+        getDebugLogging,
+        setDebugLogging
+    });
+    loadUxEnhancements();
 })(window);

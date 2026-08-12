@@ -15,6 +15,8 @@ import javax.net.ssl.HttpsURLConnection
  * Resolves a current Pixel beta/canary identity from Google's public Android
  * developer and Flash Tool metadata. Production lookups are deadline-bounded
  * and successful results are cached so repeated taps do not keep the WebUI busy.
+ * If the public metadata changes or is temporarily unreachable, a verified local
+ * Pixel template is returned instead of leaving the WebUI action unusable.
  */
 object AutoIdentityManager {
     data class Result(
@@ -102,8 +104,41 @@ object AutoIdentityManager {
             }
         } catch (error: IOException) {
             val fallback = cachedResult?.takeIf { ageMs(now, it.storedAtMs) <= STALE_CACHE_FALLBACK_MS }
-            fallback?.value ?: throw error
+            if (fallback != null) return fallback.value
+            localPixelFallback()?.also { resolved ->
+                Logger.w("Auto Identity remote source is unavailable; using a verified local Pixel template")
+                cachedResult = CachedResult(resolved, System.currentTimeMillis())
+                return resolved
+            }
+            throw error
         }
+    }
+
+    private fun localPixelFallback(): Result? {
+        val selected =
+            DeviceTemplateManager.listTemplates()
+                .asSequence()
+                .filter { template ->
+                    template.manufacturer.equals("Google", ignoreCase = true) ||
+                        template.brand.equals("google", ignoreCase = true)
+                }
+                .sortedWith(
+                    compareByDescending<DeviceTemplate> { template ->
+                        runCatching { LocalDate.parse(template.securityPatch) }.getOrDefault(LocalDate.MIN)
+                    }.thenByDescending { it.id },
+                ).firstOrNull()
+                ?: return null
+        return Result(
+            model = selected.model,
+            product = selected.product,
+            device = selected.device,
+            fingerprint = selected.fingerprint,
+            buildId = selected.buildId,
+            incremental = selected.incremental,
+            release = selected.release,
+            securityPatch = selected.securityPatch,
+            securityPatchEstimated = false,
+        )
     }
 
     private fun ageMs(

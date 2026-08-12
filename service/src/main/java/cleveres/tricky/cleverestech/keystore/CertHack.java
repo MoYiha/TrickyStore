@@ -15,6 +15,7 @@ import org.bouncycastle.asn1.DEROctetString;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.DERTaggedObject;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
+import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
@@ -46,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -64,7 +66,7 @@ public final class CertHack {
     private static final int MAX_KEYS_PER_KEYBOX = 4;
     private static final int MAX_CERTIFICATES_PER_CHAIN = 16;
     private static final int MAX_PEM_CHARS = 256 * 1024;
-    private static final int MAX_CERTIFICATE_CACHE_ENTRIES = 128;
+    private static final int MAX_CERTIFICATE_CACHE_ENTRIES = 64;
     private static final int MAX_LEAF_CERTIFICATE_BYTES = 64 * 1024;
     private static final int MAX_ATTESTATION_EXTENSION_BYTES = 64 * 1024;
     private static final String[] ATTESTATION_ID_NAMES =
@@ -95,17 +97,48 @@ public final class CertHack {
                     }
                 }
             };
+    private static final ThreadLocal<JcaX509CertificateConverter> CERTIFICATE_CONVERTER =
+            ThreadLocal.withInitial(JcaX509CertificateConverter::new);
+    private static final ThreadLocal<JcaContentSignerBuilder> EC_SIGNER_BUILDER =
+            ThreadLocal.withInitial(() -> new JcaContentSignerBuilder("SHA256withECDSA"));
+    private static final ThreadLocal<JcaContentSignerBuilder> RSA_SIGNER_BUILDER =
+            ThreadLocal.withInitial(() -> new JcaContentSignerBuilder("SHA256withRSA"));
+
+    private static final class PreparedKeyBox {
+        final X500Name issuer;
+        final String signatureAlgorithm;
+
+        PreparedKeyBox(KeyBox keybox) throws Exception {
+            if (keybox.certificates.isEmpty()) throw new IOException("Keybox has no certificates");
+            this.issuer = new X509CertificateHolder(keybox.certificates.get(0).getEncoded()).getSubject();
+            this.signatureAlgorithm = signatureAlgorithmForKeybox(keybox);
+            if (this.signatureAlgorithm == null) throw new IOException("Unsupported keybox algorithm");
+        }
+    }
 
     private static class State {
         final Map<String, List<KeyBox>> keyboxes;
         final Map<String, List<KeyBox>> keyboxFiles;
+        final Map<KeyBox, PreparedKeyBox> preparedKeyboxes;
         final Map<CacheKey, Certificate[]> certificateCache;
 
         State(Map<String, List<KeyBox>> keyboxes, Map<String, List<KeyBox>> keyboxFiles) {
             this.keyboxes = immutableLists(keyboxes);
             this.keyboxFiles = immutableLists(keyboxFiles);
+            IdentityHashMap<KeyBox, PreparedKeyBox> prepared = new IdentityHashMap<>();
+            for (List<KeyBox> list : this.keyboxes.values()) {
+                for (KeyBox keybox : list) {
+                    if (prepared.containsKey(keybox)) continue;
+                    try {
+                        prepared.put(keybox, new PreparedKeyBox(keybox));
+                    } catch (Exception error) {
+                        Logger.e("Could not prepare keybox metadata", error);
+                    }
+                }
+            }
+            this.preparedKeyboxes = Collections.unmodifiableMap(prepared);
             this.certificateCache = Collections.synchronizedMap(
-                    new LinkedHashMap<CacheKey, Certificate[]>(64, 0.75f, true) {
+                    new LinkedHashMap<CacheKey, Certificate[]>(32, 0.75f, true) {
                         @Override
                         protected boolean removeEldestEntry(Map.Entry<CacheKey, Certificate[]> eldest) {
                             return size() > MAX_CERTIFICATE_CACHE_ENTRIES;
@@ -292,11 +325,31 @@ public final class CertHack {
         return filterKeyboxesByAlgorithm(candidates, KeyProperties.KEY_ALGORITHM_RSA);
     }
 
+    private static List<KeyBox> selectGlobalKeyboxPool(State currentState, String preferredAlgorithm) {
+        if (preferredAlgorithm != null) {
+            List<KeyBox> preferred = currentState.keyboxes.get(preferredAlgorithm);
+            if (preferred != null && !preferred.isEmpty()) return preferred;
+        }
+        String fallbackAlgorithm = KeyProperties.KEY_ALGORITHM_EC.equals(preferredAlgorithm)
+                ? KeyProperties.KEY_ALGORITHM_RSA
+                : KeyProperties.KEY_ALGORITHM_EC;
+        List<KeyBox> fallback = currentState.keyboxes.get(fallbackAlgorithm);
+        if (fallback != null && !fallback.isEmpty()) return fallback;
+        List<KeyBox> rsa = currentState.keyboxes.get(KeyProperties.KEY_ALGORITHM_RSA);
+        return rsa == null ? Collections.emptyList() : rsa;
+    }
+
     private static String signatureAlgorithmForKeybox(KeyBox keybox) {
         String algorithm = normalizeAlgorithm(keybox.keyPair.getPrivate().getAlgorithm());
         if (KeyProperties.KEY_ALGORITHM_EC.equals(algorithm)) return "SHA256withECDSA";
         if (KeyProperties.KEY_ALGORITHM_RSA.equals(algorithm)) return "SHA256withRSA";
         return null;
+    }
+
+    private static JcaContentSignerBuilder signerBuilder(String signatureAlgorithm) {
+        if ("SHA256withECDSA".equals(signatureAlgorithm)) return EC_SIGNER_BUILDER.get();
+        if ("SHA256withRSA".equals(signatureAlgorithm)) return RSA_SIGNER_BUILDER.get();
+        throw new IllegalArgumentException("Unsupported keybox signature algorithm");
     }
 
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
@@ -473,18 +526,18 @@ public final class CertHack {
         setKeyboxes(parseKeyboxXml(reader));
     }
 
-    public static synchronized void clearCertificateCache() {
+    public static void clearCertificateCache() {
         State currentState = state;
         synchronized (currentState.certificateCache) {
             currentState.certificateCache.clear();
         }
     }
 
-    public static synchronized boolean hasCachedCertificateChains() {
+    public static boolean hasCachedCertificateChains() {
         return !state.certificateCache.isEmpty();
     }
 
-    public static synchronized Certificate[] getCachedCertificateChain(Certificate[] caList) {
+    public static Certificate[] getCachedCertificateChain(Certificate[] caList) {
         if (caList == null || caList.length == 0 || caList[0] == null) return null;
         try {
             byte[] leafEncoded = caList[0].getEncoded();
@@ -501,8 +554,10 @@ public final class CertHack {
      * Rewrites one key's attestation chain exactly once per active policy snapshot. The cache is
      * keyed by the genuine leaf identity, not the reader UID: a granted alias must return the same
      * certificate chain from generateKey and every later getKeyEntry path, including isolated UIDs.
+     * Expensive preparation is intentionally outside a global monitor so concurrent KeyMint callers
+     * do not amplify the timing signal that an attestation rewrite occurred.
      */
-    public static synchronized Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
+    public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
         if (caList == null || caList.length == 0 || caList[0] == null) {
             throw new UnsupportedOperationException("Certificate chain is empty");
         }
@@ -569,14 +624,14 @@ public final class CertHack {
             Config.AttestationPatchLevels patchLevels = PolicyState.INSTANCE.resolveAttestationPatchLevels(
                     uid, capturedSystem, capturedVendor, capturedBoot);
 
-            List<ASN1TaggedObject> teeTags = new ArrayList<>();
-            List<ASN1TaggedObject> softwareTags = new ArrayList<>();
+            List<ASN1TaggedObject> teeTags = new ArrayList<>(teeEnforced.size() + 8);
+            List<ASN1TaggedObject> softwareTags = new ArrayList<>(softwareEnforced.size() + 4);
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
             ASN1TaggedObject originalModuleHash = null;
 
-            Map<Integer, byte[]> configuredIdAttestationTags = new HashMap<>();
-            List<Integer> originalOverriddenIdTags = new ArrayList<>();
+            Map<Integer, byte[]> configuredIdAttestationTags = new HashMap<>(ATTESTATION_ID_NAMES.length);
+            List<Integer> originalOverriddenIdTags = new ArrayList<>(ATTESTATION_ID_NAMES.length);
             for (int i = 0; i < ATTESTATION_ID_NAMES.length; i++) {
                 byte[] val = Config.INSTANCE.getAttestationId(ATTESTATION_ID_NAMES[i], uid);
                 if (val != null) {
@@ -644,69 +699,53 @@ public final class CertHack {
                 }
             }
 
-            LinkedList<Certificate> certificates;
-            X509v3CertificateBuilder builder;
-            ContentSigner signer;
-
             String preferredSignerAlgorithm = signingKeyAlgorithm(leaf.getSigAlgName());
-
-            List<KeyBox> candidates = new ArrayList<>();
             var appConfig = Config.INSTANCE.getAppConfig(uid);
+            List<KeyBox> list;
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
-                List<KeyBox> requested = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
-                if (requested != null) candidates.addAll(requested);
+                list = selectKeyboxPool(currentState.keyboxFiles.get(appConfig.getKeyboxFilename()), preferredSignerAlgorithm);
             } else {
-                candidates.addAll(currentState.keyboxes.getOrDefault(
-                        KeyProperties.KEY_ALGORITHM_EC, Collections.emptyList()));
-                candidates.addAll(currentState.keyboxes.getOrDefault(
-                        KeyProperties.KEY_ALGORITHM_RSA, Collections.emptyList()));
+                list = selectGlobalKeyboxPool(currentState, preferredSignerAlgorithm);
             }
-
-            List<KeyBox> list = selectKeyboxPool(candidates, preferredSignerAlgorithm);
             if (list.isEmpty()) throw new UnsupportedOperationException("No compatible keybox is available");
 
             int idx = cacheKey.indexForPool(list.size());
-            var k = list.get(idx);
-            String signatureAlgorithm = signatureAlgorithmForKeybox(k);
-            if (signatureAlgorithm == null) throw new UnsupportedOperationException("Unsupported keybox algorithm");
+            KeyBox k = list.get(idx);
+            PreparedKeyBox prepared = currentState.preparedKeyboxes.get(k);
+            if (prepared == null) throw new UnsupportedOperationException("Keybox metadata is unavailable");
 
-            certificates = new LinkedList<>(k.certificates);
-            if (certificates.isEmpty()) {
-                throw new UnsupportedOperationException("Keybox has no certificates");
-            }
-            builder = new X509v3CertificateBuilder(
-                    new X509CertificateHolder(
-                            certificates.get(0).getEncoded()
-                    ).getSubject(),
+            LinkedList<Certificate> certificates = new LinkedList<>(k.certificates);
+            X509v3CertificateBuilder builder = new X509v3CertificateBuilder(
+                    prepared.issuer,
                     leafHolder.getSerialNumber(),
                     leafHolder.getNotBefore(),
                     leafHolder.getNotAfter(),
                     leafHolder.getSubject(),
                     leafHolder.getSubjectPublicKeyInfo()
             );
-            signer = new JcaContentSignerBuilder(signatureAlgorithm)
-                    .build(k.keyPair.getPrivate());
+            ContentSigner signer = signerBuilder(prepared.signatureAlgorithm).build(k.keyPair.getPrivate());
 
             byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
-            byte[] verifiedBootHash = null;
-            try {
-                if (rootOfTrust == null || !(rootOfTrust instanceof ASN1Sequence r)) {
-                    throw new CertificateParsingException("Expected sequence for root of trust, found "
-                            + (rootOfTrust == null ? "null" : rootOfTrust.getClass().getName()));
+            byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
+            if (verifiedBootKey == null || verifiedBootHash == null) {
+                try {
+                    if (rootOfTrust == null || !(rootOfTrust instanceof ASN1Sequence r)) {
+                        throw new CertificateParsingException("Expected sequence for root of trust, found "
+                                + (rootOfTrust == null ? "null" : rootOfTrust.getClass().getName()));
+                    }
+                    if (verifiedBootKey == null) {
+                        verifiedBootKey = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(0)));
+                    }
+                    if (verifiedBootHash == null) {
+                        verifiedBootHash = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(3)));
+                    }
+                } catch (Throwable t) {
+                    Logger.d("Original root-of-trust fields were not needed or could not be reused");
                 }
-                if (verifiedBootKey == null) {
-                    verifiedBootKey = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(0)));
-                }
-                verifiedBootHash = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(3)));
-            } catch (Throwable t) {
-                Logger.e("Failed to read the original root-of-trust fields", t);
             }
 
             if (verifiedBootKey == null) {
                 verifiedBootKey = usableBootDigest(UtilKt.getPersistentBootKey());
-            }
-            if (verifiedBootHash == null) {
-                verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
             }
             if (verifiedBootHash == null) {
                 verifiedBootHash = usableBootDigest(UtilKt.getPersistentBootHash());
@@ -748,10 +787,12 @@ public final class CertHack {
                     builder.addExtension(leafHolder.getExtension(extensionOID));
                 }
             }
-            certificates.addFirst(new JcaX509CertificateConverter().getCertificate(builder.build(signer)));
+            certificates.addFirst(CERTIFICATE_CONVERTER.get().getCertificate(builder.build(signer)));
 
             Certificate[] result = certificates.toArray(new Certificate[0]);
             synchronized (cache) {
+                Certificate[] raced = cache.get(cacheKey);
+                if (raced != null) return raced.clone();
                 cache.put(cacheKey, result.clone());
             }
             return result;

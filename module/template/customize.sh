@@ -88,10 +88,12 @@ fi
 extract "$ZIPFILE" 'webroot/index.html' "$MODPATH"
 extract "$ZIPFILE" 'webroot/bridge.js'  "$MODPATH"
 extract "$ZIPFILE" 'webroot/policy.js'  "$MODPATH"
+extract "$ZIPFILE" 'webroot/ux.js'      "$MODPATH"
 if [ -L "$MODPATH/webroot" ] || [ ! -d "$MODPATH/webroot" ] || \
   [ -L "$MODPATH/webroot/index.html" ] || [ ! -f "$MODPATH/webroot/index.html" ] || \
   [ -L "$MODPATH/webroot/bridge.js" ] || [ ! -f "$MODPATH/webroot/bridge.js" ] || \
-  [ -L "$MODPATH/webroot/policy.js" ] || [ ! -f "$MODPATH/webroot/policy.js" ]; then
+  [ -L "$MODPATH/webroot/policy.js" ] || [ ! -f "$MODPATH/webroot/policy.js" ] || \
+  [ -L "$MODPATH/webroot/ux.js" ] || [ ! -f "$MODPATH/webroot/ux.js" ]; then
   abort "! Native WebUI files are unsafe"
 fi
 rm -f "$MODPATH/action.sh" "$MODPATH/action.sh.sha256" || abort "! Could not remove legacy WebUI launcher"
@@ -141,7 +143,8 @@ for config_file in spoof_build_vars security_patch.txt target.txt drm_packages.t
   spoof_enabled spoof_switch_initialized spoof_build_identity global_mode tee_broken_mode \
   auto_keybox_check random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
-  servers.json keybox.xml lang.json spoof_build_vars.next apply_profile; do
+  servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
+  policy_state_v2.last_good.json debug_logging settings_schema_v3; do
   config_path="$CONFIG_DIR/$config_file"
   if [ -e "$config_path" ] || [ -L "$config_path" ]; then
     if [ -L "$config_path" ] || [ ! -f "$config_path" ]; then
@@ -158,6 +161,29 @@ if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
   fi
   chmod 700 "$CONFIG_DIR/keyboxes" || abort "! Could not secure keybox directory"
   chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
+fi
+
+# Schema v3 retires the historical RKP user switch. RKP infrastructure UIDs are
+# protected by the runtime unconditionally, so retaining this file only creates
+# conflicting Dashboard/Resources state. CBOX device caches are disposable and
+# are regenerated after an upgrade to avoid carrying stale serialization state.
+if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
+  ui_print "- Migrating persisted settings to schema v3"
+  if [ -e "$CONFIG_DIR/rkp_passthrough" ]; then
+    rm -f "$CONFIG_DIR/rkp_passthrough" || abort "! Could not retire the old RKP setting"
+  fi
+  if [ -d "$CONFIG_DIR/keyboxes" ]; then
+    for stale_cache in "$CONFIG_DIR"/keyboxes/*.cbox.cache; do
+      [ -e "$stale_cache" ] || continue
+      if [ -L "$stale_cache" ] || [ ! -f "$stale_cache" ]; then
+        abort "! Refusing unsafe CBOX cache during migration"
+      fi
+      rm -f "$stale_cache" || abort "! Could not invalidate stale CBOX cache"
+    done
+  fi
+  : > "$CONFIG_DIR/settings_schema_v3" || abort "! Could not write settings migration marker"
+  chmod 600 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not secure settings migration marker"
+  chown 0:0 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not set settings migration marker ownership"
 fi
 
 # Fresh installs start with the core protection path enabled globally. Identity
@@ -217,7 +243,7 @@ if [ ! -f "$CONFIG_DIR/boot_props_mode" ]; then
 fi
 chmod 600 "$CONFIG_DIR/boot_props_mode" || abort "! Could not secure boot_props_mode"
 
-for optional_flag in auto_keybox_check rkp_passthrough drm_passthrough hide_sensitive_props; do
+for optional_flag in auto_keybox_check drm_passthrough hide_sensitive_props debug_logging; do
   [ ! -e "$CONFIG_DIR/$optional_flag" ] || chmod 600 "$CONFIG_DIR/$optional_flag" \
     || abort "! Could not secure $optional_flag"
 done
@@ -233,6 +259,6 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chown 0:0 "$CONFIG_DIR/spoof_enabled" \
   || abort "! Could not set identity Spoof Engine switch ownership"
 [ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity"
-[ ! -e "$CONFIG_DIR/rkp_passthrough" ] || chown 0:0 "$CONFIG_DIR/rkp_passthrough"
 [ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough"
 [ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props"
+[ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging"

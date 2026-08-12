@@ -301,7 +301,7 @@ jobs:
         run: |
           set -euo pipefail
           errors=0
-          for f in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule webroot/index.html webroot/bridge.js; do
+          for f in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule webroot/index.html webroot/bridge.js webroot/policy.js webroot/ux.js; do
             if [ ! -f "module/template/$f" ]; then
               echo "::error::Missing required module file: module/template/$f"
               errors=$((errors + 1))
@@ -326,6 +326,7 @@ jobs:
           set -euo pipefail
           node --check module/template/webroot/bridge.js
           node --check module/template/webroot/policy.js
+          node --check module/template/webroot/ux.js
           node <<'NODE'
           const fs = require('fs')
           const html = fs.readFileSync('module/template/webroot/index.html', 'utf8')
@@ -386,7 +387,6 @@ jobs:
       - name: Build Android Artifacts
         run: |
           ./gradlew zipRelease --warning-mode=fail --console=plain
-          ./gradlew zipDebug --warning-mode=fail --console=plain
           ./gradlew :encryptor-app:assembleRelease --warning-mode=fail --console=plain
 
       - name: Verify module archive layout and checksums
@@ -397,74 +397,73 @@ jobs:
           work=$(mktemp -d)
           trap 'rm -rf "$work"' EXIT
 
-          for variant in release debug; do
-            archives=(module/release/*-"$variant".zip)
-            if [ "${#archives[@]}" -ne 1 ]; then
-              echo "::error::Expected exactly one $variant module zip, found ${#archives[@]}"
+          variant=release
+          archives=(module/release/*-"$variant".zip)
+          if [ "${#archives[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one $variant module zip, found ${#archives[@]}"
+            exit 1
+          fi
+          archive="${archives[0]}"
+          unzip -tq "$archive" >/dev/null
+          entries=$(unzip -Z1 "$archive")
+          duplicates=$(printf '%s\n' "$entries" | sort | uniq -d)
+          if [ -n "$duplicates" ]; then
+            echo "::error file=$archive::Duplicate ZIP entries are not allowed"
+            printf '%s\n' "$duplicates"
+            exit 1
+          fi
+          while IFS= read -r entry; do
+            case "$entry" in
+              /*|../*|*/../*|*/..|*\\*)
+                echo "::error file=$archive::Unsafe ZIP entry: $entry"
+                exit 1
+                ;;
+            esac
+          done <<<"$entries"
+          for required in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule; do
+            if ! grep -Fx "$required" <<<"$entries" >/dev/null; then
+              echo "::error file=$archive::Missing required root entry: $required"
               exit 1
             fi
-            archive="${archives[0]}"
-            unzip -tq "$archive" >/dev/null
-            entries=$(unzip -Z1 "$archive")
-            duplicates=$(printf '%s\n' "$entries" | sort | uniq -d)
-            if [ -n "$duplicates" ]; then
-              echo "::error file=$archive::Duplicate ZIP entries are not allowed"
-              printf '%s\n' "$duplicates"
-              exit 1
-            fi
-            while IFS= read -r entry; do
-              case "$entry" in
-                /*|../*|*/../*|*/..|*\\*)
-                  echo "::error file=$archive::Unsafe ZIP entry: $entry"
-                  exit 1
-                  ;;
-              esac
-            done <<<"$entries"
-            for required in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule; do
-              if ! grep -Fx "$required" <<<"$entries" >/dev/null; then
-                echo "::error file=$archive::Missing required root entry: $required"
-                exit 1
-              fi
-            done
-
-            target="$work/$variant"
-            mkdir -p "$target"
-            unzip -q "$archive" -d "$target"
-            while IFS= read -r -d '' payload; do
-              case "$payload" in
-                *.sha256) continue ;;
-              esac
-              checksum="$payload.sha256"
-              if [ ! -f "$checksum" ]; then
-                echo "::error file=$archive::Missing checksum for ${payload#"$target/"}"
-                exit 1
-              fi
-              expected=$(tr -d '[:space:]' < "$checksum")
-              case "$expected" in
-                ''|*[!0-9A-Fa-f]*)
-                  echo "::error file=$archive::Malformed checksum for ${payload#"$target/"}"
-                  exit 1
-                  ;;
-              esac
-              if [ "${#expected}" -ne 64 ]; then
-                echo "::error file=$archive::Invalid checksum length for ${payload#"$target/"}"
-                exit 1
-              fi
-              actual=$(sha256sum "$payload" | awk '{print $1}')
-              if [ "${expected,,}" != "$actual" ]; then
-                echo "::error file=$archive::Checksum mismatch for ${payload#"$target/"}"
-                exit 1
-              fi
-            done < <(find "$target" -type f -print0)
-
-            while IFS= read -r -d '' checksum; do
-              payload=${checksum%.sha256}
-              if [ ! -f "$payload" ]; then
-                echo "::error file=$archive::Orphan checksum ${checksum#"$target/"}"
-                exit 1
-              fi
-            done < <(find "$target" -type f -name '*.sha256' -print0)
           done
+
+          target="$work/$variant"
+          mkdir -p "$target"
+          unzip -q "$archive" -d "$target"
+          while IFS= read -r -d '' payload; do
+            case "$payload" in
+              *.sha256) continue ;;
+            esac
+            checksum="$payload.sha256"
+            if [ ! -f "$checksum" ]; then
+              echo "::error file=$archive::Missing checksum for ${payload#"$target/"}"
+              exit 1
+            fi
+            expected=$(tr -d '[:space:]' < "$checksum")
+            case "$expected" in
+              ''|*[!0-9A-Fa-f]*)
+                echo "::error file=$archive::Malformed checksum for ${payload#"$target/"}"
+                exit 1
+                ;;
+            esac
+            if [ "${#expected}" -ne 64 ]; then
+              echo "::error file=$archive::Invalid checksum length for ${payload#"$target/"}"
+              exit 1
+            fi
+            actual=$(sha256sum "$payload" | awk '{print $1}')
+            if [ "${expected,,}" != "$actual" ]; then
+              echo "::error file=$archive::Checksum mismatch for ${payload#"$target/"}"
+              exit 1
+            fi
+          done < <(find "$target" -type f -print0)
+
+          while IFS= read -r -d '' checksum; do
+            payload=${checksum%.sha256}
+            if [ ! -f "$payload" ]; then
+              echo "::error file=$archive::Orphan checksum ${checksum#"$target/"}"
+              exit 1
+            fi
+          done < <(find "$target" -type f -name '*.sha256' -print0)
 
       - name: Verify native artifact hardening
         shell: bash
@@ -523,13 +522,6 @@ jobs:
           if-no-files-found: error
           archive: false
 
-      - name: Upload debug module zip
-        uses: actions/upload-artifact@v7
-        with:
-          path: "module/release/*-debug.zip"
-          if-no-files-found: error
-          archive: false
-
       - name: Upload Encryptor App
         uses: actions/upload-artifact@v7
         with:
@@ -562,14 +554,6 @@ jobs:
           merge-multiple: true
           skip-decompress: true
 
-      - name: Download debug module zip
-        uses: actions/download-artifact@v8
-        with:
-          pattern: "CleveresTricky-*-debug.zip"
-          path: release-assets
-          merge-multiple: true
-          skip-decompress: true
-
       - name: Download Encryptor App
         uses: actions/download-artifact@v8
         with:
@@ -582,16 +566,13 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           release_zips=(release-assets/*-release.zip)
-          debug_zips=(release-assets/*-debug.zip)
           apks=(release-assets/*.apk)
           [ "${#release_zips[@]}" -eq 1 ] || { echo "::error::Expected one release module zip"; exit 1; }
-          [ "${#debug_zips[@]}" -eq 1 ] || { echo "::error::Expected one debug module zip"; exit 1; }
           [ "${#apks[@]}" -ge 1 ] || { echo "::error::Encryptor APK is missing"; exit 1; }
           unzip -tq "${release_zips[0]}" >/dev/null
-          unzip -tq "${debug_zips[0]}" >/dev/null
           (
             cd release-assets
-            sha256sum -- *-release.zip *-debug.zip *.apk | LC_ALL=C sort -k2 > SHA256SUMS
+            sha256sum -- *-release.zip *.apk | LC_ALL=C sort -k2 > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
 
