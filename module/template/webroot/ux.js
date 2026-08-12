@@ -357,7 +357,7 @@
                 ensureFooterOrder();
             });
         }
-        dashboard.appendChild(panel);
+        if (panel.parentElement !== dashboard) dashboard.appendChild(panel);
         panel.querySelector('select').value = locale;
     }
 
@@ -365,10 +365,12 @@
         const dashboard = document.getElementById('dashboard');
         if (!dashboard) return;
         const language = document.getElementById('ct_language_panel');
-        if (language) dashboard.appendChild(language);
         const card = document.getElementById('cleveresCommunityCard');
+        if (language && language.parentElement !== dashboard) dashboard.appendChild(language);
         if (card) {
-            dashboard.appendChild(card);
+            if (card.parentElement !== dashboard) dashboard.appendChild(card);
+            if (language && language.nextElementSibling !== card) dashboard.insertBefore(language, card);
+            if (card.nextElementSibling) dashboard.appendChild(card);
             const link = card.querySelector('a');
             if (link) {
                 link.href = 'https://t.me/cleverestech';
@@ -522,7 +524,9 @@
     function renderGuide() {
         const guide = document.getElementById('guide');
         if (!guide) return;
+        if (guide.dataset.ctGuideLocale === locale && guide.querySelector('#ct_full_guide')) return;
         const sections = GUIDE[locale] || GUIDE.en;
+        guide.dataset.ctGuideLocale = locale;
         guide.innerHTML = `<div class="panel" id="ct_full_guide"><h3>${escapeHtml(tr('Guide'))}</h3><div class="scope-note">${escapeHtml(locale === 'tr' ? 'Tüm temel özellikler ve çalışma yolları tek yerde.' : locale === 'zh-CN' ? '所有主要功能和运行路径集中说明。' : locale === 'es' ? 'Todas las funciones principales y rutas de ejecución en un solo lugar.' : locale === 'de' ? 'Alle wichtigen Funktionen und Laufzeitpfade an einem Ort.' : locale === 'ru' ? 'Все основные функции и пути выполнения в одном месте.' : 'All major features and runtime paths in one place.')}</div>${sections.map(([title,body]) => `<section class="ct-guide-section"><h4>${escapeHtml(title)}</h4><p>${escapeHtml(body)}</p></section>`).join('')}</div>`;
     }
 
@@ -581,11 +585,6 @@
             wrapLegacyToggle();
             wrapTabSwitch();
         }, delay));
-        if (typeof MutationObserver === 'function') {
-            const observer = new MutationObserver(() => applyEnhancements());
-            observer.observe(document.body,{childList:true,subtree:true});
-            global.setTimeout(() => observer.disconnect(),10000);
-        }
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
