@@ -727,8 +727,10 @@ object Config {
             drmState = DrmState(packages)
             targetState.hackCache.clear()
             Logger.i { "Updated DRM passthrough packages: ${packages.size}" }
-        }.onFailure {
-            Logger.e("failed to update DRM passthrough packages", it)
+        }.onFailure { failure ->
+            if (failure !is IllegalArgumentException) {
+                Logger.e("failed to update DRM passthrough packages", failure)
+            }
         }
 
     @Volatile
