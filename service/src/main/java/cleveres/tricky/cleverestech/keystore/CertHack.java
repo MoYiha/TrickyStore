@@ -740,7 +740,7 @@ public final class CertHack {
                         verifiedBootHash = usableBootDigest(getByteArrayFromAsn1(r.getObjectAt(3)));
                     }
                 } catch (Throwable t) {
-                    Logger.d("Original root-of-trust fields were not needed or could not be reused")
+                    Logger.d("Original root-of-trust fields were not needed or could not be reused");
                 }
             }
 
