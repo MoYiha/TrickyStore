@@ -1,5 +1,7 @@
 # Web Interface
 
+**Language:** **English** | [Türkçe](i18n/tr.md#web-interface) | [简体中文](i18n/zh-CN.md#web-interface) | [Español](i18n/es.md#web-interface) | [Deutsch](i18n/de.md#web-interface) | [Русский](i18n/ru.md#web-interface) | [Bahasa Indonesia](i18n/id.md#web-interface) | [हिन्दी](i18n/hi.md#web-interface) | [العربية](i18n/ar.md#web-interface)
+
 ## Purpose
 
 The Web Interface provides one mobile control surface for core runtime state, identity, application rules, keyboxes, encrypted backup, logs, and validated configuration editing.

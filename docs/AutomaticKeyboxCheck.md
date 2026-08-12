@@ -1,5 +1,7 @@
 # Automatic Keybox Check
 
+**Language:** **English** | [Türkçe](i18n/tr.md#automatic-keybox-check) | [简体中文](i18n/zh-CN.md#automatic-keybox-check) | [Español](i18n/es.md#automatic-keybox-check) | [Deutsch](i18n/de.md#automatic-keybox-check) | [Русский](i18n/ru.md#automatic-keybox-check) | [Bahasa Indonesia](i18n/id.md#automatic-keybox-check) | [हिन्दी](i18n/hi.md#automatic-keybox-check) | [العربية](i18n/ar.md#automatic-keybox-check)
+
 ## Purpose
 
 Automatic Keybox Check keeps authorized key material and revocation state current without continuously scanning storage.

@@ -1,5 +1,7 @@
 # Contributing
 
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#contributing) | [简体中文](docs/i18n/zh-CN.md#contributing) | [Español](docs/i18n/es.md#contributing) | [Deutsch](docs/i18n/de.md#contributing) | [Русский](docs/i18n/ru.md#contributing) | [Bahasa Indonesia](docs/i18n/id.md#contributing) | [हिन्दी](docs/i18n/hi.md#contributing) | [العربية](docs/i18n/ar.md#contributing)
+
 Changes should preserve the module's fail-closed security model and its supported Android 12 to 17 and KernelSU plus APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
 
 ## Development checks
@@ -29,5 +31,6 @@ For a complete module build, install Android SDK 36, NDK `27.3.13750724`, Rust, 
 - Never commit private keys, keyboxes, access tokens, device secrets, generated APKs, or module ZIPs.
 - Do not broaden SELinux rules without documenting why each permission is required.
 - Update README and CHANGELOG when user-visible behavior changes.
+- Keep the nine-language user documentation synchronized when user-visible Markdown changes.
 
 Open a feature branch, use a clear commit message, and describe local or device verification in the pull request. Native injection changes should be tested on a supported KernelSU or APatch device in addition to CI whenever possible.

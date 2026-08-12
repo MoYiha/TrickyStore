@@ -1,5 +1,7 @@
 # Support the Development
 
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#donate) | [简体中文](docs/i18n/zh-CN.md#donate) | [Español](docs/i18n/es.md#donate) | [Deutsch](docs/i18n/de.md#donate) | [Русский](docs/i18n/ru.md#donate) | [Bahasa Indonesia](docs/i18n/id.md#donate) | [हिन्दी](docs/i18n/hi.md#donate) | [العربية](docs/i18n/ar.md#donate)
+
 If you find this project helpful, consider supporting the development. Your contributions help maintain the project and develop new features.
 
 ## Crypto Addresses
@@ -12,9 +14,9 @@ If you find this project helpful, consider supporting the development. Your cont
 
 ## Platforms
 
-*   **Binance User ID:** `114574830`
-*   **PayPal:** [paypal.me/tryigitx](https://www.paypal.me/tryigitx)
-*   **BuyMeACoffee:** [buymeacoffee.com/yigitx](https://buymeacoffee.com/yigitx)
-*   **Self Website:** [tryigit.dev/donate](https://tryigit.dev/donate)
+* **Binance User ID:** `114574830`
+* **PayPal:** [paypal.me/tryigitx](https://www.paypal.me/tryigitx)
+* **BuyMeACoffee:** [buymeacoffee.com/yigitx](https://buymeacoffee.com/yigitx)
+* **Self Website:** [tryigit.dev/donate](https://tryigit.dev/donate)
 
 Thank you for your support!

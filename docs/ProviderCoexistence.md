@@ -1,5 +1,7 @@
 # Provider Coexistence
 
+**Language:** **English** | [Türkçe](i18n/tr.md#provider-coexistence) | [简体中文](i18n/zh-CN.md#provider-coexistence) | [Español](i18n/es.md#provider-coexistence) | [Deutsch](i18n/de.md#provider-coexistence) | [Русский](i18n/ru.md#provider-coexistence) | [Bahasa Indonesia](i18n/id.md#provider-coexistence) | [हिन्दी](i18n/hi.md#provider-coexistence) | [العربية](i18n/ar.md#provider-coexistence)
+
 ## Purpose
 
 Provider Coexistence prevents automatic Build Identity handling from overwriting another active module that already owns the fingerprint or related product fields.

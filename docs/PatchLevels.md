@@ -1,5 +1,7 @@
 # Patch Levels
 
+**Language:** **English** | [Türkçe](i18n/tr.md#patch-levels) | [简体中文](i18n/zh-CN.md#patch-levels) | [Español](i18n/es.md#patch-levels) | [Deutsch](i18n/de.md#patch-levels) | [Русский](i18n/ru.md#patch-levels) | [Bahasa Indonesia](i18n/id.md#patch-levels) | [हिन्दी](i18n/hi.md#patch-levels) | [العربية](i18n/ar.md#patch-levels)
+
 ## Purpose
 
 Patch level control adjusts the certificate fields consumed by supported attestation responses. It provides independent rules for the operating system, vendor image, and boot image fields.

@@ -1,5 +1,7 @@
 # CleveresTricky
 
+**Language:** **English** | [Türkçe](README.tr.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Bahasa Indonesia](README.id.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
+
 [![Build](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml/badge.svg)](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml)
 
 CleveresTricky is a KernelSU and APatch module for Android keystore, attestation, identity, and application compatibility. It combines a controlled native runtime with a mobile WebUI so users can manage scope, key material, identity, patch levels, Remote Key Provisioning protection, and DRM compatibility from one place.
@@ -56,7 +58,7 @@ The DRM hook is intentionally not a Widevine or DRM bypass. It does not rewrite 
 
 [Web Interface](docs/WebInterface.md) explains the native module manager transport, mobile navigation, live status, validation, and accessibility.
 
-Built in WebUI languages are **English**, **Türkçe**, **简体中文**, **Español**, **Deutsch**, **Русский**, **Bahasa Indonesia**, **हिन्दी**, and **العربية**. These translation catalogs are bundled locally, so changing the WebUI language does not require a network connection. Translation details are documented in [LANGUAGES.md](LANGUAGES.md).
+Built in WebUI and user documentation languages are **English**, **Türkçe**, **简体中文**, **Español**, **Deutsch**, **Русский**, **Bahasa Indonesia**, **हिन्दी**, and **العربية**. The WebUI catalogs are bundled locally and the repository provides localized README files plus a complete language reference covering every user facing Markdown document. See [LANGUAGES.md](LANGUAGES.md).
 
 [Backup and Restore](docs/BackupRestore.md) explains encrypted exports, bounded imports, and safe recovery.
 

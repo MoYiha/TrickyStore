@@ -1,5 +1,7 @@
 # Boot Properties
 
+**Language:** **English** | [Türkçe](i18n/tr.md#boot-properties) | [简体中文](i18n/zh-CN.md#boot-properties) | [Español](i18n/es.md#boot-properties) | [Deutsch](i18n/de.md#boot-properties) | [Русский](i18n/ru.md#boot-properties) | [Bahasa Indonesia](i18n/id.md#boot-properties) | [हिन्दी](i18n/hi.md#boot-properties) | [العربية](i18n/ar.md#boot-properties)
+
 ## Purpose
 
 Boot Properties provides the core userspace property view used for application compatibility. It reduces exposure of common unlocked, debug, warranty, verified boot, and recovery indicators that applications read through Android properties.

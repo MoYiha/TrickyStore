@@ -1,5 +1,7 @@
 # Identity Refresh
 
+**Language:** **English** | [Türkçe](i18n/tr.md#identity-refresh) | [简体中文](i18n/zh-CN.md#identity-refresh) | [Español](i18n/es.md#identity-refresh) | [Deutsch](i18n/de.md#identity-refresh) | [Русский](i18n/ru.md#identity-refresh) | [Bahasa Indonesia](i18n/id.md#identity-refresh) | [हिन्दी](i18n/hi.md#identity-refresh) | [العربية](i18n/ar.md#identity-refresh)
+
 ## Purpose
 
 Identity Refresh prepares a new validated application facing identity for the next boot. It rotates configured template and identifier values without creating a mismatch inside the current boot.

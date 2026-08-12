@@ -1,5 +1,7 @@
 # Logging and diagnostics
 
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#logging) | [简体中文](docs/i18n/zh-CN.md#logging) | [Español](docs/i18n/es.md#logging) | [Deutsch](docs/i18n/de.md#logging) | [Русский](docs/i18n/ru.md#logging) | [Bahasa Indonesia](docs/i18n/id.md#logging) | [हिन्दी](docs/i18n/hi.md#logging) | [العربية](docs/i18n/ar.md#logging)
+
 CleveresTricky writes diagnostics to Android logcat; it does not store a separate plaintext log file.
 
 ```bash

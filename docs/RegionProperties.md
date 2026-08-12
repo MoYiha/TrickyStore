@@ -1,5 +1,7 @@
 # Region Properties
 
+**Language:** **English** | [Türkçe](i18n/tr.md#region-properties) | [简体中文](i18n/zh-CN.md#region-properties) | [Español](i18n/es.md#region-properties) | [Deutsch](i18n/de.md#region-properties) | [Русский](i18n/ru.md#region-properties) | [Bahasa Indonesia](i18n/id.md#region-properties) | [हिन्दी](i18n/hi.md#region-properties) | [العربية](i18n/ar.md#region-properties)
+
 ## Purpose
 
 Region Properties provides an optional bounded China region view for applications and vendor components that read a small set of Android properties.

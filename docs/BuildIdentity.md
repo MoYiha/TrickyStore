@@ -1,5 +1,7 @@
 # Build Identity
 
+**Language:** **English** | [Türkçe](i18n/tr.md#build-identity) | [简体中文](i18n/zh-CN.md#build-identity) | [Español](i18n/es.md#build-identity) | [Deutsch](i18n/de.md#build-identity) | [Русский](i18n/ru.md#build-identity) | [Bahasa Indonesia](i18n/id.md#build-identity) | [हिन्दी](i18n/hi.md#build-identity) | [العربية](i18n/ar.md#build-identity)
+
 ## Purpose
 
 Build Identity applies a complete device template to the fingerprint and supported app visible Build fields. It is optional, requires Spoof Engine, and requires a reboot because Android captures these values before normal applications start.

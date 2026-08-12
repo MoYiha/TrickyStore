@@ -1,5 +1,7 @@
 # Diagnostics
 
+**Language:** **English** | [Türkçe](i18n/tr.md#diagnostics) | [简体中文](i18n/zh-CN.md#diagnostics) | [Español](i18n/es.md#diagnostics) | [Deutsch](i18n/de.md#diagnostics) | [Русский](i18n/ru.md#diagnostics) | [Bahasa Indonesia](i18n/id.md#diagnostics) | [हिन्दी](i18n/hi.md#diagnostics) | [العربية](i18n/ar.md#diagnostics)
+
 ## Purpose
 
 Diagnostics provides a controlled way to isolate installation, configuration, keybox, identity, RKP, DRM, and native runtime problems.

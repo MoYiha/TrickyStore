@@ -1,5 +1,7 @@
 # Changelog
 
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#changelog) | [简体中文](docs/i18n/zh-CN.md#changelog) | [Español](docs/i18n/es.md#changelog) | [Deutsch](docs/i18n/de.md#changelog) | [Русский](docs/i18n/ru.md#changelog) | [Bahasa Indonesia](docs/i18n/id.md#changelog) | [हिन्दी](docs/i18n/hi.md#changelog) | [العربية](docs/i18n/ar.md#changelog)
+
 ## V2.5.3
 
 - Added granular identity and security patch controls, named profiles, effective state inspection, and safer runtime policy recovery.

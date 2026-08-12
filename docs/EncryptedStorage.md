@@ -1,5 +1,7 @@
 # Encrypted Storage
 
+**Language:** **English** | [Türkçe](i18n/tr.md#encrypted-storage) | [简体中文](i18n/zh-CN.md#encrypted-storage) | [Español](i18n/es.md#encrypted-storage) | [Deutsch](i18n/de.md#encrypted-storage) | [Русский](i18n/ru.md#encrypted-storage) | [Bahasa Indonesia](i18n/id.md#encrypted-storage) | [हिन्दी](i18n/hi.md#encrypted-storage) | [العربية](i18n/ar.md#encrypted-storage)
+
 ## Purpose
 
 CBOX provides encrypted storage and transfer for keybox material. It reduces exposure from plain XML while preserving the verification requirements of Keybox Manager.

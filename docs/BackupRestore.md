@@ -1,5 +1,7 @@
 # Backup and Restore
 
+**Language:** **English** | [Türkçe](i18n/tr.md#backup-restore) | [简体中文](i18n/zh-CN.md#backup-restore) | [Español](i18n/es.md#backup-restore) | [Deutsch](i18n/de.md#backup-restore) | [Русский](i18n/ru.md#backup-restore) | [Bahasa Indonesia](i18n/id.md#backup-restore) | [हिन्दी](i18n/hi.md#backup-restore) | [العربية](i18n/ar.md#backup-restore)
+
 ## Purpose
 
 Backup and Restore moves configuration and authorized key material between installations through one authenticated encrypted archive.

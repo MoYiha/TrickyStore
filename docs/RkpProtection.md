@@ -1,5 +1,7 @@
 # RKP Protection
 
+**Language:** **English** | [Türkçe](i18n/tr.md#rkp-protection) | [简体中文](i18n/zh-CN.md#rkp-protection) | [Español](i18n/es.md#rkp-protection) | [Deutsch](i18n/de.md#rkp-protection) | [Русский](i18n/ru.md#rkp-protection) | [Bahasa Indonesia](i18n/id.md#rkp-protection) | [हिन्दी](i18n/hi.md#rkp-protection) | [العربية](i18n/ar.md#rkp-protection)
+
 ## Purpose
 
 Remote Key Provisioning protection keeps Android provisioning infrastructure and generated key responses on a genuine platform path. It prevents certificate substitution from interfering with system provisioning work.

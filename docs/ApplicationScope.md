@@ -1,5 +1,7 @@
 # Application Scope
 
+**Language:** **English** | [Türkçe](i18n/tr.md#application-scope) | [简体中文](i18n/zh-CN.md#application-scope) | [Español](i18n/es.md#application-scope) | [Deutsch](i18n/de.md#application-scope) | [Русский](i18n/ru.md#application-scope) | [Bahasa Indonesia](i18n/id.md#application-scope) | [हिन्दी](i18n/hi.md#application-scope) | [العربية](i18n/ar.md#application-scope)
+
 ## Purpose
 
 Application Scope controls which Android application users may receive certificate or identity compatibility handling. Targeted mode is the preferred default because it limits work and reduces compatibility risk.

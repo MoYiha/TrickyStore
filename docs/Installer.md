@@ -1,5 +1,7 @@
 # Installer
 
+**Language:** **English** | [Türkçe](i18n/tr.md#installer) | [简体中文](i18n/zh-CN.md#installer) | [Español](i18n/es.md#installer) | [Deutsch](i18n/de.md#installer) | [Русский](i18n/ru.md#installer) | [Bahasa Indonesia](i18n/id.md#installer) | [हिन्दी](i18n/hi.md#installer) | [العربية](i18n/ar.md#installer)
+
 ## Purpose
 
 The installer creates a complete KernelSU or APatch module with the service, native payload, scripts, policy, metadata, and integrity records required at runtime.

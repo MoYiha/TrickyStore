@@ -1,5 +1,7 @@
 # Application Rules
 
+**Language:** **English** | [Türkçe](i18n/tr.md#application-rules) | [简体中文](i18n/zh-CN.md#application-rules) | [Español](i18n/es.md#application-rules) | [Deutsch](i18n/de.md#application-rules) | [Русский](i18n/ru.md#application-rules) | [Bahasa Indonesia](i18n/id.md#application-rules) | [हिन्दी](i18n/hi.md#application-rules) | [العربية](i18n/ar.md#application-rules)
+
 ## Purpose
 
 Application Rules assigns a template, a specific keybox source, or an application privacy policy to an eligible application. A valid rule is itself an explicit application target, so a separate scope entry is not required.

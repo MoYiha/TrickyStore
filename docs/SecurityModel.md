@@ -1,5 +1,7 @@
 # Security Model
 
+**Language:** **English** | [Türkçe](i18n/tr.md#security-model) | [简体中文](i18n/zh-CN.md#security-model) | [Español](i18n/es.md#security-model) | [Deutsch](i18n/de.md#security-model) | [Русский](i18n/ru.md#security-model) | [Bahasa Indonesia](i18n/id.md#security-model) | [हिन्दी](i18n/hi.md#security-model) | [العربية](i18n/ar.md#security-model)
+
 ## Trust boundaries
 
 CleveresTricky runs with root service access and injects a bounded native library into selected Android system processes. Root, the operating system, KernelSU or APatch, the installed module files, and explicitly authorized key material are therefore trusted parts of the local environment.

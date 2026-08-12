@@ -1,50 +1,44 @@
 # Language Support
 
-The CleveresTricky module is developed and maintained in **English by default**.
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#languages) | [简体中文](docs/i18n/zh-CN.md#languages) | [Español](docs/i18n/es.md#languages) | [Deutsch](docs/i18n/de.md#languages) | [Русский](docs/i18n/ru.md#languages) | [Bahasa Indonesia](docs/i18n/id.md#languages) | [हिन्दी](docs/i18n/hi.md#languages) | [العربية](docs/i18n/ar.md#languages)
 
-## Contributing Translations
+CleveresTricky ships with nine built in WebUI languages and matching user documentation entry points:
 
-We highly encourage the community to contribute translations to make the module accessible to a wider audience.
+* English
+* Türkçe
+* 简体中文
+* Español
+* Deutsch
+* Русский
+* Bahasa Indonesia
+* हिन्दी
+* العربية
 
-### How to Add a Language
+## WebUI localization
 
-You can easily translate the WebUI by creating a language file in your configuration directory.
-The module will automatically load this file if it exists.
+Built in runtime localization is local only and belongs to `module/template/webroot/ux.js`. Language switching does not require a network connection. The fixed WebUI architecture does not permit locale-specific JavaScript or CSS runtime assets.
 
-1.  Create a file named `lang.json` in `/data/adb/cleverestricky/`.
-2.  Use the JSON format below.
-3.  Reload the WebUI (or click "Reload Language" in the Info tab).
+To add another built in WebUI locale, extend `SUPPORTED`, add its `TRANSLATIONS` catalog, add a localized guide when available, and keep RTL handling correct for right-to-left locales. Do not create a separate locale JS or CSS file.
 
-### Template (lang.json)
+## Documentation localization
 
-```json
-{
-  "tab_dashboard": "Dashboard",
-  "tab_spoof": "Identity",
-  "tab_apps": "Apps",
-  "tab_keys": "Keyboxes",
-  "tab_info": "Info & Resources",
-  "tab_guide": "📖 Guide",
-  "tab_editor": "Editor",
+English files are the canonical technical source. User documentation is localized without duplicating the entire source tree:
 
-  "h1_title": "CleveresTricky",
-  "section_system_control": "System Control",
-  "lbl_global_mode": "Global Mode",
-  "lbl_tee_broken": "Certificate Safe Mode",
+* `README.md` is the canonical project overview.
+* `README.tr.md`, `README.zh-CN.md`, `README.es.md`, `README.de.md`, `README.ru.md`, `README.id.md`, `README.hi.md`, and `README.ar.md` provide localized project overviews.
+* `docs/i18n/tr.md`, `zh-CN.md`, `es.md`, `de.md`, `ru.md`, `id.md`, `hi.md`, and `ar.md` provide localized references for every user-facing root Markdown document and every document under `docs/`.
+* Every canonical user-facing Markdown document exposes links to the same nine language choices.
 
-  "resource_monitor_title": "Resource Monitor",
-  "col_feature": "Feature",
-  "col_status": "Status",
-  "col_runtime": "Runtime path",
-  "col_scope": "Scope",
-  "col_desc": "Description"
-}
-```
+The localized reference intentionally keeps stable English anchor identifiers such as `#application-rules`, `#security-model`, and `#web-interface`, so language links remain predictable even when translated headings change.
 
-### Community Guidelines
+## Maintenance contract
 
--   **Accuracy:** Ensure translations are accurate and reflect the technical nature of the module.
--   **Security Warnings:** Pay special attention to security warnings. Do not soften the language; users must understand the risks of disabling features.
--   **Updates:** When new features are added, please update your `lang.json` file. The module will fall back to English for any missing keys.
+When user-visible Markdown behavior changes:
 
-To submit your translation for official inclusion (for example, as a preset), please open a Pull Request.
+1. Update the English canonical document first.
+2. Update the matching sections in all eight localized references.
+3. Update the localized README files when the project overview or primary workflow changes.
+4. Keep code symbols, filenames, commands, configuration keys, API names, and security-sensitive terms technically exact.
+5. Treat the English document and source code as authoritative if a translation becomes stale or ambiguous.
+
+Source code, build configuration, CI files, generated artifacts, and internal agent/developer instructions remain English-only. Translating those files would make reviews and tooling less deterministic and is not part of user-facing localization.

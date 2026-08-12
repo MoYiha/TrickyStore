@@ -26,6 +26,19 @@ When changing WebUI behavior:
 5. Keep the runtime JS set fixed to `bridge.js`, `policy.js`, and `ux.js`; keep standalone runtime CSS count at zero unless this contract is intentionally redesigned in the same change.
 6. Do not reintroduce `ux-base.js`; its contents were consolidated into `ux.js`.
 
+## Documentation localization contract
+
+The built in user-facing language set is fixed to English, Türkçe, 简体中文, Español, Deutsch, Русский, Bahasa Indonesia, हिन्दी, and العربية unless the supported WebUI locale set is intentionally changed in the same work.
+
+English is the canonical technical documentation language. User-facing documentation includes `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `DONATE.md`, `LANGUAGES.md`, `LOG.md`, `THEME.md`, and Markdown documents directly under `docs/`.
+
+- Localized project overviews live in `README.<locale>.md`.
+- Localized documentation references live in `docs/i18n/<locale>.md` and use stable English anchor IDs.
+- Every canonical user-facing Markdown document must expose the same nine-language navigation.
+- When a user-visible Markdown document changes materially, update the matching sections in all localized references and update localized README files when the project overview changes.
+- Preserve code symbols, API names, config keys, commands, filenames, security behavior, and numeric limits exactly inside translations.
+- Do not localize source code, build files, CI configuration, generated files, or internal agent/developer instructions. Those remain English for deterministic tooling and review.
+
 ## Branch Lifecycle Rules
 
 Feature, fix, experiment, and AI-generated branches are temporary and must not be kept after their work is integrated.

@@ -1,5 +1,7 @@
 # Building
 
+**Language:** **English** | [Türkçe](i18n/tr.md#building) | [简体中文](i18n/zh-CN.md#building) | [Español](i18n/es.md#building) | [Deutsch](i18n/de.md#building) | [Русский](i18n/ru.md#building) | [Bahasa Indonesia](i18n/id.md#building) | [हिन्दी](i18n/hi.md#building) | [العربية](i18n/ar.md#building)
+
 ## Required tools
 
 The build requires Java 21, the Android SDK for API 36, Android NDK 27.3.13750724, CMake 3.22.1, a stable Rust toolchain, the ARM64 and x86 64 Android Rust targets, and Cargo NDK.

@@ -1,5 +1,7 @@
 # Performance and Memory
 
+**Language:** **English** | [Türkçe](i18n/tr.md#performance) | [简体中文](i18n/zh-CN.md#performance) | [Español](i18n/es.md#performance) | [Deutsch](i18n/de.md#performance) | [Русский](i18n/ru.md#performance) | [Bahasa Indonesia](i18n/id.md#performance) | [हिन्दी](i18n/hi.md#performance) | [العربية](i18n/ar.md#performance)
+
 ## Runtime lifecycle
 
 Core Keystore interception remains registered while the module service is healthy. The native Binder hook therefore stays available for certificate and TEE compatibility even when Spoof Engine is disabled.

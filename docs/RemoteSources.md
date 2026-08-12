@@ -1,5 +1,7 @@
 # Remote Sources
 
+**Language:** **English** | [Türkçe](i18n/tr.md#remote-sources) | [简体中文](i18n/zh-CN.md#remote-sources) | [Español](i18n/es.md#remote-sources) | [Deutsch](i18n/de.md#remote-sources) | [Русский](i18n/ru.md#remote-sources) | [Bahasa Indonesia](i18n/id.md#remote-sources) | [हिन्दी](i18n/hi.md#remote-sources) | [العربية](i18n/ar.md#remote-sources)
+
 ## Purpose
 
 Remote Sources retrieves authorized keybox material from an explicitly configured secure endpoint. Retrieved data remains untrusted until every local validation step succeeds.

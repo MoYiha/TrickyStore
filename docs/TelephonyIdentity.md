@@ -1,5 +1,7 @@
 # Telephony Identity
 
+**Language:** **English** | [Türkçe](i18n/tr.md#telephony-identity) | [简体中文](i18n/zh-CN.md#telephony-identity) | [Español](i18n/es.md#telephony-identity) | [Deutsch](i18n/de.md#telephony-identity) | [Русский](i18n/ru.md#telephony-identity) | [Bahasa Indonesia](i18n/id.md#telephony-identity) | [हिन्दी](i18n/hi.md#telephony-identity) | [العربية](i18n/ar.md#telephony-identity)
+
 ## Purpose
 
 Telephony Identity changes supported values returned to selected applications through Android telephony Binder APIs. It supports separate values for the first and second SIM slots.

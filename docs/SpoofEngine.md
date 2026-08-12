@@ -1,5 +1,7 @@
 # Spoof Engine
 
+**Language:** **English** | [Türkçe](i18n/tr.md#spoof-engine) | [简体中文](i18n/zh-CN.md#spoof-engine) | [Español](i18n/es.md#spoof-engine) | [Deutsch](i18n/de.md#spoof-engine) | [Русский](i18n/ru.md#spoof-engine) | [Bahasa Indonesia](i18n/id.md#spoof-engine) | [हिन्दी](i18n/hi.md#spoof-engine) | [العربية](i18n/ar.md#spoof-engine)
+
 ## Purpose
 
 Spoof Engine is the identity runtime control. It enables optional application facing identity overrides without controlling the core boot and Keystore protection paths.

@@ -1,12 +1,14 @@
 # CleveresTricky UI Theme
 
+**Language:** **English** | [Türkçe](docs/i18n/tr.md#theme) | [简体中文](docs/i18n/zh-CN.md#theme) | [Español](docs/i18n/es.md#theme) | [Deutsch](docs/i18n/de.md#theme) | [Русский](docs/i18n/ru.md#theme) | [Bahasa Indonesia](docs/i18n/id.md#theme) | [हिन्दी](docs/i18n/hi.md#theme) | [العربية](docs/i18n/ar.md#theme)
+
 This document tracks the color palette and design system used in the CleveresTricky Web UI.
 
 ## Design Philosophy: "Nothing / iOS Hybrid"
 
 The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and **iOS**.
-*   **Nothing OS Influence:** Use of dot-matrix fonts (simulated via monospace), raw industrial look, high contrast black/white, and "glitch" aesthetic for technical data.
-*   **iOS Influence:** Fluid animations, "Dynamic Island" for notifications, rounded corners (Apple-style), and blur effects.
+* **Nothing OS Influence:** Use of dot-matrix fonts (simulated via monospace), raw industrial look, high contrast black/white, and "glitch" aesthetic for technical data.
+* **iOS Influence:** Fluid animations, "Dynamic Island" for notifications, rounded corners (Apple-style), and blur effects.
 
 ## Color Palette
 
@@ -24,19 +26,19 @@ The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and
 ## Design Components
 
 ### Typography
-*   **Font Family**: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
-*   **Headers**: Uppercase, tracked (letter-spacing: 2px), lightweight (200-300).
-*   **Technical Data**: Monospace font to simulate the "Nothing" dot-matrix look.
+* **Font Family**: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+* **Headers**: Uppercase, tracked (letter-spacing: 2px), lightweight (200-300).
+* **Technical Data**: Monospace font to simulate the "Nothing" dot-matrix look.
 
 ### UI Elements
-*   **Dynamic Island**: Floating notification pill, black background, box-shadow.
-*   **Tabs**: Panel background, bottom border, active state uses Accent color.
-*   **Buttons**: Uppercase, rounded corners (6px), flat design. Primary buttons use Accent color.
-*   **Toggles**: iOS-style switches.
+* **Dynamic Island**: Floating notification pill, black background, box-shadow.
+* **Tabs**: Panel background, bottom border, active state uses Accent color.
+* **Buttons**: Uppercase, rounded corners (6px), flat design. Primary buttons use Accent color.
+* **Toggles**: iOS-style switches.
 
 ## Mobile-First Design
 
 Since this WebUI is designed for a KernelSU/APatch module, it is primarily accessed on the device through the root manager or a local browser.
-*   **Responsive Layout:** The interface must be fully responsive and optimized for touch targets.
-*   **Vertical Scrolling:** Prioritize vertical flow over horizontal complexity.
-*   **Touch Targets:** Buttons and inputs should be at least 44px height.
+* **Responsive Layout:** The interface must be fully responsive and optimized for touch targets.
+* **Vertical Scrolling:** Prioritize vertical flow over horizontal complexity.
+* **Touch Targets:** Buttons and inputs should be at least 44px height.

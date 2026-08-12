@@ -1,5 +1,7 @@
 # Native Architecture
 
+**Language:** **English** | [Türkçe](i18n/tr.md#native-architecture) | [简体中文](i18n/zh-CN.md#native-architecture) | [Español](i18n/es.md#native-architecture) | [Deutsch](i18n/de.md#native-architecture) | [Русский](i18n/ru.md#native-architecture) | [Bahasa Indonesia](i18n/id.md#native-architecture) | [हिन्दी](i18n/hi.md#native-architecture) | [العربية](i18n/ar.md#native-architecture)
+
 ## Design goal
 
 The project uses Rust for every native component that can be implemented without depending on an unstable Android C++ object ABI. Continuous integration rejects first party C source and rejects every first party C++ implementation except the single Binder boundary described below.

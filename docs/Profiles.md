@@ -1,5 +1,7 @@
 # Profiles
 
+**Language:** **English** | [Türkçe](i18n/tr.md#profiles) | [简体中文](i18n/zh-CN.md#profiles) | [Español](i18n/es.md#profiles) | [Deutsch](i18n/de.md#profiles) | [Русский](i18n/ru.md#profiles) | [Bahasa Indonesia](i18n/id.md#profiles) | [हिन्दी](i18n/hi.md#profiles) | [العربية](i18n/ar.md#profiles)
+
 ## Purpose
 
 Profiles apply a coherent group of optional settings in one transaction. They remain available as advanced presets while core boot and Keystore protection stay active independently.
