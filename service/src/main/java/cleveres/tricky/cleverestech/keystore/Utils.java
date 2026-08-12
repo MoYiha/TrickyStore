@@ -11,6 +11,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream;
@@ -20,6 +21,7 @@ public final class Utils {
     private static final int MAX_CERTIFICATE_BYTES = 64 * 1024;
     private static final int MAX_CHAIN_BYTES = 512 * 1024;
     private static final int MAX_CERTIFICATES = 16;
+    private static final int MAX_THREAD_ISSUER_CACHE_ENTRIES = 8;
 
     private static final ThreadLocal<CertificateFactory> CERTIFICATE_FACTORY =
             new ThreadLocal<CertificateFactory>() {
@@ -33,6 +35,27 @@ public final class Utils {
                     }
                 }
             };
+
+    private static final class EncodedIssuerChain {
+        final Certificate[] issuers;
+        final byte[] encoded;
+
+        EncodedIssuerChain(Certificate[] issuers, byte[] encoded) {
+            this.issuers = issuers;
+            this.encoded = encoded;
+        }
+
+        boolean matches(Certificate[] chain) {
+            if (chain.length != issuers.length + 1) return false;
+            for (int index = 0; index < issuers.length; index++) {
+                if (chain[index + 1] != issuers[index]) return false;
+            }
+            return true;
+        }
+    }
+
+    private static final ThreadLocal<IdentityHashMap<Certificate, EncodedIssuerChain>>
+            ENCODED_ISSUER_CHAINS = ThreadLocal.withInitial(IdentityHashMap::new);
 
     private Utils() {
     }
@@ -79,13 +102,22 @@ public final class Utils {
         }
     }
 
+    /**
+     * Parses only the leaf certificate from KeyMetadata. The attestation rewrite path replaces
+     * the issuer chain with the selected keybox chain, so decoding the genuine issuer chain first
+     * is unnecessary work on the latency-sensitive generateKey reply path.
+     */
+    public static X509Certificate getLeafCertificate(KeyMetadata metadata) {
+        return metadata == null ? null : toCertificate(metadata.certificate);
+    }
+
     public static Certificate[] getCertificateChain(KeyEntryResponse response) {
         return response == null ? null : getCertificateChain(response.metadata);
     }
 
     public static Certificate[] getCertificateChain(KeyMetadata metadata) {
         if (metadata == null) return null;
-        X509Certificate leaf = toCertificate(metadata.certificate);
+        X509Certificate leaf = getLeafCertificate(metadata);
         if (leaf == null) return null;
 
         List<X509Certificate> issuers =
@@ -100,6 +132,37 @@ public final class Utils {
             chain[index + 1] = issuers.get(index);
         }
         return chain;
+    }
+
+    private static byte[] encodeIssuerChain(Certificate[] chain) throws CertificateException {
+        if (chain.length == 1) return new byte[0];
+
+        IdentityHashMap<Certificate, EncodedIssuerChain> cache = ENCODED_ISSUER_CHAINS.get();
+        Certificate cacheKey = chain[1];
+        EncodedIssuerChain cached = cache.get(cacheKey);
+        if (cached != null && cached.matches(chain)) return cached.encoded.clone();
+
+        FastByteArrayOutputStream output = new FastByteArrayOutputStream(2048);
+        int total = 0;
+        Certificate[] issuerReferences = new Certificate[chain.length - 1];
+        for (int index = 1; index < chain.length; index++) {
+            Certificate certificate = chain[index];
+            byte[] encoded = certificate.getEncoded();
+            if (encoded.length == 0 || encoded.length > MAX_CERTIFICATE_BYTES ||
+                    encoded.length > MAX_CHAIN_BYTES - total) {
+                throw new CertificateException("Invalid certificate-chain size");
+            }
+            output.write(encoded, 0, encoded.length);
+            total += encoded.length;
+            issuerReferences[index - 1] = certificate;
+        }
+
+        byte[] encodedChain = output.toByteArray();
+        if (cache.size() >= MAX_THREAD_ISSUER_CACHE_ENTRIES && !cache.containsKey(cacheKey)) {
+            cache.clear();
+        }
+        cache.put(cacheKey, new EncodedIssuerChain(issuerReferences, encodedChain.clone()));
+        return encodedChain;
     }
 
     public static void putCertificateChain(KeyEntryResponse response, Certificate[] chain)
@@ -120,19 +183,7 @@ public final class Utils {
             throw new CertificateException("Invalid leaf certificate size");
         }
 
-        FastByteArrayOutputStream output = new FastByteArrayOutputStream(2048);
-        int total = 0;
-        for (int index = 1; index < chain.length; index++) {
-            byte[] encoded = chain[index].getEncoded();
-            if (encoded.length == 0 || encoded.length > MAX_CERTIFICATE_BYTES ||
-                    encoded.length > MAX_CHAIN_BYTES - total) {
-                throw new CertificateException("Invalid certificate-chain size");
-            }
-            output.write(encoded, 0, encoded.length);
-            total += encoded.length;
-        }
-
         metadata.certificate = leaf;
-        metadata.certificateChain = output.toByteArray();
+        metadata.certificateChain = encodeIssuerChain(chain);
     }
 }
