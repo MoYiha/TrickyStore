@@ -56,6 +56,8 @@ The DRM hook is intentionally not a Widevine or DRM bypass. It does not rewrite 
 
 [Web Interface](docs/WebInterface.md) explains the native module manager transport, mobile navigation, live status, validation, and accessibility.
 
+Built in WebUI languages are **English**, **Türkçe**, **简体中文**, **Español**, **Deutsch**, **Русский**, **Bahasa Indonesia**, **हिन्दी**, and **العربية**. These translation catalogs are bundled locally, so changing the WebUI language does not require a network connection. Translation details are documented in [LANGUAGES.md](LANGUAGES.md).
+
 [Backup and Restore](docs/BackupRestore.md) explains encrypted exports, bounded imports, and safe recovery.
 
 [Installer](docs/Installer.md) explains the KernelSU and APatch package layout, payload verification, supported devices, and installation flow.
