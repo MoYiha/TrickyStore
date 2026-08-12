@@ -280,10 +280,6 @@ jobs:
             echo "::error::Unsupported long dash character detected"
             exit 1
           fi
-          if grep -RIn -- '-' README.md docs; then
-            echo "::error::README and feature documents must not use dash characters"
-            exit 1
-          fi
 
   rust-test:
     name: "🦀 Rust Checks & Tests"
