@@ -20,10 +20,10 @@ public class MultiKeyboxTest {
     @Test
     public void testMultipleKeyboxElements() {
         Logger.setImpl(new Logger.LogImpl() {
-            @Override public void d(String tag, String msg) { // no-op }
-            @Override public void e(String tag, String msg) { // no-op }
-            @Override public void e(String tag, String msg, Throwable t) { // no-op // no-op }
-            @Override public void i(String tag, String msg) { // no-op }
+            @Override public void d(String tag, String msg) { /* no-op */ }
+            @Override public void e(String tag, String msg) { /* no-op */ }
+            @Override public void e(String tag, String msg, Throwable t) { /* no-op */ }
+            @Override public void i(String tag, String msg) { /* no-op */ }
         });
 
         String xml = "<?xml version=\"1.0\"?>\n" +
