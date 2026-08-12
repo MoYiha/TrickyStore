@@ -42,6 +42,10 @@ fun main(args: Array<String>) {
 
         try {
             Config.initialize()
+            if (PolicyMigration.sanitize(configDir)) {
+                PolicyState.reload().getOrThrow()
+                Logger.i("Recovered stale persisted policy references after upgrade")
+            }
             BootLogic.run()
             CertificatePolicyWatcher.start(configDir)
         } catch (e: Exception) {
