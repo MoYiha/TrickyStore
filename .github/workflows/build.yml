@@ -606,7 +606,7 @@ jobs:
               fail "$library" "Unexpected exported symbols: ${actual:-<none>} (expected: entry,resume)"
             fi
           done
-
+          
       - name: Upload release module zip
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         uses: actions/upload-artifact@v7
