@@ -23,6 +23,8 @@ jobs:
       gradle: ${{ steps.filter.outputs.gradle }}
       shell: ${{ steps.filter.outputs.shell }}
       webui: ${{ steps.filter.outputs.webui }}
+      module: ${{ steps.filter.outputs.module }}
+      android_app: ${{ steps.filter.outputs.android_app }}
       build: ${{ steps.filter.outputs.build }}
     steps:
       - name: Check out
@@ -37,7 +39,7 @@ jobs:
           set -euo pipefail
 
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
-            for key in rust gradle shell webui build; do
+            for key in rust gradle shell webui module android_app build; do
               echo "$key=true" >> "$GITHUB_OUTPUT"
             done
             exit 0
@@ -56,13 +58,20 @@ jobs:
           gradle=false
           shell=false
           webui=false
+          module=false
+          android_app=false
           build=false
+          shared_gradle=false
+
+          if has_match '^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties|gradlew|gradlew\.bat)$|^gradle/|^buildSrc/'; then
+            shared_gradle=true
+          fi
 
           if has_match '^rust/'; then
             rust=true
           fi
 
-          if has_match '(^|/)(build\.gradle(\.kts)?|gradle\.properties)$|^settings\.gradle\.kts$|^gradle/|\.(kt|kts|java|xml)$'; then
+          if has_match '(^|/)(build\.gradle(\.kts)?|gradle\.properties)$|^settings\.gradle\.kts$|^gradle/|^gradlew(\.bat)?$|^buildSrc/|\.(kt|kts|java|xml)$'; then
             gradle=true
           fi
 
@@ -74,7 +83,30 @@ jobs:
             webui=true
           fi
 
-          if grep -Ev '^(README\.md$|docs/|\.github/)' <<<"$changed_files" | grep -q .; then
+          if has_match '^(module|service|stub|rust)/|^\.gitmodules$'; then
+            module=true
+          fi
+
+          if has_match '^encryptor-app/'; then
+            android_app=true
+          fi
+
+          if [[ "$shared_gradle" == "true" ]]; then
+            module=true
+            android_app=true
+          fi
+
+          # Changes to this workflow should exercise every path it controls.
+          if has_match '^\.github/workflows/build\.yml$'; then
+            rust=true
+            gradle=true
+            shell=true
+            webui=true
+            module=true
+            android_app=true
+          fi
+
+          if [[ "$module" == "true" || "$android_app" == "true" ]]; then
             build=true
           fi
 
@@ -82,7 +114,26 @@ jobs:
           echo "gradle=$gradle" >> "$GITHUB_OUTPUT"
           echo "shell=$shell" >> "$GITHUB_OUTPUT"
           echo "webui=$webui" >> "$GITHUB_OUTPUT"
+          echo "module=$module" >> "$GITHUB_OUTPUT"
+          echo "android_app=$android_app" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize detected scope
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ### Detected change scope
+
+          | Scope | Run |
+          | --- | --- |
+          | Rust | `${{ steps.filter.outputs.rust }}` |
+          | Gradle / Android source | `${{ steps.filter.outputs.gradle }}` |
+          | Shell | `${{ steps.filter.outputs.shell }}` |
+          | WebUI | `${{ steps.filter.outputs.webui }}` |
+          | Module artifact | `${{ steps.filter.outputs.module }}` |
+          | Encryptor APK | `${{ steps.filter.outputs.android_app }}` |
+          | Heavy build job | `${{ steps.filter.outputs.build }}` |
+          EOF
 
   quality-gate:
     name: "🛡️ Quality Gate & Linting"
@@ -138,7 +189,21 @@ jobs:
         if: needs.changes.outputs.gradle == 'true'
         id: android_lint
         continue-on-error: true
-        run: ./gradlew :service:lintDebug :stub:lintDebug :encryptor-app:lintDebug --warning-mode=fail --console=plain --continue
+        shell: bash
+        run: |
+          set -euo pipefail
+          tasks=()
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" || "${{ needs.changes.outputs.module }}" == "true" ]]; then
+            tasks+=(":service:lintDebug" ":stub:lintDebug")
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" || "${{ needs.changes.outputs.android_app }}" == "true" ]]; then
+            tasks+=(":encryptor-app:lintDebug")
+          fi
+          if [[ "${#tasks[@]}" -eq 0 ]]; then
+            echo "No Android lint targets affected"
+            exit 0
+          fi
+          ./gradlew "${tasks[@]}" --warning-mode=fail --console=plain --continue
 
       - name: Show Android Lint failures
         if: steps.android_lint.outcome == 'failure'
@@ -275,6 +340,7 @@ jobs:
           fetch-depth: 0
 
       - name: "🔒 SELinux Policy Validation"
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -297,6 +363,7 @@ jobs:
           [ "$errors" -eq 0 ]
 
       - name: "📱 KernelSU/APatch Module Structure Validation"
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -357,6 +424,7 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Rust toolchain
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,x86_64-linux-android
@@ -371,7 +439,26 @@ jobs:
       - name: Run Unit Tests
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.gradle == 'true' }}
         id: unit_tests
-        run: ./gradlew testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            ./gradlew testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
+            exit 0
+          fi
+
+          tasks=()
+          if [[ "${{ needs.changes.outputs.module }}" == "true" ]]; then
+            tasks+=(":service:testDebugUnitTest" ":stub:testDebugUnitTest")
+          fi
+          if [[ "${{ needs.changes.outputs.android_app }}" == "true" ]]; then
+            tasks+=(":encryptor-app:testDebugUnitTest")
+          fi
+          if [[ "${#tasks[@]}" -eq 0 ]]; then
+            echo "No Android unit test targets affected"
+            exit 0
+          fi
+          ./gradlew "${tasks[@]}" --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
 
       - name: Upload failed test reports
         if: ${{ failure() && steps.unit_tests.outcome == 'failure' }}
@@ -384,12 +471,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Build Android Artifacts
-        run: |
-          ./gradlew zipRelease --warning-mode=fail --console=plain
-          ./gradlew :encryptor-app:assembleRelease --warning-mode=fail --console=plain
+      - name: Build Module Artifact
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
+        run: ./gradlew zipRelease --warning-mode=fail --console=plain
+
+      - name: Build Encryptor App
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.android_app == 'true' }}
+        run: ./gradlew :encryptor-app:assembleRelease --warning-mode=fail --console=plain
 
       - name: Verify module archive layout and checksums
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -466,6 +557,7 @@ jobs:
           done < <(find "$target" -type f -name '*.sha256' -print0)
 
       - name: Verify native artifact hardening
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -514,8 +606,9 @@ jobs:
               fail "$library" "Unexpected exported symbols: ${actual:-<none>} (expected: entry,resume)"
             fi
           done
-
+          
       - name: Upload release module zip
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           path: "module/release/*-release.zip"
@@ -523,6 +616,7 @@ jobs:
           archive: false
 
       - name: Upload Encryptor App
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.android_app == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: EncryptorApp
