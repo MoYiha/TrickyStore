@@ -905,6 +905,21 @@ class WebServer(
             }
         }
 
+        if (uri == "/api/policy_state" || uri == "/api/effective_state" || uri == "/api/profile_v2") {
+            if (method == Method.POST) {
+                val files = HashMap<String, String>()
+                try {
+                    session.parseBody(files)
+                } catch (error: Exception) {
+                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+                }
+            }
+            PolicyApi.serve(session)?.let { response ->
+                addSecurityHeaders(response)
+                return response
+            }
+        }
+
         if (uri == "/api/config" && method == Method.GET) {
             val json = JSONObject()
             WEB_UI_SETTINGS.forEach { setting -> json.put(setting, fileExists(setting)) }
@@ -1928,6 +1943,7 @@ class WebServer(
                 "templates.json",
                 "drm_packages.txt",
                 "boot_props_mode",
+                PolicyState.STATE_FILE,
             )
         private val BACKUP_CONFIG_FILES =
             setOf(
@@ -1953,6 +1969,7 @@ class WebServer(
                 "drm_passthrough",
                 "drm_packages.txt",
                 "boot_props_mode",
+                PolicyState.STATE_FILE,
             )
         private val APP_RULE_FIELDS = setOf("package", "template", "keybox", "privacy")
 
@@ -2055,6 +2072,9 @@ class WebServer(
         ): Boolean {
             if (filename in WEB_UI_SETTINGS) return content.isEmpty()
             // Basic validation based on known file types
+            if (filename == PolicyState.STATE_FILE) {
+                return PolicyState.validateStateJson(content, validateReferences = false).isSuccess
+            }
             if (filename == "target.txt") {
                 var ruleCount = 0
                 val lines = content.lineSequence()

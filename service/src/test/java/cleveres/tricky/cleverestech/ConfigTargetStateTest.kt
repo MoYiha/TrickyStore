@@ -6,7 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.util.concurrent.ConcurrentHashMap
 
 class ConfigTargetStateTest {
     @Before
@@ -20,22 +19,7 @@ class ConfigTargetStateTest {
     }
 
     private fun resetConfig() {
-        setPrivateField(Config, "isTeeBrokenMode", false)
-        setPrivateField(Config, "isGlobalMode", false)
-        setPrivateField(Config, "isSpoofEnabled", true)
-        Config.clockSource = { System.currentTimeMillis() }
-
-        val packageCache =
-            getPrivateField(Config, "packageCache") as
-                @Suppress("UNCHECKED_CAST")
-                ConcurrentHashMap<Int, Any>
-        packageCache.clear()
-
-        val targetStateClass = Class.forName("cleveres.tricky.cleverestech.Config\$TargetState")
-        val constructor = targetStateClass.getDeclaredConstructor(PackageTrie::class.java)
-        constructor.isAccessible = true
-        val emptyState = constructor.newInstance(PackageTrie<Boolean>())
-        setPrivateField(Config, "targetState", emptyState)
+        Config.reset()
     }
 
     @Test
@@ -53,17 +37,10 @@ class ConfigTargetStateTest {
 
         assertTrue("needHack should return true for com.hack.me", Config.needHack(uid))
 
-        val hackCache =
-            getFieldFromTargetState(targetState, "hackCache") as
-                @Suppress("UNCHECKED_CAST")
-                ConcurrentHashMap<Int, Any>
-        assertTrue("Cache should contain entry for the app UID", hackCache.containsKey(uid))
+        val hackCache = getFieldFromTargetState(targetState, "hackCache")
+        assertTrue("Cache should contain entry for the app UID", invokeMapMethod(hackCache, "containsKey", uid) == true)
 
-        val packageCache =
-            getPrivateField(Config, "packageCache") as
-                @Suppress("UNCHECKED_CAST")
-                ConcurrentHashMap<Int, Any>
-        packageCache.remove(uid)
+        invokeMapMethod(getPrivateField(Config, "packageCache"), "remove", uid)
 
         assertTrue("needHack should return cached true even if package info is gone", Config.needHack(uid))
 
@@ -95,7 +72,7 @@ class ConfigTargetStateTest {
     ): Any {
         val field = instance.javaClass.getDeclaredField(fieldName)
         field.isAccessible = true
-        return field.get(instance)
+        return requireNotNull(field.get(instance))
     }
 
     private fun setPrivateField(
@@ -111,26 +88,27 @@ class ConfigTargetStateTest {
     private fun getPrivateField(
         instance: Any,
         fieldName: String,
-    ): Any? {
+    ): Any {
         val field = instance.javaClass.getDeclaredField(fieldName)
         field.isAccessible = true
-        return field.get(instance)
+        return requireNotNull(field.get(instance))
     }
+
+    private fun invokeMapMethod(
+        instance: Any,
+        methodName: String,
+        key: Any? = null,
+    ): Any? =
+        if (key == null) {
+            instance.javaClass.getMethod(methodName).invoke(instance)
+        } else {
+            instance.javaClass.getMethod(methodName, Any::class.java).invoke(instance, key)
+        }
 
     private fun mockPackage(
         uid: Int,
         packages: Array<String>,
     ) {
-        val packageCache =
-            getPrivateField(Config, "packageCache") as
-                @Suppress("UNCHECKED_CAST")
-                ConcurrentHashMap<Int, Any>
-
-        val cachedPackageClass = Class.forName("cleveres.tricky.cleverestech.Config\$CachedPackage")
-        val constructor = cachedPackageClass.getDeclaredConstructor(Array<String>::class.java, Long::class.javaPrimitiveType)
-        constructor.isAccessible = true
-        val cachedPkg = constructor.newInstance(packages, Config.clockSource())
-
-        packageCache[uid] = cachedPkg
+        Config.setPackagesForTesting(uid, packages)
     }
 }

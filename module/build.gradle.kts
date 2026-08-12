@@ -8,16 +8,16 @@ plugins {
     alias(libs.plugins.agp.app)
 }
 
-val moduleId: String by rootProject.extra
-val moduleName: String by rootProject.extra
-val verCode: Int by rootProject.extra
-val verName: String by rootProject.extra
-val commitHash: String by rootProject.extra
-val abiList: List<String> by rootProject.extra
-val androidMinSdkVersion: Int by rootProject.extra
-val androidMaxSupportedSdkVersion: Int by rootProject.extra
-val author: String by rootProject.extra
-val description: String by rootProject.extra
+val moduleId = rootProject.extra["moduleId"] as String
+val moduleName = rootProject.extra["moduleName"] as String
+val verCode = rootProject.extra["verCode"] as Int
+val verName = rootProject.extra["verName"] as String
+val commitHash = rootProject.extra["commitHash"] as String
+val abiList = (rootProject.extra["abiList"] as List<*>).map { it as String }
+val androidMinSdkVersion = rootProject.extra["androidMinSdkVersion"] as Int
+val androidMaxSupportedSdkVersion = rootProject.extra["androidMaxSupportedSdkVersion"] as Int
+val author = rootProject.extra["author"] as String
+val description = rootProject.extra["description"] as String
 val moduleDescription = description
 
 android {
