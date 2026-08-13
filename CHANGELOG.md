@@ -1,6 +1,12 @@
 # Changelog
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#changelog) | [简体中文](docs/i18n/zh-CN.md#changelog) | [Español](docs/i18n/es.md#changelog) | [Deutsch](docs/i18n/de.md#changelog) | [Русский](docs/i18n/ru.md#changelog) | [Bahasa Indonesia](docs/i18n/id.md#changelog) | [हिन्दी](docs/i18n/hi.md#changelog) | [العربية](docs/i18n/ar.md#changelog)
+## V2.5.4
+
+- Reduced Binder hot-path syscall and allocation overhead with a reusable kernel-copy pipe, selective Binder stream parsing, and a bounded Binder-FD revalidation cache.
+- Switched FilePoller to fallback-only polling when FileObserver is available, and fixed keybox refresh scheduling and repeated log storms.
+- Serialized scheduler restarts to avoid overlapping runtime work and improved lifecycle correctness under retries.
+- Wiped temporary sensitive buffers after use and tightened temporary data handling.
+- Aligned the Android 17/API 37 build toolchain and runtime compatibility paths.
 
 ## V2.5.3
 
