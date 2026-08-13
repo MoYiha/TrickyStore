@@ -126,16 +126,20 @@ object SecureFile {
             require(limit >= -1L) { "limit must be -1 or non-negative" }
             atomicWrite(file) { output ->
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var total = 0L
-                while (true) {
-                    val count = inputStream.read(buffer)
-                    if (count < 0) break
-                    if (count == 0) continue
-                    if (limit >= 0 && count.toLong() > limit - total) {
-                        throw IOException("File size exceeds the $limit-byte limit")
+                try {
+                    var total = 0L
+                    while (true) {
+                        val count = inputStream.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        if (limit >= 0 && count.toLong() > limit - total) {
+                            throw IOException("File size exceeds the $limit-byte limit")
+                        }
+                        output.write(buffer, 0, count)
+                        total += count
                     }
-                    output.write(buffer, 0, count)
-                    total += count
+                } finally {
+                    buffer.fill(0)
                 }
             }
         }
