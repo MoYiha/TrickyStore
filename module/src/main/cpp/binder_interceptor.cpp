@@ -378,17 +378,13 @@ bool AdaptiveBinderInterceptor::initialize() {
   OffsetCache &cache = OffsetCache::instance();
 
   const int android_api_level = detectApiLevel();
-  if (android_api_level < kMinimumSupportedAndroidApi) {
-    LOGE("AdaptiveBinderInterceptor: unsupported Android API %d",
-         android_api_level);
+  if (android_api_level < kMinimumSupportedAndroidApi ||
+      android_api_level > kMaximumValidatedCompilerFallbackApi) {
+    LOGE("AdaptiveBinderInterceptor: Android API %d is outside the "
+         "compiler-validated Binder UAPI range %d-%d",
+         android_api_level, kMinimumSupportedAndroidApi,
+         kMaximumValidatedCompilerFallbackApi);
     return false;
-  }
-  const bool requires_live_layout =
-      android_api_level > kMaximumValidatedCompilerFallbackApi;
-  if (requires_live_layout) {
-    LOGW("Android API %d is newer than the compiler fallback; requiring live "
-         "Binder UAPI validation",
-         android_api_level);
   }
   std::string kernel_version;
   int kmajor = 0, kminor = 0;
@@ -404,14 +400,6 @@ bool AdaptiveBinderInterceptor::initialize() {
   if (RuntimeLayoutValidator::validateLayout(cache)) {
     LOGI("Strategy: live Binder UAPI validation succeeded");
     return true;
-  }
-
-  if (requires_live_layout) {
-    LOGE("Live Binder validation failed on future Android API %d; refusing an "
-         "unverified layout",
-         android_api_level);
-    cache.valid = false;
-    return false;
   }
 
   if (initFallback(cache, android_api_level)) {
