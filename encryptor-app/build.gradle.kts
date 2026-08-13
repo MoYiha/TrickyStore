@@ -15,6 +15,7 @@ val releaseSigningValues =
         releaseKeyPassword,
     )
 val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+val useDebugSigningForPullRequest = System.getenv("GITHUB_EVENT_NAME") == "pull_request"
 
 if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
     throw GradleException("Encryptor release signing configuration is incomplete")
@@ -58,6 +59,9 @@ android {
             )
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
+            } else if (useDebugSigningForPullRequest) {
+                // PR artifacts are installable for contributor testing, but are never published as releases.
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }
