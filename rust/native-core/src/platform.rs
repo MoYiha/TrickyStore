@@ -1,4 +1,5 @@
 use crate::ffi::{validate_mut_slice_args, validate_slice_args};
+use std::cell::Cell;
 use std::ffi::{c_char, c_int, c_uint};
 use std::mem;
 use std::sync::RwLock;
@@ -7,6 +8,7 @@ const AT_NO_AUTOMOUNT: c_int = 0x800;
 const AT_EMPTY_PATH: c_int = 0x1000;
 const STATX_INO: c_uint = 0x100;
 const BINDER_FD_CACHE_ENTRIES: usize = 64;
+const BINDER_FD_FAST_REVALIDATE_HITS: u8 = 31;
 const PROC_FD_PREFIX: &[u8] = b"/proc/self/fd/";
 const MAXIMUM_DESCRIPTOR_PATH_BYTES: usize = 64;
 const MAXIMUM_DESCRIPTOR_TARGET_BYTES: usize = 256;
@@ -70,9 +72,27 @@ impl BinderFdCacheEntry {
     };
 }
 
+#[derive(Clone, Copy)]
+struct BinderFdFastCacheEntry {
+    descriptor: i32,
+    hits_remaining: u8,
+}
+
+impl BinderFdFastCacheEntry {
+    const EMPTY: Self = Self {
+        descriptor: -1,
+        hits_remaining: 0,
+    };
+}
+
 static BINDER_FD_CACHE: RwLock<[BinderFdCacheEntry; BINDER_FD_CACHE_ENTRIES]> =
     RwLock::new([BinderFdCacheEntry::EMPTY; BINDER_FD_CACHE_ENTRIES]);
 static EMPTY_PATH: [c_char; 1] = [0];
+
+thread_local! {
+    static BINDER_FD_FAST_CACHE: Cell<BinderFdFastCacheEntry> =
+        const { Cell::new(BinderFdFastCacheEntry::EMPTY) };
+}
 
 extern "C" {
     fn statx(
@@ -142,7 +162,35 @@ fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
     Some(path_length)
 }
 
+fn take_fast_binder_fd_hit(descriptor: i32) -> bool {
+    BINDER_FD_FAST_CACHE.with(|cache| {
+        let mut entry = cache.get();
+        if entry.descriptor != descriptor || entry.hits_remaining == 0 {
+            return false;
+        }
+        entry.hits_remaining -= 1;
+        cache.set(entry);
+        true
+    })
+}
+
+fn remember_fast_binder_fd(descriptor: i32) {
+    BINDER_FD_FAST_CACHE.with(|cache| {
+        cache.set(BinderFdFastCacheEntry {
+            descriptor,
+            hits_remaining: BINDER_FD_FAST_REVALIDATE_HITS,
+        });
+    });
+}
+
 pub fn is_binder_fd(descriptor: i32) -> bool {
+    if descriptor < 0 {
+        return false;
+    }
+    if take_fast_binder_fd_hit(descriptor) {
+        return true;
+    }
+
     let Some((device, inode)) = descriptor_identity(descriptor) else {
         return false;
     };
@@ -150,6 +198,9 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
     if let Ok(cache) = BINDER_FD_CACHE.read() {
         let entry = cache[slot];
         if entry.descriptor == descriptor && entry.device == device && entry.inode == inode {
+            if entry.is_binder {
+                remember_fast_binder_fd(descriptor);
+            }
             return entry.is_binder;
         }
     }
@@ -180,6 +231,9 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
             inode,
             is_binder,
         };
+    }
+    if is_binder {
+        remember_fast_binder_fd(descriptor);
     }
     is_binder
 }
@@ -303,6 +357,17 @@ mod tests {
         assert_eq!(&output[..length], b"/proc/self/fd/2147483647");
         assert_eq!(output[length], 0);
         assert!(write_descriptor_path(-1, &mut output).is_none());
+    }
+
+    #[test]
+    fn fast_binder_cache_revalidates_after_bounded_hits() {
+        BINDER_FD_FAST_CACHE.with(|cache| cache.set(BinderFdFastCacheEntry::EMPTY));
+        remember_fast_binder_fd(123);
+        for _ in 0..BINDER_FD_FAST_REVALIDATE_HITS {
+            assert!(take_fast_binder_fd_hit(123));
+        }
+        assert!(!take_fast_binder_fd_hit(123));
+        assert!(!take_fast_binder_fd_hit(124));
     }
 
     #[test]

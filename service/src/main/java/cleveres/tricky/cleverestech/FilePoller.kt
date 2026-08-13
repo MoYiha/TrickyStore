@@ -47,8 +47,9 @@ class FilePoller(
         if (isRunning) return
         isRunning = true
         lastSnapshot = snapshot()
-        startObserver()
-        scheduleFallbackPolling()
+        if (!startObserver()) {
+            scheduleFallbackPolling()
+        }
     }
 
     private fun startObserver(): Boolean {

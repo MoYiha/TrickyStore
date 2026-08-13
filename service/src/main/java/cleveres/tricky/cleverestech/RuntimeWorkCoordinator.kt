@@ -39,7 +39,8 @@ internal class ConflatedRefreshScheduler(
 ) {
     private val executionMutex = Mutex()
     private val stateLock = Any()
-    private var pendingJob: Job? = null
+    private var workerJob: Job? = null
+    private var requestedGeneration = 0L
 
     init {
         require(debounceMs >= 0) { "debounceMs must not be negative" }
@@ -47,19 +48,40 @@ internal class ConflatedRefreshScheduler(
 
     fun submit() {
         synchronized(stateLock) {
-            pendingJob?.cancel()
-            pendingJob =
-                scope.launch {
-                    if (debounceMs > 0) delay(debounceMs)
-                    executionMutex.withLock { refresh() }
+            requestedGeneration++
+            if (workerJob?.isActive == true) return
+            workerJob = scope.launch { drainRequests() }
+        }
+    }
+
+    private suspend fun drainRequests() {
+        while (true) {
+            val generation = synchronized(stateLock) { requestedGeneration }
+            if (debounceMs > 0) delay(debounceMs)
+
+            if (synchronized(stateLock) { requestedGeneration != generation }) {
+                continue
+            }
+
+            executionMutex.withLock { refresh() }
+
+            val finished =
+                synchronized(stateLock) {
+                    if (requestedGeneration == generation) {
+                        workerJob = null
+                        true
+                    } else {
+                        false
+                    }
                 }
+            if (finished) return
         }
     }
 
     fun cancel() {
         synchronized(stateLock) {
-            pendingJob?.cancel()
-            pendingJob = null
+            workerJob?.cancel()
+            workerJob = null
         }
     }
 }
@@ -69,6 +91,7 @@ internal object KeyboxDirectoryRefreshWatcher {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val scheduler =
         ConflatedRefreshScheduler(scope, KEYBOX_REFRESH_DEBOUNCE_MS) {
+            Logger.d("Refreshing keyboxes after filesystem changes")
             Config.updateKeyBoxesSync()
         }
     private var observer: FileObserver? = null
@@ -85,7 +108,6 @@ internal object KeyboxDirectoryRefreshWatcher {
                     event: Int,
                     path: String?,
                 ) {
-                    Logger.i("Keybox directory event: $path")
                     scheduler.submit()
                 }
             }

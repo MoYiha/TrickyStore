@@ -1,14 +1,18 @@
 package cleveres.tricky.cleverestech
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class RuntimeWorkCoordinatorTest {
@@ -51,7 +55,49 @@ class RuntimeWorkCoordinatorTest {
     }
 
     @Test
-    fun refreshSchedulerKeepsOnlyLatestFollowUpWhileRefreshIsActive() {
+    fun refreshSchedulerKeepsOnlyLatestFollowUpWithoutCancellingActiveRefresh() {
+        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        val firstStarted = CountDownLatch(1)
+        val releaseFirst = CompletableDeferred<Unit>()
+        val secondFinished = CountDownLatch(1)
+        val firstCancelled = AtomicBoolean(false)
+        val count = AtomicInteger(0)
+        val scheduler =
+            ConflatedRefreshScheduler(scope, debounceMs = 10L) {
+                when (count.incrementAndGet()) {
+                    1 -> {
+                        firstStarted.countDown()
+                        try {
+                            releaseFirst.await()
+                        } catch (error: CancellationException) {
+                            firstCancelled.set(true)
+                            throw error
+                        }
+                    }
+                    2 -> secondFinished.countDown()
+                }
+            }
+
+        try {
+            scheduler.submit()
+            assertTrue("Initial refresh did not start", firstStarted.await(2, TimeUnit.SECONDS))
+            repeat(32) { scheduler.submit() }
+            Thread.sleep(50)
+            assertFalse("Active refresh was cancelled by a follow-up request", firstCancelled.get())
+            releaseFirst.complete(Unit)
+            assertTrue("Conflated follow-up refresh did not run", secondFinished.await(2, TimeUnit.SECONDS))
+            Thread.sleep(100)
+            assertEquals(2, count.get())
+            assertFalse("Active refresh was cancelled", firstCancelled.get())
+        } finally {
+            releaseFirst.complete(Unit)
+            scheduler.cancel()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun refreshSchedulerKeepsRefreshesSerializedAcrossCancelAndRestart() {
         val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         val firstStarted = CountDownLatch(1)
         val releaseFirst = CountDownLatch(1)
@@ -71,10 +117,12 @@ class RuntimeWorkCoordinatorTest {
         try {
             scheduler.submit()
             assertTrue("Initial refresh did not start", firstStarted.await(2, TimeUnit.SECONDS))
-            repeat(32) { scheduler.submit() }
-            releaseFirst.countDown()
-            assertTrue("Conflated follow-up refresh did not run", secondFinished.await(2, TimeUnit.SECONDS))
+            scheduler.cancel()
+            scheduler.submit()
             Thread.sleep(100)
+            assertEquals("Restart overlapped an in-flight refresh", 1, count.get())
+            releaseFirst.countDown()
+            assertTrue("Restarted refresh did not run", secondFinished.await(2, TimeUnit.SECONDS))
             assertEquals(2, count.get())
         } finally {
             releaseFirst.countDown()
