@@ -2,7 +2,10 @@
 
 **Language:** **English** | [Türkçe](README.tr.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Bahasa Indonesia](README.id.md) | [हिन्दी](README.hi.md) | [العربية](README.ar.md)
 
-[![Build](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml/badge.svg)](https://github.com/tryigit/CleveresTricky/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/tryigit/CleveresTricky?display_name=tag&sort=semver&label=Release)](https://github.com/tryigit/CleveresTricky/releases/latest)
+![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
+![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
+![Architecture](https://img.shields.io/badge/Arch-ARM64%20%7C%20x86--64-0969DA)
 
 CleveresTricky is a KernelSU and APatch module for Android keystore, attestation, identity, and application compatibility. It combines a controlled native runtime with a mobile WebUI so users can manage scope, key material, identity, patch levels, Remote Key Provisioning protection, and DRM compatibility from one place.
 
