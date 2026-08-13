@@ -1,5 +1,6 @@
 use crate::binder_memory::kernel_copy;
 use crate::ffi::{validate_mut_slice_args, validate_slice_args};
+use crate::injector_support::wipe_bytes;
 use crate::layout::{validate_transaction_layout, RustOffsetCacheView};
 use std::mem;
 
@@ -235,9 +236,20 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                     transaction_buffer.as_mut_ptr() as usize,
                     payload_size,
                 ) {
+                    wipe_bytes(&mut transaction_buffer[..payload_size]);
                     return false;
                 }
                 let transaction = &transaction_buffer[..payload_size];
+                let parsed = (
+                    safe_read::<usize>(transaction, cache.target_ptr_offset),
+                    safe_read::<usize>(transaction, cache.cookie_offset),
+                    safe_read::<u32>(transaction, cache.code_offset),
+                    safe_read::<u32>(transaction, cache.flags_offset),
+                    safe_read::<i32>(transaction, cache.sender_pid_offset),
+                    safe_read::<u32>(transaction, cache.sender_euid_offset),
+                    safe_read::<u64>(transaction, cache.data_size_offset),
+                    safe_read::<usize>(transaction, cache.data_ptr_offset),
+                );
                 let (
                     Some(target_ptr),
                     Some(cookie),
@@ -247,19 +259,12 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                     Some(sender_euid),
                     Some(data_size),
                     Some(data_buffer),
-                ) = (
-                    safe_read::<usize>(transaction, cache.target_ptr_offset),
-                    safe_read::<usize>(transaction, cache.cookie_offset),
-                    safe_read::<u32>(transaction, cache.code_offset),
-                    safe_read::<u32>(transaction, cache.flags_offset),
-                    safe_read::<i32>(transaction, cache.sender_pid_offset),
-                    safe_read::<u32>(transaction, cache.sender_euid_offset),
-                    safe_read::<u64>(transaction, cache.data_size_offset),
-                    safe_read::<usize>(transaction, cache.data_ptr_offset),
-                )
+                ) = parsed
                 else {
+                    wipe_bytes(&mut transaction_buffer[..payload_size]);
                     return false;
                 };
+                wipe_bytes(&mut transaction_buffer[..payload_size]);
                 output[count_slice[0]] = RustParsedTransaction {
                     target_ptr,
                     cookie,

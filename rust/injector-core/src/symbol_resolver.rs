@@ -1,6 +1,6 @@
 use crate::abi::InjectorSymbols;
 use cleverestricky_native_core::injector_support::{
-    read_relevant_process_maps, ProcessMapping, ProcessModule,
+    process_image_base, read_relevant_process_maps, ProcessImageId, ProcessMapping, ProcessModule,
 };
 use std::ffi::{c_char, c_int, c_void, CString};
 
@@ -54,37 +54,47 @@ pub(crate) fn resolve_injector_symbols(pid: i32) -> Result<InjectorSymbols, Stri
     let libc = LibraryHandle::open(ProcessModule::Libc)?;
     let libdl = LibraryHandle::open(ProcessModule::Libdl)?;
 
+    let (close_address, libc_image) =
+        resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"close")?;
     let mut output = InjectorSymbols {
         libc_return: remote
             .iter()
-            .find(|mapping| mapping.module == ProcessModule::Libc && !mapping.executable)
+            .find(|mapping| {
+                mapping.module == ProcessModule::Libc
+                    && mapping.image == libc_image
+                    && !mapping.executable
+            })
             .map(|mapping| mapping.start)
             .filter(|address| *address != 0)
             .ok_or_else(|| "target libc has no controlled return trap mapping".to_string())?,
+        close: close_address,
         ..InjectorSymbols::default()
     };
 
-    output.close = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"close")?;
-    output.socket = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"socket")?;
-    output.bind = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"bind")?;
-    output.recvmsg = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"recvmsg")?;
-    output.mmap = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"mmap")?;
-    output.munmap = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"munmap")?;
-    output.errno_location =
-        resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"__errno").unwrap_or(0);
+    output.socket = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"socket")?.0;
+    output.bind = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"bind")?.0;
+    output.recvmsg = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"recvmsg")?.0;
+    output.mmap = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"mmap")?.0;
+    output.munmap = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"munmap")?.0;
+    output.errno_location = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"__errno")
+        .map(|resolved| resolved.0)
+        .unwrap_or(0);
     output.android_dlopen_ext = resolve_symbol(
         &local,
         &remote,
         ProcessModule::Libdl,
         &libdl,
         b"android_dlopen_ext",
-    )?;
-    output.dlerror =
-        resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlerror").unwrap_or(0);
-    output.strlen =
-        resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"strlen").unwrap_or(0);
-    output.dlsym = resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlsym")?;
-    output.dlclose = resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlclose")?;
+    )?
+    .0;
+    output.dlerror = resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlerror")
+        .map(|resolved| resolved.0)
+        .unwrap_or(0);
+    output.strlen = resolve_symbol(&local, &remote, ProcessModule::Libc, &libc, b"strlen")
+        .map(|resolved| resolved.0)
+        .unwrap_or(0);
+    output.dlsym = resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlsym")?.0;
+    output.dlclose = resolve_symbol(&local, &remote, ProcessModule::Libdl, &libdl, b"dlclose")?.0;
     Ok(output)
 }
 
@@ -94,28 +104,33 @@ fn resolve_symbol(
     module: ProcessModule,
     library: &LibraryHandle,
     symbol: &[u8],
-) -> Result<usize, String> {
+) -> Result<(usize, ProcessImageId), String> {
     let symbol_name = CString::new(symbol)
         .map_err(|_| "platform symbol name contained a null byte".to_string())?;
     let local_symbol = unsafe { dlsym(library.0, symbol_name.as_ptr()) } as usize;
-    if local_symbol == 0
-        || !local_mappings.iter().any(|mapping| {
-            mapping.module == module
-                && mapping.executable
-                && mapping.start <= local_symbol
-                && local_symbol < mapping.end
-        })
-    {
+    if local_symbol == 0 {
+        return Err(format!(
+            "platform symbol {} is unavailable",
+            String::from_utf8_lossy(symbol)
+        ));
+    }
+    let Some(local_symbol_mapping) = local_mappings.iter().find(|mapping| {
+        mapping.module == module
+            && mapping.executable
+            && mapping.start <= local_symbol
+            && local_symbol < mapping.end
+    }) else {
         return Err(format!(
             "platform symbol {} resolved outside its library",
             String::from_utf8_lossy(symbol)
         ));
-    }
+    };
+    let image = local_symbol_mapping.image;
 
-    let local_base = module_base(local_mappings, module)
+    let local_base = process_image_base(local_mappings, module, image)
         .ok_or_else(|| "local platform library base is unavailable".to_string())?;
-    let remote_base = module_base(remote_mappings, module)
-        .ok_or_else(|| "target platform library base is unavailable".to_string())?;
+    let remote_base = process_image_base(remote_mappings, module, image)
+        .ok_or_else(|| "target platform library image does not match the injector".to_string())?;
     let offset = local_symbol
         .checked_sub(local_base)
         .filter(|value| *value <= MAXIMUM_LIBRARY_OFFSET)
@@ -125,6 +140,7 @@ fn resolve_symbol(
         .ok_or_else(|| "target symbol address overflow".to_string())?;
     if !remote_mappings.iter().any(|mapping| {
         mapping.module == module
+            && mapping.image == image
             && mapping.executable
             && mapping.start <= remote_symbol
             && remote_symbol < mapping.end
@@ -134,13 +150,5 @@ fn resolve_symbol(
             String::from_utf8_lossy(symbol)
         ));
     }
-    Ok(remote_symbol)
-}
-
-fn module_base(mappings: &[ProcessMapping], module: ProcessModule) -> Option<usize> {
-    mappings
-        .iter()
-        .find(|mapping| mapping.module == module && mapping.offset == 0)
-        .map(|mapping| mapping.start)
-        .filter(|address| *address != 0)
+    Ok((remote_symbol, image))
 }

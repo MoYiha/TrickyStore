@@ -7,7 +7,7 @@ use crate::ptrace_session::RemoteSession;
 use crate::symbol_resolver::resolve_injector_symbols;
 use cleverestricky_native_core::injector_support::{
     extract_scm_rights_fd, generate_magic, is_safe_library_metadata, parse_injector_request,
-    CmsgHeader,
+    wipe_bytes, CmsgHeader,
 };
 use std::ffi::{c_int, c_void, CStr, CString, OsString};
 use std::fs::{self, File, OpenOptions};
@@ -25,6 +25,7 @@ const LOG_ERROR: c_int = 6;
 
 const AF_UNIX: c_int = 1;
 const SOCK_DGRAM: c_int = 2;
+const SOCK_NONBLOCK: c_int = 0x800;
 const SOCK_CLOEXEC: c_int = 0x80000;
 const SOL_SOCKET: c_int = 1;
 const SCM_RIGHTS: c_int = 1;
@@ -164,15 +165,17 @@ fn inject_library(
     let symbols = resolve_injector_symbols(pid)?;
 
     let local_socket = create_local_socket_for_target(pid)?;
-    let socket_name = generate_magic(16)
+    let mut socket_name = generate_magic(16)
         .map_err(|error| format!("could not generate the local socket name: {error}"))?;
-    let remote_library_fd = transfer_library_fd(
+    let remote_library_fd_result = transfer_library_fd(
         &mut session,
         &symbols,
         &local_socket,
         library.as_raw_fd(),
         &socket_name,
-    )?;
+    );
+    wipe_bytes(&mut socket_name);
+    let remote_library_fd = remote_library_fd_result?;
 
     let remote_handle_result =
         open_remote_library(&mut session, &symbols, remote_library_fd, library_path);
@@ -225,8 +228,9 @@ fn create_local_socket_for_target(pid: i32) -> EngineResult<OwnedFd> {
                 }
             }
         }
+        wipe_bytes(&mut context);
     }
-    let descriptor = unsafe { socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0) };
+    let descriptor = unsafe { socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0) };
     if let Err(error) = set_socket_creation_context(&[]) {
         log(
             LOG_WARN,
@@ -265,7 +269,11 @@ fn transfer_library_fd(
         let remote_socket_result = session.call(
             symbols.socket,
             symbols.libc_return,
-            &[AF_UNIX as usize, (SOCK_DGRAM | SOCK_CLOEXEC) as usize, 0],
+            &[
+                AF_UNIX as usize,
+                (SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC) as usize,
+                0,
+            ],
         )?;
         if is_remote_integer_error(remote_socket_result) || remote_socket_result > i32::MAX as usize
         {
@@ -362,8 +370,9 @@ fn transfer_library_fd(
 
         let mut control = vec![0u8; received_header.control_length];
         session.read_bytes(remote_control, &mut control)?;
-        extract_scm_rights_fd(&control)
-            .ok_or_else(|| "remote ancillary message did not contain a descriptor".into())
+        let descriptor = extract_scm_rights_fd(&control);
+        wipe_bytes(&mut control);
+        descriptor.ok_or_else(|| "remote ancillary message did not contain a descriptor".into())
     })();
     resources.cleanup(session, symbols);
     result
@@ -412,11 +421,13 @@ fn send_local_fd(
     loop {
         let sent = unsafe { sendmsg(socket_descriptor, &header, 0) };
         if sent == 1 {
+            wipe_bytes(&mut control);
             return Ok(());
         }
         if sent < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
             continue;
         }
+        wipe_bytes(&mut control);
         return Err("could not send the library descriptor".into());
     }
 }
@@ -443,7 +454,7 @@ fn open_remote_library(
         log_remote_loader_error(session, symbols);
         Err("remote dynamic loader returned a null handle".into())
     } else {
-        log(LOG_DEBUG, format!("remote library handle is {handle:#x}"));
+        log(LOG_DEBUG, "remote library loaded");
         Ok(handle)
     }
 }
@@ -471,6 +482,7 @@ fn log_remote_loader_error(session: &mut RemoteSession, symbols: &InjectorSymbol
             format!("remote loader error: {}", String::from_utf8_lossy(&message)),
         );
     }
+    wipe_bytes(&mut message);
 }
 
 fn read_remote_errno(session: &mut RemoteSession, symbols: &InjectorSymbols) -> Option<i32> {

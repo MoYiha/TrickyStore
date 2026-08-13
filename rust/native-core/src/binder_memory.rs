@@ -1,5 +1,6 @@
 use crate::binder_parser::RustParsedTransaction;
 use crate::ffi::{validate_mut_slice_args, validate_slice_args};
+use crate::injector_support::wipe_bytes;
 use crate::layout::{validate_offset_cache, validate_transaction_layout, RustOffsetCacheView};
 use std::cell::RefCell;
 use std::ffi::{c_int, c_void};
@@ -10,6 +11,7 @@ const O_NONBLOCK: c_int = 0x800;
 const O_CLOEXEC: c_int = 0x80000;
 const MAXIMUM_BINDER_WRITE_READ_BYTES: usize = 256;
 const MAXIMUM_BINDER_READ_BYTES: usize = 8 * 1_024 * 1_024;
+const MAXIMUM_TRANSACTION_PAYLOAD_BYTES: usize = 512;
 const KERNEL_COPY_ATTEMPT_BYTES: usize = 64 * 1_024;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -153,6 +155,17 @@ fn read_unaligned<T: Copy>(input: &[u8], offset: usize) -> Option<T> {
     Some(unsafe { input.as_ptr().add(offset).cast::<T>().read_unaligned() })
 }
 
+fn write_bytes(output: &mut [u8], offset: usize, value: &[u8]) -> bool {
+    let Some(end) = offset.checked_add(value.len()) else {
+        return false;
+    };
+    let Some(destination) = output.get_mut(offset..end) else {
+        return false;
+    };
+    destination.copy_from_slice(value);
+    true
+}
+
 /// Reads the Binder driver exchange structure through a kernel validated copy.
 ///
 /// # Safety
@@ -190,21 +203,20 @@ pub unsafe extern "C" fn rust_read_binder_write_read(
             local.as_mut_ptr() as usize,
             cache.bwr_total_size,
         ) {
+            wipe_bytes(&mut local[..cache.bwr_total_size]);
             return false;
         }
         let structure = &local[..cache.bwr_total_size];
-        let Some(read_size) = read_unaligned::<usize>(structure, cache.bwr_read_size_offset) else {
+        let parsed = (
+            read_unaligned::<usize>(structure, cache.bwr_read_size_offset),
+            read_unaligned::<usize>(structure, cache.bwr_read_consumed_offset),
+            read_unaligned::<usize>(structure, cache.bwr_read_buffer_offset),
+        );
+        let (Some(read_size), Some(read_consumed), Some(read_buffer)) = parsed else {
+            wipe_bytes(&mut local[..cache.bwr_total_size]);
             return false;
         };
-        let Some(read_consumed) =
-            read_unaligned::<usize>(structure, cache.bwr_read_consumed_offset)
-        else {
-            return false;
-        };
-        let Some(read_buffer) = read_unaligned::<usize>(structure, cache.bwr_read_buffer_offset)
-        else {
-            return false;
-        };
+        wipe_bytes(&mut local[..cache.bwr_total_size]);
 
         output[0] = RustBinderReadSnapshot {
             read_size,
@@ -262,33 +274,47 @@ pub unsafe extern "C" fn rust_write_binder_transaction(
             return false;
         }
 
-        let fields = [
-            (
-                &transaction.target_ptr as *const usize as usize,
-                cache.target_ptr_offset,
-                mem::size_of::<usize>(),
-            ),
-            (
-                &transaction.cookie as *const usize as usize,
-                cache.cookie_offset,
-                mem::size_of::<usize>(),
-            ),
-            (
-                &transaction.code as *const u32 as usize,
-                cache.code_offset,
-                mem::size_of::<u32>(),
-            ),
-        ];
-
-        for (source, offset, length) in fields {
-            let Some(destination) = transaction.raw_ptr.checked_add(offset) else {
-                return false;
-            };
-            if !kernel_copy(source, destination, length) {
-                return false;
-            }
+        // Snapshot and rewrite the complete bounded UAPI record. This turns
+        // three independent field writes into one coherent copy, preserves
+        // every field that the interceptor does not own, and reduces pipe
+        // traffic on the Binder hot path.
+        let mut replacement = [0u8; MAXIMUM_TRANSACTION_PAYLOAD_BYTES];
+        if transaction.raw_size > replacement.len() {
+            return false;
         }
-        true
+        if !kernel_copy(
+            transaction.raw_ptr,
+            replacement.as_mut_ptr() as usize,
+            transaction.raw_size,
+        ) {
+            wipe_bytes(&mut replacement[..transaction.raw_size]);
+            return false;
+        }
+        let replacement = &mut replacement[..transaction.raw_size];
+        if !write_bytes(
+            replacement,
+            cache.target_ptr_offset,
+            &transaction.target_ptr.to_ne_bytes(),
+        ) || !write_bytes(
+            replacement,
+            cache.cookie_offset,
+            &transaction.cookie.to_ne_bytes(),
+        ) || !write_bytes(
+            replacement,
+            cache.code_offset,
+            &transaction.code.to_ne_bytes(),
+        ) {
+            wipe_bytes(replacement);
+            return false;
+        }
+
+        let success = kernel_copy(
+            replacement.as_ptr() as usize,
+            transaction.raw_ptr,
+            replacement.len(),
+        );
+        wipe_bytes(replacement);
+        success
     })
     .unwrap_or(false)
 }
@@ -296,6 +322,29 @@ pub unsafe extern "C" fn rust_write_binder_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_cache(payload_size: usize) -> RustOffsetCacheView {
+        RustOffsetCacheView {
+            target_ptr_offset: 0,
+            cookie_offset: 8,
+            code_offset: 16,
+            flags_offset: 20,
+            sender_pid_offset: 24,
+            sender_euid_offset: 28,
+            data_size_offset: 40,
+            data_ptr_offset: 48,
+            transaction_data_size: payload_size,
+            transaction_data_secctx_size: payload_size,
+            bwr_write_size_offset: 0,
+            bwr_write_consumed_offset: 8,
+            bwr_write_buffer_offset: 16,
+            bwr_read_size_offset: 24,
+            bwr_read_consumed_offset: 32,
+            bwr_read_buffer_offset: 40,
+            bwr_total_size: 48,
+            valid: 1,
+        }
+    }
 
     #[test]
     fn kernel_copy_rejects_invalid_addresses_without_dereferencing_them() {
@@ -333,5 +382,33 @@ mod tests {
             source.len(),
         ));
         assert_eq!(destination, source);
+    }
+
+    #[test]
+    fn transaction_writeback_is_coherent_and_preserves_unowned_fields() {
+        let mut raw = [0xa5u8; 64];
+        let original = raw;
+        let transaction = RustParsedTransaction {
+            target_ptr: 0x1122_3344_5566_7788,
+            cookie: 0x8877_6655_4433_2211,
+            code: 0xdead_beef,
+            raw_ptr: raw.as_mut_ptr() as usize,
+            raw_size: raw.len(),
+            valid: 1,
+            ..RustParsedTransaction::default()
+        };
+        let cache = test_cache(raw.len());
+
+        assert!(unsafe {
+            rust_write_binder_transaction(raw.as_mut_ptr(), raw.len(), &transaction, &cache)
+        });
+
+        assert_eq!(
+            read_unaligned::<usize>(&raw, 0),
+            Some(transaction.target_ptr)
+        );
+        assert_eq!(read_unaligned::<usize>(&raw, 8), Some(transaction.cookie));
+        assert_eq!(read_unaligned::<u32>(&raw, 16), Some(transaction.code));
+        assert_eq!(&raw[20..], &original[20..]);
     }
 }

@@ -2,6 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::mem;
 use std::os::unix::fs::OpenOptionsExt;
+use std::sync::atomic::{compiler_fence, Ordering};
 
 const MAXIMUM_CMDLINE_BYTES: usize = 4_096;
 const MAXIMUM_MAPS_BYTES: usize = 4 * 1_024 * 1_024;
@@ -11,6 +12,13 @@ const MAXIMUM_MAGIC_LENGTH: usize = 64;
 const MAGIC_ALPHABET: &[u8; 62] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const RANDOM_ACCEPTANCE_LIMIT: u8 = 248;
 const O_NOFOLLOW: i32 = 0x20000;
+const MAXIMUM_SIGNAL_NUMBER: i32 = 64;
+const SIGNAL_ILLEGAL_INSTRUCTION: i32 = 4;
+const SIGNAL_TRACE_TRAP: i32 = 5;
+const SIGNAL_BUS_ERROR: i32 = 7;
+const SIGNAL_FLOATING_POINT_EXCEPTION: i32 = 8;
+const SIGNAL_SEGMENTATION_FAULT: i32 = 11;
+const SIGNAL_BAD_SYSTEM_CALL: i32 = 31;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessModule {
@@ -28,12 +36,96 @@ impl ProcessModule {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcessImageId {
+    pub device: u64,
+    pub inode: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcessMapping {
     pub module: ProcessModule,
+    pub image: ProcessImageId,
     pub start: usize,
     pub end: usize,
     pub offset: usize,
     pub executable: bool,
+}
+
+pub fn process_image_base(
+    mappings: &[ProcessMapping],
+    module: ProcessModule,
+    image: ProcessImageId,
+) -> Option<usize> {
+    mappings
+        .iter()
+        .find(|mapping| mapping.module == module && mapping.image == image && mapping.offset == 0)
+        .map(|mapping| mapping.start)
+        .filter(|address| *address != 0)
+}
+
+/// Clears process-derived bytes with volatile stores so cleanup cannot be
+/// optimized away before the backing allocation is released.
+pub fn wipe_bytes(input: &mut [u8]) {
+    for byte in input {
+        // SAFETY: `byte` is a live, uniquely borrowed element of `input`.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    compiler_fence(Ordering::SeqCst);
+}
+
+pub fn sanitize_signal_for_detach(signal: i32) -> i32 {
+    if (1..=MAXIMUM_SIGNAL_NUMBER).contains(&signal) {
+        signal
+    } else {
+        0
+    }
+}
+
+pub fn remote_stop_signal_to_deliver(
+    signal: i32,
+    signal_code: Option<i32>,
+    actual_address: usize,
+    synthetic_return_address: usize,
+) -> i32 {
+    let synchronous_fault = matches!(
+        signal,
+        SIGNAL_ILLEGAL_INSTRUCTION
+            | SIGNAL_TRACE_TRAP
+            | SIGNAL_BUS_ERROR
+            | SIGNAL_FLOATING_POINT_EXCEPTION
+            | SIGNAL_SEGMENTATION_FAULT
+            | SIGNAL_BAD_SYSTEM_CALL
+    );
+    // Positive si_code values are kernel-generated. A synchronous fault while
+    // the tracee is executing an injected call belongs to that call and must
+    // not be replayed after restoring the tracee's original register state.
+    if synchronous_fault && signal_code.is_some_and(|code| code > 0) {
+        return 0;
+    }
+    // PTRACE_GETSIGINFO should identify the synthetic fault. Retain the
+    // instruction-pointer check only as a safe fallback when siginfo is not
+    // available, without swallowing an externally queued SIGSEGV.
+    if signal_code.is_none()
+        && signal == SIGNAL_SEGMENTATION_FAULT
+        && synthetic_return_address != 0
+        && actual_address == synthetic_return_address
+    {
+        0
+    } else {
+        sanitize_signal_for_detach(signal)
+    }
+}
+
+pub fn is_synthetic_return_trap(
+    signal: i32,
+    signal_code: Option<i32>,
+    actual_address: usize,
+    synthetic_return_address: usize,
+) -> bool {
+    signal == SIGNAL_SEGMENTATION_FAULT
+        && synthetic_return_address != 0
+        && actual_address == synthetic_return_address
+        && signal_code.is_none_or(|code| code > 0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -113,14 +205,18 @@ pub fn is_supported_target_cmdline(input: &[u8]) -> bool {
 
 fn read_bounded_cmdline(reader: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     let mut input = Vec::with_capacity(256);
-    reader
+    if let Err(error) = reader
         .take(MAXIMUM_CMDLINE_BYTES as u64)
-        .read_to_end(&mut input)?;
-    if input.is_empty() || input.len() >= MAXIMUM_CMDLINE_BYTES {
-        Ok(None)
-    } else {
-        Ok(Some(input))
+        .read_to_end(&mut input)
+    {
+        wipe_bytes(&mut input);
+        return Err(error);
     }
+    if input.is_empty() || input.len() >= MAXIMUM_CMDLINE_BYTES {
+        wipe_bytes(&mut input);
+        return Ok(None);
+    }
+    Ok(Some(input))
 }
 
 pub fn validate_attached_target_cmdline(pid: i32) -> io::Result<bool> {
@@ -132,9 +228,12 @@ pub fn validate_attached_target_cmdline(pid: i32) -> io::Result<bool> {
         .read(true)
         .custom_flags(O_NOFOLLOW)
         .open(path)?;
-    Ok(read_bounded_cmdline(&mut file)?
-        .as_deref()
-        .is_some_and(is_supported_target_cmdline))
+    let Some(mut input) = read_bounded_cmdline(&mut file)? else {
+        return Ok(false);
+    };
+    let supported = is_supported_target_cmdline(&input);
+    wipe_bytes(&mut input);
+    Ok(supported)
 }
 
 pub fn read_relevant_process_maps(pid: Option<i32>) -> io::Result<Vec<ProcessMapping>> {
@@ -153,16 +252,24 @@ pub fn read_relevant_process_maps(pid: Option<i32>) -> io::Result<Vec<ProcessMap
         .custom_flags(O_NOFOLLOW)
         .open(path)?;
     let mut input = Vec::with_capacity(64 * 1_024);
-    file.by_ref()
+    if let Err(error) = file
+        .by_ref()
         .take((MAXIMUM_MAPS_BYTES + 1) as u64)
-        .read_to_end(&mut input)?;
+        .read_to_end(&mut input)
+    {
+        wipe_bytes(&mut input);
+        return Err(error);
+    }
     if input.is_empty() || input.len() > MAXIMUM_MAPS_BYTES {
+        wipe_bytes(&mut input);
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "process map exceeded its allowed size",
         ));
     }
-    parse_relevant_process_maps(&input).ok_or_else(|| {
+    let parsed = parse_relevant_process_maps(&input);
+    wipe_bytes(&mut input);
+    parsed.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             "process map failed structural validation",
@@ -192,8 +299,8 @@ fn parse_relevant_mapping(line: &[u8]) -> Option<ProcessMapping> {
     let range = take_ascii_field(line, &mut cursor)?;
     let permissions = take_ascii_field(line, &mut cursor)?;
     let offset = take_ascii_field(line, &mut cursor)?;
-    take_ascii_field(line, &mut cursor)?;
-    take_ascii_field(line, &mut cursor)?;
+    let device = take_ascii_field(line, &mut cursor)?;
+    let inode = take_ascii_field(line, &mut cursor)?;
     let path = take_ascii_field(line, &mut cursor)?;
     let basename = path.rsplit(|byte| *byte == b'/').next().unwrap_or(path);
     let module = match basename {
@@ -210,10 +317,35 @@ fn parse_relevant_mapping(line: &[u8]) -> Option<ProcessMapping> {
     }
     Some(ProcessMapping {
         module,
+        image: ProcessImageId {
+            device: parse_device_identifier(device)?,
+            inode: parse_decimal_u64(inode).filter(|value| *value != 0)?,
+        },
         start,
         end,
         offset: parse_hex_usize(offset)?,
         executable: permissions[2] == b'x',
+    })
+}
+
+fn parse_device_identifier(input: &[u8]) -> Option<u64> {
+    let separator = input.iter().position(|byte| *byte == b':')?;
+    if input[separator + 1..].contains(&b':') {
+        return None;
+    }
+    let major = u32::try_from(parse_hex_usize(&input[..separator])?).ok()?;
+    let minor = u32::try_from(parse_hex_usize(&input[separator + 1..])?).ok()?;
+    Some((u64::from(major) << 32) | u64::from(minor))
+}
+
+fn parse_decimal_u64(input: &[u8]) -> Option<u64> {
+    if input.is_empty() || input.len() > 20 || !input.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    input.iter().try_fold(0u64, |current, digit| {
+        current
+            .checked_mul(10)?
+            .checked_add(u64::from(digit - b'0'))
     })
 }
 
@@ -285,8 +417,11 @@ pub fn generate_magic(length: usize) -> io::Result<Vec<u8>> {
     let mut output = Vec::with_capacity(length);
     let mut random = [0u8; 128];
     while output.len() < length {
-        source.read_exact(&mut random)?;
-        for byte in random {
+        if let Err(error) = source.read_exact(&mut random) {
+            wipe_bytes(&mut random);
+            return Err(error);
+        }
+        for &byte in &random {
             if byte < RANDOM_ACCEPTANCE_LIMIT {
                 output.push(MAGIC_ALPHABET[usize::from(byte) % MAGIC_ALPHABET.len()]);
                 if output.len() == length {
@@ -295,6 +430,7 @@ pub fn generate_magic(length: usize) -> io::Result<Vec<u8>> {
             }
         }
     }
+    wipe_bytes(&mut random);
     Ok(output)
 }
 
@@ -465,6 +601,43 @@ mod tests {
     }
 
     #[test]
+    fn wipes_temporary_process_bytes() {
+        let mut value = b"sensitive process state".to_vec();
+        wipe_bytes(&mut value);
+        assert!(value.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn preserves_real_signals_but_suppresses_the_synthetic_return_trap() {
+        assert!(is_synthetic_return_trap(11, None, 0x1234, 0x1234));
+        assert!(is_synthetic_return_trap(11, Some(2), 0x1234, 0x1234));
+        assert!(!is_synthetic_return_trap(11, Some(0), 0x1234, 0x1234));
+        assert_eq!(remote_stop_signal_to_deliver(11, None, 0x1234, 0x1234), 0);
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(2), 0x1234, 0x1234),
+            0
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(1), 0x5678, 0x1234),
+            0
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(0), 0x1234, 0x1234),
+            11
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(-6), 0x5678, 0x1234),
+            11
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(15, Some(0), 0x1234, 0x1234),
+            15
+        );
+        assert_eq!(remote_stop_signal_to_deliver(0, None, 0x5678, 0x1234), 0);
+        assert_eq!(remote_stop_signal_to_deliver(65, None, 0x5678, 0x1234), 0);
+    }
+
+    #[test]
     fn parses_only_bounded_libc_and_libdl_mappings() {
         let input = b"7a00000000-7a00001000 r--p 00000000 00:01 1 /apex/lib64/libc.so\n\
                       7a00001000-7a00009000 r-xp 00001000 00:01 1 /apex/lib64/libc.so\n\
@@ -473,10 +646,53 @@ mod tests {
         let mappings = parse_relevant_process_maps(input).unwrap();
         assert_eq!(mappings.len(), 3);
         assert_eq!(mappings[0].module, ProcessModule::Libc);
+        assert_eq!(mappings[0].image.device, 1);
+        assert_eq!(mappings[0].image.inode, 1);
         assert_eq!(mappings[0].offset, 0);
         assert!(!mappings[0].executable);
         assert!(mappings[1].executable);
         assert_eq!(mappings[2].module, ProcessModule::Libdl);
+    }
+
+    #[test]
+    fn keeps_same_named_platform_images_separate() {
+        let input = b"71000000-71001000 r-xp 00000000 00:01 11 /apex/a/lib64/libc.so\n\
+                      72000000-72001000 r-xp 00000000 00:02 22 /data/local/tmp/libc.so\n\
+                      73000000-73001000 r-xp 00000000 00:03 0 /apex/b/lib64/libdl.so\n";
+        let mappings = parse_relevant_process_maps(input).unwrap();
+
+        assert_eq!(mappings.len(), 2);
+        assert_ne!(mappings[0].image, mappings[1].image);
+        assert_eq!(mappings[0].image.inode, 11);
+        assert_eq!(mappings[1].image.inode, 22);
+    }
+
+    #[test]
+    fn selects_the_base_of_the_resolved_image_instead_of_a_same_named_decoy() {
+        let input = b"71000000-71001000 r--p 00000000 00:02 22 /data/local/tmp/libc.so\n\
+                      72000000-72001000 r--p 00000000 00:01 11 /apex/a/lib64/libc.so\n\
+                      72001000-72002000 r-xp 00001000 00:01 11 /apex/a/lib64/libc.so\n";
+        let mappings = parse_relevant_process_maps(input).unwrap();
+        let expected = ProcessImageId {
+            device: 1,
+            inode: 11,
+        };
+
+        assert_eq!(
+            process_image_base(&mappings, ProcessModule::Libc, expected),
+            Some(0x7200_0000)
+        );
+        assert_eq!(
+            process_image_base(
+                &mappings,
+                ProcessModule::Libc,
+                ProcessImageId {
+                    device: 3,
+                    inode: 33,
+                }
+            ),
+            None
+        );
     }
 
     #[test]

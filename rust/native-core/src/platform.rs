@@ -6,7 +6,10 @@ use std::sync::RwLock;
 
 const AT_NO_AUTOMOUNT: c_int = 0x800;
 const AT_EMPTY_PATH: c_int = 0x1000;
+const STATX_TYPE: c_uint = 0x001;
 const STATX_INO: c_uint = 0x100;
+const FILE_TYPE_MASK: u16 = 0o170_000;
+const CHARACTER_DEVICE: u16 = 0o020_000;
 const BINDER_FD_CACHE_ENTRIES: usize = 64;
 const BINDER_FD_FAST_REVALIDATE_HITS: u8 = 31;
 const PROC_FD_PREFIX: &[u8] = b"/proc/self/fd/";
@@ -75,12 +78,14 @@ impl BinderFdCacheEntry {
 #[derive(Clone, Copy)]
 struct BinderFdFastCacheEntry {
     descriptor: i32,
+    exchange_token: usize,
     hits_remaining: u8,
 }
 
 impl BinderFdFastCacheEntry {
     const EMPTY: Self = Self {
         descriptor: -1,
+        exchange_token: 0,
         hits_remaining: 0,
     };
 }
@@ -113,7 +118,14 @@ pub fn is_binder_device_path(path: &[u8]) -> bool {
     matches!(basename, b"binder" | b"vndbinder" | b"hwbinder")
 }
 
-fn descriptor_identity(descriptor: i32) -> Option<(u64, u64)> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DescriptorIdentity {
+    device: u64,
+    inode: u64,
+    file_type: u16,
+}
+
+fn descriptor_identity(descriptor: i32) -> Option<DescriptorIdentity> {
     if descriptor < 0 {
         return None;
     }
@@ -123,16 +135,20 @@ fn descriptor_identity(descriptor: i32) -> Option<(u64, u64)> {
             descriptor,
             EMPTY_PATH.as_ptr(),
             AT_EMPTY_PATH | AT_NO_AUTOMOUNT,
-            STATX_INO,
+            STATX_TYPE | STATX_INO,
             &mut metadata,
         )
     } != 0
-        || metadata.mask & STATX_INO == 0
+        || (metadata.mask & (STATX_TYPE | STATX_INO)) != (STATX_TYPE | STATX_INO)
     {
         return None;
     }
     let device = (u64::from(metadata.device_major) << 32) | u64::from(metadata.device_minor);
-    Some((device, metadata.inode))
+    Some(DescriptorIdentity {
+        device,
+        inode: metadata.inode,
+        file_type: metadata.mode & FILE_TYPE_MASK,
+    })
 }
 
 fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
@@ -162,10 +178,13 @@ fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
     Some(path_length)
 }
 
-fn take_fast_binder_fd_hit(descriptor: i32) -> bool {
+fn take_fast_binder_fd_hit(descriptor: i32, exchange_token: usize) -> bool {
     BINDER_FD_FAST_CACHE.with(|cache| {
         let mut entry = cache.get();
-        if entry.descriptor != descriptor || entry.hits_remaining == 0 {
+        if entry.descriptor != descriptor
+            || entry.exchange_token != exchange_token
+            || entry.hits_remaining == 0
+        {
             return false;
         }
         entry.hits_remaining -= 1;
@@ -174,32 +193,49 @@ fn take_fast_binder_fd_hit(descriptor: i32) -> bool {
     })
 }
 
-fn remember_fast_binder_fd(descriptor: i32) {
+fn remember_fast_binder_fd(descriptor: i32, exchange_token: usize) {
     BINDER_FD_FAST_CACHE.with(|cache| {
         cache.set(BinderFdFastCacheEntry {
             descriptor,
+            exchange_token,
             hits_remaining: BINDER_FD_FAST_REVALIDATE_HITS,
         });
     });
 }
 
-pub fn is_binder_fd(descriptor: i32) -> bool {
-    if descriptor < 0 {
+/// Classifies the descriptor after a successful `BINDER_WRITE_READ` ioctl.
+///
+/// The successful Binder command is a required part of the trust decision: it
+/// prevents a stale positive cache entry from admitting an ordinary reused FD.
+/// The per-thread exchange pointer further binds fast hits to libbinder's
+/// stable call site, while device and inode are revalidated at a bounded
+/// interval without adding a syscall to every Binder transaction.
+pub fn is_binder_fd_after_successful_ioctl(descriptor: i32, exchange_token: usize) -> bool {
+    if descriptor < 0 || exchange_token == 0 {
         return false;
     }
-    if take_fast_binder_fd_hit(descriptor) {
+    if take_fast_binder_fd_hit(descriptor, exchange_token) {
         return true;
     }
 
-    let Some((device, inode)) = descriptor_identity(descriptor) else {
+    let Some(identity) = descriptor_identity(descriptor) else {
         return false;
     };
+    // Binder endpoints are character devices. A regular file named `binder`
+    // must never enter the interception path solely because its basename
+    // resembles a Binder device.
+    if identity.file_type != CHARACTER_DEVICE {
+        return false;
+    }
     let slot = descriptor as usize % BINDER_FD_CACHE_ENTRIES;
     if let Ok(cache) = BINDER_FD_CACHE.read() {
         let entry = cache[slot];
-        if entry.descriptor == descriptor && entry.device == device && entry.inode == inode {
+        if entry.descriptor == descriptor
+            && entry.device == identity.device
+            && entry.inode == identity.inode
+        {
             if entry.is_binder {
-                remember_fast_binder_fd(descriptor);
+                remember_fast_binder_fd(descriptor, exchange_token);
             }
             return entry.is_binder;
         }
@@ -220,20 +256,20 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
     if target_length <= 0 || target_length as usize >= target.len() {
         return false;
     }
-    if descriptor_identity(descriptor) != Some((device, inode)) {
+    if descriptor_identity(descriptor) != Some(identity) {
         return false;
     }
     let is_binder = is_binder_device_path(&target[..target_length as usize]);
     if let Ok(mut cache) = BINDER_FD_CACHE.write() {
         cache[slot] = BinderFdCacheEntry {
             descriptor,
-            device,
-            inode,
+            device: identity.device,
+            inode: identity.inode,
             is_binder,
         };
     }
     if is_binder {
-        remember_fast_binder_fd(descriptor);
+        remember_fast_binder_fd(descriptor, exchange_token);
     }
     is_binder
 }
@@ -277,8 +313,12 @@ fn parse_decimal_component(value: &[u8]) -> Option<i32> {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_is_binder_fd(descriptor: i32) -> bool {
-    std::panic::catch_unwind(|| is_binder_fd(descriptor)).unwrap_or(false)
+pub extern "C" fn rust_is_binder_fd_after_successful_ioctl(
+    descriptor: i32,
+    exchange_token: usize,
+) -> bool {
+    std::panic::catch_unwind(|| is_binder_fd_after_successful_ioctl(descriptor, exchange_token))
+        .unwrap_or(false)
 }
 
 #[no_mangle]
@@ -351,6 +391,35 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_regular_file_named_binder() {
+        use std::fs::{self, OpenOptions};
+        use std::os::fd::AsRawFd;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "cleverestricky-binder-fd-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("binder");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+
+        assert!(!is_binder_fd_after_successful_ioctl(file.as_raw_fd(), 1));
+
+        drop(file);
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
     fn descriptor_paths_are_bounded_and_null_terminated() {
         let mut output = [0xa5u8; MAXIMUM_DESCRIPTOR_PATH_BYTES];
         let length = write_descriptor_path(i32::MAX, &mut output).unwrap();
@@ -360,14 +429,15 @@ mod tests {
     }
 
     #[test]
-    fn fast_binder_cache_revalidates_after_bounded_hits() {
+    fn fast_binder_cache_is_bound_to_the_fd_and_exchange_call_site() {
         BINDER_FD_FAST_CACHE.with(|cache| cache.set(BinderFdFastCacheEntry::EMPTY));
-        remember_fast_binder_fd(123);
+        remember_fast_binder_fd(123, 0x4567);
+        assert!(!take_fast_binder_fd_hit(124, 0x4567));
+        assert!(!take_fast_binder_fd_hit(123, 0x7654));
         for _ in 0..BINDER_FD_FAST_REVALIDATE_HITS {
-            assert!(take_fast_binder_fd_hit(123));
+            assert!(take_fast_binder_fd_hit(123, 0x4567));
         }
-        assert!(!take_fast_binder_fd_hit(123));
-        assert!(!take_fast_binder_fd_hit(124));
+        assert!(!take_fast_binder_fd_hit(123, 0x4567));
     }
 
     #[test]

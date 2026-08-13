@@ -74,7 +74,8 @@ bool rust_write_binder_transaction(uint8_t *buffer,
                                    const RustParsedTransaction *transaction,
                                    const RustOffsetCacheView *cache);
 
-bool rust_is_binder_fd(int32_t descriptor);
+bool rust_is_binder_fd_after_successful_ioctl(int32_t descriptor,
+                                              uintptr_t exchange_token);
 
 int32_t rust_parse_android_api_level(const uint8_t *value, size_t length);
 
