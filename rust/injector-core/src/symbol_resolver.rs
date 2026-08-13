@@ -648,11 +648,7 @@ mod tests {
         let missing = synthetic_elf(ELF_MACHINE_AARCH64, 0, &[]);
         assert!(identity_from_image(&missing).is_err());
 
-        let oversized = synthetic_elf(
-            ELF_MACHINE_AARCH64,
-            0,
-            &[0x42; MAXIMUM_BUILD_ID_BYTES + 1],
-        );
+        let oversized = synthetic_elf(ELF_MACHINE_AARCH64, 0, &[0x42; MAXIMUM_BUILD_ID_BYTES + 1]);
         assert!(identity_from_image(&oversized).is_err());
     }
 }
