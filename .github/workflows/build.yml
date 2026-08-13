@@ -148,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           unpinned=$(
-            grep -R -nE '^[[:space:]]*uses:[[:space:]]*[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+@' .github/workflows \
+            grep -R -nE '^[[:space:]]*uses:[[:space:]]*[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+(/[^@[:space:]]+)*@' .github/workflows \
               | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)' || true
           )
           if [[ -n "$unpinned" ]]; then
