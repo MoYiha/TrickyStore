@@ -489,13 +489,12 @@ jobs:
         if: github.event_name != 'pull_request'
         shell: bash
         env:
-          ENCRYPTOR_KEYSTORE_BASE64: ${{ secrets.ENCRYPTOR_KEYSTORE_BASE64 }}
-          ENCRYPTOR_KEYSTORE_PASSWORD: ${{ secrets.ENCRYPTOR_KEYSTORE_PASSWORD }}
-          ENCRYPTOR_KEY_ALIAS: ${{ secrets.ENCRYPTOR_KEY_ALIAS }}
-          ENCRYPTOR_KEY_PASSWORD: ${{ secrets.ENCRYPTOR_KEY_PASSWORD }}
+          RELEASE_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          for name in ENCRYPTOR_KEYSTORE_BASE64 ENCRYPTOR_KEYSTORE_PASSWORD ENCRYPTOR_KEY_ALIAS ENCRYPTOR_KEY_PASSWORD; do
+          for name in RELEASE_KEYSTORE RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing GitHub Actions secret: $name"
               exit 1
@@ -503,19 +502,19 @@ jobs:
           done
 
           keystore="$RUNNER_TEMP/encryptor-release.jks"
-          printf '%s' "$ENCRYPTOR_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          printf '%s' "$RELEASE_KEYSTORE" | base64 --decode > "$keystore"
           chmod 600 "$keystore"
           test -s "$keystore"
           keytool -list \
             -keystore "$keystore" \
-            -storepass "$ENCRYPTOR_KEYSTORE_PASSWORD" \
-            -alias "$ENCRYPTOR_KEY_ALIAS" >/dev/null
+            -storepass "$RELEASE_KEY_PASSWORD" \
+            -alias "$RELEASE_KEY_ALIAS" >/dev/null
 
           {
             echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEYSTORE=$keystore"
-            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_STORE_PASSWORD=$ENCRYPTOR_KEYSTORE_PASSWORD"
-            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_ALIAS=$ENCRYPTOR_KEY_ALIAS"
-            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_PASSWORD=$ENCRYPTOR_KEY_PASSWORD"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_STORE_PASSWORD=$RELEASE_KEY_PASSWORD"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
 
       - name: Build Encryptor App
