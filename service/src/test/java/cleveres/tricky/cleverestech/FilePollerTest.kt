@@ -2,6 +2,8 @@ package cleveres.tricky.cleverestech
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +38,12 @@ class FilePollerTest {
         val method = FilePoller::class.java.getDeclaredMethod("checkForChange")
         method.isAccessible = true
         method.invoke(poller)
+    }
+
+    private fun scheduledFallback(): Any? {
+        val field = FilePoller::class.java.getDeclaredField("scheduledFuture")
+        field.isAccessible = true
+        return field.get(poller)
     }
 
     @Test
@@ -106,6 +114,23 @@ class FilePollerTest {
         checkForChange()
 
         assertEquals(0, callbackCount)
+    }
+
+    @Test
+    fun testObserverSuccessDoesNotScheduleFallbackPolling() {
+        poller = FilePoller(testFile, intervalMs) {}
+        poller.start()
+
+        assertNull(scheduledFallback())
+    }
+
+    @Test
+    fun testMissingObserverDirectorySchedulesFallbackPolling() {
+        val missingFile = File(tempFolder.root, "missing-parent/file.txt")
+        poller = FilePoller(missingFile, intervalMs) {}
+        poller.start()
+
+        assertNotNull(scheduledFallback())
     }
 
     @Test
