@@ -1,11 +1,11 @@
-use crate::binder_memory::KernelCopyPipe;
+use crate::binder_memory::kernel_copy;
 use crate::ffi::{validate_mut_slice_args, validate_slice_args};
 use crate::layout::{validate_transaction_layout, RustOffsetCacheView};
 use std::mem;
 
 const MAX_TRANSACTIONS_PER_CALL: usize = 1_024;
-const STACK_BINDER_STREAM_BYTES: usize = 16 * 1_024;
 const MAXIMUM_BINDER_STREAM_BYTES: usize = 8 * 1_024 * 1_024;
+const MAX_TRANSACTION_PAYLOAD_BYTES: usize = 512;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
@@ -85,7 +85,7 @@ fn is_probe_layout_command(command: u32) -> bool {
 }
 
 pub fn validate_binder_probe(buffer: &[u8], transaction_size: usize) -> bool {
-    if buffer.len() < mem::size_of::<u32>() || !(40..=512).contains(&transaction_size) {
+    if buffer.len() < mem::size_of::<u32>() || !(40..=MAX_TRANSACTION_PAYLOAD_BYTES).contains(&transaction_size) {
         return false;
     }
     let mut position = 0usize;
@@ -136,6 +136,10 @@ pub unsafe extern "C" fn rust_validate_binder_probe(
 
 /// Parse a Binder driver response stream into a caller-owned output array.
 ///
+/// Only command words and transaction payloads are copied through the kernel
+/// validation pipe. Unrelated driver payloads are skipped by their bounded UAPI
+/// size, avoiding a full response copy and any stream-sized heap allocation.
+///
 /// # Safety
 /// The Binder buffer must identify an address that the kernel may attempt to
 /// read for `consumed` bytes. The remaining pointers must be valid, correctly
@@ -160,7 +164,8 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
         };
         count_slice[0] = 0;
 
-        if output_capacity > MAX_TRANSACTIONS_PER_CALL
+        if buffer_pointer.is_null()
+            || output_capacity > MAX_TRANSACTIONS_PER_CALL
             || consumed == 0
             || consumed > buffer_size
             || consumed > MAXIMUM_BINDER_STREAM_BYTES
@@ -171,10 +176,13 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
         // SAFETY: Forwarded from the function contract and bounded above.
         let cache_slice = match unsafe { validate_slice_args(cache_pointer, 1) } {
             Some(value) => value,
-            _ => return false,
+            None => return false,
         };
         let cache = &cache_slice[0];
-        if !validate_transaction_layout(cache) {
+        if !validate_transaction_layout(cache)
+            || cache.transaction_data_size > MAX_TRANSACTION_PAYLOAD_BYTES
+            || cache.transaction_data_secctx_size > MAX_TRANSACTION_PAYLOAD_BYTES
+        {
             return false;
         }
 
@@ -184,35 +192,21 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
             None => return false,
         };
 
-        let pipe = match KernelCopyPipe::new() {
-            Some(value) => value,
-            None => return false,
-        };
-        let mut stack_buffer = mem::MaybeUninit::<[u8; STACK_BINDER_STREAM_BYTES]>::uninit();
-        let mut heap_buffer = Vec::new();
-        let local_pointer = if consumed <= STACK_BINDER_STREAM_BYTES {
-            stack_buffer.as_mut_ptr().cast::<u8>()
-        } else {
-            if heap_buffer.try_reserve_exact(consumed).is_err() {
-                return false;
-            }
-            heap_buffer.resize(consumed, 0);
-            heap_buffer.as_mut_ptr()
-        };
-        if !pipe.copy(buffer_pointer as usize, local_pointer as usize, consumed) {
-            return false;
-        }
-        // SAFETY: `KernelCopyPipe::copy` returns true only after the kernel has
-        // initialized every byte in this bounded prefix.
-        let buffer = unsafe { std::slice::from_raw_parts(local_pointer, consumed) };
-
+        let buffer_start = buffer_pointer as usize;
         let mut position = 0usize;
         let mut remaining = consumed;
         while remaining >= mem::size_of::<u32>() {
-            let command = match safe_read::<u32>(buffer, position) {
-                Some(value) => value,
-                None => return false,
+            let Some(command_address) = buffer_start.checked_add(position) else {
+                return false;
             };
+            let mut command = 0u32;
+            if !kernel_copy(
+                command_address,
+                &mut command as *mut u32 as usize,
+                mem::size_of::<u32>(),
+            ) {
+                return false;
+            }
             position += mem::size_of::<u32>();
             remaining -= mem::size_of::<u32>();
 
@@ -230,7 +224,18 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                 && known_transaction_size
                 && count_slice[0] < output.len()
             {
-                let transaction = &buffer[position..position + payload_size];
+                let Some(payload_address) = buffer_start.checked_add(position) else {
+                    return false;
+                };
+                let mut transaction_buffer = [0u8; MAX_TRANSACTION_PAYLOAD_BYTES];
+                if !kernel_copy(
+                    payload_address,
+                    transaction_buffer.as_mut_ptr() as usize,
+                    payload_size,
+                ) {
+                    return false;
+                }
+                let transaction = &transaction_buffer[..payload_size];
                 let (
                     Some(target_ptr),
                     Some(cookie),
@@ -253,9 +258,6 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                 else {
                     return false;
                 };
-                let Some(raw_ptr) = (buffer_pointer as usize).checked_add(position) else {
-                    return false;
-                };
                 output[count_slice[0]] = RustParsedTransaction {
                     target_ptr,
                     cookie,
@@ -266,7 +268,7 @@ pub unsafe extern "C" fn rust_parse_binder_stream(
                     data_size,
                     data_buffer,
                     cmd: command,
-                    raw_ptr,
+                    raw_ptr: payload_address,
                     raw_size: payload_size,
                     valid: 1,
                 };
@@ -293,25 +295,8 @@ mod tests {
         buffer[offset..offset + bytes.len()].copy_from_slice(bytes);
     }
 
-    #[test]
-    fn parses_a_bounded_transaction() {
-        let payload_size = 64usize;
-        let command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | TRANSACTION_NUMBER;
-        let mut input = vec![0u8; mem::size_of::<u32>() + payload_size];
-        write_at(&mut input, 0, command);
-        write_at(&mut input, 4, 0x1234usize);
-        write_at(&mut input, 12, 0x5678usize);
-        write_at(&mut input, 20, 42u32);
-        write_at(&mut input, 24, 1u32);
-        write_at(&mut input, 28, 123i32);
-        write_at(&mut input, 32, 10_000u32);
-        write_at(&mut input, 40, 16u64);
-        write_at(&mut input, 48, 0x9abcusize);
-
-        let cache = RustOffsetCacheView {
+    fn test_cache(payload_size: usize) -> RustOffsetCacheView {
+        RustOffsetCacheView {
             target_ptr_offset: 0,
             cookie_offset: 8,
             code_offset: 16,
@@ -330,7 +315,32 @@ mod tests {
             bwr_read_buffer_offset: 40,
             bwr_total_size: 48,
             valid: 1,
-        };
+        }
+    }
+
+    fn transaction_command(payload_size: usize, number: u32) -> u32 {
+        (IOC_READ << IOC_DIRECTION_SHIFT)
+            | (payload_size as u32) << IOC_SIZE_SHIFT
+            | (BINDER_TYPE << IOC_TYPE_SHIFT)
+            | number
+    }
+
+    #[test]
+    fn parses_a_bounded_transaction() {
+        let payload_size = 64usize;
+        let command = transaction_command(payload_size, TRANSACTION_NUMBER);
+        let mut input = vec![0u8; mem::size_of::<u32>() + payload_size];
+        write_at(&mut input, 0, command);
+        write_at(&mut input, 4, 0x1234usize);
+        write_at(&mut input, 12, 0x5678usize);
+        write_at(&mut input, 20, 42u32);
+        write_at(&mut input, 24, 1u32);
+        write_at(&mut input, 28, 123i32);
+        write_at(&mut input, 32, 10_000u32);
+        write_at(&mut input, 40, 16u64);
+        write_at(&mut input, 48, 0x9abcusize);
+
+        let cache = test_cache(payload_size);
         let mut output = [RustParsedTransaction::default(); 1];
         let mut count = 0usize;
 
@@ -367,20 +377,18 @@ mod tests {
             )
         };
         assert!(!parsed);
+        assert_eq!(count, 0);
     }
 
     #[test]
-    fn parses_a_transaction_after_a_large_driver_command() {
+    fn parses_a_transaction_after_a_large_driver_command_without_large_scratch() {
         let payload_size = 64usize;
         let prefix_size = 0x3fffusize;
         let prefix_command = (IOC_READ << IOC_DIRECTION_SHIFT)
             | (prefix_size as u32) << IOC_SIZE_SHIFT
             | (b'x' as u32) << IOC_TYPE_SHIFT
             | 1;
-        let transaction_command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | TRANSACTION_NUMBER;
+        let transaction_command = transaction_command(payload_size, TRANSACTION_NUMBER);
         let transaction_command_offset = mem::size_of::<u32>() + prefix_size;
         let transaction_offset = transaction_command_offset + mem::size_of::<u32>();
         let mut input = vec![0u8; transaction_offset + payload_size];
@@ -388,26 +396,7 @@ mod tests {
         write_at(&mut input, transaction_command_offset, transaction_command);
         write_at(&mut input, transaction_offset + 16, 77u32);
 
-        let cache = RustOffsetCacheView {
-            target_ptr_offset: 0,
-            cookie_offset: 8,
-            code_offset: 16,
-            flags_offset: 20,
-            sender_pid_offset: 24,
-            sender_euid_offset: 28,
-            data_size_offset: 36,
-            data_ptr_offset: 44,
-            transaction_data_size: payload_size,
-            transaction_data_secctx_size: payload_size,
-            bwr_write_size_offset: 0,
-            bwr_write_consumed_offset: 8,
-            bwr_write_buffer_offset: 16,
-            bwr_read_size_offset: 24,
-            bwr_read_consumed_offset: 32,
-            bwr_read_buffer_offset: 40,
-            bwr_total_size: 48,
-            valid: 1,
-        };
+        let cache = test_cache(payload_size);
         let mut output = [RustParsedTransaction::default(); 1];
         let mut count = 0usize;
 
@@ -423,7 +412,7 @@ mod tests {
             )
         };
 
-        assert!(input.len() > STACK_BINDER_STREAM_BYTES);
+        assert!(input.len() > 16 * 1_024);
         assert!(parsed);
         assert_eq!(count, 1);
         assert_eq!(output[0].code, 77);
@@ -431,26 +420,7 @@ mod tests {
 
     #[test]
     fn rejects_an_unreadable_stream_without_dereferencing_it() {
-        let cache = RustOffsetCacheView {
-            target_ptr_offset: 0,
-            cookie_offset: 8,
-            code_offset: 16,
-            flags_offset: 20,
-            sender_pid_offset: 24,
-            sender_euid_offset: 28,
-            data_size_offset: 36,
-            data_ptr_offset: 44,
-            transaction_data_size: 64,
-            transaction_data_secctx_size: 64,
-            bwr_write_size_offset: 0,
-            bwr_write_consumed_offset: 8,
-            bwr_write_buffer_offset: 16,
-            bwr_read_size_offset: 24,
-            bwr_read_consumed_offset: 32,
-            bwr_read_buffer_offset: 40,
-            bwr_total_size: 48,
-            valid: 1,
-        };
+        let cache = test_cache(64);
         let mut output = [RustParsedTransaction::default(); 1];
         let mut count = 99usize;
         let parsed = unsafe {
@@ -471,10 +441,7 @@ mod tests {
     #[test]
     fn validates_a_live_transaction_probe() {
         let payload_size = 64usize;
-        let command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | REPLY_NUMBER;
+        let command = transaction_command(payload_size, REPLY_NUMBER);
         let mut probe = vec![0u8; mem::size_of::<u32>() + payload_size];
         write_at(&mut probe, 0, command);
         assert!(validate_binder_probe(&probe, payload_size));
@@ -484,10 +451,7 @@ mod tests {
     #[test]
     fn rejects_a_probe_with_trailing_partial_command_bytes() {
         let payload_size = 64usize;
-        let command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | REPLY_NUMBER;
+        let command = transaction_command(payload_size, REPLY_NUMBER);
         let mut probe = vec![0u8; mem::size_of::<u32>() + payload_size + 1];
         write_at(&mut probe, 0, command);
         assert!(!validate_binder_probe(&probe, payload_size));
@@ -496,15 +460,9 @@ mod tests {
     #[test]
     fn rejects_a_probe_when_a_later_layout_command_disagrees() {
         let payload_size = 64usize;
-        let first_command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | REPLY_NUMBER;
+        let first_command = transaction_command(payload_size, REPLY_NUMBER);
         let second_payload_size = payload_size + 8;
-        let second_command = (IOC_READ << IOC_DIRECTION_SHIFT)
-            | (second_payload_size as u32) << IOC_SIZE_SHIFT
-            | (BINDER_TYPE << IOC_TYPE_SHIFT)
-            | TRANSACTION_NUMBER;
+        let second_command = transaction_command(second_payload_size, TRANSACTION_NUMBER);
         let first_end = mem::size_of::<u32>() + payload_size;
         let mut probe = vec![0u8; first_end + mem::size_of::<u32>() + second_payload_size];
         write_at(&mut probe, 0, first_command);
