@@ -6,7 +6,10 @@ use std::sync::RwLock;
 
 const AT_NO_AUTOMOUNT: c_int = 0x800;
 const AT_EMPTY_PATH: c_int = 0x1000;
+const STATX_TYPE: c_uint = 0x001;
 const STATX_INO: c_uint = 0x100;
+const FILE_TYPE_MASK: u16 = 0o170_000;
+const CHARACTER_DEVICE: u16 = 0o020_000;
 const BINDER_FD_CACHE_ENTRIES: usize = 64;
 const BINDER_FD_FAST_REVALIDATE_HITS: u8 = 31;
 const PROC_FD_PREFIX: &[u8] = b"/proc/self/fd/";
@@ -75,12 +78,16 @@ impl BinderFdCacheEntry {
 #[derive(Clone, Copy)]
 struct BinderFdFastCacheEntry {
     descriptor: i32,
+    device: u64,
+    inode: u64,
     hits_remaining: u8,
 }
 
 impl BinderFdFastCacheEntry {
     const EMPTY: Self = Self {
         descriptor: -1,
+        device: 0,
+        inode: 0,
         hits_remaining: 0,
     };
 }
@@ -113,7 +120,14 @@ pub fn is_binder_device_path(path: &[u8]) -> bool {
     matches!(basename, b"binder" | b"vndbinder" | b"hwbinder")
 }
 
-fn descriptor_identity(descriptor: i32) -> Option<(u64, u64)> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DescriptorIdentity {
+    device: u64,
+    inode: u64,
+    file_type: u16,
+}
+
+fn descriptor_identity(descriptor: i32) -> Option<DescriptorIdentity> {
     if descriptor < 0 {
         return None;
     }
@@ -123,16 +137,20 @@ fn descriptor_identity(descriptor: i32) -> Option<(u64, u64)> {
             descriptor,
             EMPTY_PATH.as_ptr(),
             AT_EMPTY_PATH | AT_NO_AUTOMOUNT,
-            STATX_INO,
+            STATX_TYPE | STATX_INO,
             &mut metadata,
         )
     } != 0
-        || metadata.mask & STATX_INO == 0
+        || (metadata.mask & (STATX_TYPE | STATX_INO)) != (STATX_TYPE | STATX_INO)
     {
         return None;
     }
     let device = (u64::from(metadata.device_major) << 32) | u64::from(metadata.device_minor);
-    Some((device, metadata.inode))
+    Some(DescriptorIdentity {
+        device,
+        inode: metadata.inode,
+        file_type: metadata.mode & FILE_TYPE_MASK,
+    })
 }
 
 fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
@@ -162,10 +180,14 @@ fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
     Some(path_length)
 }
 
-fn take_fast_binder_fd_hit(descriptor: i32) -> bool {
+fn take_fast_binder_fd_hit(descriptor: i32, identity: DescriptorIdentity) -> bool {
     BINDER_FD_FAST_CACHE.with(|cache| {
         let mut entry = cache.get();
-        if entry.descriptor != descriptor || entry.hits_remaining == 0 {
+        if entry.descriptor != descriptor
+            || entry.device != identity.device
+            || entry.inode != identity.inode
+            || entry.hits_remaining == 0
+        {
             return false;
         }
         entry.hits_remaining -= 1;
@@ -174,10 +196,12 @@ fn take_fast_binder_fd_hit(descriptor: i32) -> bool {
     })
 }
 
-fn remember_fast_binder_fd(descriptor: i32) {
+fn remember_fast_binder_fd(descriptor: i32, identity: DescriptorIdentity) {
     BINDER_FD_FAST_CACHE.with(|cache| {
         cache.set(BinderFdFastCacheEntry {
             descriptor,
+            device: identity.device,
+            inode: identity.inode,
             hits_remaining: BINDER_FD_FAST_REVALIDATE_HITS,
         });
     });
@@ -187,19 +211,31 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
     if descriptor < 0 {
         return false;
     }
-    if take_fast_binder_fd_hit(descriptor) {
-        return true;
-    }
 
-    let Some((device, inode)) = descriptor_identity(descriptor) else {
+    let Some(identity) = descriptor_identity(descriptor) else {
         return false;
     };
+    // Binder endpoints are character devices. A regular file named `binder`
+    // must never enter the interception path solely because its basename
+    // resembles a Binder device.
+    if identity.file_type != CHARACTER_DEVICE {
+        return false;
+    }
+    // Revalidate the open file description before taking the thread-local fast
+    // path. Descriptor numbers can be reused immediately after close(), so a
+    // descriptor-only cache can otherwise misclassify a different device.
+    if take_fast_binder_fd_hit(descriptor, identity) {
+        return true;
+    }
     let slot = descriptor as usize % BINDER_FD_CACHE_ENTRIES;
     if let Ok(cache) = BINDER_FD_CACHE.read() {
         let entry = cache[slot];
-        if entry.descriptor == descriptor && entry.device == device && entry.inode == inode {
+        if entry.descriptor == descriptor
+            && entry.device == identity.device
+            && entry.inode == identity.inode
+        {
             if entry.is_binder {
-                remember_fast_binder_fd(descriptor);
+                remember_fast_binder_fd(descriptor, identity);
             }
             return entry.is_binder;
         }
@@ -220,20 +256,20 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
     if target_length <= 0 || target_length as usize >= target.len() {
         return false;
     }
-    if descriptor_identity(descriptor) != Some((device, inode)) {
+    if descriptor_identity(descriptor) != Some(identity) {
         return false;
     }
     let is_binder = is_binder_device_path(&target[..target_length as usize]);
     if let Ok(mut cache) = BINDER_FD_CACHE.write() {
         cache[slot] = BinderFdCacheEntry {
             descriptor,
-            device,
-            inode,
+            device: identity.device,
+            inode: identity.inode,
             is_binder,
         };
     }
     if is_binder {
-        remember_fast_binder_fd(descriptor);
+        remember_fast_binder_fd(descriptor, identity);
     }
     is_binder
 }
@@ -247,7 +283,11 @@ pub fn parse_android_api_level(value: &[u8]) -> Option<i32> {
             .checked_mul(10)?
             .checked_add(i32::from(digit - b'0'))
     })?;
-    (31..=37).contains(&api).then_some(api)
+    // Keep the parser forward-compatible. Native fallback policy remains
+    // separately bounded to ABI versions that were compiled and tested; a
+    // future API may proceed only after the C++ bridge validates live Binder
+    // traffic against the current UAPI layout.
+    (31..=999).contains(&api).then_some(api)
 }
 
 pub fn parse_kernel_release(value: &[u8]) -> Option<(i32, i32)> {
@@ -351,6 +391,35 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_regular_file_named_binder() {
+        use std::fs::{self, OpenOptions};
+        use std::os::fd::AsRawFd;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "cleverestricky-binder-fd-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("binder");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+
+        assert!(!is_binder_fd(file.as_raw_fd()));
+
+        drop(file);
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
     fn descriptor_paths_are_bounded_and_null_terminated() {
         let mut output = [0xa5u8; MAXIMUM_DESCRIPTOR_PATH_BYTES];
         let length = write_descriptor_path(i32::MAX, &mut output).unwrap();
@@ -362,12 +431,24 @@ mod tests {
     #[test]
     fn fast_binder_cache_revalidates_after_bounded_hits() {
         BINDER_FD_FAST_CACHE.with(|cache| cache.set(BinderFdFastCacheEntry::EMPTY));
-        remember_fast_binder_fd(123);
+        let identity = DescriptorIdentity {
+            device: 7,
+            inode: 11,
+            file_type: CHARACTER_DEVICE,
+        };
+        remember_fast_binder_fd(123, identity);
+        assert!(!take_fast_binder_fd_hit(124, identity));
+        assert!(!take_fast_binder_fd_hit(
+            123,
+            DescriptorIdentity {
+                inode: 12,
+                ..identity
+            }
+        ));
         for _ in 0..BINDER_FD_FAST_REVALIDATE_HITS {
-            assert!(take_fast_binder_fd_hit(123));
+            assert!(take_fast_binder_fd_hit(123, identity));
         }
-        assert!(!take_fast_binder_fd_hit(123));
-        assert!(!take_fast_binder_fd_hit(124));
+        assert!(!take_fast_binder_fd_hit(123, identity));
     }
 
     #[test]
@@ -383,7 +464,9 @@ mod tests {
         assert_eq!(parse_android_api_level(b"31"), Some(31));
         assert_eq!(parse_android_api_level(b"36"), Some(36));
         assert_eq!(parse_android_api_level(b"37"), Some(37));
-        assert_eq!(parse_android_api_level(b"38"), None);
+        assert_eq!(parse_android_api_level(b"38"), Some(38));
+        assert_eq!(parse_android_api_level(b"999"), Some(999));
+        assert_eq!(parse_android_api_level(b"1000"), None);
         assert_eq!(parse_kernel_release(b"6.1.75-android14"), Some((6, 1)));
         assert_eq!(parse_kernel_release(b"invalid"), None);
     }

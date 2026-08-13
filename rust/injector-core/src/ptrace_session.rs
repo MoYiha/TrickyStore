@@ -3,7 +3,10 @@ use crate::abi::getpid;
 use crate::abi::IoVector;
 use crate::logging;
 use crate::process_memory::{read_process_memory, write_process_memory};
-use cleverestricky_native_core::injector_support::validate_attached_target_cmdline;
+use cleverestricky_native_core::injector_support::{
+    remote_stop_signal_to_deliver, sanitize_signal_for_detach, validate_attached_target_cmdline,
+    wipe_bytes,
+};
 use std::ffi::{c_int, c_void, CStr};
 use std::mem;
 
@@ -104,6 +107,7 @@ pub(crate) struct RemoteSession {
     original_registers: Registers,
     original_registers_valid: bool,
     attached: bool,
+    pending_signal: i32,
     stack_patches: Vec<StackPatch>,
     saved_stack_bytes: usize,
     preserved_stack_floor: usize,
@@ -112,6 +116,12 @@ pub(crate) struct RemoteSession {
 struct StackPatch {
     address: usize,
     original: Vec<u8>,
+}
+
+impl Drop for StackPatch {
+    fn drop(&mut self) {
+        wipe_bytes(&mut self.original);
+    }
 }
 
 impl RemoteSession {
@@ -137,15 +147,32 @@ impl RemoteSession {
             original_registers: Registers::default(),
             original_registers_valid: false,
             attached: true,
+            pending_signal: 0,
             stack_patches: Vec::with_capacity(16),
             saved_stack_bytes: 0,
             preserved_stack_floor: usize::MAX,
         };
-        let status = wait_for_stop(pid)?;
-        if stop_signal(status) != SIGNAL_STOP {
-            return Err(format!(
-                "target process stopped with unexpected status {status:#x}"
-            ));
+        loop {
+            let status = wait_for_stop(pid)?;
+            let signal = stop_signal(status);
+            if signal == SIGNAL_STOP {
+                break;
+            }
+            let signal = sanitize_signal_for_detach(signal);
+            if signal == 0
+                || unsafe {
+                    ptrace(
+                        PTRACE_CONT,
+                        pid,
+                        std::ptr::null_mut(),
+                        signal as usize as *mut c_void,
+                    )
+                } == -1
+            {
+                return Err(format!(
+                    "could not preserve a signal delivered during attach: {status:#x}"
+                ));
+            }
         }
         if !validate_attached_target_cmdline(pid).unwrap_or(false) {
             return Err("target process identity validation failed".into());
@@ -196,15 +223,22 @@ impl RemoteSession {
         }
 
         let status = wait_for_stop(self.pid)?;
+        let signal = stop_signal(status);
+        // Preserve a genuine signal if register inspection or remote return
+        // validation fails. Only the deliberate non-executable return trap is
+        // suppressed when detaching.
+        self.pending_signal = sanitize_signal_for_detach(signal);
         let stopped_registers = read_registers(self.pid)?;
         let actual_address = instruction_pointer(&stopped_registers);
-        if stop_signal(status) != SIGNAL_SEGMENTATION_FAULT || actual_address != return_address {
+        self.pending_signal = remote_stop_signal_to_deliver(signal, actual_address, return_address);
+        if signal != SIGNAL_SEGMENTATION_FAULT || actual_address != return_address {
             self.registers = stopped_registers;
             return Err(format!(
-                "remote call stopped unexpectedly with status {status:#x} at {actual_address:#x}"
+                "remote call stopped unexpectedly with status {status:#x}"
             ));
         }
         let result = return_value(&stopped_registers);
+        self.pending_signal = 0;
         self.registers = base_registers;
         Ok(result)
     }
@@ -299,6 +333,7 @@ impl RemoteSession {
             .ok_or_else(|| "remote stack backup exceeded its bound".to_string())?;
         let mut original = vec![0u8; backup_length];
         if !read_process_memory(self.pid, address, &mut original) {
+            wipe_bytes(&mut original);
             return Err("could not preserve target stack memory".into());
         }
         self.stack_patches.push(StackPatch { address, original });
@@ -332,13 +367,14 @@ impl RemoteSession {
                 PTRACE_DETACH,
                 self.pid,
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                self.pending_signal as usize as *mut c_void,
             )
         } == -1
         {
             return Err("could not detach from the target process".into());
         }
         self.attached = false;
+        self.pending_signal = 0;
         restore_error.map_or(Ok(()), Err)
     }
 }

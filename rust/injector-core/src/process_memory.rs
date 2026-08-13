@@ -1,4 +1,5 @@
 use crate::abi::IoVector;
+use cleverestricky_native_core::injector_support::wipe_bytes;
 use std::ffi::{c_int, c_void};
 
 extern "C" {
@@ -32,7 +33,13 @@ pub(crate) fn read_process_memory(pid: i32, remote_address: usize, output: &mut 
         base: remote_address as *mut c_void,
         length: output.len(),
     };
-    unsafe { process_vm_readv(pid, &local, 1, &remote, 1, 0) == output.len() as isize }
+    let complete =
+        unsafe { process_vm_readv(pid, &local, 1, &remote, 1, 0) } == output.len() as isize;
+    if !complete {
+        // Do not expose or retain a prefix from a short cross-process read.
+        wipe_bytes(output);
+    }
+    complete
 }
 
 pub(crate) fn write_process_memory(pid: i32, remote_address: usize, input: &[u8]) -> bool {

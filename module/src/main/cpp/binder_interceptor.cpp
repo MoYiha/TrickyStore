@@ -165,6 +165,9 @@ OffsetCache &OffsetCache::instance() {
 }
 
 namespace {
+constexpr int kMinimumSupportedAndroidApi = 31;
+constexpr int kMaximumValidatedCompilerFallbackApi = 37;
+
 RustOffsetCacheView rustOffsetView(const OffsetCache &cache) {
   return RustOffsetCacheView{cache.target_ptr_offset,
                              cache.cookie_offset,
@@ -357,7 +360,8 @@ bool AdaptiveBinderInterceptor::parseKernelVersion(int &major, int &minor) {
 
 bool AdaptiveBinderInterceptor::initFallback(OffsetCache &cache,
                                              int api_level) {
-  if (api_level < 31 || api_level > 37) {
+  if (api_level < kMinimumSupportedAndroidApi ||
+      api_level > kMaximumValidatedCompilerFallbackApi) {
     LOGE("Fallback layout rejected unsupported Android API %d", api_level);
     return false;
   }
@@ -374,10 +378,17 @@ bool AdaptiveBinderInterceptor::initialize() {
   OffsetCache &cache = OffsetCache::instance();
 
   const int android_api_level = detectApiLevel();
-  if (android_api_level < 31 || android_api_level > 37) {
+  if (android_api_level < kMinimumSupportedAndroidApi) {
     LOGE("AdaptiveBinderInterceptor: unsupported Android API %d",
          android_api_level);
     return false;
+  }
+  const bool requires_live_layout =
+      android_api_level > kMaximumValidatedCompilerFallbackApi;
+  if (requires_live_layout) {
+    LOGW("Android API %d is newer than the compiler fallback; requiring live "
+         "Binder UAPI validation",
+         android_api_level);
   }
   std::string kernel_version;
   int kmajor = 0, kminor = 0;
@@ -393,6 +404,14 @@ bool AdaptiveBinderInterceptor::initialize() {
   if (RuntimeLayoutValidator::validateLayout(cache)) {
     LOGI("Strategy: live Binder UAPI validation succeeded");
     return true;
+  }
+
+  if (requires_live_layout) {
+    LOGE("Live Binder validation failed on future Android API %d; refusing an "
+         "unverified layout",
+         android_api_level);
+    cache.valid = false;
+    return false;
   }
 
   if (initFallback(cache, android_api_level)) {
@@ -497,12 +516,20 @@ int new_ioctl(int fd, unsigned long request, ...) {
   va_start(list, request);
   auto arg = va_arg(list, void *);
   va_end(list);
+  const bool hook_ready = gHooksInitialized.load(std::memory_order_acquire);
   const int result =
-      old_ioctl != nullptr
+      hook_ready && old_ioctl != nullptr
           ? old_ioctl(fd, request, arg)
           : static_cast<int>(syscall(SYS_ioctl, fd, request, arg));
 
   if (result >= 0 && request == BINDER_WRITE_READ) {
+    // CommitHook can make this trampoline observable by another Binder thread
+    // before initialize_hooks() finishes publishing the interceptor objects
+    // and validated offsets. The acquire pairs with the release store after
+    // hook installation and keeps that short window pass-through only.
+    if (!hook_ready) {
+      return result;
+    }
     if (gHookPaused.load(std::memory_order_acquire)) {
       return result;
     }
@@ -617,8 +644,7 @@ bool BinderInterceptor::shouldIntercept(const wp<BBinder> &target,
   if (it == items.end())
     return false;
   const auto &codes = it->second.filtered_codes;
-  return codes.empty() ||
-         std::find(codes.begin(), codes.end(), code) != codes.end();
+  return std::binary_search(codes.begin(), codes.end(), code);
 }
 
 status_t BinderInterceptor::onTransact(uint32_t code,
@@ -648,7 +674,7 @@ status_t BinderInterceptor::onTransact(uint32_t code,
     std::vector<uint32_t> codes;
     int32_t code_count = 0;
     constexpr int32_t kMaxFilteredCodes = 1024;
-    if (data.readInt32(&code_count) != OK || code_count < 0 ||
+    if (data.readInt32(&code_count) != OK || code_count <= 0 ||
         code_count > kMaxFilteredCodes ||
         static_cast<size_t>(code_count) > data.dataAvail() / sizeof(uint32_t)) {
       return BAD_VALUE;
@@ -668,8 +694,8 @@ status_t BinderInterceptor::onTransact(uint32_t code,
     if (std::adjacent_find(codes.begin(), codes.end()) != codes.end()) {
       return BAD_VALUE;
     }
-    LOGI("Interceptor registered for binder %p with %zu filtered codes",
-         target.get(), codes.size());
+    LOGI("Interceptor registered with %zu explicitly filtered codes",
+         codes.size());
     sp<IBinder> replaced_interceptor;
     {
       WriteGuard wg{lock};
@@ -965,13 +991,13 @@ bool initialize_hooks() {
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]] bool
-entry(void *handle) {
-  LOGI("injected, my handle %p", handle);
+entry(void *) {
+  LOGI("native Binder interceptor injected");
   return initialize_hooks();
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]] bool
-resume(void *handle) {
-  LOGI("resuming parked Binder hook, my handle %p", handle);
+resume(void *) {
+  LOGI("resuming parked native Binder hook");
   return initialize_hooks();
 }
