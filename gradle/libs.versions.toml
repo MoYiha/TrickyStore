@@ -3,7 +3,7 @@ agp = "9.3.1"
 bcpkix-jdk18on = "1.85"
 bcprov-jdk18on = "1.85.2"
 bcutil-jdk18on = "1.85"
-kotlin = "2.4.10"
+kotlin = "2.4.20-RC"
 annotation = "1.10.0"
 junit = "4.13.2"
 compose-bom = "2026.06.01"
@@ -19,6 +19,9 @@ mockito = "5.23.0"
 
 [libraries]
 nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "2.3.1" }
+# Keep KGP's Maven coordinate explicit so Dependabot can map security advisories
+# to the shared Kotlin plugin version instead of treating it as transitive only.
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bcpkix-jdk18on" }
