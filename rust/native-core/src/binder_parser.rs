@@ -85,7 +85,9 @@ fn is_probe_layout_command(command: u32) -> bool {
 }
 
 pub fn validate_binder_probe(buffer: &[u8], transaction_size: usize) -> bool {
-    if buffer.len() < mem::size_of::<u32>() || !(40..=MAX_TRANSACTION_PAYLOAD_BYTES).contains(&transaction_size) {
+    if buffer.len() < mem::size_of::<u32>()
+        || !(40..=MAX_TRANSACTION_PAYLOAD_BYTES).contains(&transaction_size)
+    {
         return false;
     }
     let mut position = 0usize;
