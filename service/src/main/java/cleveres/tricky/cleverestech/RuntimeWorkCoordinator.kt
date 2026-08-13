@@ -88,6 +88,7 @@ internal object KeyboxDirectoryRefreshWatcher {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val scheduler =
         ConflatedRefreshScheduler(scope, KEYBOX_REFRESH_DEBOUNCE_MS) {
+            Logger.d("Refreshing keyboxes after filesystem changes")
             Config.updateKeyBoxesSync()
         }
     private var observer: FileObserver? = null
@@ -104,7 +105,6 @@ internal object KeyboxDirectoryRefreshWatcher {
                     event: Int,
                     path: String?,
                 ) {
-                    Logger.i("Keybox directory event: $path")
                     scheduler.submit()
                 }
             }
