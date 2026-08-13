@@ -260,10 +260,7 @@ fn resolve_symbol(
     let remote_base = process_image_base(remote_mappings, module, remote_image)
         .ok_or_else(|| "target platform library base is unavailable".to_string())?;
 
-    if !verified_images
-        .iter()
-        .any(|pair| *pair == (module, local_image, remote_image))
-    {
+    if !verified_images.contains(&(module, local_image, remote_image)) {
         verify_matching_elf_identity(
             pid,
             local_mappings,
@@ -654,7 +651,7 @@ mod tests {
         let oversized = synthetic_elf(
             ELF_MACHINE_AARCH64,
             0,
-            &vec![0x42; MAXIMUM_BUILD_ID_BYTES + 1],
+            &[0x42; MAXIMUM_BUILD_ID_BYTES + 1],
         );
         assert!(identity_from_image(&oversized).is_err());
     }
