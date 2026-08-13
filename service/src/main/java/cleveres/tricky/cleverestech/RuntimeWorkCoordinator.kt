@@ -7,6 +7,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 internal const val RUNTIME_RETRY_INITIAL_MS = 1_000L
@@ -35,6 +37,7 @@ internal class ConflatedRefreshScheduler(
     private val debounceMs: Long,
     private val refresh: suspend () -> Unit,
 ) {
+    private val executionMutex = Mutex()
     private val stateLock = Any()
     private var workerJob: Job? = null
     private var requestedGeneration = 0L
@@ -60,7 +63,7 @@ internal class ConflatedRefreshScheduler(
                 continue
             }
 
-            refresh()
+            executionMutex.withLock { refresh() }
 
             val finished =
                 synchronized(stateLock) {
