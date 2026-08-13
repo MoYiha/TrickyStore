@@ -3,6 +3,23 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+val releaseKeystore = providers.gradleProperty("ENCRYPTOR_RELEASE_KEYSTORE").orNull
+val releaseStorePassword = providers.gradleProperty("ENCRYPTOR_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.gradleProperty("ENCRYPTOR_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.gradleProperty("ENCRYPTOR_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningValues =
+    listOf(
+        releaseKeystore,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword,
+    )
+val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+
+if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
+    throw GradleException("Encryptor release signing configuration is incomplete")
+}
+
 android {
     namespace = "cleveres.tricky.encryptor"
     compileSdk = 37
@@ -20,6 +37,17 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseKeystore))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -28,7 +56,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("debug")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
