@@ -42,6 +42,11 @@ const MAXIMUM_REMOTE_ERROR_BYTES: usize = 1_024;
 
 type EngineResult<T> = Result<T, String>;
 
+pub(crate) struct EngineOutcome {
+    pub(crate) code: i32,
+    pub(crate) failure: &'static str,
+}
+
 fn log(priority: c_int, message: impl AsRef<str>) {
     logging::write(priority, message);
 }
@@ -97,16 +102,51 @@ impl TransferResources {
     }
 }
 
-pub fn run(arguments: &[OsString]) -> i32 {
+pub fn run(arguments: &[OsString]) -> EngineOutcome {
     match parse_and_run(arguments) {
         Ok(()) => {
             log(LOG_INFO, "injection process completed successfully");
-            0
+            EngineOutcome {
+                code: 0,
+                failure: "none",
+            }
         }
         Err(error) => {
             log(LOG_ERROR, format!("injection process failed: {error}"));
-            1
+            EngineOutcome {
+                code: 1,
+                failure: classify_failure(&error),
+            }
         }
+    }
+}
+
+fn classify_failure(error: &str) -> &'static str {
+    if error.starts_with("attach stage:") {
+        "target_attach"
+    } else if error.starts_with("symbol stage:") {
+        "symbol_resolution"
+    } else if error.starts_with("descriptor stage:") {
+        "descriptor_transfer"
+    } else if error.starts_with("loader stage:") {
+        "library_load"
+    } else if error.starts_with("entry stage:") {
+        "entry_activation"
+    } else if error.starts_with("detach stage:") {
+        "target_detach"
+    } else if error.starts_with("expected a process")
+        || error.starts_with("invalid injector")
+        || error.starts_with("invalid library")
+        || error.starts_with("could not resolve the library")
+        || error.starts_with("resolved library")
+        || error.starts_with("entry name")
+        || error.starts_with("could not open the injection library")
+        || error.starts_with("could not inspect the injection library")
+        || error.starts_with("refusing an unsafe injection library")
+    {
+        "request_validation"
+    } else {
+        "unknown"
     }
 }
 
@@ -161,10 +201,13 @@ fn inject_library(
         LOG_INFO,
         format!("starting validated injection for process {pid}"),
     );
-    let mut session = RemoteSession::attach(pid)?;
-    let symbols = resolve_injector_symbols(pid)?;
+    let mut session =
+        RemoteSession::attach(pid).map_err(|error| format!("attach stage: {error}"))?;
+    let symbols =
+        resolve_injector_symbols(pid).map_err(|error| format!("symbol stage: {error}"))?;
 
-    let local_socket = create_local_socket_for_target(pid)?;
+    let local_socket = create_local_socket_for_target(pid)
+        .map_err(|error| format!("descriptor stage: {error}"))?;
     let mut socket_name = generate_magic(16)
         .map_err(|error| format!("could not generate the local socket name: {error}"))?;
     let remote_library_fd_result = transfer_library_fd(
@@ -175,12 +218,13 @@ fn inject_library(
         &socket_name,
     );
     wipe_bytes(&mut socket_name);
-    let remote_library_fd = remote_library_fd_result?;
+    let remote_library_fd =
+        remote_library_fd_result.map_err(|error| format!("descriptor stage: {error}"))?;
 
     let remote_handle_result =
         open_remote_library(&mut session, &symbols, remote_library_fd, library_path);
     close_remote_fd(&mut session, &symbols, remote_library_fd);
-    let remote_handle = remote_handle_result?;
+    let remote_handle = remote_handle_result.map_err(|error| format!("loader stage: {error}"))?;
 
     let activation_result: EngineResult<()> = (|| {
         let remote_entry_name = session.push_c_string(entry_name)?;
@@ -207,8 +251,10 @@ fn inject_library(
     {
         log(LOG_WARN, "could not release the rejected remote library");
     }
-    activation_result?;
-    session.finish()?;
+    activation_result.map_err(|error| format!("entry stage: {error}"))?;
+    session
+        .finish()
+        .map_err(|error| format!("detach stage: {error}"))?;
     Ok(())
 }
 

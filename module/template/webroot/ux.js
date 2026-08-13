@@ -236,6 +236,354 @@
         }
     };
 
+    // Turkish is maintained as a complete first-party WebUI catalog. Keep
+    // runtime-generated copy here as well as static markup so choosing Türkçe
+    // never leaves whole cards, status rows, or dialogs in English.
+    Object.assign(TRANSLATIONS.tr, {
+        'Notification': 'Bildirim',
+        'Close notification': 'Bildirimi kapat',
+        'Always active.': 'Her zaman etkin.',
+        'Bootloader/verified-boot property compatibility and Keystore/TEE certificate protection are core module behavior. They have no on/off switch and continue working when Identity Engine is disabled. Hardware bootloader and root-of-trust state are not physically changed.': 'Bootloader/doğrulanmış önyükleme özellik uyumluluğu ve Keystore/TEE sertifika koruması modülün temel davranışıdır. Açma/kapama anahtarları yoktur ve Kimlik Motoru devre dışıyken de çalışırlar. Donanımsal bootloader ve güven kökü durumu fiziksel olarak değiştirilmez.',
+        'Identity Engine': 'Kimlik Motoru',
+        'Identity Spoof Engine': 'Kimlik Değiştirme Motoru',
+        'OFF': 'KAPALI',
+        'ON': 'AÇIK',
+        'ACTIVE': 'ETKİN',
+        'INACTIVE': 'DEVRE DIŞI',
+        'ALWAYS ON': 'HER ZAMAN AÇIK',
+        'DRM Fix': 'DRM Düzeltmesi',
+        'Select the attestation identity used for configured target applications.': 'Yapılandırılmış hedef uygulamalarda kullanılacak attestation kimliğini seçin.',
+        'Device': 'Cihaz',
+        'Manufacturer': 'Üretici',
+        'Template fingerprint': 'Şablon parmak izi',
+        'Copy template fingerprint': 'Şablon parmak izini kopyala',
+        'Copy Template Fingerprint': 'Şablon Parmak İzini Kopyala',
+        'Copy': 'Kopyala',
+        'Applying a template persists its fingerprint and build fields. Build Identity at Boot requires Identity Engine and a reboot. Android ID remains Android\'s per-app SSAID, and the actual kernel uname remains unchanged.': 'Bir şablon uygulandığında parmak izi ve build alanları kalıcı olur. Önyüklemede Build Kimliği için Kimlik Motoru ve yeniden başlatma gerekir. Android ID, Android\'in uygulamaya özel SSAID değeri olarak kalır; gerçek kernel uname değeri değişmez.',
+        'Auto Identity:': 'Otomatik Kimlik:',
+        "for Play Integrity it pulls a current Pixel beta/canary ROM identity from Google's public metadata. Recommended only if you use a Custom ROM. The result is saved locally; enable Identity Engine and reboot to expose build fields.": 'Play Integrity için Google\'ın herkese açık metadatasından güncel bir Pixel beta/canary ROM kimliği alır. Yalnızca Custom ROM kullanıyorsanız önerilir. Sonuç yerel olarak kaydedilir; build alanlarını sunmak için Kimlik Motorunu açıp cihazı yeniden başlatın.',
+        'Attestation and Telephony Identifiers': 'Attestation ve Telefon Kimlikleri',
+        'These overrides are visible only to selected apps after Android grants the original API request. They do not change modem, SIM, EFS, baseband, or mobile-network identity.': 'Bu geçersiz kılmalar yalnızca Android özgün API isteğine izin verdikten sonra seçili uygulamalara görünür. Modem, SIM, EFS, baseband veya mobil ağ kimliğini değiştirmez.',
+        'Subscriber identity': 'Abone kimliği',
+        'SIM card identity': 'SIM kart kimliği',
+        'Phone number': 'Telefon numarası',
+        'Phone number 2': 'Telefon numarası 2',
+        'SIM 2 (optional)': 'SIM 2 (isteğe bağlı)',
+        'Serial': 'Seri numarası',
+        'Device serial': 'Cihaz seri numarası',
+        'Randomize All': 'Tümünü Rastgeleleştir',
+        'Clear All': 'Tümünü Temizle',
+        'Confirm Clear': 'Temizlemeyi Onayla',
+        'Apply an identity policy per package while preserving Android\'s original permission result. Isolation creates stable package-specific telephony identifiers and supported attestation identifiers when a verified keybox is active; redaction replaces the same supported identifiers with blank values. Without an active keybox the attestation chain remains unchanged. Shared-UID packages receive one consistent policy. These controls do not claim to block sensors, clipboard, location, VPN detection, or arbitrary app-process checks.': 'Android\'in özgün izin sonucunu koruyarak her paket için bir kimlik politikası uygular. Doğrulanmış bir keybox etkinken izolasyon, pakete özel kararlı telefon ve desteklenen attestation kimlikleri üretir; redaksiyon aynı desteklenen kimlikleri boş değerlerle değiştirir. Etkin keybox yoksa attestation zinciri değişmeden kalır. Ortak UID kullanan paketlere tek ve tutarlı politika uygulanır. Bu kontroller sensörleri, panoyu, konumu, VPN algılamasını veya uygulama içi rastgele kontrolleri engellediğini iddia etmez.',
+        'Type to search packages...': 'Paket aramak için yazın...',
+        'No identity override': 'Kimlik geçersiz kılması yok',
+        'Use global identity': 'Global kimliği kullan',
+        'Stable isolated identity': 'Kararlı izole kimlik',
+        'Blank supported identifiers': 'Desteklenen kimlikleri boşalt',
+        'Package': 'Paket',
+        'Profile': 'Profil',
+        'Keybox': 'Keybox',
+        'Privacy': 'Gizlilik',
+        'Save Configuration': 'Yapılandırmayı Kaydet',
+        'Filter active rules by package name...': 'Etkin kuralları paket adına göre filtrele...',
+        'Filter rules': 'Kuralları filtrele',
+        'Clear filter': 'Filtreyi temizle',
+        'Encrypted Keyboxes Detected': 'Şifreli Keyboxlar Algılandı',
+        'Remote Servers': 'Uzak Sunucular',
+        '+ Add Server': '+ Sunucu Ekle',
+        'Name': 'Ad',
+        'URL (HTTPS)': 'URL (HTTPS)',
+        'No Auth': 'Kimlik Doğrulama Yok',
+        'Bearer Token': 'Bearer Token',
+        'Basic Auth': 'Temel Kimlik Doğrulama',
+        'API Key': 'API Anahtarı',
+        'Username': 'Kullanıcı adı',
+        'Password': 'Parola',
+        'Header Name (e.g. X-API-Key)': 'Header Adı (örn. X-API-Key)',
+        'Priority': 'Öncelik',
+        'Refresh interval (hours)': 'Yenileme aralığı (saat)',
+        'Automatic refresh': 'Otomatik yenileme',
+        'CBOX content password (optional)': 'CBOX içerik parolası (isteğe bağlı)',
+        'CBOX signature public key (optional)': 'CBOX imza açık anahtarı (isteğe bağlı)',
+        'Save Server': 'Sunucuyu Kaydet',
+        'Cancel': 'İptal',
+        'Upload Keybox / CBOX': 'Keybox / CBOX Yükle',
+        'Keybox File': 'Keybox Dosyası',
+        'Upload Keybox File': 'Keybox Dosyası Yükle',
+        '[ Drag & Drop ]': '[ Sürükle ve Bırak ]',
+        'Or click to select .xml or .cbox': 'Ya da .xml veya .cbox seçmek için dokunun',
+        'Manual Paste (XML)': 'Elle Yapıştır (XML)',
+        'Paste Keybox XML Content Here': 'Keybox XML İçeriğini Buraya Yapıştırın',
+        'Keybox XML Content': 'Keybox XML İçeriği',
+        'Save Pasted XML': 'Yapıştırılan XML\'i Kaydet',
+        'Stored Keyboxes': 'Kayıtlı Keyboxlar',
+        'Filter keyboxes by name...': 'Keyboxları ada göre filtrele...',
+        'Filter keyboxes': 'Keyboxları filtrele',
+        'Verification': 'Doğrulama',
+        'Check All': 'Tümünü Kontrol Et',
+        'Checking module state...': 'Modül durumu kontrol ediliyor...',
+        'CHECKING': 'KONTROL EDİLİYOR',
+        'Loading resource usage...': 'Kaynak kullanımı yükleniyor...',
+        'Feature': 'Özellik',
+        'Status': 'Durum',
+        'Runtime path': 'Çalışma yolu',
+        'Scope': 'Kapsam',
+        'Measured daemon CPU and resident memory are shown above. Runtime rows describe configuration and execution scope. Hardware bootloader and root-of-trust warnings can remain visible because this page reports module state, not a physically relocked device.': 'Ölçülen daemon CPU ve yerleşik bellek kullanımı yukarıda gösterilir. Çalışma satırları yapılandırmayı ve yürütme kapsamını açıklar. Bu sayfa fiziksel olarak yeniden kilitlenmiş bir cihazı değil modül durumunu bildirdiği için donanımsal bootloader ve güven kökü uyarıları görünmeye devam edebilir.',
+        'Environment': 'Ortam',
+        'Process CPU': 'İşlem CPU',
+        'Process RSS': 'İşlem RSS',
+        'READY': 'HAZIR',
+        'REGISTERING': 'KAYDEDİLİYOR',
+        'STARTING': 'BAŞLATILIYOR',
+        'NATIVE FAILED': 'NATIVE BAŞARISIZ',
+        'NATIVE OFFLINE': 'NATIVE ÇEVRİMDIŞI',
+        'NO KEYS': 'ANAHTAR YOK',
+        'UNAVAILABLE': 'KULLANILAMIYOR',
+        'The last native activation attempt failed before the Keystore interceptor became operational.': 'Son native etkinleştirme denemesi Keystore interceptor çalışır duruma gelmeden başarısız oldu.',
+        'A native target accepted activation, but the Keystore Binder interceptor is not registered yet.': 'Native hedef etkinleştirmeyi kabul etti ancak Keystore Binder interceptor henüz kaydedilmedi.',
+        'Native activation is in progress and the Keystore interceptor is not registered yet.': 'Native etkinleştirme sürüyor ve Keystore interceptor henüz kaydedilmedi.',
+        'No operational Keystore interceptor is registered and no matching live native activation is available.': 'Çalışır durumda bir Keystore interceptor kaydı veya eşleşen canlı native etkinleştirme yok.',
+        'The native runtime is active, but no verified keybox is currently active.': 'Native çalışma zamanı etkin ancak şu anda doğrulanmış etkin bir keybox yok.',
+        'Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.': 'Temel boot/TEE uyumluluğu Kimlik Motorundan bağımsız olarak etkin kalır; donanımsal bootloader ve güven kökü durumu gerçek kalır.',
+        'Runtime resource data could not be read. Open Logs and check the first CleveresTricky error.': 'Çalışma zamanı kaynak verisi okunamadı. Günlükleri açıp ilk CleveresTricky hatasını kontrol edin.',
+        'Resource data unavailable.': 'Kaynak verisi kullanılamıyor.',
+        'Resource monitor unavailable. Check module logs.': 'Kaynak izleyici kullanılamıyor. Modül günlüklerini kontrol edin.',
+        'Keystore Runtime': 'Keystore Çalışma Zamanı',
+        'Telephony Runtime': 'Telefon Çalışma Zamanı',
+        'Automatic Keybox Check': 'Otomatik Keybox Kontrolü',
+        'Identity Refresh on Boot': 'Önyüklemede Kimlik Yenileme',
+        'Telephony Interception': 'Telefon Interception',
+        'RKP Protection': 'RKP Koruması',
+        'DRM App Passthrough': 'DRM Uygulama Geçişi',
+        'Template Build Identity': 'Şablon Build Kimliği',
+        'Region Property View': 'Bölge Özelliği Görünümü',
+        'Keybox Storage': 'Keybox Depolama',
+        'App Rules': 'Uygulama Kuralları',
+        'Enabled': 'Etkin',
+        'Disabled': 'Devre dışı',
+        'Always on': 'Her zaman açık',
+        'Info Only': 'Yalnızca bilgi',
+        'View recent logs from the module. You can also download them for sharing.': 'Modülün son günlüklerini görüntüleyin. Paylaşmak için indirebilirsiniz.',
+        'Select Log Type': 'Günlük Türünü Seç',
+        'CleveresTricky Logs': 'CleveresTricky Günlükleri',
+        'Errors Only': 'Yalnızca Hatalar',
+        'Full System (Recent)': 'Tüm Sistem (Son)',
+        'Logs Copied': 'Günlükler Kopyalandı',
+        'Select file to edit': 'Düzenlenecek dosyayı seç',
+        'Revert Changes': 'Değişiklikleri Geri Al',
+        'Revert': 'Geri Al',
+        'Save': 'Kaydet',
+        'File Content': 'Dosya İçeriği',
+        'Support the Development': 'Geliştirmeyi Destekleyin',
+        'If you find this project helpful, consider supporting the development. Your contributions help maintain the project and develop new features.': 'Bu projeyi yararlı buluyorsanız geliştirmeyi desteklemeyi düşünebilirsiniz. Katkılarınız projenin bakımına ve yeni özelliklerin geliştirilmesine yardımcı olur.',
+        'Crypto Addresses': 'Kripto Adresleri',
+        'Asset': 'Varlık',
+        'Network': 'Ağ',
+        'Address': 'Adres',
+        'Platforms': 'Platformlar',
+        'Binance User ID': 'Binance Kullanıcı Kimliği',
+        'Thank you for your support!': 'Desteğiniz için teşekkürler!',
+        'Feature Center': 'Özellik Merkezi',
+        'Main controls are here. Parent features reveal only the settings that belong to them.': 'Ana kontroller burada bulunur. Üst özellikler yalnızca kendilerine ait ayarları gösterir.',
+        'What does this do?': 'Bu ne yapar?',
+        'Global Mode is the module-wide application scope switch.': 'Global Mod, modül genelindeki uygulama kapsamı anahtarıdır.',
+        'Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.': 'Daha dar bir uygulama kuralı eşleşmediğinde hedef kuralları global olarak uygular. Yeni kurulumlarda varsayılan olarak açıktır.',
+        'Optional identity substitution. Turn it on first, then choose only the child identity paths you want.': 'İsteğe bağlı kimlik değişimi. Önce açın, ardından yalnızca istediğiniz alt kimlik yollarını seçin.',
+        'Identity is optional. Core Keystore/TEE protection is independent from this switch.': 'Kimlik isteğe bağlıdır. Temel Keystore/TEE koruması bu anahtardan bağımsızdır.',
+        'Build identity': 'Build kimliği',
+        'Attestation identity': 'Attestation kimliği',
+        'Telephony identity': 'Telefon kimliği',
+        'Region identity': 'Bölge kimliği',
+        'Identity refresh': 'Kimlik yenileme',
+        'Boot fingerprint, model and build fields. Requires a reboot when early-boot properties change.': 'Önyükleme parmak izi, model ve build alanları. Erken önyükleme özellikleri değiştiğinde yeniden başlatma gerekir.',
+        'Uses the configured attestation identity only for selected targets; genuine hardware key operations remain on Android.': 'Yapılandırılmış attestation kimliğini yalnızca seçili hedeflerde kullanır; gerçek donanım anahtarı işlemleri Android üzerinde kalır.',
+        'Controls optional IMEI/IMSI/ICCID/phone presentation for selected apps.': 'Seçili uygulamalar için isteğe bağlı IMEI/IMSI/ICCID/telefon sunumunu yönetir.',
+        'Controls optional region/hardware-region presentation. Some values require a reboot.': 'İsteğe bağlı bölge/donanım bölgesi sunumunu yönetir. Bazı değerler yeniden başlatma gerektirir.',
+        'Prepares a new identity for the next boot only while this option is enabled.': 'Yalnızca bu seçenek açıkken bir sonraki önyükleme için yeni kimlik hazırlar.',
+        'Independent attestation patch policy. Default is off unless stale-ROM policy enables it.': 'Bağımsız attestation yama politikası. Eski ROM politikası açmadıkça varsayılan olarak kapalıdır.',
+        'Security Patch is independent from Identity.': 'Güvenlik Yaması, Kimlik özelliğinden bağımsızdır.',
+        'Auto Security Patch': 'Otomatik Güvenlik Yaması',
+        'Use automatic mode for stale captured patch values.': 'Eski yakalanmış yama değerleri için otomatik modu kullanır.',
+        'Advanced Security Patch': 'Gelişmiş Güvenlik Yaması',
+        'Checks configured keyboxes against the module revocation source when enabled.': 'Açıkken yapılandırılmış keyboxları modülün iptal kaynağına göre kontrol eder.',
+        'Optional network-backed keybox hygiene; manual management remains available.': 'İsteğe bağlı ağ destekli keybox denetimi; elle yönetim kullanılabilir kalır.',
+        'DRM Identifier Privacy': 'DRM Kimlik Gizliliği',
+        'Configure Profiles': 'Profilleri Yapılandır',
+        'Keybox / TEE path': 'Keybox / TEE yolu',
+        'Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.': 'Keyboxlar profile göre veya kayıtlı havuzdan seçilir. Kayıtlı XML/CBOX kaynakları ortam sıfırlaması gerektirmeden yeniden yüklenir.',
+        'The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.': 'Temel Keystore hook, Kimlik özelliğinden ayrı kalır. Pahalı işlemlerin tekrarlanmasını önlemek için sertifika zincirleri önbelleğe alınır.',
+        'Open keyboxes': 'Keyboxları Aç',
+        'Keybox Status': 'Keybox Durumu',
+        'Loading keybox state...': 'Keybox durumu yükleniyor...',
+        'Use Profiles for app assignments, identity template, custom keybox, DRM identifier privacy, per-feature overrides and per-app Security Patch rules in one place.': 'Uygulama atamalarını, kimlik şablonunu, özel keyboxı, DRM kimlik gizliliğini, özellik geçersiz kılmalarını ve uygulamaya özel Güvenlik Yaması kurallarını tek yerde yönetmek için Profilleri kullanın.',
+        'Open Profiles': 'Profilleri Aç',
+        'Independent from Identity. Child controls appear only while this feature is enabled.': 'Kimlik özelliğinden bağımsızdır. Alt kontroller yalnızca bu özellik etkinken görünür.',
+        'Use automatic mode for System, Vendor and Boot.': 'System, Vendor ve Boot için otomatik modu kullanır.',
+        'Stale ROM threshold (months)': 'Eski ROM eşiği (ay)',
+        'Save Security Patch': 'Güvenlik Yamasını Kaydet',
+        'Resolve for an app': 'Bir uygulama için çözümle',
+        'Shows captured, configured and effective values from the runtime resolver.': 'Çalışma zamanı çözümleyicisindeki yakalanmış, yapılandırılmış ve etkin değerleri gösterir.',
+        'Resolve': 'Çözümle',
+        'System': 'Sistem',
+        'Vendor': 'Üretici',
+        'Boot': 'Önyükleme',
+        'Device default': 'Cihaz varsayılanı',
+        'ROM property': 'ROM özelliği',
+        'Manual date': 'Elle tarih',
+        'Automatic': 'Otomatik',
+        'Omit': 'Atla',
+        'Inherit': 'Devral',
+        'Inherit / none': 'Devral / yok',
+        'Captured:': 'Yakalanan:',
+        'Configured:': 'Yapılandırılan:',
+        'Effective:': 'Etkin:',
+        'App-centric configuration. Assign installed apps or wildcards, then choose privacy, identity, keybox and feature overrides.': 'Uygulama merkezli yapılandırma. Yüklü uygulamaları veya wildcard kurallarını atayın; ardından gizlilik, kimlik, keybox ve özellik geçersiz kılmalarını seçin.',
+        'New profile': 'Yeni profil',
+        'Export': 'Dışa Aktar',
+        'Import': 'İçe Aktar',
+        'Profile Editor': 'Profil Düzenleyici',
+        'DRM / privacy mode': 'DRM / gizlilik modu',
+        'Isolate - app-scoped pseudonymous DRM ID': 'İzole et - uygulamaya özel takma DRM kimliği',
+        'Redact': 'Gizle',
+        'Add installed app': 'Yüklü uygulama ekle',
+        'Add app': 'Uygulama ekle',
+        'Assignments (one package or wildcard per line)': 'Atamalar (satır başına bir paket veya wildcard)',
+        'Identity template': 'Kimlik şablonu',
+        'Feature overrides': 'Özellik geçersiz kılmaları',
+        'Security Patch override': 'Güvenlik Yaması geçersiz kılması',
+        'No app assignments': 'Uygulama ataması yok',
+        'Edit': 'Düzenle',
+        'No custom profiles yet.': 'Henüz özel profil yok.',
+        'Inspect the exact resolver output for an installed application without exposing private key material.': 'Özel anahtar materyalini açığa çıkarmadan yüklü bir uygulamanın kesin çözümleyici çıktısını inceleyin.',
+        'Matched profile': 'Eşleşen profil',
+        'Matched rule': 'Eşleşen kural',
+        'DRM privacy': 'DRM gizliliği',
+        'Keystore core': 'Keystore çekirdeği',
+        'Reboot required': 'Yeniden başlatma gerekli',
+        'Identity enabled': 'Kimlik etkinleştirildi',
+        'Identity disabled': 'Kimlik devre dışı bırakıldı',
+        'Security Patch enabled': 'Güvenlik Yaması etkinleştirildi',
+        'Security Patch disabled': 'Güvenlik Yaması devre dışı bırakıldı',
+        'Auto Security Patch enabled': 'Otomatik Güvenlik Yaması etkinleştirildi',
+        'Auto Security Patch disabled': 'Otomatik Güvenlik Yaması devre dışı bırakıldı',
+        'Security Patch policy saved': 'Güvenlik Yaması politikası kaydedildi',
+        'Profile cloned': 'Profil klonlandı',
+        'Profile deleted': 'Profil silindi',
+        'Profile name already exists': 'Profil adı zaten var',
+        'Profile name is invalid': 'Profil adı geçersiz',
+        'Profile policy copied/exported': 'Profil politikası kopyalandı/dışa aktarıldı',
+        'Profile policy imported': 'Profil politikası içe aktarıldı',
+        'Could not save policy': 'Politika kaydedilemedi',
+        'Could not update setting': 'Ayar güncellenemedi',
+        'Could not resolve patch state': 'Yama durumu çözümlenemedi',
+        'Could not inspect effective state': 'Etkin durum incelenemedi',
+        'The operation failed. Open Logs for details.': 'İşlem başarısız oldu. Ayrıntılar için Günlükleri açın.',
+        'RESOLVING PIXEL IDENTITY...': 'PIXEL KİMLİĞİ ÇÖZÜMLENİYOR...',
+        'Resolving Pixel identity...': 'Pixel kimliği çözümleniyor...',
+        'Auto Identity source is temporarily unavailable. Try again later or choose a local template.': 'Otomatik Kimlik kaynağı geçici olarak kullanılamıyor. Daha sonra tekrar deneyin veya yerel bir şablon seçin.',
+        'Auto Identity failed': 'Otomatik Kimlik başarısız oldu',
+        'Estimated impact: CPU low per matching identity/attestation call; RAM low and bounded.': 'Tahmini etki: eşleşen kimlik/attestation çağrısı başına düşük CPU; düşük ve sınırlı RAM.',
+        'Estimated impact: CPU very low while idle and low per matching Binder call; RAM low.': 'Tahmini etki: boşta çok düşük, eşleşen Binder çağrısı başına düşük CPU; düşük RAM.',
+        'Estimated impact: CPU low only on matching calls; RAM low.': 'Tahmini etki: yalnızca eşleşen çağrılarda düşük CPU; düşük RAM.',
+        'Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.': 'Tahmini etki: UID kararı başına çok düşük CPU; sınırlı UID önbelleğiyle düşük RAM.',
+        'Estimated impact: CPU/network low during scheduled verification; RAM low and temporary.': 'Tahmini etki: zamanlanmış doğrulamada düşük CPU/ağ; düşük ve geçici RAM.',
+        'Estimated impact: CPU low at boot only; RAM negligible after initialization.': 'Tahmini etki: yalnızca önyüklemede düşük CPU; başlatma sonrasında ihmal edilebilir RAM.',
+        'Estimated impact: CPU low per matching Binder call; RAM low.': 'Tahmini etki: eşleşen Binder çağrısı başına düşük CPU; düşük RAM.',
+        'Estimated impact: CPU negligible on protected infrastructure paths; RAM negligible.': 'Tahmini etki: korunan altyapı yollarında ve RAM kullanımında ihmal edilebilir.',
+        'Estimated impact: CPU low per matching package lookup; RAM low and bounded.': 'Tahmini etki: eşleşen paket sorgusu başına düşük CPU; düşük ve sınırlı RAM.',
+        'Estimated impact: CPU low at boot only; RAM negligible after properties are prepared.': 'Tahmini etki: yalnızca önyüklemede düşük CPU; özellikler hazırlandıktan sonra ihmal edilebilir RAM.',
+        'Estimated impact: CPU low at boot only; RAM negligible.': 'Tahmini etki: yalnızca önyüklemede düşük CPU; ihmal edilebilir RAM.',
+        'Estimated impact: CPU low during refresh/verification; RAM moderate and bounded by active certificate chains.': 'Tahmini etki: yenileme/doğrulamada düşük CPU; etkin sertifika zincirleriyle sınırlı orta düzey RAM.',
+        'Estimated impact: CPU very low with cached lookups; RAM low and proportional to configured rules.': 'Tahmini etki: önbellekli sorgularda çok düşük CPU; yapılandırılmış kurallarla orantılı düşük RAM.',
+        'Identity overrides enabled': 'Kimlik geçersiz kılmaları etkin',
+        'Identity overrides off': 'Kimlik geçersiz kılmaları kapalı',
+        'Attestation, telephony and build identity only': 'Yalnızca attestation, telefon ve build kimliği',
+        'Does not disable the core Keystore/TEE or boot protection paths.': 'Temel Keystore/TEE veya önyükleme koruma yollarını devre dışı bırakmaz.',
+        'Registered and Binder alive': 'Kayıtlı ve Binder çalışıyor',
+        'Not operational': 'Çalışmıyor',
+        'Keystore2 Binder lifecycle': 'Keystore2 Binder yaşam döngüsü',
+        'Reports the daemon registration state rather than inferring readiness from configuration.': 'Hazır olma durumunu yapılandırmadan tahmin etmek yerine daemon kayıt durumunu bildirir.',
+        'Enabled but not operational': 'Etkin ancak çalışmıyor',
+        'Phone subscription Binder lifecycle': 'Telefon aboneliği Binder yaşam döngüsü',
+        'Identity-only Binder path; it is parked while Identity Engine is off.': 'Yalnızca kimlik için kullanılan Binder yolu; Kimlik Motoru kapalıyken park edilir.',
+        'UID decision only': 'Yalnızca UID kararı',
+        'Resolved application UIDs': 'Çözümlenmiş uygulama UID\'leri',
+        'Targets every eligible app while protecting system and RKP infrastructure UIDs.': 'Sistem ve RKP altyapı UID\'lerini korurken uygun tüm uygulamaları hedefler.',
+        'Scheduled background check': 'Zamanlanmış arka plan kontrolü',
+        'Worker stopped': 'Worker durduruldu',
+        'Authorized key material': 'Yetkili anahtar materyali',
+        'Core keybox maintenance; independent from Identity Engine.': 'Temel keybox bakımı; Kimlik Motorundan bağımsızdır.',
+        'Boot only': 'Yalnızca önyüklemede',
+        'Persisted identity fields': 'Kalıcı kimlik alanları',
+        'Refreshes configured attestation and app-visible telephony identifiers.': 'Yapılandırılmış attestation ve uygulamaya görünen telefon kimliklerini yeniler.',
+        'Matching Binder calls only': 'Yalnızca eşleşen Binder çağrıları',
+        'Permission-approved app APIs': 'İzin verilmiş uygulama API\'leri',
+        'Overrides configured dual-SIM values without changing modem or carrier identity.': 'Modem veya operatör kimliğini değiştirmeden yapılandırılmış çift SIM değerlerini geçersiz kılar.',
+        'Protected infrastructure + unified key path': 'Korunan altyapı + birleştirilmiş anahtar yolu',
+        'RKP callers and targeted KeyMint replies': 'RKP çağıranlar ve hedeflenmiş KeyMint yanıtları',
+        'RKP infrastructure UIDs always stay on Android. Targeted generateKey and getKeyEntry responses share one certificate-compatibility path to avoid split attestation leaves.': 'RKP altyapı UID\'leri her zaman Android yolunda kalır. Hedeflenmiş generateKey ve getKeyEntry yanıtları, ayrık attestation leaf oluşmasını önlemek için tek sertifika uyumluluk yolunu paylaşır.',
+        'Bounded UID lookup': 'Sınırlı UID sorgusu',
+        'drm_packages.txt rules': 'drm_packages.txt kuralları',
+        'Leaves configured playback and DRM packages on the original keystore path.': 'Yapılandırılmış oynatma ve DRM paketlerini özgün Keystore yolunda bırakır.',
+        'Fingerprint and Build fields': 'Parmak izi ve Build alanları',
+        'Persists the selected template before Zygote; requires reboot.': 'Seçilen şablonu Zygote öncesinde kalıcılaştırır; yeniden başlatma gerekir.',
+        'Bounded userspace region properties': 'Sınırlı userspace bölge özellikleri',
+        'Applies the optional CN region view before Zygote; requires reboot.': 'İsteğe bağlı CN bölge görünümünü Zygote öncesinde uygular; yeniden başlatma gerekir.',
+        'Validated bounded cache': 'Doğrulanmış sınırlı önbellek',
+        'Uses root-only storage and fails closed when revocation data is unavailable.': 'Yalnızca root erişimli depolama kullanır ve iptal verisi yoksa fail-closed davranır.',
+        'Cached package lookup': 'Önbellekli paket sorgusu',
+        'Selects target-specific identity and keybox policy.': 'Hedefe özel kimlik ve keybox politikasını seçer.',
+        "Profile privacy Isolate replaces only DRM deviceUniqueId with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.": 'Profil gizliliğindeki İzole Et seçeneği yalnızca DRM deviceUniqueId değerini uygulamaya özel kararlı bir takma kimlikle değiştirir. Lisanslar, provisioning ve güvenlik seviyesi Android\'in gerçek DRM yolunda kalır.',
+        'Profile privacy': 'Profil gizliliğindeki',
+        'Isolate': 'İzole Et',
+        'replaces only DRM': 'seçeneği yalnızca DRM',
+        "with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.": 'değerini uygulamaya özel kararlı bir takma kimlikle değiştirir. Lisanslar, provisioning ve güvenlik seviyesi Android\'in gerçek DRM yolunda kalır.',
+        "Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.": 'drm_packages.txt içindeki paketleri Android\'in gerçek Keystore yolunda tutar. DRM güvenlik seviyesini taklit etmez.',
+        'Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.': 'Gerçek DRM cihaz kimliğini paylaşmaması gereken uygulamalar için Profiller > Gizlilik > İzole Et seçeneğini kullanın.',
+        'Override the Security Patch feature only for apps assigned to this profile.': 'Güvenlik Yaması özelliğini yalnızca bu profile atanmış uygulamalar için geçersiz kılar.',
+        'Show': 'Göster', 'Hide': 'Gizle', 'SIM 1': 'SIM 1',
+        '14 hexadecimal characters': '14 onaltılık karakter',
+        'Loading...': 'Yükleniyor...', 'Saving...': 'Kaydediliyor...', 'Fetching...': 'Alınıyor...',
+        'Generating...': 'Üretiliyor...', 'Synchronizing...': 'Eşitleniyor...', 'Exporting...': 'Dışa aktarılıyor...',
+        'Refreshing...': 'Yenileniyor...', 'Verifying...': 'Doğrulanıyor...', 'Downloading...': 'İndiriliyor...',
+        'Updating...': 'Güncelleniyor...', 'Removing...': 'Kaldırılıyor...', 'Deleting...': 'Siliniyor...',
+        'Uploading...': 'Yükleniyor...', 'Applying...': 'Uygulanıyor...', 'Unlocking...': 'Kilidi açılıyor...',
+        'Resetting...': 'Sıfırlanıyor...', 'Restoring...': 'Geri yükleniyor...', 'Creating encrypted backup...': 'Şifreli yedek oluşturuluyor...',
+        'Saved': 'Kaydedildi', 'Success': 'Başarılı', 'Deleted': 'Silindi', 'Refreshed': 'Yenilendi',
+        'Reloaded': 'Yeniden yüklendi', 'Unlocked!': 'Kilit açıldı!', 'Language Loaded': 'Dil yüklendi',
+        'Logs refreshed': 'Günlükler yenilendi', 'No logs to download': 'İndirilecek günlük yok',
+        'Password required': 'Parola gerekli', 'Server Added': 'Sunucu eklendi', 'Server Removed': 'Sunucu kaldırıldı',
+        'Uploaded Successfully': 'Başarıyla yüklendi', 'Saved Successfully': 'Başarıyla kaydedildi',
+        'Please paste XML content first': 'Önce XML içeriğini yapıştırın',
+        'Installed package list is unavailable': 'Yüklü paket listesi kullanılamıyor',
+        'Could not load boot property policy': 'Önyükleme özelliği politikası yüklenemedi',
+        'Saving boot property policy...': 'Önyükleme özelliği politikası kaydediliyor...',
+        'Boot property policy saved': 'Önyükleme özelliği politikası kaydedildi',
+        'Invalid setting': 'Geçersiz ayar', 'Setting control is unavailable': 'Ayar kontrolü kullanılamıyor',
+        'Setting Updated': 'Ayar güncellendi', 'Identity Generated': 'Kimlik üretildi',
+        'Verification Failed': 'Doğrulama başarısız', 'No keyboxes to verify': 'Doğrulanacak keybox yok',
+        'Verification Complete': 'Doğrulama tamamlandı', 'Configuration Saved': 'Yapılandırma kaydedildi',
+        'Package required': 'Paket gerekli', 'Invalid package': 'Geçersiz paket',
+        'Select a profile, keybox, or privacy policy': 'Bir profil, keybox veya gizlilik politikası seçin',
+        'Rule Updated': 'Kural güncellendi', 'Rule Added': 'Kural eklendi',
+        'Saving App Config...': 'Uygulama yapılandırması kaydediliyor...', 'App Config Saved': 'Uygulama yapılandırması kaydedildi',
+        'Please select a profile first': 'Önce bir profil seçin',
+        'Runtime settings synchronized': 'Çalışma zamanı ayarları eşitlendi',
+        'Environment Reset - New identity generated': 'Ortam sıfırlandı - Yeni kimlik üretildi',
+        'Backup password must be at least 12 characters': 'Yedekleme parolası en az 12 karakter olmalıdır',
+        'Only encrypted .ctsb backups are accepted': 'Yalnızca şifreli .ctsb yedekleri kabul edilir',
+        'Enter the backup password (at least 12 characters)': 'Yedekleme parolasını girin (en az 12 karakter)',
+        'You have unsaved changes. Click tab again to discard.': 'Kaydedilmemiş değişiklikler var. Vazgeçmek için sekmeye yeniden dokunun.',
+        'You have unsaved changes. Select file again to discard.': 'Kaydedilmemiş değişiklikler var. Vazgeçmek için dosyayı yeniden seçin.',
+        'Failed to load file': 'Dosya yüklenemedi', 'Error loading file': 'Dosya yüklenirken hata oluştu',
+        'File Saved': 'Dosya kaydedildi', 'Changes reverted': 'Değişiklikler geri alındı',
+        'Copy failed. Check permissions.': 'Kopyalama başarısız. İzinleri kontrol edin.',
+        'Network error: Failed to reach the server. Is the module running?': 'Ağ hatası: Sunucuya ulaşılamadı. Modül çalışıyor mu?',
+        'Select a non-empty XML or CBOX file up to 10 MB': 'En fazla 10 MB boyutunda, boş olmayan bir XML veya CBOX dosyası seçin',
+        'Could not import profile policy': 'Profil politikası içe aktarılamadı',
+        'Policy file is too large': 'Politika dosyası çok büyük'
+    });
+
     const GUIDE = {
         en: [
             ['Dashboard and core protection', 'Dashboard is the single source of truth for Global Mode, DRM compatibility, Identity, Security Patch and keybox health. Core Keystore/TEE and verified-boot compatibility stay independent from optional Identity controls.'],
@@ -441,6 +789,7 @@
     const originalText = new WeakMap();
     const originalAttrs = new WeakMap();
     let compatibilityConfig = null;
+    let translationObserver = null;
 
     function readLocale() {
         try {
@@ -457,7 +806,71 @@
 
     function tr(value) {
         if (locale === 'en') return value;
-        return (TRANSLATIONS[locale] && TRANSLATIONS[locale][value]) || value;
+        const translated = TRANSLATIONS[locale] && TRANSLATIONS[locale][value];
+        if (translated) return translated;
+        return translateDynamicCopy(value);
+    }
+
+    function translateDynamicCopy(value) {
+        if (locale !== 'tr' || typeof value !== 'string') return value;
+        const runtimeSuffix = ' Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
+        if (value.endsWith(runtimeSuffix)) {
+            const prefix = value.slice(0, -runtimeSuffix.length);
+            const translatedPrefix = TRANSLATIONS.tr[prefix];
+            const translatedSuffix = TRANSLATIONS.tr[runtimeSuffix.trim()];
+            if (translatedPrefix && translatedSuffix) return `${translatedPrefix} ${translatedSuffix}`;
+        }
+        let match = value.match(/^Native runtime is active with (\d+) verified keybox(?:es)?\. Targeted mode is enabled, so app rules determine scope\. Core boot\/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine\.$/);
+        if (match) return `Native çalışma zamanı ${match[1]} doğrulanmış keybox ile etkin. Hedefli mod açık olduğundan kapsamı uygulama kuralları belirler. Temel boot/TEE uyumluluğu Kimlik Motorundan bağımsız olarak etkin kalır; donanımsal bootloader ve güven kökü durumu gerçek kalır.`;
+        match = value.match(/^Native runtime is active with (\d+) verified keybox(?:es)?\. Global application scope is enabled\. Core boot\/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine\.$/);
+        if (match) return `Native çalışma zamanı ${match[1]} doğrulanmış keybox ile etkin. Global uygulama kapsamı açık. Temel boot/TEE uyumluluğu Kimlik Motorundan bağımsız olarak etkin kalır; donanımsal bootloader ve güven kökü durumu gerçek kalır.`;
+        match = value.match(/^(\d+) active keyboxes$/);
+        if (match) return `${match[1]} etkin keybox`;
+        match = value.match(/^(\d+) Keys Loaded$/);
+        if (match) return `${match[1]} anahtar yüklendi`;
+        match = value.match(/^(\d+) B configuration$/);
+        if (match) return `${match[1]} B yapılandırma`;
+        match = value.match(/^Toggle (.+)$/);
+        if (match) return `${match[1]} ayarını değiştir`;
+        match = value.match(/^Remove (.+)$/);
+        if (match) return `${match[1]} öğesini kaldır`;
+        match = value.match(/^(.+) \(current\)$/);
+        if (match) return `${match[1]} (geçerli)`;
+        match = value.match(/^Delete profile "(.+)"\?$/);
+        if (match) return `“${match[1]}” profili silinsin mi?`;
+        match = value.match(/^Identity ready: (.+)$/);
+        if (match) return `Kimlik hazır: ${match[1]}`;
+        match = value.match(/^(.+) updated$/);
+        if (match) return `${match[1]} güncellendi`;
+        match = value.match(/^(.+) manual date must be YYYY-MM-DD$/);
+        if (match) return `${match[1]} elle tarihi YYYY-AA-GG biçiminde olmalıdır`;
+        match = value.match(/^Logs saved to (.+)$/);
+        if (match) return `Günlükler şuraya kaydedildi: ${match[1]}`;
+        match = value.match(/^Language template saved to (.+)$/);
+        if (match) return `Dil şablonu şuraya kaydedildi: ${match[1]}`;
+        match = value.match(/^Error: (.+)$/);
+        if (match) return `Hata: ${match[1]}`;
+        match = value.match(/^Failed: (.+)$/);
+        if (match) return `Başarısız: ${match[1]}`;
+        match = value.match(/^Save Failed: (.+)$/);
+        if (match) return `Kaydetme başarısız: ${match[1]}`;
+        match = value.match(/^Download failed: (.+)$/);
+        if (match) return `İndirme başarısız: ${match[1]}`;
+        match = value.match(/^Failed to load logs: (.+)$/);
+        if (match) return `Günlükler yüklenemedi: ${match[1]}`;
+        match = value.match(/^Error loading templates: (.+)$/);
+        if (match) return `Şablonlar yüklenirken hata oluştu: ${match[1]}`;
+        match = value.match(/^Error generating identity: (.+)$/);
+        if (match) return `Kimlik üretilirken hata oluştu: ${match[1]}`;
+        match = value.match(/^Error saving app config: (.+)$/);
+        if (match) return `Uygulama yapılandırması kaydedilirken hata oluştu: ${match[1]}`;
+        match = value.match(/^Profile (.+) Applied$/);
+        if (match) return `${match[1]} profili uygulandı`;
+        match = value.match(/^Policy controls unavailable: (.+)$/);
+        if (match) return `Politika kontrolleri kullanılamıyor: ${match[1]}`;
+        match = value.match(/^Encrypted backup saved to (.+)$/);
+        if (match) return `Şifreli yedek şuraya kaydedildi: ${match[1]}`;
+        return value;
     }
 
     function ownedCopy(key) {
@@ -558,13 +971,21 @@
     function translateNode(node) {
         if (node.nodeType !== 3) return;
         const current = node.nodeValue || '';
-        if (!originalText.has(node)) originalText.set(node, current);
-        const original = originalText.get(node) || '';
+        let record = originalText.get(node);
+        if (!record) {
+            record = { source: current, rendered: null };
+            originalText.set(node, record);
+        } else if (current !== record.source && current !== record.rendered) {
+            record.source = current;
+        }
+        const original = record.source || '';
         const trimmed = original.trim();
         if (!trimmed) return;
         const leading = original.match(/^\s*/)[0];
         const trailing = original.match(/\s*$/)[0];
-        node.nodeValue = leading + tr(trimmed) + trailing;
+        const rendered = leading + tr(trimmed) + trailing;
+        record.rendered = rendered;
+        if (current !== rendered) node.nodeValue = rendered;
     }
 
     function translateElement(element) {
@@ -572,21 +993,58 @@
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
         let node;
         while ((node = walker.nextNode())) translateNode(node);
-        ['placeholder','title','aria-label'].forEach(name => {
+        ['placeholder','title','aria-label','data-label'].forEach(name => {
             if (!element.hasAttribute || !element.hasAttribute(name)) return;
             let stored = originalAttrs.get(element);
             if (!stored) { stored = Object.create(null); originalAttrs.set(element, stored); }
-            if (!(name in stored)) stored[name] = element.getAttribute(name);
-            element.setAttribute(name, tr(stored[name]));
+            const current = element.getAttribute(name);
+            if (!(name in stored)) stored[name] = { source: current, rendered: null };
+            const record = stored[name];
+            if (current !== record.source && current !== record.rendered) record.source = current;
+            const rendered = tr(record.source);
+            record.rendered = rendered;
+            if (current !== rendered) element.setAttribute(name, rendered);
         });
-        if (element.querySelectorAll) element.querySelectorAll('[placeholder],[title],[aria-label]').forEach(child => {
-            ['placeholder','title','aria-label'].forEach(name => {
+        if (element.querySelectorAll) element.querySelectorAll('[placeholder],[title],[aria-label],[data-label]').forEach(child => {
+            ['placeholder','title','aria-label','data-label'].forEach(name => {
                 if (!child.hasAttribute(name)) return;
                 let stored = originalAttrs.get(child);
                 if (!stored) { stored = Object.create(null); originalAttrs.set(child, stored); }
-                if (!(name in stored)) stored[name] = child.getAttribute(name);
-                child.setAttribute(name, tr(stored[name]));
+                const current = child.getAttribute(name);
+                if (!(name in stored)) stored[name] = { source: current, rendered: null };
+                const record = stored[name];
+                if (current !== record.source && current !== record.rendered) record.source = current;
+                const rendered = tr(record.source);
+                record.rendered = rendered;
+                if (current !== rendered) child.setAttribute(name, rendered);
             });
+        });
+    }
+
+    function installTranslationObserver() {
+        if (translationObserver || typeof global.MutationObserver !== 'function' || !document.body) return;
+        translationObserver = new global.MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'characterData') {
+                    translateNode(mutation.target);
+                    return;
+                }
+                if (mutation.type === 'attributes') {
+                    translateElement(mutation.target);
+                    return;
+                }
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === 3) translateNode(node);
+                    else if (node.nodeType === 1) translateElement(node);
+                });
+            });
+        });
+        translationObserver.observe(document.body, {
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['placeholder','title','aria-label','data-label']
         });
     }
 
@@ -862,7 +1320,7 @@
     }
 
     const DIAGNOSTIC_FIELDS = Object.freeze([
-        'version_name', 'version_code', 'environment', 'native_state', 'native_alive',
+        'version_name', 'version_code', 'environment', 'native_state', 'native_alive', 'native_failure',
         'keystore_interceptor', 'telephony_interceptor', 'keybox_count', 'app_config_bytes',
         'process_cpu_percent', 'process_rss_kb', 'identity_engine', 'global_mode',
         'automatic_keybox_check', 'identity_refresh_on_boot', 'telephony',
@@ -887,6 +1345,7 @@
             environment: source.environment,
             native_state: runtime.state,
             native_alive: runtime.alive,
+            native_failure: runtime.failure,
             keystore_interceptor: source.keystore_interceptor_running,
             telephony_interceptor: source.telephony_interceptor_running,
             keybox_count: source.keybox_count,
@@ -902,7 +1361,7 @@
             build_identity: source.spoof_build_identity,
             region_property_view: source.spoof_region_cn
         };
-        return ['CleveresTricky diagnostics', 'schema=1']
+        return ['CleveresTricky diagnostics', 'schema=2']
             .concat(DIAGNOSTIC_FIELDS.map(field => `${field}=${sanitizeDiagnosticValue(values[field])}`))
             .join('\n');
     }
@@ -998,6 +1457,7 @@
     function start() {
         injectStyles();
         installOwnedSurfaceInteractions();
+        installTranslationObserver();
         applyEnhancements();
         wrapLegacyToggle();
         wrapTabSwitch();
@@ -1008,6 +1468,12 @@
             wrapTabSwitch();
         }, delay));
     }
+
+    global.CleveresI18n = Object.freeze({
+        translate: value => tr(String(value == null ? '' : value)),
+        apply: applyTranslations,
+        get locale() { return locale; }
+    });
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
     else start();

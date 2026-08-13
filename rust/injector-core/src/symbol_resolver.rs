@@ -1,6 +1,7 @@
 use crate::abi::InjectorSymbols;
 use cleverestricky_native_core::injector_support::{
-    process_image_base, read_relevant_process_maps, ProcessImageId, ProcessMapping, ProcessModule,
+    process_image_base, read_relevant_process_maps, unique_process_image, ProcessImageId,
+    ProcessMapping, ProcessModule,
 };
 use std::ffi::{c_char, c_int, c_void, CString};
 
@@ -125,12 +126,14 @@ fn resolve_symbol(
             String::from_utf8_lossy(symbol)
         ));
     };
-    let image = local_symbol_mapping.image;
+    let local_image = local_symbol_mapping.image;
+    let remote_image = unique_process_image(remote_mappings, module, local_symbol_mapping.location)
+        .ok_or_else(|| "target platform library location is missing or ambiguous".to_string())?;
 
-    let local_base = process_image_base(local_mappings, module, image)
+    let local_base = process_image_base(local_mappings, module, local_image)
         .ok_or_else(|| "local platform library base is unavailable".to_string())?;
-    let remote_base = process_image_base(remote_mappings, module, image)
-        .ok_or_else(|| "target platform library image does not match the injector".to_string())?;
+    let remote_base = process_image_base(remote_mappings, module, remote_image)
+        .ok_or_else(|| "target platform library base is unavailable".to_string())?;
     let offset = local_symbol
         .checked_sub(local_base)
         .filter(|value| *value <= MAXIMUM_LIBRARY_OFFSET)
@@ -140,7 +143,7 @@ fn resolve_symbol(
         .ok_or_else(|| "target symbol address overflow".to_string())?;
     if !remote_mappings.iter().any(|mapping| {
         mapping.module == module
-            && mapping.image == image
+            && mapping.image == remote_image
             && mapping.executable
             && mapping.start <= remote_symbol
             && remote_symbol < mapping.end
@@ -150,5 +153,5 @@ fn resolve_symbol(
             String::from_utf8_lossy(symbol)
         ));
     }
-    Ok((remote_symbol, image))
+    Ok((remote_symbol, remote_image))
 }

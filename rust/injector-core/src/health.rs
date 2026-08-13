@@ -18,6 +18,7 @@ const STATUS_DIRECTORY: &str = "/data/adb/cleverestricky";
 const STATUS_FILENAME: &str = "native_runtime_status";
 const MAXIMUM_PID_BYTES: usize = 10;
 const MAXIMUM_ENTRY_BYTES: usize = 32;
+const MAXIMUM_FAILURE_BYTES: usize = 32;
 #[cfg(target_os = "android")]
 const MAXIMUM_PROC_STAT_BYTES: u64 = 16 * 1024;
 
@@ -66,6 +67,20 @@ fn sanitize_entry(arguments: &[OsString]) -> String {
         .to_owned()
 }
 
+fn sanitize_failure(failure: &str) -> &str {
+    if !failure.is_empty()
+        && failure.len() <= MAXIMUM_FAILURE_BYTES
+        && failure
+            .as_bytes()
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || *byte == b'_')
+    {
+        failure
+    } else {
+        "unknown"
+    }
+}
+
 fn parse_process_start_ticks(stat: &str) -> Option<u64> {
     let command_end = stat.rfind(')')?;
     let remainder = stat.get(command_end + 1..)?;
@@ -99,20 +114,26 @@ fn encode_snapshot(
     pid: i32,
     start_ticks: u64,
     entry: &str,
+    failure: &str,
     timestamp_ms: u128,
 ) -> String {
     format!(
-        "version=1\nstate={}\npid={}\nstart_ticks={}\nentry={}\ntimestamp_ms={}\n",
+        "version=2\nstate={}\npid={}\nstart_ticks={}\nentry={}\nfailure={}\ntimestamp_ms={}\n",
         state.as_str(),
         pid,
         start_ticks,
         entry,
+        sanitize_failure(failure),
         timestamp_ms
     )
 }
 
 #[cfg(target_os = "android")]
-fn write_snapshot(arguments: &[OsString], state: NativeRuntimeState) -> io::Result<()> {
+fn write_snapshot(
+    arguments: &[OsString],
+    state: NativeRuntimeState,
+    failure: &str,
+) -> io::Result<()> {
     let directory = Path::new(STATUS_DIRECTORY);
     let directory_metadata = fs::symlink_metadata(directory)?;
     if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
@@ -126,7 +147,7 @@ fn write_snapshot(arguments: &[OsString], state: NativeRuntimeState) -> io::Resu
     let start_ticks = read_process_start_ticks(pid).unwrap_or(0);
     let entry = sanitize_entry(arguments);
     let timestamp_ms = timestamp_millis();
-    let content = encode_snapshot(state, pid, start_ticks, &entry, timestamp_ms);
+    let content = encode_snapshot(state, pid, start_ticks, &entry, failure, timestamp_ms);
     let temporary_name = format!(
         ".{STATUS_FILENAME}.{}.{}.tmp",
         std::process::id(),
@@ -153,8 +174,8 @@ fn write_snapshot(arguments: &[OsString], state: NativeRuntimeState) -> io::Resu
 }
 
 #[cfg(target_os = "android")]
-pub(crate) fn record(arguments: &[OsString], state: NativeRuntimeState) {
-    let _ = write_snapshot(arguments, state);
+pub(crate) fn record(arguments: &[OsString], state: NativeRuntimeState, failure: &str) {
+    let _ = write_snapshot(arguments, state, failure);
 }
 
 #[cfg(test)]
@@ -188,10 +209,12 @@ mod tests {
         ];
         assert_eq!(parse_target_pid(&arguments), Some(123));
         assert_eq!(sanitize_entry(&arguments), "resume");
-        let snapshot = encode_snapshot(NativeRuntimeState::Active, 123, 456, "resume", 789);
+        let snapshot = encode_snapshot(NativeRuntimeState::Active, 123, 456, "resume", "none", 789);
+        assert!(snapshot.contains("version=2\n"));
         assert!(snapshot.contains("state=active\n"));
         assert!(snapshot.contains("pid=123\n"));
         assert!(snapshot.contains("start_ticks=456\n"));
+        assert!(snapshot.contains("failure=none\n"));
     }
 
     #[test]
@@ -219,5 +242,7 @@ mod tests {
             OsString::from("x".repeat(MAXIMUM_ENTRY_BYTES + 1)),
         ];
         assert_eq!(sanitize_entry(&oversized_entry), "unknown");
+        assert_eq!(sanitize_failure("symbol_resolution"), "symbol_resolution");
+        assert_eq!(sanitize_failure("unsafe-value"), "unknown");
     }
 }

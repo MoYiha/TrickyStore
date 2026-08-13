@@ -747,7 +747,9 @@ class WebServer(
                     }
                 }
             }
-            if (values["version"] != "1") return@runCatching unavailable
+            val version =
+                values["version"]?.toIntOrNull()?.takeIf { it in 1..2 }
+                    ?: return@runCatching unavailable
             val state =
                 values["state"]?.takeIf { it in setOf("starting", "active", "failed") }
                     ?: return@runCatching unavailable
@@ -755,9 +757,31 @@ class WebServer(
             val recordedStartTicks = values["start_ticks"]?.toLongOrNull()?.takeIf { it > 0 } ?: 0L
             val currentStartTicks = readProcessStartTicks(pid)
             val alive = pid > 0 && recordedStartTicks > 0 && currentStartTicks == recordedStartTicks
+            val knownFailures =
+                setOf(
+                    "none",
+                    "request_validation",
+                    "target_attach",
+                    "symbol_resolution",
+                    "descriptor_transfer",
+                    "library_load",
+                    "entry_activation",
+                    "target_detach",
+                    "panic",
+                    "unknown",
+                )
+            val failure =
+                if (version >= 2) {
+                    values["failure"]?.takeIf { it in knownFailures } ?: "unknown"
+                } else if (state == "failed") {
+                    "unknown"
+                } else {
+                    "none"
+                }
             JSONObject()
                 .put("state", state)
                 .put("alive", alive)
+                .put("failure", failure)
                 .put("pid", pid)
                 .put("entry", values["entry"] ?: "unknown")
                 .put("timestamp_ms", values["timestamp_ms"]?.toLongOrNull() ?: 0L)

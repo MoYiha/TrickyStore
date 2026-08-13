@@ -209,7 +209,10 @@ async function main() {
     assert.match(uxSource, /\['ar', 'العربية'\]/);
     assert.match(uxSource, /document\.documentElement\.dir = locale === 'ar' \? 'rtl' : 'ltr'/);
     assert.match(uxSource, /html\[dir="rtl"\]/);
-    assert.match(uxSource, /node\.nodeValue = leading \+ tr\(trimmed\) \+ trailing/);
+    assert.match(uxSource, /record\.source = current/);
+    assert.match(uxSource, /if \(current !== rendered\) node\.nodeValue = rendered/);
+    assert.match(uxSource, /new global\.MutationObserver/);
+    assert.match(uxSource, /attributeFilter: \['placeholder','title','aria-label','data-label'\]/);
     assert.match(uxSource, /Identity is currently disabled\. You can enable it from Dashboard\./);
     assert.match(uxSource, /ct_language_panel/);
     assert.match(uxSource, /To add a locale:/);
@@ -229,8 +232,8 @@ async function main() {
     });
     assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
     assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
-    assert.ok(indexSource.includes('<script src="bridge.js?revision=8"></script>'));
-    assert.match(bridgeSource, /ux\.js\?revision=7/);
+    assert.ok(indexSource.includes('<script src="bridge.js?revision=9"></script>'));
+    assert.match(bridgeSource, /ux\.js\?revision=8/);
     assert.ok(!bridgeSource.includes('ux.js?revision=3'), 'Bridge must not request the retired cached UX loader');
 
     console.log('Native WebUI bridge compatibility tests passed');
