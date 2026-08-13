@@ -78,16 +78,14 @@ impl BinderFdCacheEntry {
 #[derive(Clone, Copy)]
 struct BinderFdFastCacheEntry {
     descriptor: i32,
-    device: u64,
-    inode: u64,
+    exchange_token: usize,
     hits_remaining: u8,
 }
 
 impl BinderFdFastCacheEntry {
     const EMPTY: Self = Self {
         descriptor: -1,
-        device: 0,
-        inode: 0,
+        exchange_token: 0,
         hits_remaining: 0,
     };
 }
@@ -180,12 +178,11 @@ fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
     Some(path_length)
 }
 
-fn take_fast_binder_fd_hit(descriptor: i32, identity: DescriptorIdentity) -> bool {
+fn take_fast_binder_fd_hit(descriptor: i32, exchange_token: usize) -> bool {
     BINDER_FD_FAST_CACHE.with(|cache| {
         let mut entry = cache.get();
         if entry.descriptor != descriptor
-            || entry.device != identity.device
-            || entry.inode != identity.inode
+            || entry.exchange_token != exchange_token
             || entry.hits_remaining == 0
         {
             return false;
@@ -196,20 +193,29 @@ fn take_fast_binder_fd_hit(descriptor: i32, identity: DescriptorIdentity) -> boo
     })
 }
 
-fn remember_fast_binder_fd(descriptor: i32, identity: DescriptorIdentity) {
+fn remember_fast_binder_fd(descriptor: i32, exchange_token: usize) {
     BINDER_FD_FAST_CACHE.with(|cache| {
         cache.set(BinderFdFastCacheEntry {
             descriptor,
-            device: identity.device,
-            inode: identity.inode,
+            exchange_token,
             hits_remaining: BINDER_FD_FAST_REVALIDATE_HITS,
         });
     });
 }
 
-pub fn is_binder_fd(descriptor: i32) -> bool {
-    if descriptor < 0 {
+/// Classifies the descriptor after a successful `BINDER_WRITE_READ` ioctl.
+///
+/// The successful Binder command is a required part of the trust decision: it
+/// prevents a stale positive cache entry from admitting an ordinary reused FD.
+/// The per-thread exchange pointer further binds fast hits to libbinder's
+/// stable call site, while device and inode are revalidated at a bounded
+/// interval without adding a syscall to every Binder transaction.
+pub fn is_binder_fd_after_successful_ioctl(descriptor: i32, exchange_token: usize) -> bool {
+    if descriptor < 0 || exchange_token == 0 {
         return false;
+    }
+    if take_fast_binder_fd_hit(descriptor, exchange_token) {
+        return true;
     }
 
     let Some(identity) = descriptor_identity(descriptor) else {
@@ -221,12 +227,6 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
     if identity.file_type != CHARACTER_DEVICE {
         return false;
     }
-    // Revalidate the open file description before taking the thread-local fast
-    // path. Descriptor numbers can be reused immediately after close(), so a
-    // descriptor-only cache can otherwise misclassify a different device.
-    if take_fast_binder_fd_hit(descriptor, identity) {
-        return true;
-    }
     let slot = descriptor as usize % BINDER_FD_CACHE_ENTRIES;
     if let Ok(cache) = BINDER_FD_CACHE.read() {
         let entry = cache[slot];
@@ -235,7 +235,7 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
             && entry.inode == identity.inode
         {
             if entry.is_binder {
-                remember_fast_binder_fd(descriptor, identity);
+                remember_fast_binder_fd(descriptor, exchange_token);
             }
             return entry.is_binder;
         }
@@ -269,7 +269,7 @@ pub fn is_binder_fd(descriptor: i32) -> bool {
         };
     }
     if is_binder {
-        remember_fast_binder_fd(descriptor, identity);
+        remember_fast_binder_fd(descriptor, exchange_token);
     }
     is_binder
 }
@@ -283,10 +283,7 @@ pub fn parse_android_api_level(value: &[u8]) -> Option<i32> {
             .checked_mul(10)?
             .checked_add(i32::from(digit - b'0'))
     })?;
-    // Keep syntax parsing forward-compatible without treating every future
-    // SDK number as supported. The C++ bridge applies the narrower
-    // compiler-validated Binder UAPI range before interception is enabled.
-    (31..=999).contains(&api).then_some(api)
+    (31..=37).contains(&api).then_some(api)
 }
 
 pub fn parse_kernel_release(value: &[u8]) -> Option<(i32, i32)> {
@@ -316,8 +313,12 @@ fn parse_decimal_component(value: &[u8]) -> Option<i32> {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_is_binder_fd(descriptor: i32) -> bool {
-    std::panic::catch_unwind(|| is_binder_fd(descriptor)).unwrap_or(false)
+pub extern "C" fn rust_is_binder_fd_after_successful_ioctl(
+    descriptor: i32,
+    exchange_token: usize,
+) -> bool {
+    std::panic::catch_unwind(|| is_binder_fd_after_successful_ioctl(descriptor, exchange_token))
+        .unwrap_or(false)
 }
 
 #[no_mangle]
@@ -411,7 +412,7 @@ mod tests {
             .open(&path)
             .unwrap();
 
-        assert!(!is_binder_fd(file.as_raw_fd()));
+        assert!(!is_binder_fd_after_successful_ioctl(file.as_raw_fd(), 1));
 
         drop(file);
         fs::remove_file(path).unwrap();
@@ -428,26 +429,15 @@ mod tests {
     }
 
     #[test]
-    fn fast_binder_cache_revalidates_after_bounded_hits() {
+    fn fast_binder_cache_is_bound_to_the_fd_and_exchange_call_site() {
         BINDER_FD_FAST_CACHE.with(|cache| cache.set(BinderFdFastCacheEntry::EMPTY));
-        let identity = DescriptorIdentity {
-            device: 7,
-            inode: 11,
-            file_type: CHARACTER_DEVICE,
-        };
-        remember_fast_binder_fd(123, identity);
-        assert!(!take_fast_binder_fd_hit(124, identity));
-        assert!(!take_fast_binder_fd_hit(
-            123,
-            DescriptorIdentity {
-                inode: 12,
-                ..identity
-            }
-        ));
+        remember_fast_binder_fd(123, 0x4567);
+        assert!(!take_fast_binder_fd_hit(124, 0x4567));
+        assert!(!take_fast_binder_fd_hit(123, 0x7654));
         for _ in 0..BINDER_FD_FAST_REVALIDATE_HITS {
-            assert!(take_fast_binder_fd_hit(123, identity));
+            assert!(take_fast_binder_fd_hit(123, 0x4567));
         }
-        assert!(!take_fast_binder_fd_hit(123, identity));
+        assert!(!take_fast_binder_fd_hit(123, 0x4567));
     }
 
     #[test]
@@ -463,9 +453,7 @@ mod tests {
         assert_eq!(parse_android_api_level(b"31"), Some(31));
         assert_eq!(parse_android_api_level(b"36"), Some(36));
         assert_eq!(parse_android_api_level(b"37"), Some(37));
-        assert_eq!(parse_android_api_level(b"38"), Some(38));
-        assert_eq!(parse_android_api_level(b"999"), Some(999));
-        assert_eq!(parse_android_api_level(b"1000"), None);
+        assert_eq!(parse_android_api_level(b"38"), None);
         assert_eq!(parse_kernel_release(b"6.1.75-android14"), Some((6, 1)));
         assert_eq!(parse_kernel_release(b"invalid"), None);
     }

@@ -526,7 +526,8 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
 
-    if (!rust_is_binder_fd(fd)) {
+    if (!rust_is_binder_fd_after_successful_ioctl(
+            fd, reinterpret_cast<uintptr_t>(arg))) {
       return result;
     }
 
@@ -548,8 +549,7 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
 
-    LOGD("read buffer %p size %llu consumed %llu",
-         reinterpret_cast<void *>(bwr.read_buffer),
+    LOGD("Binder read size %llu consumed %llu",
          (unsigned long long)bwr.read_size,
          (unsigned long long)bwr.read_consumed);
 
@@ -595,7 +595,7 @@ int new_ioctl(int fd, unsigned long request, ...) {
           transaction_info.code = txn.code;
           transaction_info.target = wb;
           need_intercept = true;
-          LOGD("intercept code=%d target=%p", txn.code, b);
+          LOGD("intercepting registered transaction code=%d", txn.code);
         }
         b->decStrong(nullptr);
       }
@@ -808,8 +808,8 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
     return false;
   const uid_t calling_uid = thread_state->getCallingUid();
   const pid_t calling_pid = thread_state->getCallingPid();
-  LOGD("intercept on binder %p code %d flags %d (reply=%s)", target.get(), code,
-       flags, reply ? "true" : "false");
+  LOGD("intercept code=%d flags=%d reply=%s", code, flags,
+       reply ? "true" : "false");
   Parcel tmpData, tmpReply, realData;
   CHECK(tmpData.writeStrongBinder(target));
   CHECK(tmpData.writeUint32(code));
