@@ -211,11 +211,6 @@ impl RemoteSession {
         {
             return Err("invalid remote call plan".into());
         }
-        // Once execution leaves the controlled call path unexpectedly, do
-        // not resume the tracee for best-effort cleanup. Restoring the saved
-        // process state and delivering any real pending signal takes priority.
-        self.remote_calls_blocked = true;
-
         let base_registers = self.registers;
         let mut call_registers = base_registers;
         let current_stack = stack_pointer(&call_registers);
@@ -232,6 +227,11 @@ impl RemoteSession {
         )?;
         write_registers(self.pid, &call_registers)?;
         self.registers = call_registers;
+        // Preparation failures happen while the tracee is safely stopped and
+        // must not disable cleanup calls. Block further remote execution only
+        // for the interval after we attempt to resume this injected call; an
+        // unexpected stop or wait failure then remains fail-closed.
+        self.remote_calls_blocked = true;
         if unsafe {
             ptrace(
                 PTRACE_CONT,
@@ -241,6 +241,9 @@ impl RemoteSession {
             )
         } == -1
         {
+            // PTRACE_CONT failed, so the tracee never left the controlled
+            // stop and best-effort cleanup remains safe.
+            self.remote_calls_blocked = false;
             return Err("could not continue the target process".into());
         }
 
