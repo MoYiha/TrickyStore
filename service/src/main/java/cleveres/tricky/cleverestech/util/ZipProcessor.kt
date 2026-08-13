@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.Logger
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.util.zip.ZipInputStream
@@ -102,7 +101,7 @@ object ZipProcessor {
         zip: ZipInputStream,
         maxBytes: Int,
     ): ByteArray? {
-        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val output = FastByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         return try {
             var total = 0
@@ -117,6 +116,7 @@ object ZipProcessor {
             output.toByteArray()
         } finally {
             buffer.fill(0)
+            output.wipe()
         }
     }
 }

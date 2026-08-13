@@ -90,7 +90,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -1267,7 +1266,7 @@ private fun saveCboxAtomically(
 }
 
 fun readBytes(inputStream: InputStream): ByteArray {
-    val buffer = ByteArrayOutputStream(minOf(MAX_XML_BYTES, 64 * 1024))
+    var output = ByteArray(minOf(MAX_XML_BYTES, 64 * 1024))
     val data = ByteArray(DEFAULT_BUFFER_SIZE)
     var total = 0
     try {
@@ -1276,12 +1275,20 @@ fun readBytes(inputStream: InputStream): ByteArray {
             if (nRead < 0) break
             if (nRead == 0) continue
             if (nRead > MAX_XML_BYTES - total) throw IOException("XML file exceeds 10 MiB")
-            buffer.write(data, 0, nRead)
+            val required = total + nRead
+            if (required > output.size) {
+                val previous = output
+                val nextSize = minOf(MAX_XML_BYTES, maxOf(required, previous.size * 2))
+                output = previous.copyOf(nextSize)
+                previous.fill(0)
+            }
+            data.copyInto(output, total, 0, nRead)
             total += nRead
         }
-        return buffer.toByteArray()
+        return output.copyOf(total)
     } finally {
         data.fill(0)
+        output.fill(0)
     }
 }
 

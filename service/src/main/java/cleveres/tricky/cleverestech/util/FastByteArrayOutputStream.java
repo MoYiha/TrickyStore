@@ -4,7 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
 /**
- * A non-synchronized implementation of ByteArrayOutputStream.
+ * A non-synchronized implementation of ByteArrayOutputStream with explicit
+ * best-effort buffer erasure for short-lived sensitive data.
  * Standard ByteArrayOutputStream methods are synchronized, which introduces
  * unnecessary overhead when thread safety is not required (e.g., local variables).
  */
@@ -47,8 +48,18 @@ public class FastByteArrayOutputStream extends ByteArrayOutputStream {
         return Arrays.copyOf(buf, count);
     }
 
+    /**
+     * Erases the complete allocated capacity, not just the currently used prefix.
+     * The stream can be reused after this call.
+     */
+    public void wipe() {
+        Arrays.fill(buf, (byte) 0);
+        count = 0;
+    }
+
     private void grow(int minCapacity) {
-        int oldCapacity = buf.length;
+        byte[] previous = buf;
+        int oldCapacity = previous.length;
         int newCapacity = oldCapacity << 1;
         if (newCapacity - minCapacity < 0)
             newCapacity = minCapacity;
@@ -57,6 +68,7 @@ public class FastByteArrayOutputStream extends ByteArrayOutputStream {
                 throw new OutOfMemoryError();
             newCapacity = Integer.MAX_VALUE;
         }
-        buf = Arrays.copyOf(buf, newCapacity);
+        buf = Arrays.copyOf(previous, newCapacity);
+        Arrays.fill(previous, (byte) 0);
     }
 }

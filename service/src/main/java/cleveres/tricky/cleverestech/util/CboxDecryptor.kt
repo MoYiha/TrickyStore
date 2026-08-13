@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech.util
 import android.util.Base64
 import cleveres.tricky.cleverestech.Logger
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
@@ -222,18 +221,23 @@ object CboxDecryptor {
         input: InputStream,
         maxBytes: Int,
     ): ByteArray? {
-        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val output = FastByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var total = 0
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            if (count == 0) continue
-            if (count > maxBytes - total) return null
-            output.write(buffer, 0, count)
-            total += count
+        return try {
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (count > maxBytes - total) return null
+                output.write(buffer, 0, count)
+                total += count
+            }
+            output.toByteArray()
+        } finally {
+            buffer.fill(0)
+            output.wipe()
         }
-        return output.toByteArray()
     }
 
     private val SIGNATURE_V2_DOMAIN =

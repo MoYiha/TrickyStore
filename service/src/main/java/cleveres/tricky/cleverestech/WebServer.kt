@@ -4,6 +4,7 @@ import android.system.Os
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.BackupEncryptor
 import cleveres.tricky.cleverestech.util.CboxDecryptor
+import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
@@ -11,7 +12,6 @@ import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -507,18 +507,23 @@ class WebServer(
         maxBytes: Int,
     ): ByteArray {
         require(maxBytes >= 0) { "maxBytes must not be negative" }
-        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        val output = FastByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var total = 0
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            if (count == 0) continue
-            if (count > maxBytes - total) throw IOException("Input exceeds limit")
-            output.write(buffer, 0, count)
-            total += count
+        return try {
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (count > maxBytes - total) throw IOException("Input exceeds limit")
+                output.write(buffer, 0, count)
+                total += count
+            }
+            output.toByteArray()
+        } finally {
+            buffer.fill(0)
+            output.wipe()
         }
-        return output.toByteArray()
     }
 
     private fun readTextLimited(
@@ -1721,6 +1726,8 @@ class WebServer(
 
         if (uri == "/api/resource_usage" && method == Method.GET) {
             val json = JSONObject()
+            json.put("version_name", BuildConfig.VERSION_NAME)
+            json.put("version_code", BuildConfig.VERSION_CODE)
             val keyboxCount = CertHack.getKeyboxCount()
             json.put("keybox_count", keyboxCount)
             val appConfig = File(configDir, "app_config")
@@ -2310,48 +2317,52 @@ class WebServer(
 
         fun createBackupZip(configDir: File): ByteArray {
             Config.ensurePrivacySeed(configDir).getOrThrow()
-            val bos = ByteArrayOutputStream()
-            ZipOutputStream(bos).use { zos ->
-                var totalBytes = 0L
-                BACKUP_CONFIG_FILES.sorted().forEach { name ->
-                    val file = File(configDir, name)
-                    if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
-                    val size = file.length()
-                    val entryLimit = backupEntryLimit(name)
-                    if (size !in 0..entryLimit.toLong()) {
-                        throw IOException("Backup entry exceeds size limit: $name")
-                    }
-                    totalBytes += size
-                    if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
-                        throw IOException("Backup exceeds uncompressed size limit")
-                    }
-                    zos.putNextEntry(ZipEntry(name))
-                    Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
-                    zos.closeEntry()
-                }
-
-                val keyboxDir = File(configDir, "keyboxes")
-                if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                    val keyboxes =
-                        listBoundedKeyboxFiles(keyboxDir, MAX_BACKUP_KEYBOXES) { file ->
-                            isValidKeyboxBackupPath("keyboxes/${file.name}")
-                        }
-                    keyboxes.forEach { keybox ->
-                        val size = keybox.length()
-                        if (size !in 1..MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong()) {
-                            throw IOException("Keybox exceeds size limit: ${keybox.name}")
+            val bos = FastByteArrayOutputStream()
+            return try {
+                ZipOutputStream(bos).use { zos ->
+                    var totalBytes = 0L
+                    BACKUP_CONFIG_FILES.sorted().forEach { name ->
+                        val file = File(configDir, name)
+                        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
+                        val size = file.length()
+                        val entryLimit = backupEntryLimit(name)
+                        if (size !in 0..entryLimit.toLong()) {
+                            throw IOException("Backup entry exceeds size limit: $name")
                         }
                         totalBytes += size
                         if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
                             throw IOException("Backup exceeds uncompressed size limit")
                         }
-                        zos.putNextEntry(ZipEntry("keyboxes/${keybox.name}"))
-                        Files.newInputStream(keybox.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
+                        zos.putNextEntry(ZipEntry(name))
+                        Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
                         zos.closeEntry()
                     }
+
+                    val keyboxDir = File(configDir, "keyboxes")
+                    if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        val keyboxes =
+                            listBoundedKeyboxFiles(keyboxDir, MAX_BACKUP_KEYBOXES) { file ->
+                                isValidKeyboxBackupPath("keyboxes/${file.name}")
+                            }
+                        keyboxes.forEach { keybox ->
+                            val size = keybox.length()
+                            if (size !in 1..MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong()) {
+                                throw IOException("Keybox exceeds size limit: ${keybox.name}")
+                            }
+                            totalBytes += size
+                            if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
+                                throw IOException("Backup exceeds uncompressed size limit")
+                            }
+                            zos.putNextEntry(ZipEntry("keyboxes/${keybox.name}"))
+                            Files.newInputStream(keybox.toPath(), LinkOption.NOFOLLOW_LINKS).use { it.copyTo(zos) }
+                            zos.closeEntry()
+                        }
+                    }
                 }
+                bos.toByteArray()
+            } finally {
+                bos.wipe()
             }
-            return bos.toByteArray()
         }
 
         fun createKeyboxVerificationJson(results: List<KeyboxVerifier.Result>): String {
@@ -2511,18 +2522,23 @@ class WebServer(
             input: InputStream,
             maxBytes: Int,
         ): ByteArray {
-            val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+            val output = FastByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) continue
-                if (count > maxBytes - total) throw IOException("Backup entry exceeds size limit")
-                output.write(buffer, 0, count)
-                total += count
+            return try {
+                var total = 0
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    if (count > maxBytes - total) throw IOException("Backup entry exceeds size limit")
+                    output.write(buffer, 0, count)
+                    total += count
+                }
+                output.toByteArray()
+            } finally {
+                buffer.fill(0)
+                output.wipe()
             }
-            return output.toByteArray()
         }
 
         private fun validateBackupEntry(

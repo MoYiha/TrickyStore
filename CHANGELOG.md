@@ -1,5 +1,12 @@
 # Changelog
 
+## V2.5.5
+
+- Added a one-click, fixed-allowlist support snapshot that excludes logs, package and keybox names, identity values, credentials, server configuration, and key material.
+- Kept scheduled remote keybox maintenance active independently of optional Identity Engine state.
+- Reduced residual sensitive data in heap buffers by erasing replaced and released in-memory stream capacity across import, backup, bridge, remote-source, and CBOX paths.
+- Pinned every external GitHub Action to a verified immutable commit, including the privileged v3.0.2 release action.
+
 ## V2.5.4
 
 - Reduced Binder hot-path syscall and allocation overhead with a reusable kernel-copy pipe, selective Binder stream parsing, and a bounded Binder-FD revalidation cache.

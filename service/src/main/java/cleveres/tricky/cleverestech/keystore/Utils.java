@@ -143,26 +143,30 @@ public final class Utils {
         if (cached != null && cached.matches(chain)) return cached.encoded;
 
         FastByteArrayOutputStream output = new FastByteArrayOutputStream(2048);
-        int total = 0;
-        Certificate[] issuerReferences = new Certificate[chain.length - 1];
-        for (int index = 1; index < chain.length; index++) {
-            Certificate certificate = chain[index];
-            byte[] encoded = certificate.getEncoded();
-            if (encoded.length == 0 || encoded.length > MAX_CERTIFICATE_BYTES ||
-                    encoded.length > MAX_CHAIN_BYTES - total) {
-                throw new CertificateException("Invalid certificate-chain size");
+        try {
+            int total = 0;
+            Certificate[] issuerReferences = new Certificate[chain.length - 1];
+            for (int index = 1; index < chain.length; index++) {
+                Certificate certificate = chain[index];
+                byte[] encoded = certificate.getEncoded();
+                if (encoded.length == 0 || encoded.length > MAX_CERTIFICATE_BYTES ||
+                        encoded.length > MAX_CHAIN_BYTES - total) {
+                    throw new CertificateException("Invalid certificate-chain size");
+                }
+                output.write(encoded, 0, encoded.length);
+                total += encoded.length;
+                issuerReferences[index - 1] = certificate;
             }
-            output.write(encoded, 0, encoded.length);
-            total += encoded.length;
-            issuerReferences[index - 1] = certificate;
-        }
 
-        byte[] encodedChain = output.toByteArray();
-        if (cache.size() >= MAX_THREAD_ISSUER_CACHE_ENTRIES && !cache.containsKey(cacheKey)) {
-            cache.clear();
+            byte[] encodedChain = output.toByteArray();
+            if (cache.size() >= MAX_THREAD_ISSUER_CACHE_ENTRIES && !cache.containsKey(cacheKey)) {
+                cache.clear();
+            }
+            cache.put(cacheKey, new EncodedIssuerChain(issuerReferences, encodedChain));
+            return encodedChain;
+        } finally {
+            output.wipe();
         }
-        cache.put(cacheKey, new EncodedIssuerChain(issuerReferences, encodedChain));
-        return encodedChain;
     }
 
     public static void putCertificateChain(KeyEntryResponse response, Certificate[] chain)

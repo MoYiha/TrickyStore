@@ -4,6 +4,7 @@ import android.util.Base64
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.CboxDecryptor
 import cleveres.tricky.cleverestech.util.DeviceKeyManager
+import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.ZipProcessor
@@ -434,21 +435,27 @@ object ServerManager {
             }
             val bytes =
                 conn.inputStream.use { input ->
-                    val buffer =
-                        java.io.ByteArrayOutputStream(
+                    val output =
+                        FastByteArrayOutputStream(
                             minOf(contentLength.coerceAtLeast(0), 65536L).toInt(),
                         )
                     val chunk = ByteArray(8192)
-                    var totalRead = 0
-                    var count: Int
-                    while (input.read(chunk).also { count = it } != -1) {
-                        totalRead += count
-                        if (totalRead > maxResponseSize) {
-                            throw SecurityException("Server response exceeds ${maxResponseSize / 1024 / 1024}MB limit")
+                    try {
+                        var totalRead = 0
+                        var count: Int
+                        while (input.read(chunk).also { count = it } != -1) {
+                            if (count == 0) continue
+                            totalRead += count
+                            if (totalRead > maxResponseSize) {
+                                throw SecurityException("Server response exceeds ${maxResponseSize / 1024 / 1024}MB limit")
+                            }
+                            output.write(chunk, 0, count)
                         }
-                        buffer.write(chunk, 0, count)
+                        output.toByteArray()
+                    } finally {
+                        chunk.fill(0)
+                        output.wipe()
                     }
-                    buffer.toByteArray()
                 }
 
             val result =
@@ -707,21 +714,8 @@ object ServerManager {
         scheduler.scheduleWithFixedDelay(
             {
                 try {
-                    if (!Config.isSpoofEnabled) return@scheduleWithFixedDelay
                     val now = System.currentTimeMillis()
-                    val dueServers =
-                        serversList
-                            .filter { server ->
-                                server.enabled &&
-                                    server.autoRefresh &&
-                                    (
-                                        server.lastChecked <= 0L ||
-                                            server.lastChecked > now ||
-                                            now - server.lastChecked >=
-                                            TimeUnit.HOURS.toMillis(server.refreshIntervalHours.toLong())
-                                    )
-                            }
-                            .sortedBy { it.priority }
+                    val dueServers = selectDueServersForRefresh(serversList, now)
                     dueServers.forEach(::fetchFromServer)
                     if (dueServers.isNotEmpty()) Config.updateKeyBoxesSync()
                 } catch (e: Exception) {
@@ -733,6 +727,23 @@ object ServerManager {
             TimeUnit.MINUTES,
         )
     }
+
+    internal fun selectDueServersForRefresh(
+        candidates: Iterable<ServerConfig>,
+        now: Long,
+    ): List<ServerConfig> =
+        candidates
+            .filter { server ->
+                server.enabled &&
+                    server.autoRefresh &&
+                    (
+                        server.lastChecked <= 0L ||
+                            server.lastChecked > now ||
+                            now - server.lastChecked >=
+                            TimeUnit.HOURS.toMillis(server.refreshIntervalHours.toLong())
+                    )
+            }
+            .sortedBy { it.priority }
 
     private fun persistStatusSafely() {
         try {

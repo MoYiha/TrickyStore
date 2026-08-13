@@ -3,6 +3,7 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -131,7 +132,7 @@ class WebServerUXTest {
         assertTrue(html.contains("height: min(500px, 60dvh) !important"))
         assertTrue(html.contains("async function fetchAuth"))
         assertTrue(html.contains("window.CleveresBridge.fetch(url, options)"))
-        assertTrue(html.contains("<script src=\"bridge.js?revision=7\"></script>"))
+        assertTrue(html.contains("<script src=\"bridge.js?revision=8\"></script>"))
         assertTrue(html.contains("<script src=\"policy.js?revision=4\"></script>"))
         assertTrue(html.contains("function downloadBlob"))
         assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
@@ -204,6 +205,22 @@ class WebServerUXTest {
                 "/api/restore",
             )
         assertEquals(expectedRoutes, clientRoutes)
+    }
+
+    @Test
+    fun testDiagnosticsResourceContract() {
+        val url = URL("http://localhost:${server.listeningPort}/api/resource_usage?token=${server.token}")
+        val conn = url.openConnection() as HttpURLConnection
+        val resource = JSONObject(conn.inputStream.bufferedReader().readText())
+
+        assertEquals(BuildConfig.VERSION_NAME, resource.getString("version_name"))
+        assertEquals(BuildConfig.VERSION_CODE, resource.getInt("version_code"))
+        assertTrue(resource.has("native_runtime"))
+        assertTrue(resource.has("keystore_interceptor_running"))
+        assertTrue(resource.has("telephony_interceptor_running"))
+        listOf("logs", "packages", "keyboxes", "servers", "identity").forEach { sensitiveCollection ->
+            assertFalse(resource.has(sensitiveCollection))
+        }
     }
 
     private fun fetchHtml(): String {
