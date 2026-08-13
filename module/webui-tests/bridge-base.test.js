@@ -232,8 +232,8 @@ async function main() {
     });
     assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
     assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
-    assert.ok(indexSource.includes('<script src="bridge.js?revision=9"></script>'));
-    assert.match(bridgeSource, /ux\.js\?revision=8/);
+    assert.ok(indexSource.includes('<script src="bridge.js?revision=10"></script>'));
+    assert.match(bridgeSource, /ux\.js\?revision=9/);
     assert.ok(!bridgeSource.includes('ux.js?revision=3'), 'Bridge must not request the retired cached UX loader');
 
     console.log('Native WebUI bridge compatibility tests passed');
