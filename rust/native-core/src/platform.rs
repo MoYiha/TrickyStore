@@ -283,10 +283,9 @@ pub fn parse_android_api_level(value: &[u8]) -> Option<i32> {
             .checked_mul(10)?
             .checked_add(i32::from(digit - b'0'))
     })?;
-    // Keep the parser forward-compatible. Native fallback policy remains
-    // separately bounded to ABI versions that were compiled and tested; a
-    // future API may proceed only after the C++ bridge validates live Binder
-    // traffic against the current UAPI layout.
+    // Keep syntax parsing forward-compatible without treating every future
+    // SDK number as supported. The C++ bridge applies the narrower
+    // compiler-validated Binder UAPI range before interception is enabled.
     (31..=999).contains(&api).then_some(api)
 }
 
