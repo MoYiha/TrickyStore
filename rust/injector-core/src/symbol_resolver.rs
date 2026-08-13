@@ -260,9 +260,10 @@ fn resolve_symbol(
     let remote_base = process_image_base(remote_mappings, module, remote_image)
         .ok_or_else(|| "target platform library base is unavailable".to_string())?;
 
-    if !verified_images.iter().any(|pair| {
-        *pair == (module, local_image, remote_image)
-    }) {
+    if !verified_images
+        .iter()
+        .any(|pair| *pair == (module, local_image, remote_image))
+    {
         verify_matching_elf_identity(
             pid,
             local_mappings,
@@ -314,19 +315,14 @@ fn verify_matching_elf_identity(
     })
     .map_err(|error| format!("local platform image identity is unavailable: {error}"))?;
     let remote_identity = read_elf_identity(remote_base, |address, output| {
-        read_remote_image_memory(
-            pid,
-            remote_mappings,
-            module,
-            remote_image,
-            address,
-            output,
-        )
+        read_remote_image_memory(pid, remote_mappings, module, remote_image, address, output)
     })
     .map_err(|error| format!("target platform image identity is unavailable: {error}"))?;
 
     if local_identity != remote_identity {
-        return Err("target platform library ELF build identity does not match the injector".into());
+        return Err(
+            "target platform library ELF build identity does not match the injector".into(),
+        );
     }
     Ok(())
 }
@@ -640,18 +636,10 @@ mod tests {
 
     #[test]
     fn different_builds_or_abis_do_not_share_an_identity() {
-        let first = identity_from_image(&synthetic_elf(
-            ELF_MACHINE_AARCH64,
-            0,
-            &[1, 2, 3, 4],
-        ))
-        .unwrap();
-        let different_build = identity_from_image(&synthetic_elf(
-            ELF_MACHINE_AARCH64,
-            0,
-            &[1, 2, 3, 5],
-        ))
-        .unwrap();
+        let first =
+            identity_from_image(&synthetic_elf(ELF_MACHINE_AARCH64, 0, &[1, 2, 3, 4])).unwrap();
+        let different_build =
+            identity_from_image(&synthetic_elf(ELF_MACHINE_AARCH64, 0, &[1, 2, 3, 5])).unwrap();
         let different_abi =
             identity_from_image(&synthetic_elf(ELF_MACHINE_X86_64, 0, &[1, 2, 3, 4])).unwrap();
         assert_ne!(first, different_build);
