@@ -11,6 +11,7 @@ const STATX_INO: c_uint = 0x100;
 const FILE_TYPE_MASK: u16 = 0o170_000;
 const CHARACTER_DEVICE: u16 = 0o020_000;
 const BINDER_FD_CACHE_ENTRIES: usize = 64;
+const BINDER_FD_FAST_CACHE_ENTRIES: usize = 4;
 const BINDER_FD_FAST_REVALIDATE_HITS: u8 = 31;
 const PROC_FD_PREFIX: &[u8] = b"/proc/self/fd/";
 const MAXIMUM_DESCRIPTOR_PATH_BYTES: usize = 64;
@@ -95,8 +96,13 @@ static BINDER_FD_CACHE: RwLock<[BinderFdCacheEntry; BINDER_FD_CACHE_ENTRIES]> =
 static EMPTY_PATH: [c_char; 1] = [0];
 
 thread_local! {
-    static BINDER_FD_FAST_CACHE: Cell<BinderFdFastCacheEntry> =
-        const { Cell::new(BinderFdFastCacheEntry::EMPTY) };
+    // libbinder can legitimately alternate a small number of BINDER_WRITE_READ
+    // exchange structures on the same thread. Keeping a bounded set avoids
+    // turning those alternations into repeated statx/RwLock work while every
+    // entry still remains bound to both the descriptor and exchange pointer.
+    static BINDER_FD_FAST_CACHE: Cell<[BinderFdFastCacheEntry; BINDER_FD_FAST_CACHE_ENTRIES]> =
+        const { Cell::new([BinderFdFastCacheEntry::EMPTY; BINDER_FD_FAST_CACHE_ENTRIES]) };
+    static BINDER_FD_FAST_CACHE_NEXT: Cell<usize> = const { Cell::new(0) };
 }
 
 extern "C" {
@@ -178,28 +184,79 @@ fn write_descriptor_path(descriptor: i32, output: &mut [u8]) -> Option<usize> {
     Some(path_length)
 }
 
+fn lookup_binder_fd_cache(
+    cache: &[BinderFdCacheEntry; BINDER_FD_CACHE_ENTRIES],
+    descriptor: i32,
+    identity: DescriptorIdentity,
+) -> Option<bool> {
+    cache
+        .iter()
+        .find(|entry| {
+            entry.descriptor == descriptor
+                && entry.device == identity.device
+                && entry.inode == identity.inode
+        })
+        .map(|entry| entry.is_binder)
+}
+
+fn remember_binder_fd_cache(
+    cache: &mut [BinderFdCacheEntry; BINDER_FD_CACHE_ENTRIES],
+    descriptor: i32,
+    identity: DescriptorIdentity,
+    is_binder: bool,
+) {
+    let replacement = cache
+        .iter()
+        .position(|entry| entry.descriptor == descriptor)
+        .or_else(|| cache.iter().position(|entry| entry.descriptor < 0))
+        .unwrap_or(descriptor as usize % BINDER_FD_CACHE_ENTRIES);
+    cache[replacement] = BinderFdCacheEntry {
+        descriptor,
+        device: identity.device,
+        inode: identity.inode,
+        is_binder,
+    };
+}
+
 fn take_fast_binder_fd_hit(descriptor: i32, exchange_token: usize) -> bool {
     BINDER_FD_FAST_CACHE.with(|cache| {
-        let mut entry = cache.get();
-        if entry.descriptor != descriptor
-            || entry.exchange_token != exchange_token
-            || entry.hits_remaining == 0
-        {
-            return false;
+        let mut entries = cache.get();
+        for entry in &mut entries {
+            if entry.descriptor == descriptor
+                && entry.exchange_token == exchange_token
+                && entry.hits_remaining != 0
+            {
+                entry.hits_remaining -= 1;
+                cache.set(entries);
+                return true;
+            }
         }
-        entry.hits_remaining -= 1;
-        cache.set(entry);
-        true
+        false
     })
 }
 
 fn remember_fast_binder_fd(descriptor: i32, exchange_token: usize) {
     BINDER_FD_FAST_CACHE.with(|cache| {
-        cache.set(BinderFdFastCacheEntry {
+        let mut entries = cache.get();
+        if let Some(entry) = entries
+            .iter_mut()
+            .find(|entry| entry.descriptor == descriptor && entry.exchange_token == exchange_token)
+        {
+            entry.hits_remaining = BINDER_FD_FAST_REVALIDATE_HITS;
+            cache.set(entries);
+            return;
+        }
+        let slot = BINDER_FD_FAST_CACHE_NEXT.with(|next| {
+            let slot = next.get() % BINDER_FD_FAST_CACHE_ENTRIES;
+            next.set((slot + 1) % BINDER_FD_FAST_CACHE_ENTRIES);
+            slot
+        });
+        entries[slot] = BinderFdFastCacheEntry {
             descriptor,
             exchange_token,
             hits_remaining: BINDER_FD_FAST_REVALIDATE_HITS,
-        });
+        };
+        cache.set(entries);
     });
 }
 
@@ -207,9 +264,10 @@ fn remember_fast_binder_fd(descriptor: i32, exchange_token: usize) {
 ///
 /// The successful Binder command is a required part of the trust decision: it
 /// prevents a stale positive cache entry from admitting an ordinary reused FD.
-/// The per-thread exchange pointer further binds fast hits to libbinder's
-/// stable call site, while device and inode are revalidated at a bounded
-/// interval without adding a syscall to every Binder transaction.
+/// Fast hits remain bound to both the FD and the successful exchange pointer;
+/// a small per-thread set tolerates normal libbinder call-site alternation.
+/// Device and inode identity are revalidated at a bounded interval for each
+/// cached pair without adding a syscall to every Binder transaction.
 pub fn is_binder_fd_after_successful_ioctl(descriptor: i32, exchange_token: usize) -> bool {
     if descriptor < 0 || exchange_token == 0 {
         return false;
@@ -227,17 +285,12 @@ pub fn is_binder_fd_after_successful_ioctl(descriptor: i32, exchange_token: usiz
     if identity.file_type != CHARACTER_DEVICE {
         return false;
     }
-    let slot = descriptor as usize % BINDER_FD_CACHE_ENTRIES;
     if let Ok(cache) = BINDER_FD_CACHE.read() {
-        let entry = cache[slot];
-        if entry.descriptor == descriptor
-            && entry.device == identity.device
-            && entry.inode == identity.inode
-        {
-            if entry.is_binder {
+        if let Some(is_binder) = lookup_binder_fd_cache(&cache, descriptor, identity) {
+            if is_binder {
                 remember_fast_binder_fd(descriptor, exchange_token);
             }
-            return entry.is_binder;
+            return is_binder;
         }
     }
 
@@ -261,12 +314,7 @@ pub fn is_binder_fd_after_successful_ioctl(descriptor: i32, exchange_token: usiz
     }
     let is_binder = is_binder_device_path(&target[..target_length as usize]);
     if let Ok(mut cache) = BINDER_FD_CACHE.write() {
-        cache[slot] = BinderFdCacheEntry {
-            descriptor,
-            device: identity.device,
-            inode: identity.inode,
-            is_binder,
-        };
+        remember_binder_fd_cache(&mut cache, descriptor, identity, is_binder);
     }
     if is_binder {
         remember_fast_binder_fd(descriptor, exchange_token);
@@ -381,6 +429,13 @@ pub unsafe extern "C" fn rust_parse_kernel_release(
 mod tests {
     use super::*;
 
+    fn reset_fast_binder_cache() {
+        BINDER_FD_FAST_CACHE.with(|cache| {
+            cache.set([BinderFdFastCacheEntry::EMPTY; BINDER_FD_FAST_CACHE_ENTRIES]);
+        });
+        BINDER_FD_FAST_CACHE_NEXT.with(|next| next.set(0));
+    }
+
     #[test]
     fn classifies_only_supported_binder_devices() {
         assert!(is_binder_device_path(b"/dev/binder"));
@@ -429,8 +484,58 @@ mod tests {
     }
 
     #[test]
+    fn binder_fd_cache_keeps_colliding_descriptors_resident() {
+        let mut cache = [BinderFdCacheEntry::EMPTY; BINDER_FD_CACHE_ENTRIES];
+        let first = DescriptorIdentity {
+            device: 1,
+            inode: 100,
+            file_type: CHARACTER_DEVICE,
+        };
+        let second = DescriptorIdentity {
+            device: 2,
+            inode: 200,
+            file_type: CHARACTER_DEVICE,
+        };
+        let first_descriptor = 3;
+        let second_descriptor = first_descriptor + BINDER_FD_CACHE_ENTRIES as i32;
+
+        remember_binder_fd_cache(&mut cache, first_descriptor, first, true);
+        remember_binder_fd_cache(&mut cache, second_descriptor, second, true);
+
+        assert_eq!(
+            lookup_binder_fd_cache(&cache, first_descriptor, first),
+            Some(true)
+        );
+        assert_eq!(
+            lookup_binder_fd_cache(&cache, second_descriptor, second),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn binder_fd_cache_replaces_reused_descriptor_identity() {
+        let mut cache = [BinderFdCacheEntry::EMPTY; BINDER_FD_CACHE_ENTRIES];
+        let old_identity = DescriptorIdentity {
+            device: 1,
+            inode: 100,
+            file_type: CHARACTER_DEVICE,
+        };
+        let new_identity = DescriptorIdentity {
+            device: 1,
+            inode: 101,
+            file_type: CHARACTER_DEVICE,
+        };
+
+        remember_binder_fd_cache(&mut cache, 9, old_identity, true);
+        remember_binder_fd_cache(&mut cache, 9, new_identity, false);
+
+        assert_eq!(lookup_binder_fd_cache(&cache, 9, old_identity), None);
+        assert_eq!(lookup_binder_fd_cache(&cache, 9, new_identity), Some(false));
+    }
+
+    #[test]
     fn fast_binder_cache_is_bound_to_the_fd_and_exchange_call_site() {
-        BINDER_FD_FAST_CACHE.with(|cache| cache.set(BinderFdFastCacheEntry::EMPTY));
+        reset_fast_binder_cache();
         remember_fast_binder_fd(123, 0x4567);
         assert!(!take_fast_binder_fd_hit(124, 0x4567));
         assert!(!take_fast_binder_fd_hit(123, 0x7654));
@@ -438,6 +543,20 @@ mod tests {
             assert!(take_fast_binder_fd_hit(123, 0x4567));
         }
         assert!(!take_fast_binder_fd_hit(123, 0x4567));
+    }
+
+    #[test]
+    fn fast_binder_cache_keeps_alternating_exchange_sites_hot() {
+        reset_fast_binder_cache();
+        remember_fast_binder_fd(123, 0x1000);
+        remember_fast_binder_fd(123, 0x2000);
+
+        for _ in 0..BINDER_FD_FAST_REVALIDATE_HITS {
+            assert!(take_fast_binder_fd_hit(123, 0x1000));
+            assert!(take_fast_binder_fd_hit(123, 0x2000));
+        }
+        assert!(!take_fast_binder_fd_hit(123, 0x1000));
+        assert!(!take_fast_binder_fd_hit(123, 0x2000));
     }
 
     #[test]
