@@ -7,8 +7,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 internal const val RUNTIME_RETRY_INITIAL_MS = 1_000L
@@ -37,9 +35,9 @@ internal class ConflatedRefreshScheduler(
     private val debounceMs: Long,
     private val refresh: suspend () -> Unit,
 ) {
-    private val executionMutex = Mutex()
     private val stateLock = Any()
-    private var pendingJob: Job? = null
+    private var workerJob: Job? = null
+    private var requestedGeneration = 0L
 
     init {
         require(debounceMs >= 0) { "debounceMs must not be negative" }
@@ -47,19 +45,40 @@ internal class ConflatedRefreshScheduler(
 
     fun submit() {
         synchronized(stateLock) {
-            pendingJob?.cancel()
-            pendingJob =
-                scope.launch {
-                    if (debounceMs > 0) delay(debounceMs)
-                    executionMutex.withLock { refresh() }
+            requestedGeneration++
+            if (workerJob?.isActive == true) return
+            workerJob = scope.launch { drainRequests() }
+        }
+    }
+
+    private suspend fun drainRequests() {
+        while (true) {
+            val generation = synchronized(stateLock) { requestedGeneration }
+            if (debounceMs > 0) delay(debounceMs)
+
+            if (synchronized(stateLock) { requestedGeneration != generation }) {
+                continue
+            }
+
+            refresh()
+
+            val finished =
+                synchronized(stateLock) {
+                    if (requestedGeneration == generation) {
+                        workerJob = null
+                        true
+                    } else {
+                        false
+                    }
                 }
+            if (finished) return
         }
     }
 
     fun cancel() {
         synchronized(stateLock) {
-            pendingJob?.cancel()
-            pendingJob = null
+            workerJob?.cancel()
+            workerJob = null
         }
     }
 }
