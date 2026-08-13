@@ -76,6 +76,8 @@ Legacy-Konzept. Die aktuelle WebUI bietet keinen Schalter zum Abschalten der Cor
 
 Zuerst Dashboard für Version, Engine, Profile, Keybox Count, Target Size, RKP, DRM und native Features prüfen und den ersten Fehler in Logs suchen. Wenn WebUI nicht startet: logcat, daemon, `webroot`, architecture-specific `webui_bridge` und Module-Manager-Status prüfen.
 
+Copy Diagnostics unter Info & Resources kopiert eine begrenzte Support-Zusammenfassung mit englischen Schlüsseln und fester Allowlist. Enthalten sind Version, Root Environment, Native/Interceptor State, aggregierte Keybox/Rule Counts, Process CPU/RSS und Feature Flags; ausgeschlossen sind Logs, Package-/Keybox-Namen, Identity Values, Credentials, Server Configuration und Key Material. Vor dem Teilen prüfen, da Feature Flags die Modulkonfiguration beschreiben.
+
 Zur Isolation Minimal + Reboot, genuine Verhalten bestätigen und Funktionen Schritt für Schritt aktivieren. Effective State zeigt Rule/Profile, Scope, Template, Keybox Ref, Privacy, Features, Patches, RKP/DRM, KeyMint/StrongBox, Provider Coexistence und Reboot Requirement ohne private Keys.
 
 <a id="drm-passthrough"></a>

@@ -372,7 +372,9 @@
             backupPlaceholder: 'Enter a strong backup password',
             show: 'Show', hide: 'Hide',
             exportSettings: 'Export Encrypted Settings', importSettings: 'Import Encrypted Settings', synchronizeRuntime: 'Synchronize Runtime',
-            keyboxHubCopy: 'Get an API key for the recommended remote server here.', getApiKey: 'Get API Key'
+            keyboxHubCopy: 'Get an API key for the recommended remote server here.', getApiKey: 'Get API Key',
+            diagnosticsTitle: 'Support Diagnostics', diagnosticsHint: 'Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material.',
+            copyDiagnostics: 'Copy Diagnostics', diagnosticsCollecting: 'Collecting...', diagnosticsCopied: 'Diagnostics copied', diagnosticsFailed: 'Unable to collect diagnostics'
         },
         tr: {
             backupPassword: 'Yedekleme Parolası',
@@ -380,42 +382,58 @@
             backupPlaceholder: 'Güçlü bir yedekleme parolası girin',
             show: 'Göster', hide: 'Gizle',
             exportSettings: 'Şifreli Ayarları Dışa Aktar', importSettings: 'Şifreli Ayarları İçe Aktar', synchronizeRuntime: 'Çalışma Zamanını Eşitle',
-            keyboxHubCopy: "Önerilen remote server için API key'i bu adresten alabilirsiniz.", getApiKey: 'API Key Al'
+            keyboxHubCopy: "Önerilen remote server için API key'i bu adresten alabilirsiniz.", getApiKey: 'API Key Al',
+            diagnosticsTitle: 'Destek Tanılaması', diagnosticsHint: 'Log, paket adı, keybox adı, kimlik değeri, kimlik bilgisi veya anahtar materyali içermeyen sınırlı bir destek özeti kopyalayın.',
+            copyDiagnostics: 'Tanılamayı Kopyala', diagnosticsCollecting: 'Toplanıyor...', diagnosticsCopied: 'Tanılama kopyalandı', diagnosticsFailed: 'Tanılama toplanamadı'
         },
         'zh-CN': {
             backupPassword: '备份密码', backupHint: '必填，至少 12 个字符。', backupPlaceholder: '输入一个高强度备份密码', show: '显示', hide: '隐藏',
             exportSettings: '导出加密设置', importSettings: '导入加密设置', synchronizeRuntime: '同步运行时',
-            keyboxHubCopy: '可在此获取推荐远程服务器所需的 API 密钥。', getApiKey: '获取 API 密钥'
+            keyboxHubCopy: '可在此获取推荐远程服务器所需的 API 密钥。', getApiKey: '获取 API 密钥',
+            diagnosticsTitle: '支持诊断', diagnosticsHint: '复制有界支持摘要，不包含日志、包名、密钥盒名称、身份值、凭据或密钥材料。',
+            copyDiagnostics: '复制诊断', diagnosticsCollecting: '正在收集…', diagnosticsCopied: '诊断已复制', diagnosticsFailed: '无法收集诊断'
         },
         es: {
             backupPassword: 'Contraseña de respaldo', backupHint: 'Obligatoria, mínimo 12 caracteres.', backupPlaceholder: 'Introduce una contraseña de respaldo segura', show: 'Mostrar', hide: 'Ocultar',
             exportSettings: 'Exportar ajustes cifrados', importSettings: 'Importar ajustes cifrados', synchronizeRuntime: 'Sincronizar runtime',
-            keyboxHubCopy: 'Obtén aquí una clave API para el servidor remoto recomendado.', getApiKey: 'Obtener clave API'
+            keyboxHubCopy: 'Obtén aquí una clave API para el servidor remoto recomendado.', getApiKey: 'Obtener clave API',
+            diagnosticsTitle: 'Diagnóstico de soporte', diagnosticsHint: 'Copia un resumen acotado sin registros, nombres de paquetes o keyboxes, valores de identidad, credenciales ni material de claves.',
+            copyDiagnostics: 'Copiar diagnóstico', diagnosticsCollecting: 'Recopilando...', diagnosticsCopied: 'Diagnóstico copiado', diagnosticsFailed: 'No se pudo recopilar el diagnóstico'
         },
         de: {
             backupPassword: 'Backup-Passwort', backupHint: 'Erforderlich, mindestens 12 Zeichen.', backupPlaceholder: 'Ein sicheres Backup-Passwort eingeben', show: 'Anzeigen', hide: 'Ausblenden',
             exportSettings: 'Verschlüsselte Einstellungen exportieren', importSettings: 'Verschlüsselte Einstellungen importieren', synchronizeRuntime: 'Laufzeit synchronisieren',
-            keyboxHubCopy: 'Hier erhältst du einen API-Schlüssel für den empfohlenen Remote-Server.', getApiKey: 'API-Schlüssel abrufen'
+            keyboxHubCopy: 'Hier erhältst du einen API-Schlüssel für den empfohlenen Remote-Server.', getApiKey: 'API-Schlüssel abrufen',
+            diagnosticsTitle: 'Support-Diagnose', diagnosticsHint: 'Kopiert eine begrenzte Support-Zusammenfassung ohne Logs, Paket- oder Keybox-Namen, Identitätswerte, Zugangsdaten oder Schlüsselmaterial.',
+            copyDiagnostics: 'Diagnose kopieren', diagnosticsCollecting: 'Wird erfasst...', diagnosticsCopied: 'Diagnose kopiert', diagnosticsFailed: 'Diagnose konnte nicht erfasst werden'
         },
         ru: {
             backupPassword: 'Пароль резервной копии', backupHint: 'Обязательно, не менее 12 символов.', backupPlaceholder: 'Введите надежный пароль резервной копии', show: 'Показать', hide: 'Скрыть',
             exportSettings: 'Экспортировать зашифрованные настройки', importSettings: 'Импортировать зашифрованные настройки', synchronizeRuntime: 'Синхронизировать среду',
-            keyboxHubCopy: 'Здесь можно получить API-ключ для рекомендуемого удаленного сервера.', getApiKey: 'Получить API-ключ'
+            keyboxHubCopy: 'Здесь можно получить API-ключ для рекомендуемого удаленного сервера.', getApiKey: 'Получить API-ключ',
+            diagnosticsTitle: 'Диагностика поддержки', diagnosticsHint: 'Копирует ограниченную сводку без логов, имен пакетов и keybox, значений идентичности, учетных данных или ключевого материала.',
+            copyDiagnostics: 'Копировать диагностику', diagnosticsCollecting: 'Сбор данных...', diagnosticsCopied: 'Диагностика скопирована', diagnosticsFailed: 'Не удалось собрать диагностику'
         },
         id: {
             backupPassword: 'Kata Sandi Cadangan', backupHint: 'Wajib, minimal 12 karakter.', backupPlaceholder: 'Masukkan kata sandi cadangan yang kuat', show: 'Tampilkan', hide: 'Sembunyikan',
             exportSettings: 'Ekspor Pengaturan Terenkripsi', importSettings: 'Impor Pengaturan Terenkripsi', synchronizeRuntime: 'Sinkronkan Runtime',
-            keyboxHubCopy: 'Dapatkan API key untuk remote server yang direkomendasikan di sini.', getApiKey: 'Dapatkan API Key'
+            keyboxHubCopy: 'Dapatkan API key untuk remote server yang direkomendasikan di sini.', getApiKey: 'Dapatkan API Key',
+            diagnosticsTitle: 'Diagnostik Dukungan', diagnosticsHint: 'Salin ringkasan dukungan terbatas tanpa log, nama paket atau keybox, nilai identitas, kredensial, atau material kunci.',
+            copyDiagnostics: 'Salin Diagnostik', diagnosticsCollecting: 'Mengumpulkan...', diagnosticsCopied: 'Diagnostik disalin', diagnosticsFailed: 'Diagnostik tidak dapat dikumpulkan'
         },
         hi: {
             backupPassword: 'बैकअप पासवर्ड', backupHint: 'आवश्यक, कम से कम 12 अक्षर।', backupPlaceholder: 'एक मजबूत बैकअप पासवर्ड दर्ज करें', show: 'दिखाएं', hide: 'छिपाएं',
             exportSettings: 'एन्क्रिप्टेड सेटिंग्स निर्यात करें', importSettings: 'एन्क्रिप्टेड सेटिंग्स आयात करें', synchronizeRuntime: 'रनटाइम सिंक करें',
-            keyboxHubCopy: 'अनुशंसित रिमोट सर्वर के लिए API key यहां प्राप्त करें।', getApiKey: 'API Key प्राप्त करें'
+            keyboxHubCopy: 'अनुशंसित रिमोट सर्वर के लिए API key यहां प्राप्त करें।', getApiKey: 'API Key प्राप्त करें',
+            diagnosticsTitle: 'सहायता निदान', diagnosticsHint: 'Logs, package या keybox नाम, identity values, credentials या key material के बिना सीमित सहायता सारांश कॉपी करें।',
+            copyDiagnostics: 'निदान कॉपी करें', diagnosticsCollecting: 'एकत्र किया जा रहा है...', diagnosticsCopied: 'निदान कॉपी हुआ', diagnosticsFailed: 'निदान एकत्र नहीं हो सका'
         },
         ar: {
             backupPassword: 'كلمة مرور النسخة الاحتياطية', backupHint: 'مطلوبة، 12 حرفا على الأقل.', backupPlaceholder: 'أدخل كلمة مرور قوية للنسخة الاحتياطية', show: 'إظهار', hide: 'إخفاء',
             exportSettings: 'تصدير الإعدادات المشفرة', importSettings: 'استيراد الإعدادات المشفرة', synchronizeRuntime: 'مزامنة وقت التشغيل',
-            keyboxHubCopy: 'احصل هنا على مفتاح API للخادم البعيد الموصى به.', getApiKey: 'الحصول على مفتاح API'
+            keyboxHubCopy: 'احصل هنا على مفتاح API للخادم البعيد الموصى به.', getApiKey: 'الحصول على مفتاح API',
+            diagnosticsTitle: 'تشخيص الدعم', diagnosticsHint: 'انسخ ملخص دعم محدودا دون سجلات أو أسماء حزم أو keybox أو قيم هوية أو بيانات اعتماد أو مواد مفاتيح.',
+            copyDiagnostics: 'نسخ التشخيص', diagnosticsCollecting: 'جار الجمع...', diagnosticsCopied: 'تم نسخ التشخيص', diagnosticsFailed: 'تعذر جمع التشخيص'
         }
     };
 
@@ -480,7 +498,7 @@
             .autocomplete-items div { white-space: normal !important; overflow-wrap: anywhere !important; line-height: 1.25 !important; }
             #ct_package_search_note { margin-top: -3px; margin-bottom: 12px; }
             #ct_language_panel select { max-width: 260px; }
-            #ct_debug_panel .row, #ct_drm_dashboard_panel .row { margin-bottom: 0; }
+            #ct_debug_panel .row, #ct_diagnostics_panel .row, #ct_drm_dashboard_panel .row { margin-bottom: 0; }
             #ct_effective_apps_host > .panel { margin-top: 0; }
             #ct_effective_apps_host { margin-top: 20px; }
             #cleveresCommunityCard { box-sizing: border-box; margin: 20px 0 24px !important; width: 100%; }
@@ -506,7 +524,7 @@
             @media (max-width: 520px) {
                 .row { gap: 12px; align-items: flex-start; }
                 .row > input[type="checkbox"].toggle { margin-top: 2px !important; }
-                #ct_language_panel .row, #ct_debug_panel .row, #ct_drm_dashboard_panel .row { align-items:center; }
+                #ct_language_panel .row, #ct_debug_panel .row, #ct_diagnostics_panel .row, #ct_drm_dashboard_panel .row { align-items:center; }
                 #ct_config_management .ct-config-actions { grid-template-columns:1fr; }
                 #ct_config_management .ct-config-actions #runtimeSyncBtn { grid-column:auto; }
             }
@@ -594,6 +612,16 @@
         const hubAction = document.getElementById('ct_keyboxhub_action');
         if (hubCopy) hubCopy.textContent = ownedCopy('keyboxHubCopy');
         if (hubAction) hubAction.textContent = ownedCopy('getApiKey');
+        const diagnostics = document.getElementById('ct_diagnostics_panel');
+        if (diagnostics) {
+            const title = diagnostics.querySelector('h3');
+            const hint = document.getElementById('ct_diagnostics_hint');
+            const button = document.getElementById('ct_diagnostics_copy');
+            if (title) title.textContent = ownedCopy('diagnosticsTitle');
+            if (hint) hint.textContent = ownedCopy('diagnosticsHint');
+            if (button && !button.disabled) button.textContent = ownedCopy('copyDiagnostics');
+            if (button) button.setAttribute('aria-label', ownedCopy('copyDiagnostics'));
+        }
     }
 
     function applyTranslations() {
@@ -833,6 +861,84 @@
         });
     }
 
+    const DIAGNOSTIC_FIELDS = Object.freeze([
+        'version_name', 'version_code', 'environment', 'native_state', 'native_alive',
+        'keystore_interceptor', 'telephony_interceptor', 'keybox_count', 'app_config_bytes',
+        'process_cpu_percent', 'process_rss_kb', 'identity_engine', 'global_mode',
+        'automatic_keybox_check', 'identity_refresh_on_boot', 'telephony',
+        'drm_passthrough', 'build_identity', 'region_property_view'
+    ]);
+
+    function sanitizeDiagnosticValue(value) {
+        if (typeof value === 'boolean') return value ? 'true' : 'false';
+        if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+        if (typeof value !== 'string') return 'unknown';
+        const sanitized = value.replace(/[\u0000-\u001f\u007f=]/g, ' ').trim().slice(0, 96);
+        return sanitized || 'unknown';
+    }
+
+    function formatDiagnosticsSnapshot(data) {
+        const source = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+        const runtime = source.native_runtime && typeof source.native_runtime === 'object' && !Array.isArray(source.native_runtime)
+            ? source.native_runtime : {};
+        const values = {
+            version_name: source.version_name,
+            version_code: source.version_code,
+            environment: source.environment,
+            native_state: runtime.state,
+            native_alive: runtime.alive,
+            keystore_interceptor: source.keystore_interceptor_running,
+            telephony_interceptor: source.telephony_interceptor_running,
+            keybox_count: source.keybox_count,
+            app_config_bytes: source.app_config_size,
+            process_cpu_percent: source.real_cpu,
+            process_rss_kb: source.real_ram_kb,
+            identity_engine: source.spoof_enabled,
+            global_mode: source.global_mode,
+            automatic_keybox_check: source.auto_keybox_check,
+            identity_refresh_on_boot: source.random_on_boot,
+            telephony: source.telephony,
+            drm_passthrough: source.drm_passthrough,
+            build_identity: source.spoof_build_identity,
+            region_property_view: source.spoof_region_cn
+        };
+        return ['CleveresTricky diagnostics', 'schema=1']
+            .concat(DIAGNOSTIC_FIELDS.map(field => `${field}=${sanitizeDiagnosticValue(values[field])}`))
+            .join('\n');
+    }
+
+    async function copyDiagnosticsSnapshot(button) {
+        let handedToClipboard = false;
+        button.disabled = true;
+        button.textContent = ownedCopy('diagnosticsCollecting');
+        try {
+            const response = await bridge.fetch('/api/resource_usage');
+            if (!response.ok) throw new Error('Resource snapshot unavailable');
+            const snapshot = formatDiagnosticsSnapshot(await response.json());
+            button.disabled = false;
+            button.textContent = ownedCopy('copyDiagnostics');
+            if (typeof global.copyToClipboard !== 'function') throw new Error('Clipboard unavailable');
+            await global.copyToClipboard(snapshot, ownedCopy('diagnosticsCopied'), button);
+            handedToClipboard = true;
+        } catch (_) {
+            if (typeof global.notify === 'function') global.notify(ownedCopy('diagnosticsFailed'), 'error');
+        } finally {
+            button.disabled = false;
+            if (!handedToClipboard) button.textContent = ownedCopy('copyDiagnostics');
+        }
+    }
+
+    function installDiagnosticsPanel() {
+        const info = document.getElementById('info');
+        if (!info || document.getElementById('ct_diagnostics_panel')) return;
+        const panel = document.createElement('div');
+        panel.id = 'ct_diagnostics_panel';
+        panel.className = 'panel';
+        panel.innerHTML = '<h3>Support Diagnostics</h3><div class="row"><div id="ct_diagnostics_hint" class="res-desc" style="flex:1;padding-right:14px">Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material.</div><button id="ct_diagnostics_copy" type="button" aria-label="Copy Diagnostics">Copy Diagnostics</button></div>';
+        info.appendChild(panel);
+        panel.querySelector('button').addEventListener('click', event => copyDiagnosticsSnapshot(event.currentTarget));
+    }
+
     function renderGuide() {
         const guide = document.getElementById('guide');
         if (!guide) return;
@@ -883,6 +989,7 @@
         installPackageSearchNote();
         installDrmPanel();
         installDebugPanel();
+        installDiagnosticsPanel();
         hideRetiredRkpUi();
         ensureFooterOrder();
         applyTranslations();

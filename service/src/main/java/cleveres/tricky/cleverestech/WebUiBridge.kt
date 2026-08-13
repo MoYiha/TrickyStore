@@ -1,12 +1,12 @@
 package cleveres.tricky.cleverestech
 
 import android.os.FileObserver
+import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.SecureFile
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -367,7 +367,7 @@ class WebUiBridge(
         input: InputStream,
         maximumBytes: Int,
     ): ByteArray {
-        val output = ByteArrayOutputStream(minOf(maximumBytes, DEFAULT_BUFFER_SIZE))
+        val output = FastByteArrayOutputStream(minOf(maximumBytes, DEFAULT_BUFFER_SIZE))
         val buffer = ByteArray(minOf(maximumBytes, DEFAULT_BUFFER_SIZE))
         var emptyReads = 0
         try {
@@ -384,6 +384,7 @@ class WebUiBridge(
             return output.toByteArray()
         } finally {
             buffer.fill(0)
+            output.wipe()
         }
     }
 

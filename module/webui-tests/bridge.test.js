@@ -25,6 +25,18 @@ assert.match(uxSource, /\['en', 'English'\]/);
 assert.match(uxSource, /\['tr', 'Türkçe'\]/);
 assert.match(uxSource, /ct_language_panel/);
 assert.match(uxSource, /Open Telegram Community/);
+assert.match(uxSource, /const DIAGNOSTIC_FIELDS = Object\.freeze/);
+assert.match(uxSource, /function formatDiagnosticsSnapshot\(data\)/);
+assert.match(uxSource, /bridge\.fetch\('\/api\/resource_usage'\)/);
+assert.match(uxSource, /Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material\./);
+const diagnosticsFormatter = uxSource.slice(
+    uxSource.indexOf('const DIAGNOSTIC_FIELDS'),
+    uxSource.indexOf('async function copyDiagnosticsSnapshot')
+);
+['pid', 'entry', 'timestamp_ms', 'package_name', 'keybox_name', 'filename', 'token', 'auth_data'].forEach(field => {
+    assert.ok(!new RegExp(`['"]${field}['"]`).test(diagnosticsFormatter), `Diagnostic snapshot must not expose ${field}`);
+});
+assert.ok(!diagnosticsFormatter.includes('JSON.stringify'), 'Diagnostic snapshot must use its fixed allowlist');
 
 assert.match(policySource, /id=\"keyboxStatus\"/);
 assert.match(policySource, /class=\"ct-switch\"/);
@@ -53,7 +65,7 @@ assert.ok(!indexSource.includes('One-Click Reset (Refresh Environment)'));
 assert.match(indexSource, /Synchronize Runtime/);
 assert.ok(!indexSource.includes('<h3>System Control</h3>'));
 assert.match(indexSource, /policy\.js\?revision=4/);
-assert.match(indexSource, /bridge\.js\?revision=7/);
+assert.match(indexSource, /bridge\.js\?revision=8/);
 assert.match(policySource, /request\('\/api\/packages'\)/);
 assert.match(policySource, /bridge\.listPackages\(\)/);
 assert.match(policySource, /function refreshPresentation\(\)/);

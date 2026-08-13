@@ -12,6 +12,10 @@ Open Dashboard and confirm the module version, Spoof Engine state, active profil
 
 Use Android logcat with the `CleveresTricky` tag when the WebUI cannot start. Confirm that the daemon remains running, the `webroot` files are present, the architecture specific `webui_bridge` is executable, and the module manager did not disable the module after boot.
 
+## Shareable support snapshot
+
+Open Info & Resources and select Copy Diagnostics to copy a bounded, English-keyed support snapshot. The fixed allowlist contains the module version, root environment, native/interceptor state, aggregate keybox and rule counts, process CPU/RSS, and feature flags. It excludes logs, package names, keybox names, identity values, credentials, server configuration, and key material. Review the snapshot before sharing it because feature flags still describe the module configuration.
+
 ## Controlled isolation
 
 1. Apply Minimal and reboot.

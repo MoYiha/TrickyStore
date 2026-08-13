@@ -78,6 +78,8 @@ CI يتحقق من shell وSELinux وtemplate وKotlin/Java/Rust والمعما�
 
 افحص Dashboard للقيم version وEngine وprofile وkeybox count وtarget size وRKP وDRM وnative features ثم ابحث عن أول error في Logs. إذا لم تعمل WebUI افحص logcat وdaemon و`webroot` وarchitecture-specific `webui_bridge` وحالة manager.
 
+ينسخ Copy Diagnostics في Info & Resources ملخص دعم محدودا بمفاتيح إنجليزية وallowlist ثابتة. يتضمن version وroot environment وnative/interceptor state وإجمالي keybox/rule count وprocess CPU/RSS وfeature flags؛ ولا يتضمن logs أوأسماء package/keybox أوidentity values أوcredentials أوserver configuration أوkey material. راجع الملخص قبل مشاركته لأن feature flags تصف إعدادات الوحدة.
+
 للعزل استخدم Minimal + reboot، تحقق من genuine path ثم فعّل الميزات واحدة واحدة. Effective State يعرض rule/profile وscope وtemplate وkeybox ref وprivacy وfeatures وpatches وRKP/DRM وKeyMint/StrongBox وprovider coexistence وreboot requirement دون private keys.
 
 <a id="drm-passthrough"></a>
