@@ -95,4 +95,39 @@ class RuntimeWorkCoordinatorTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun refreshSchedulerKeepsRefreshesSerializedAcrossCancelAndRestart() {
+        val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+        val firstStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val secondFinished = CountDownLatch(1)
+        val count = AtomicInteger(0)
+        val scheduler =
+            ConflatedRefreshScheduler(scope, debounceMs = 10L) {
+                when (count.incrementAndGet()) {
+                    1 -> {
+                        firstStarted.countDown()
+                        releaseFirst.await(2, TimeUnit.SECONDS)
+                    }
+                    2 -> secondFinished.countDown()
+                }
+            }
+
+        try {
+            scheduler.submit()
+            assertTrue("Initial refresh did not start", firstStarted.await(2, TimeUnit.SECONDS))
+            scheduler.cancel()
+            scheduler.submit()
+            Thread.sleep(100)
+            assertEquals("Restart overlapped an in-flight refresh", 1, count.get())
+            releaseFirst.countDown()
+            assertTrue("Restarted refresh did not run", secondFinished.await(2, TimeUnit.SECONDS))
+            assertEquals(2, count.get())
+        } finally {
+            releaseFirst.countDown()
+            scheduler.cancel()
+            scope.cancel()
+        }
+    }
 }
