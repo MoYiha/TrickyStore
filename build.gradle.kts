@@ -48,7 +48,9 @@ val abiList = listOf("arm64-v8a", "x86_64")
 val androidMinSdkVersion = 31
 val androidTargetSdkVersion = 37
 val androidCompileSdkVersion = 37
-val androidMaxSupportedSdkVersion = 37
+// API levels newer than the compiler baseline are admitted to installation;
+// the native interceptor still enables itself only after live Binder UAPI validation.
+val androidMaxSupportedSdkVersion = 999
 val androidCompileNdkVersion = "27.3.13750724"
 val androidSourceCompatibility = JavaVersion.VERSION_17
 val androidTargetCompatibility = JavaVersion.VERSION_17
