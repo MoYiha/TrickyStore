@@ -471,9 +471,64 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
         run: ./gradlew zipRelease --warning-mode=fail --console=plain
 
+      - name: Prepare Encryptor release signing
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          ENCRYPTOR_KEYSTORE_BASE64: ${{ secrets.ENCRYPTOR_KEYSTORE_BASE64 }}
+          ENCRYPTOR_KEYSTORE_PASSWORD: ${{ secrets.ENCRYPTOR_KEYSTORE_PASSWORD }}
+          ENCRYPTOR_KEY_ALIAS: ${{ secrets.ENCRYPTOR_KEY_ALIAS }}
+          ENCRYPTOR_KEY_PASSWORD: ${{ secrets.ENCRYPTOR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ENCRYPTOR_KEYSTORE_BASE64 ENCRYPTOR_KEYSTORE_PASSWORD ENCRYPTOR_KEY_ALIAS ENCRYPTOR_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+
+          keystore="$RUNNER_TEMP/encryptor-release.jks"
+          printf '%s' "$ENCRYPTOR_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          test -s "$keystore"
+          keytool -list \
+            -keystore "$keystore" \
+            -storepass "$ENCRYPTOR_KEYSTORE_PASSWORD" \
+            -alias "$ENCRYPTOR_KEY_ALIAS" >/dev/null
+
+          {
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEYSTORE=$keystore"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_STORE_PASSWORD=$ENCRYPTOR_KEYSTORE_PASSWORD"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_ALIAS=$ENCRYPTOR_KEY_ALIAS"
+            echo "ORG_GRADLE_PROJECT_ENCRYPTOR_RELEASE_KEY_PASSWORD=$ENCRYPTOR_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Build Encryptor App
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.android_app == 'true' }}
         run: ./gradlew :encryptor-app:assembleRelease --warning-mode=fail --console=plain
+
+      - name: Verify Encryptor APK signature
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="encryptor-app/build/outputs/apk/release/encryptor-app-release.apk"
+          if [ ! -f "$apk" ]; then
+            echo "::error::Signed Encryptor APK is missing: $apk"
+            find encryptor-app/build/outputs/apk/release -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+          if compgen -G 'encryptor-app/build/outputs/apk/release/*-unsigned.apk' >/dev/null; then
+            echo "::error::Unsigned Encryptor APK output detected"
+            exit 1
+          fi
+          apksigner=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner -print | sort -V | tail -n1)
+          if [ -z "$apksigner" ]; then
+            echo "::error::apksigner was not found in the Android SDK"
+            exit 1
+          fi
+          "$apksigner" verify --verbose --print-certs "$apk"
 
       - name: Verify module archive layout and checksums
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' }}
@@ -656,13 +711,17 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           release_zips=(release-assets/*-release.zip)
-          apks=(release-assets/*.apk)
+          apk="release-assets/encryptor-app-release.apk"
           [ "${#release_zips[@]}" -eq 1 ] || { echo "::error::Expected one release module zip"; exit 1; }
-          [ "${#apks[@]}" -ge 1 ] || { echo "::error::Encryptor APK is missing"; exit 1; }
+          [ -f "$apk" ] || { echo "::error::Signed Encryptor APK is missing"; exit 1; }
+          if compgen -G 'release-assets/*-unsigned.apk' >/dev/null; then
+            echo "::error::Unsigned Encryptor APK must never be published"
+            exit 1
+          fi
           unzip -tq "${release_zips[0]}" >/dev/null
           (
             cd release-assets
-            sha256sum -- *-release.zip *.apk | LC_ALL=C sort -k2 > SHA256SUMS
+            sha256sum -- *-release.zip encryptor-app-release.apk | LC_ALL=C sort -k2 > SHA256SUMS
             sha256sum -c SHA256SUMS
           )
 
