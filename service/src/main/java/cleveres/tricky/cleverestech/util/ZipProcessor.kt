@@ -62,13 +62,19 @@ object ZipProcessor {
                                 cboxFiles.add(name to content)
                             }
                             name == "password.txt" -> {
-                                password = String(content, StandardCharsets.UTF_8).trim()
-                                content.fill(0)
+                                try {
+                                    password = String(content, StandardCharsets.UTF_8).trim()
+                                } finally {
+                                    content.fill(0)
+                                }
                             }
                             name == "config.json" -> {
-                                val config = JSONObject(String(content, StandardCharsets.UTF_8))
-                                configPassword = config.optString("password").ifEmpty { null }
-                                content.fill(0)
+                                try {
+                                    val config = JSONObject(String(content, StandardCharsets.UTF_8))
+                                    configPassword = config.optString("password").ifEmpty { null }
+                                } finally {
+                                    content.fill(0)
+                                }
                             }
                             else -> content.fill(0)
                         }
@@ -98,15 +104,19 @@ object ZipProcessor {
     ): ByteArray? {
         val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var total = 0
-        while (true) {
-            val count = zip.read(buffer)
-            if (count < 0) break
-            if (count == 0) continue
-            if (count > maxBytes - total) return null
-            output.write(buffer, 0, count)
-            total += count
+        return try {
+            var total = 0
+            while (true) {
+                val count = zip.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (count > maxBytes - total) return null
+                output.write(buffer, 0, count)
+                total += count
+            }
+            output.toByteArray()
+        } finally {
+            buffer.fill(0)
         }
-        return output.toByteArray()
     }
 }
