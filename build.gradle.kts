@@ -40,7 +40,7 @@ val moduleId = "cleverestricky"
 val moduleName = "CleveresTricky"
 val author = "tryigitx"
 val description = "KernelSU keystore compatibility and device configuration module. See GitHub for details."
-val verName = "V2.5.3"
+val verName = "V2.5.4"
 val verCode = gitCommitCount
 val commitHash = gitCommitHash
 val abiList = listOf("arm64-v8a", "x86_64")
@@ -49,7 +49,6 @@ val androidMinSdkVersion = 31
 val androidTargetSdkVersion = 37
 val androidCompileSdkVersion = 37
 val androidMaxSupportedSdkVersion = 37
-val androidBuildToolsVersion = "36.0.0"
 val androidCompileNdkVersion = "27.3.13750724"
 val androidSourceCompatibility = JavaVersion.VERSION_17
 val androidTargetCompatibility = JavaVersion.VERSION_17
@@ -66,7 +65,6 @@ extra.set("androidMinSdkVersion", androidMinSdkVersion)
 extra.set("androidTargetSdkVersion", androidTargetSdkVersion)
 extra.set("androidCompileSdkVersion", androidCompileSdkVersion)
 extra.set("androidMaxSupportedSdkVersion", androidMaxSupportedSdkVersion)
-extra.set("androidBuildToolsVersion", androidBuildToolsVersion)
 extra.set("androidCompileNdkVersion", androidCompileNdkVersion)
 extra.set("androidSourceCompatibility", androidSourceCompatibility)
 extra.set("androidTargetCompatibility", androidTargetCompatibility)
@@ -80,7 +78,6 @@ fun Project.configureBaseExtension() {
         namespace = "cleveres.tricky.cleverestech"
         compileSdk = androidCompileSdkVersion
         ndkVersion = androidCompileNdkVersion
-        buildToolsVersion = androidBuildToolsVersion
 
         defaultConfig {
             minSdk = androidMinSdkVersion
@@ -105,7 +102,6 @@ fun Project.configureBaseExtension() {
         namespace = "cleveres.tricky.cleverestech"
         compileSdk = androidCompileSdkVersion
         ndkVersion = androidCompileNdkVersion
-        buildToolsVersion = androidBuildToolsVersion
 
         defaultConfig {
             minSdk = androidMinSdkVersion
