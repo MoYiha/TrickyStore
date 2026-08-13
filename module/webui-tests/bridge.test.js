@@ -33,6 +33,8 @@ const diagnosticsFormatter = uxSource.slice(
     uxSource.indexOf('const DIAGNOSTIC_FIELDS'),
     uxSource.indexOf('async function copyDiagnosticsSnapshot')
 );
+assert.match(diagnosticsFormatter, /native_failure: runtime\.failure/);
+assert.match(diagnosticsFormatter, /schema=2/);
 ['pid', 'entry', 'timestamp_ms', 'package_name', 'keybox_name', 'filename', 'token', 'auth_data'].forEach(field => {
     assert.ok(!new RegExp(`['"]${field}['"]`).test(diagnosticsFormatter), `Diagnostic snapshot must not expose ${field}`);
 });
@@ -65,7 +67,7 @@ assert.ok(!indexSource.includes('One-Click Reset (Refresh Environment)'));
 assert.match(indexSource, /Synchronize Runtime/);
 assert.ok(!indexSource.includes('<h3>System Control</h3>'));
 assert.match(indexSource, /policy\.js\?revision=4/);
-assert.match(indexSource, /bridge\.js\?revision=8/);
+assert.match(indexSource, /bridge\.js\?revision=10/);
 assert.match(policySource, /request\('\/api\/packages'\)/);
 assert.match(policySource, /bridge\.listPackages\(\)/);
 assert.match(policySource, /function refreshPresentation\(\)/);
@@ -77,3 +79,4 @@ assert.match(indexSource, /class=\"ct-switch\" id=\"srvAutoRefresh\"/);
 assert.match(policySource, /ct_keybox_status_panel/);
 
 require('./bridge-base.test.js');
+require('./localization.test.js');

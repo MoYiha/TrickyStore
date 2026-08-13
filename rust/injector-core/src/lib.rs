@@ -25,19 +25,19 @@ mod symbol_resolver;
 #[cfg(target_os = "android")]
 pub fn run_cli() -> i32 {
     let arguments: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    health::record(&arguments, health::NativeRuntimeState::Starting);
+    health::record(&arguments, health::NativeRuntimeState::Starting, "none");
     match catch_unwind(std::panic::AssertUnwindSafe(|| engine::run(&arguments))) {
-        Ok(code) => {
-            let state = if code == 0 {
+        Ok(outcome) => {
+            let state = if outcome.code == 0 {
                 health::NativeRuntimeState::Active
             } else {
                 health::NativeRuntimeState::Failed
             };
-            health::record(&arguments, state);
-            code
+            health::record(&arguments, state, outcome.failure);
+            outcome.code
         }
         Err(_) => {
-            health::record(&arguments, health::NativeRuntimeState::Failed);
+            health::record(&arguments, health::NativeRuntimeState::Failed, "panic");
             1
         }
     }

@@ -42,9 +42,16 @@ pub struct ProcessImageId {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProcessImageLocation {
+    RuntimeApex,
+    System,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcessMapping {
     pub module: ProcessModule,
     pub image: ProcessImageId,
+    pub location: ProcessImageLocation,
     pub start: usize,
     pub end: usize,
     pub offset: usize,
@@ -61,6 +68,32 @@ pub fn process_image_base(
         .find(|mapping| mapping.module == module && mapping.image == image && mapping.offset == 0)
         .map(|mapping| mapping.start)
         .filter(|address| *address != 0)
+}
+
+/// Selects a single platform image inside one process namespace.
+///
+/// Device and inode identifiers are deliberately not compared across
+/// processes: Android mount namespaces may expose the same runtime APEX with
+/// different identifiers. They remain authoritative for grouping mappings
+/// within each process, while the allow-listed location identifies the
+/// corresponding platform image across namespaces.
+pub fn unique_process_image(
+    mappings: &[ProcessMapping],
+    module: ProcessModule,
+    location: ProcessImageLocation,
+) -> Option<ProcessImageId> {
+    let mut candidate = None;
+    for mapping in mappings
+        .iter()
+        .filter(|mapping| mapping.module == module && mapping.location == location)
+    {
+        match candidate {
+            None => candidate = Some(mapping.image),
+            Some(image) if image == mapping.image => {}
+            Some(_) => return None,
+        }
+    }
+    candidate.filter(|image| process_image_base(mappings, module, *image).is_some())
 }
 
 /// Clears process-derived bytes with volatile stores so cleanup cannot be
@@ -308,6 +341,7 @@ fn parse_relevant_mapping(line: &[u8]) -> Option<ProcessMapping> {
         b"libdl.so" => ProcessModule::Libdl,
         _ => return None,
     };
+    let location = classify_platform_image_path(path, module)?;
 
     let separator = range.iter().position(|byte| *byte == b'-')?;
     let start = parse_hex_usize(&range[..separator])?;
@@ -321,11 +355,52 @@ fn parse_relevant_mapping(line: &[u8]) -> Option<ProcessMapping> {
             device: parse_device_identifier(device)?,
             inode: parse_decimal_u64(inode).filter(|value| *value != 0)?,
         },
+        location,
         start,
         end,
         offset: parse_hex_usize(offset)?,
         executable: permissions[2] == b'x',
     })
+}
+
+fn classify_platform_image_path(
+    path: &[u8],
+    module: ProcessModule,
+) -> Option<ProcessImageLocation> {
+    let file_name = module.file_name();
+    if matches_exact_platform_path(path, b"/system/lib/", file_name)
+        || matches_exact_platform_path(path, b"/system/lib64/", file_name)
+    {
+        return Some(ProcessImageLocation::System);
+    }
+
+    const RUNTIME_APEX_PREFIX: &[u8] = b"/apex/com.android.runtime";
+    let mut suffix = path.strip_prefix(RUNTIME_APEX_PREFIX)?;
+    if let Some(value) = suffix.strip_prefix(b"@") {
+        let separator = value.iter().position(|byte| *byte == b'/')?;
+        let version = &value[..separator];
+        if version.is_empty() || !version.iter().all(u8::is_ascii_digit) {
+            return None;
+        }
+        suffix = &value[separator..];
+    }
+    if !suffix.starts_with(b"/") {
+        return None;
+    }
+    let suffix = &suffix[1..];
+    if matches_exact_platform_path(suffix, b"lib/bionic/", file_name)
+        || matches_exact_platform_path(suffix, b"lib64/bionic/", file_name)
+    {
+        Some(ProcessImageLocation::RuntimeApex)
+    } else {
+        None
+    }
+}
+
+fn matches_exact_platform_path(path: &[u8], directory: &[u8], file_name: &[u8]) -> bool {
+    path.len() == directory.len() + file_name.len()
+        && path.starts_with(directory)
+        && path[directory.len()..] == *file_name
 }
 
 fn parse_device_identifier(input: &[u8]) -> Option<u64> {
@@ -639,13 +714,14 @@ mod tests {
 
     #[test]
     fn parses_only_bounded_libc_and_libdl_mappings() {
-        let input = b"7a00000000-7a00001000 r--p 00000000 00:01 1 /apex/lib64/libc.so\n\
-                      7a00001000-7a00009000 r-xp 00001000 00:01 1 /apex/lib64/libc.so\n\
-                      7b00000000-7b00001000 r--p 00000000 00:01 2 /apex/lib64/libdl.so\n\
+        let input = b"7a00000000-7a00001000 r--p 00000000 00:01 1 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+                      7a00001000-7a00009000 r-xp 00001000 00:01 1 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+                      7b00000000-7b00001000 r--p 00000000 00:01 2 /apex/com.android.runtime/lib64/bionic/libdl.so\n\
                       7c00000000-7c00001000 r-xp 00000000 00:01 3 /system/lib64/libother.so\n";
         let mappings = parse_relevant_process_maps(input).unwrap();
         assert_eq!(mappings.len(), 3);
         assert_eq!(mappings[0].module, ProcessModule::Libc);
+        assert_eq!(mappings[0].location, ProcessImageLocation::RuntimeApex);
         assert_eq!(mappings[0].image.device, 1);
         assert_eq!(mappings[0].image.inode, 1);
         assert_eq!(mappings[0].offset, 0);
@@ -655,23 +731,21 @@ mod tests {
     }
 
     #[test]
-    fn keeps_same_named_platform_images_separate() {
-        let input = b"71000000-71001000 r-xp 00000000 00:01 11 /apex/a/lib64/libc.so\n\
+    fn rejects_same_named_non_platform_images() {
+        let input = b"71000000-71001000 r-xp 00000000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n\
                       72000000-72001000 r-xp 00000000 00:02 22 /data/local/tmp/libc.so\n\
-                      73000000-73001000 r-xp 00000000 00:03 0 /apex/b/lib64/libdl.so\n";
+                      73000000-73001000 r-xp 00000000 00:03 0 /apex/com.android.runtime/lib64/bionic/libdl.so\n";
         let mappings = parse_relevant_process_maps(input).unwrap();
 
-        assert_eq!(mappings.len(), 2);
-        assert_ne!(mappings[0].image, mappings[1].image);
+        assert_eq!(mappings.len(), 1);
         assert_eq!(mappings[0].image.inode, 11);
-        assert_eq!(mappings[1].image.inode, 22);
     }
 
     #[test]
     fn selects_the_base_of_the_resolved_image_instead_of_a_same_named_decoy() {
         let input = b"71000000-71001000 r--p 00000000 00:02 22 /data/local/tmp/libc.so\n\
-                      72000000-72001000 r--p 00000000 00:01 11 /apex/a/lib64/libc.so\n\
-                      72001000-72002000 r-xp 00001000 00:01 11 /apex/a/lib64/libc.so\n";
+                      72000000-72001000 r--p 00000000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+                      72001000-72002000 r-xp 00001000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n";
         let mappings = parse_relevant_process_maps(input).unwrap();
         let expected = ProcessImageId {
             device: 1,
@@ -691,6 +765,85 @@ mod tests {
                     inode: 33,
                 }
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn matches_platform_images_across_mount_namespace_identities() {
+        let local = parse_relevant_process_maps(
+            b"71000000-71001000 r--p 00000000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+              71001000-71002000 r-xp 00001000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n",
+        )
+        .unwrap();
+        let remote = parse_relevant_process_maps(
+            b"72000000-72001000 r--p 00000000 fe:09 99 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+              72001000-72002000 r-xp 00001000 fe:09 99 /apex/com.android.runtime/lib64/bionic/libc.so\n",
+        )
+        .unwrap();
+
+        let local_image = unique_process_image(
+            &local,
+            ProcessModule::Libc,
+            ProcessImageLocation::RuntimeApex,
+        )
+        .unwrap();
+        let remote_image = unique_process_image(
+            &remote,
+            ProcessModule::Libc,
+            ProcessImageLocation::RuntimeApex,
+        )
+        .unwrap();
+        assert_ne!(local_image, remote_image);
+        assert_eq!(
+            process_image_base(&local, ProcessModule::Libc, local_image),
+            Some(0x7100_0000)
+        );
+        assert_eq!(
+            process_image_base(&remote, ProcessModule::Libc, remote_image),
+            Some(0x7200_0000)
+        );
+    }
+
+    #[test]
+    fn rejects_ambiguous_platform_images_within_one_process() {
+        let mappings = parse_relevant_process_maps(
+            b"71000000-71001000 r--p 00000000 00:01 11 /apex/com.android.runtime/lib64/bionic/libc.so\n\
+              72000000-72001000 r--p 00000000 00:02 22 /apex/com.android.runtime/lib64/bionic/libc.so\n",
+        )
+        .unwrap();
+        assert_eq!(
+            unique_process_image(
+                &mappings,
+                ProcessModule::Libc,
+                ProcessImageLocation::RuntimeApex,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn accepts_only_canonical_runtime_and_system_library_paths() {
+        assert_eq!(
+            classify_platform_image_path(
+                b"/apex/com.android.runtime@123456/lib64/bionic/libc.so",
+                ProcessModule::Libc,
+            ),
+            Some(ProcessImageLocation::RuntimeApex)
+        );
+        assert_eq!(
+            classify_platform_image_path(b"/system/lib64/libdl.so", ProcessModule::Libdl),
+            Some(ProcessImageLocation::System)
+        );
+        assert_eq!(
+            classify_platform_image_path(
+                b"/apex/com.android.runtime@preview/lib64/bionic/libc.so",
+                ProcessModule::Libc,
+            ),
+            None
+        );
+        assert_eq!(
+            classify_platform_image_path(b"/data/local/tmp/libc.so", ProcessModule::Libc),
             None
         );
     }

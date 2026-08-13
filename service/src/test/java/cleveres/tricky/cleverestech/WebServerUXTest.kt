@@ -132,7 +132,7 @@ class WebServerUXTest {
         assertTrue(html.contains("height: min(500px, 60dvh) !important"))
         assertTrue(html.contains("async function fetchAuth"))
         assertTrue(html.contains("window.CleveresBridge.fetch(url, options)"))
-        assertTrue(html.contains("<script src=\"bridge.js?revision=8\"></script>"))
+        assertTrue(html.contains("<script src=\"bridge.js?revision=10\"></script>"))
         assertTrue(html.contains("<script src=\"policy.js?revision=4\"></script>"))
         assertTrue(html.contains("function downloadBlob"))
         assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
@@ -221,6 +221,28 @@ class WebServerUXTest {
         listOf("logs", "packages", "keyboxes", "servers", "identity").forEach { sensitiveCollection ->
             assertFalse(resource.has(sensitiveCollection))
         }
+    }
+
+    @Test
+    fun testNativeFailureStageContract() {
+        File(configDir, "native_runtime_status").writeText(
+            """
+            version=2
+            state=failed
+            pid=1
+            start_ticks=1
+            entry=entry
+            failure=symbol_resolution
+            timestamp_ms=123
+            """.trimIndent(),
+        )
+        val url = URL("http://localhost:${server.listeningPort}/api/resource_usage?token=${server.token}")
+        val conn = url.openConnection() as HttpURLConnection
+        val runtime = JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("native_runtime")
+
+        assertEquals("failed", runtime.getString("state"))
+        assertEquals("symbol_resolution", runtime.getString("failure"))
+        assertFalse(runtime.getBoolean("alive"))
     }
 
     private fun fetchHtml(): String {

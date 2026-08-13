@@ -39,6 +39,31 @@ English is the canonical technical documentation language. User-facing documenta
 - Preserve code symbols, API names, config keys, commands, filenames, security behavior, and numeric limits exactly inside translations.
 - Do not localize source code, build files, CI configuration, generated files, or internal agent/developer instructions. Those remain English for deterministic tooling and review.
 
+## Native / TEE regression guardrails
+
+Native runtime health, Binder behavior, TEE timing, and attestation state are release-critical. Agents must treat regressions in these areas as blockers rather than compatibility quirks.
+
+- On KernelSU/APatch device tests, require `native_state=active`, `native_alive=true`, and the expected interceptors to activate when their features are enabled. A yellow-to-red runtime-health transition is a blocker.
+- TEE timing-side-channel checks must stay below the project threshold of `1.1x`. A positive result at or above the threshold must be investigated before merge/release; do not suppress the warning or relax the threshold to make a build pass.
+- Treat bootloader / Verified Boot / attestation-state regressions as release blockers. Do not trade attestation correctness for permissive spoofing or compatibility shortcuts.
+- Mount-namespace differences may change device/inode identity between processes. Keep canonical platform-location matching plus fail-closed ELF ABI/build-ID validation; never fall back to same-basename-only symbol resolution.
+- Binder/native hot paths are performance-sensitive. Avoid new per-call syscalls, unbounded allocations, repeated parsing, or expensive zeroization in hot paths without measurement. Keep CPU, RSS, Binder latency, and TEE latency close to the last known-good baseline.
+- Preserve fail-closed Binder FD classification, bounded parser limits, coherent transaction writeback, ptrace signal handling, pointer-log redaction, temporary-buffer wiping, and cleanup behavior.
+- Future Android API support must be validated against the actual compiled Binder UAPI/layout. Struct size or API number alone is not sufficient proof of compatibility.
+- Changes touching ptrace, Binder, process memory, FD transfer, symbol resolution, TEE/attestation behavior, or boot/Verified Boot state need targeted regression tests.
+
+## WebUI localization release guardrails
+
+- Every first-party user-visible string added to the English catalog must be added to all built-in locales in the same change, including dynamic messages, dialogs, placeholders, errors, progress states, and accessibility labels.
+- Non-English locales must not silently fall back to English for first-party UI text, except intentionally untranslated technical identifiers or protocol names.
+- Keep all locale catalogs at identical key coverage and retain automated full-catalog localization tests.
+
+## Merge / release verification
+
+- Before merge, require the Build and Security Regression workflows to pass and resolve actionable Codex/review findings.
+- For release candidates, verify module archive structure, checksums, native artifact hardening, signed APK verification, and device-level native/TEE behavior.
+- Do not update `update.json`, release URLs, hashes, or release metadata until the release artifact actually exists and those values are verified from the published artifact.
+
 ## Branch Lifecycle Rules
 
 Feature, fix, experiment, and AI-generated branches are temporary and must not be kept after their work is integrated.
