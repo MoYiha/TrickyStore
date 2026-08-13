@@ -7,8 +7,6 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "direct"
     groups:
       bouncycastle-security:
         applies-to: security-updates
