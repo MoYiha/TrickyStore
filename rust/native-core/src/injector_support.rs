@@ -13,7 +13,12 @@ const MAGIC_ALPHABET: &[u8; 62] = b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH
 const RANDOM_ACCEPTANCE_LIMIT: u8 = 248;
 const O_NOFOLLOW: i32 = 0x20000;
 const MAXIMUM_SIGNAL_NUMBER: i32 = 64;
+const SIGNAL_ILLEGAL_INSTRUCTION: i32 = 4;
+const SIGNAL_TRACE_TRAP: i32 = 5;
+const SIGNAL_BUS_ERROR: i32 = 7;
+const SIGNAL_FLOATING_POINT_EXCEPTION: i32 = 8;
 const SIGNAL_SEGMENTATION_FAULT: i32 = 11;
+const SIGNAL_BAD_SYSTEM_CALL: i32 = 31;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessModule {
@@ -78,10 +83,30 @@ pub fn sanitize_signal_for_detach(signal: i32) -> i32 {
 
 pub fn remote_stop_signal_to_deliver(
     signal: i32,
+    signal_code: Option<i32>,
     actual_address: usize,
     synthetic_return_address: usize,
 ) -> i32 {
-    if signal == SIGNAL_SEGMENTATION_FAULT
+    let synchronous_fault = matches!(
+        signal,
+        SIGNAL_ILLEGAL_INSTRUCTION
+            | SIGNAL_TRACE_TRAP
+            | SIGNAL_BUS_ERROR
+            | SIGNAL_FLOATING_POINT_EXCEPTION
+            | SIGNAL_SEGMENTATION_FAULT
+            | SIGNAL_BAD_SYSTEM_CALL
+    );
+    // Positive si_code values are kernel-generated. A synchronous fault while
+    // the tracee is executing an injected call belongs to that call and must
+    // not be replayed after restoring the tracee's original register state.
+    if synchronous_fault && signal_code.is_some_and(|code| code > 0) {
+        return 0;
+    }
+    // PTRACE_GETSIGINFO should identify the synthetic fault. Retain the
+    // instruction-pointer check only as a safe fallback when siginfo is not
+    // available, without swallowing an externally queued SIGSEGV.
+    if signal_code.is_none()
+        && signal == SIGNAL_SEGMENTATION_FAULT
         && synthetic_return_address != 0
         && actual_address == synthetic_return_address
     {
@@ -89,6 +114,18 @@ pub fn remote_stop_signal_to_deliver(
     } else {
         sanitize_signal_for_detach(signal)
     }
+}
+
+pub fn is_synthetic_return_trap(
+    signal: i32,
+    signal_code: Option<i32>,
+    actual_address: usize,
+    synthetic_return_address: usize,
+) -> bool {
+    signal == SIGNAL_SEGMENTATION_FAULT
+        && synthetic_return_address != 0
+        && actual_address == synthetic_return_address
+        && signal_code.is_none_or(|code| code > 0)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -572,11 +609,32 @@ mod tests {
 
     #[test]
     fn preserves_real_signals_but_suppresses_the_synthetic_return_trap() {
-        assert_eq!(remote_stop_signal_to_deliver(11, 0x1234, 0x1234), 0);
-        assert_eq!(remote_stop_signal_to_deliver(15, 0x1234, 0x1234), 15);
-        assert_eq!(remote_stop_signal_to_deliver(11, 0x5678, 0x1234), 11);
-        assert_eq!(remote_stop_signal_to_deliver(0, 0x5678, 0x1234), 0);
-        assert_eq!(remote_stop_signal_to_deliver(65, 0x5678, 0x1234), 0);
+        assert!(is_synthetic_return_trap(11, None, 0x1234, 0x1234));
+        assert!(is_synthetic_return_trap(11, Some(2), 0x1234, 0x1234));
+        assert!(!is_synthetic_return_trap(11, Some(0), 0x1234, 0x1234));
+        assert_eq!(remote_stop_signal_to_deliver(11, None, 0x1234, 0x1234), 0);
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(2), 0x1234, 0x1234),
+            0
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(1), 0x5678, 0x1234),
+            0
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(0), 0x1234, 0x1234),
+            11
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(11, Some(-6), 0x5678, 0x1234),
+            11
+        );
+        assert_eq!(
+            remote_stop_signal_to_deliver(15, Some(0), 0x1234, 0x1234),
+            15
+        );
+        assert_eq!(remote_stop_signal_to_deliver(0, None, 0x5678, 0x1234), 0);
+        assert_eq!(remote_stop_signal_to_deliver(65, None, 0x5678, 0x1234), 0);
     }
 
     #[test]

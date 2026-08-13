@@ -4,8 +4,8 @@ use crate::abi::IoVector;
 use crate::logging;
 use crate::process_memory::{read_process_memory, write_process_memory};
 use cleverestricky_native_core::injector_support::{
-    remote_stop_signal_to_deliver, sanitize_signal_for_detach, validate_attached_target_cmdline,
-    wipe_bytes,
+    is_synthetic_return_trap, remote_stop_signal_to_deliver, sanitize_signal_for_detach,
+    validate_attached_target_cmdline, wipe_bytes,
 };
 use std::ffi::{c_int, c_void, CStr};
 use std::mem;
@@ -18,6 +18,7 @@ const PTRACE_GETREGS: c_int = 12;
 const PTRACE_SETREGS: c_int = 13;
 const PTRACE_ATTACH: c_int = 16;
 const PTRACE_DETACH: c_int = 17;
+const PTRACE_GETSIGINFO: c_int = 0x4202;
 #[cfg(target_arch = "aarch64")]
 const PTRACE_GETREGSET: c_int = 0x4204;
 #[cfg(target_arch = "aarch64")]
@@ -26,13 +27,23 @@ const PTRACE_SETREGSET: c_int = 0x4205;
 const NT_PRSTATUS: usize = 1;
 const WAIT_ALL: c_int = 0x4000_0000;
 const INTERRUPTED_SYSTEM_CALL: i32 = 4;
-const SIGNAL_SEGMENTATION_FAULT: i32 = 11;
 const SIGNAL_STOP: i32 = 19;
 const MAXIMUM_ARGUMENTS: usize = 32;
 const MAXIMUM_REMOTE_INPUT: usize = 64 * 1_024;
 const MAXIMUM_SAVED_STACK_BYTES: usize = 256 * 1_024;
 const REMOTE_CALL_STACK_GUARD_BYTES: usize = 16 * 1_024;
 const STACK_ALIGNMENT: usize = 16;
+
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C, align(8))]
+struct SignalInfo {
+    // Supported Android LP64 architectures use the generic 128-byte siginfo
+    // layout: signo, errno, and si_code are the first three 32-bit words.
+    words: [i32; 32],
+}
+
+const _: [(); 128] = [(); mem::size_of::<SignalInfo>()];
+const _: [(); 8] = [(); mem::align_of::<SignalInfo>()];
 
 extern "C" {
     fn ptrace(request: c_int, pid: c_int, address: *mut c_void, data: *mut c_void) -> isize;
@@ -108,6 +119,7 @@ pub(crate) struct RemoteSession {
     original_registers_valid: bool,
     attached: bool,
     pending_signal: i32,
+    remote_calls_blocked: bool,
     stack_patches: Vec<StackPatch>,
     saved_stack_bytes: usize,
     preserved_stack_floor: usize,
@@ -148,6 +160,7 @@ impl RemoteSession {
             original_registers_valid: false,
             attached: true,
             pending_signal: 0,
+            remote_calls_blocked: false,
             stack_patches: Vec::with_capacity(16),
             saved_stack_bytes: 0,
             preserved_stack_floor: usize::MAX,
@@ -190,9 +203,18 @@ impl RemoteSession {
         return_address: usize,
         arguments: &[usize],
     ) -> Result<usize, String> {
-        if !self.attached || function_address == 0 || arguments.len() > MAXIMUM_ARGUMENTS {
+        if !self.attached
+            || self.remote_calls_blocked
+            || self.pending_signal != 0
+            || function_address == 0
+            || arguments.len() > MAXIMUM_ARGUMENTS
+        {
             return Err("invalid remote call plan".into());
         }
+        // Once execution leaves the controlled call path unexpectedly, do
+        // not resume the tracee for best-effort cleanup. Restoring the saved
+        // process state and delivering any real pending signal takes priority.
+        self.remote_calls_blocked = true;
 
         let base_registers = self.registers;
         let mut call_registers = base_registers;
@@ -227,11 +249,13 @@ impl RemoteSession {
         // Preserve a genuine signal if register inspection or remote return
         // validation fails. Only the deliberate non-executable return trap is
         // suppressed when detaching.
-        self.pending_signal = sanitize_signal_for_detach(signal);
+        let signal_code = read_signal_code(self.pid, signal);
+        self.pending_signal = remote_stop_signal_to_deliver(signal, signal_code, 0, 0);
         let stopped_registers = read_registers(self.pid)?;
         let actual_address = instruction_pointer(&stopped_registers);
-        self.pending_signal = remote_stop_signal_to_deliver(signal, actual_address, return_address);
-        if signal != SIGNAL_SEGMENTATION_FAULT || actual_address != return_address {
+        self.pending_signal =
+            remote_stop_signal_to_deliver(signal, signal_code, actual_address, return_address);
+        if !is_synthetic_return_trap(signal, signal_code, actual_address, return_address) {
             self.registers = stopped_registers;
             return Err(format!(
                 "remote call stopped unexpectedly with status {status:#x}"
@@ -239,6 +263,7 @@ impl RemoteSession {
         }
         let result = return_value(&stopped_registers);
         self.pending_signal = 0;
+        self.remote_calls_blocked = false;
         self.registers = base_registers;
         Ok(result)
     }
@@ -375,6 +400,7 @@ impl RemoteSession {
         }
         self.attached = false;
         self.pending_signal = 0;
+        self.remote_calls_blocked = false;
         restore_error.map_or(Ok(()), Err)
     }
 }
@@ -406,6 +432,23 @@ fn wait_for_stop(pid: i32) -> Result<i32, String> {
             "target process did not reach a controlled stop: {status:#x}"
         ));
     }
+}
+
+fn read_signal_code(pid: i32, expected_signal: i32) -> Option<i32> {
+    let mut information = SignalInfo::default();
+    if unsafe {
+        ptrace(
+            PTRACE_GETSIGINFO,
+            pid,
+            std::ptr::null_mut(),
+            (&mut information as *mut SignalInfo).cast(),
+        )
+    } == -1
+        || information.words[0] != expected_signal
+    {
+        return None;
+    }
+    Some(information.words[2])
 }
 
 #[cfg(target_arch = "x86_64")]
