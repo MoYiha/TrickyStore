@@ -1,14 +1,16 @@
 use crate::binder_parser::RustParsedTransaction;
 use crate::ffi::{validate_mut_slice_args, validate_slice_args};
 use crate::layout::{validate_offset_cache, validate_transaction_layout, RustOffsetCacheView};
+use std::cell::RefCell;
 use std::ffi::{c_int, c_void};
 use std::io;
 use std::mem;
 
+const O_NONBLOCK: c_int = 0x800;
 const O_CLOEXEC: c_int = 0x80000;
 const MAXIMUM_BINDER_WRITE_READ_BYTES: usize = 256;
 const MAXIMUM_BINDER_READ_BYTES: usize = 8 * 1_024 * 1_024;
-const KERNEL_COPY_CHUNK_BYTES: usize = 4 * 1_024;
+const KERNEL_COPY_ATTEMPT_BYTES: usize = 64 * 1_024;
 
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
@@ -34,7 +36,7 @@ pub(crate) struct KernelCopyPipe {
 impl KernelCopyPipe {
     pub(crate) fn new() -> Option<Self> {
         let mut descriptors = [-1, -1];
-        if unsafe { pipe2(descriptors.as_mut_ptr(), O_CLOEXEC) } != 0 {
+        if unsafe { pipe2(descriptors.as_mut_ptr(), O_CLOEXEC | O_NONBLOCK) } != 0 {
             return None;
         }
         Some(Self {
@@ -50,55 +52,53 @@ impl KernelCopyPipe {
 
         let mut copied = 0usize;
         while copied < length {
-            let chunk_length = (length - copied).min(KERNEL_COPY_CHUNK_BYTES);
-            let mut written = 0usize;
-            while written < chunk_length {
-                let Some(address) = source
-                    .checked_add(copied)
-                    .and_then(|value| value.checked_add(written))
-                else {
-                    return false;
-                };
+            let attempt_length = (length - copied).min(KERNEL_COPY_ATTEMPT_BYTES);
+            let source_address = match source.checked_add(copied) {
+                Some(value) => value,
+                None => return false,
+            };
+            let transferred = loop {
                 let result = unsafe {
                     write(
                         self.write_descriptor,
-                        address as *const c_void,
-                        chunk_length - written,
+                        source_address as *const c_void,
+                        attempt_length,
                     )
                 };
                 if result < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                if result <= 0 || result as usize > chunk_length - written {
+                if result <= 0 || result as usize > attempt_length {
                     return false;
                 }
-                written += result as usize;
-            }
+                break result as usize;
+            };
 
             let mut received = 0usize;
-            while received < chunk_length {
-                let Some(address) = destination
+            while received < transferred {
+                let destination_address = match destination
                     .checked_add(copied)
                     .and_then(|value| value.checked_add(received))
-                else {
-                    return false;
+                {
+                    Some(value) => value,
+                    None => return false,
                 };
                 let result = unsafe {
                     read(
                         self.read_descriptor,
-                        address as *mut c_void,
-                        chunk_length - received,
+                        destination_address as *mut c_void,
+                        transferred - received,
                     )
                 };
                 if result < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
                     continue;
                 }
-                if result <= 0 || result as usize > chunk_length - received {
+                if result <= 0 || result as usize > transferred - received {
                     return false;
                 }
                 received += result as usize;
             }
-            copied += chunk_length;
+            copied += transferred;
         }
         true
     }
@@ -115,6 +115,34 @@ impl Drop for KernelCopyPipe {
             self.write_descriptor = -1;
         }
     }
+}
+
+thread_local! {
+    static KERNEL_COPY_PIPE: RefCell<Option<KernelCopyPipe>> = const { RefCell::new(None) };
+}
+
+/// Copies memory through a per-thread kernel pipe so invalid user addresses fail
+/// without being dereferenced in-process. A failed transfer discards the pipe to
+/// guarantee that partially transferred bytes are never reused by a later copy.
+pub(crate) fn kernel_copy(source: usize, destination: usize, length: usize) -> bool {
+    KERNEL_COPY_PIPE.with(|slot| {
+        let Ok(mut slot) = slot.try_borrow_mut() else {
+            return KernelCopyPipe::new()
+                .map(|pipe| pipe.copy(source, destination, length))
+                .unwrap_or(false);
+        };
+        if slot.is_none() {
+            *slot = KernelCopyPipe::new();
+        }
+        let success = slot
+            .as_ref()
+            .map(|pipe| pipe.copy(source, destination, length))
+            .unwrap_or(false);
+        if !success {
+            *slot = None;
+        }
+        success
+    })
 }
 
 fn read_unaligned<T: Copy>(input: &[u8], offset: usize) -> Option<T> {
@@ -156,12 +184,8 @@ pub unsafe extern "C" fn rust_read_binder_write_read(
             return false;
         }
 
-        let pipe = match KernelCopyPipe::new() {
-            Some(value) => value,
-            None => return false,
-        };
         let mut local = [0u8; MAXIMUM_BINDER_WRITE_READ_BYTES];
-        if !pipe.copy(
+        if !kernel_copy(
             input_pointer as usize,
             local.as_mut_ptr() as usize,
             cache.bwr_total_size,
@@ -193,7 +217,7 @@ pub unsafe extern "C" fn rust_read_binder_write_read(
     .unwrap_or(false)
 }
 
-/// Writes the redirected Binder target fields through one kernel validated pipe.
+/// Writes the redirected Binder target fields through a reusable kernel validated pipe.
 ///
 /// # Safety
 /// `buffer_pointer` must identify the same Binder buffer represented by the
@@ -238,10 +262,6 @@ pub unsafe extern "C" fn rust_write_binder_transaction(
             return false;
         }
 
-        let pipe = match KernelCopyPipe::new() {
-            Some(value) => value,
-            None => return false,
-        };
         let fields = [
             (
                 &transaction.target_ptr as *const usize as usize,
@@ -264,7 +284,7 @@ pub unsafe extern "C" fn rust_write_binder_transaction(
             let Some(destination) = transaction.raw_ptr.checked_add(offset) else {
                 return false;
             };
-            if !pipe.copy(source, destination, length) {
+            if !kernel_copy(source, destination, length) {
                 return false;
             }
         }
@@ -279,24 +299,35 @@ mod tests {
 
     #[test]
     fn kernel_copy_rejects_invalid_addresses_without_dereferencing_them() {
-        let pipe = KernelCopyPipe::new().unwrap();
         let source = [1u8, 2, 3, 4];
         let mut destination = [0u8; 4];
-        assert!(pipe.copy(
+        assert!(kernel_copy(
             source.as_ptr() as usize,
             destination.as_mut_ptr() as usize,
             source.len(),
         ));
         assert_eq!(destination, source);
-        assert!(!pipe.copy(1, destination.as_mut_ptr() as usize, 1));
+        assert!(!kernel_copy(1, destination.as_mut_ptr() as usize, 1));
     }
 
     #[test]
-    fn kernel_copy_chunks_inputs_larger_than_pipe_capacity() {
-        let pipe = KernelCopyPipe::new().unwrap();
+    fn kernel_copy_handles_inputs_larger_than_pipe_capacity() {
         let source = vec![0x5au8; 128 * 1_024];
         let mut destination = vec![0u8; source.len()];
-        assert!(pipe.copy(
+        assert!(kernel_copy(
+            source.as_ptr() as usize,
+            destination.as_mut_ptr() as usize,
+            source.len(),
+        ));
+        assert_eq!(destination, source);
+    }
+
+    #[test]
+    fn kernel_copy_recovers_after_a_failed_transfer() {
+        let source = [0x33u8; 32];
+        let mut destination = [0u8; 32];
+        assert!(!kernel_copy(1, destination.as_mut_ptr() as usize, 1));
+        assert!(kernel_copy(
             source.as_ptr() as usize,
             destination.as_mut_ptr() as usize,
             source.len(),
