@@ -75,16 +75,19 @@ jobs:
           check_bc bcpkix-jdk18on 1.84
           check_bc bcutil-jdk18on 1.84
 
-      - name: Validate WebUI syntax and behavior
+      - name: Validate all WebUI syntax and behavior
         shell: bash
         env:
           NODE_OPTIONS: --throw-deprecation
         run: |
           set -euo pipefail
-          node --check module/template/webroot/bridge.js
-          node --check module/template/webroot/policy.js
-          node --check module/template/webroot/ux.js
-          node module/webui-tests/bridge.test.js
+          for script in module/template/webroot/*.js; do
+            node --check "$script"
+          done
+          for test_file in module/webui-tests/*.test.js; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
 
       - name: Guard Binder cache regressions
         working-directory: rust
@@ -97,8 +100,8 @@ jobs:
           cargo test -p cleverestricky-native-core platform::tests::binder_fd_cache_replaces_reused_descriptor_identity -- --exact
           cargo test -p cleverestricky-native-core platform::tests::fast_binder_cache_keeps_alternating_exchange_sites_hot -- --exact
 
-      - name: Run service and stub unit tests
-        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+      - name: Run Android JVM unit tests
+        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
 
   dependency-submission:
     name: "📦 Submit Gradle Dependency Graph"
