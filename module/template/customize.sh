@@ -186,18 +186,31 @@ if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   chown 0:0 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not set settings migration marker ownership"
 fi
 
-# Fresh installs start with the core protection path enabled globally. Identity
-# spoofing stays opt-in; upgrading users keep their existing switch files.
+# Fresh installs use the recommended minimal default: global core coverage and
+# automatic keybox checking are enabled; identity/privacy extras stay off. The
+# v2 patch policy follows the device's captured/property patch level and only
+# advances stale values through Automatic mode.
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
-  ui_print "- Enabling Global Mode (identity spoofing remains off by default)"
+  ui_print "- Applying recommended default settings"
   [ -e "$CONFIG_DIR/global_mode" ] || : > "$CONFIG_DIR/global_mode" \
     || abort "! Could not enable Global Mode"
+  [ -e "$CONFIG_DIR/auto_keybox_check" ] || : > "$CONFIG_DIR/auto_keybox_check" \
+    || abort "! Could not enable automatic keybox checking"
+  if [ ! -e "$CONFIG_DIR/policy_state_v2.json" ]; then
+    extract "$ZIPFILE" 'policy_state_v2.json' "$TMPDIR"
+    mv "$TMPDIR/policy_state_v2.json" "$CONFIG_DIR/policy_state_v2.json" \
+      || abort "! Could not install the default policy state"
+  fi
   : > "$CONFIG_DIR/spoof_switch_initialized" \
     || abort "! Could not write the default-settings migration marker"
 fi
 chmod 600 "$CONFIG_DIR/spoof_switch_initialized" || abort "! Could not secure migration marker"
 [ ! -e "$CONFIG_DIR/global_mode" ] || chmod 600 "$CONFIG_DIR/global_mode" \
   || abort "! Could not secure Global Mode switch"
+[ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chmod 600 "$CONFIG_DIR/auto_keybox_check" \
+  || abort "! Could not secure automatic keybox checking"
+[ ! -e "$CONFIG_DIR/policy_state_v2.json" ] || chmod 600 "$CONFIG_DIR/policy_state_v2.json" \
+  || abort "! Could not secure default policy state"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chmod 600 "$CONFIG_DIR/spoof_enabled" \
   || abort "! Could not secure identity Spoof Engine switch"
 
@@ -256,6 +269,8 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   || abort "! Could not set Global Mode switch ownership"
 [ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chown 0:0 "$CONFIG_DIR/auto_keybox_check" \
   || abort "! Could not set keybox revocation switch ownership"
+[ ! -e "$CONFIG_DIR/policy_state_v2.json" ] || chown 0:0 "$CONFIG_DIR/policy_state_v2.json" \
+  || abort "! Could not set policy state ownership"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chown 0:0 "$CONFIG_DIR/spoof_enabled" \
   || abort "! Could not set identity Spoof Engine switch ownership"
 [ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity"
