@@ -7,3 +7,4 @@
 - Added regression coverage for alternating Binder exchange sites, descriptor collisions, and reused descriptor identities.
 - Added stage-specific native activation diagnostics and strengthened TEE/native regression guardrails.
 - Completed all built-in WebUI locales with full first-party catalog coverage and localization regression tests.
+- Restored a localized WebUI Restore Defaults action backed by the built-in default profile without deleting stored keyboxes or encrypted backups.
