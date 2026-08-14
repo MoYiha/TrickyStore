@@ -151,12 +151,27 @@ fn classify_failure(error: &str) -> &'static str {
 }
 
 fn parse_and_run(arguments: &[OsString]) -> EngineResult<()> {
-    if arguments.len() != 4 {
-        return Err("expected a process, library path, and entry name".into());
+    if !(4..=5).contains(&arguments.len()) {
+        return Err(
+            "expected a process, library path, entry name, and optional activation context".into(),
+        );
     }
     let pid_value = arguments[1].as_os_str().as_bytes();
     let path_value = arguments[2].as_os_str().as_bytes();
     let entry_value = arguments[3].as_os_str().as_bytes();
+    let activation_value = arguments.get(4).map(|value| value.as_os_str().as_bytes());
+    if let Some(value) = activation_value {
+        if value.len() > 256
+            || value.contains(&0)
+            || value.iter().any(|byte| *byte < 0x20 || *byte > 0x7e)
+        {
+            return Err("invalid activation context".into());
+        }
+    }
+    let activation_c_string = activation_value
+        .map(CString::new)
+        .transpose()
+        .map_err(|_| "activation context contains a null byte".to_string())?;
     let current_pid = unsafe { getpid() };
     let pid = parse_injector_request(pid_value, current_pid, entry_value)
         .ok_or_else(|| "invalid injector arguments".to_string())?;
@@ -188,7 +203,13 @@ fn parse_and_run(arguments: &[OsString]) -> EngineResult<()> {
     unsafe {
         let _ = nice(-20);
     }
-    inject_library(pid, &library, &canonical_c_string, &entry_c_string)
+    inject_library(
+        pid,
+        &library,
+        &canonical_c_string,
+        &entry_c_string,
+        activation_c_string.as_deref(),
+    )
 }
 
 fn inject_library(
@@ -196,6 +217,7 @@ fn inject_library(
     library: &File,
     library_path: &CStr,
     entry_name: &CStr,
+    activation_context: Option<&CStr>,
 ) -> EngineResult<()> {
     log(
         LOG_INFO,
@@ -237,7 +259,15 @@ fn inject_library(
             return Err("the target library does not export the required entry".into());
         }
 
-        let entry_result = session.call(remote_entry, symbols.libc_return, &[remote_handle])?;
+        let remote_activation_context = match activation_context {
+            Some(context) => session.push_c_string(context)?,
+            None => 0,
+        };
+        let entry_result = session.call(
+            remote_entry,
+            symbols.libc_return,
+            &[remote_activation_context],
+        )?;
         if entry_result != 1 {
             return Err("the remote entry rejected initialization".into());
         }

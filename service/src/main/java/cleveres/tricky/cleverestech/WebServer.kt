@@ -1117,6 +1117,27 @@ class WebServer(
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing id")
         }
 
+        if (uri == "/api/kernel_identity" && method == Method.GET) {
+            return secureResponse(Response.Status.OK, "application/json", KernelIdentityManager.json().toString())
+        }
+
+        if (uri == "/api/kernel_identity" && method == Method.POST) {
+            val body = HashMap<String, String>()
+            return try {
+                session.parseBody(body)
+                val data = getParam(session, "data") ?: throw IllegalArgumentException("Missing kernel identity data")
+                require(data.toByteArray(Charsets.UTF_8).size <= 4096) { "Kernel identity request is too large" }
+                KernelIdentityManager.save(data)
+                val applied = KeystoreInterceptor.refreshKernelIdentity()
+                secureResponse(Response.Status.OK, "application/json", KernelIdentityManager.json().put("applied", applied).toString())
+            } catch (error: IllegalArgumentException) {
+                secureResponse(Response.Status.BAD_REQUEST, "text/plain", error.message ?: "Invalid kernel identity data")
+            } catch (error: Exception) {
+                Logger.e("Failed to save kernel identity configuration", error)
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Kernel identity configuration was not saved")
+            }
+        }
+
         if (uri == "/api/templates" && method == Method.GET) {
             val templates = DeviceTemplateManager.listTemplates()
             val array = JSONArray()
@@ -1430,6 +1451,9 @@ class WebServer(
             if (filename != null && filename in EDITABLE_CONFIG_FILES && content != null) {
                 if (validateContent(filename, content)) {
                     if (saveFile(filename, content)) {
+                        if (filename == "templates.json") {
+                            DeviceTemplateManager.initialize(configDir)
+                        }
                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
                     }
                 } else {

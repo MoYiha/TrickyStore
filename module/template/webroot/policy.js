@@ -500,6 +500,101 @@ function installConfigurationActions() {
   panel.append(note,button);
 }
 
+
+const BUILT_IN_TEMPLATE_IDS = new Set(['pixel8pro','pixel8','pixel7pro','pixel6pro','s24ultra','s23ultra','xiaomi14','oneplus11','nothing2']);
+const CUSTOM_TEMPLATE_FIELDS = [
+  ['id','Template ID'],['manufacturer','Manufacturer'],['model','Model'],['fingerprint','Fingerprint'],
+  ['brand','Brand'],['product','Product'],['device','Device'],['release','Android release'],
+  ['buildId','Build ID'],['incremental','Incremental'],['type','Build type'],['tags','Build tags'],
+  ['securityPatch','Security patch']
+];
+
+function installCustomTemplateBuilder() {
+  const spoof = document.getElementById('spoof');
+  if (!spoof || document.getElementById('ct_custom_template_panel')) return;
+  const identityPanel = [...spoof.querySelectorAll('.panel')].find(item => /^Identity Manager$/i.test((item.querySelector('h3')?.textContent || '').trim()));
+  if (!identityPanel) return;
+  const panel = document.createElement('div');
+  panel.id = 'ct_custom_template_panel';
+  panel.className = 'panel';
+  const fields = CUSTOM_TEMPLATE_FIELDS.map(([key,label]) => {
+    const value = key === 'type' ? 'user' : (key === 'tags' ? 'release-keys' : '');
+    return `<div><label for="ct_template_${key}">${escapeHtml(label)}</label><input id="ct_template_${key}" type="text" maxlength="512" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false"></div>`;
+  }).join('');
+  panel.innerHTML = `<details id="ct_custom_template_details"><summary><strong>Custom Templates</strong></summary><div class="scope-note" style="margin-top:12px">Create a reusable device identity template. The form stays collapsed until you open it.</div><div class="ct-choice-grid">${fields}</div><button id="ct_template_save" type="button" class="primary" style="width:100%;margin-top:14px">Save custom template</button></details>`;
+  identityPanel.insertAdjacentElement('afterend',panel);
+  panel.querySelector('#ct_template_save').onclick = () => saveCustomTemplate().catch(error => notify(error.message || 'Could not save custom template','error'));
+}
+
+async function saveCustomTemplate() {
+  const template = {};
+  for (const [key] of CUSTOM_TEMPLATE_FIELDS) {
+    const input = document.getElementById(`ct_template_${key}`);
+    template[key] = input ? input.value.trim() : '';
+  }
+  template.id = template.id.toLowerCase();
+  if (!/^[a-z0-9_-]{1,64}$/.test(template.id)) throw new Error('Template ID is invalid');
+  if (BUILT_IN_TEMPLATE_IDS.has(template.id)) throw new Error('Built-in template IDs cannot be replaced');
+  if (Object.entries(template).some(([key,value]) => key !== 'id' && (!value || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value)))) throw new Error('All template fields are required');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(template.securityPatch)) throw new Error('Security patch must be YYYY-MM-DD');
+
+  const currentResponse = await bridge.fetch('/api/file?filename=templates.json');
+  if (!currentResponse.ok) throw new Error('Template catalog is unavailable');
+  let current;
+  try { current = JSON.parse(await currentResponse.text()); } catch (_) { throw new Error('Template catalog is unavailable'); }
+  if (!Array.isArray(current)) throw new Error('Template catalog is unavailable');
+  const next = current.filter(item => String(item && item.id || '').toLowerCase() !== template.id);
+  next.push(template);
+  const body = new URLSearchParams();
+  body.set('filename','templates.json');
+  body.set('content',JSON.stringify(next,null,2));
+  const save = await bridge.fetch('/api/save',{method:'POST',body});
+  if (!save.ok) throw new Error((await save.text()) || 'Could not save custom template');
+  await loadReferenceData();
+  notify('Custom template saved');
+  global.setTimeout(() => global.location.reload(),500);
+}
+
+
+function installKernelIdentityControls() {
+  const spoof = document.getElementById('spoof');
+  if (!spoof || document.getElementById('ct_kernel_identity_panel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'ct_kernel_identity_panel';
+  panel.className = 'panel';
+  panel.innerHTML = `<details><summary><strong>Kernel Identity</strong></summary><div class="scope-note" style="margin-top:12px">Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.</div><div class="row"><label for="ct_kernel_enabled" style="flex:1"><strong>Hook kernel name</strong><span class="res-desc">Disabled by default. Core Binder protection is independent from this option.</span></label>${switchMarkup('ct_kernel_enabled',false)}</div><div id="ct_kernel_children" hidden><label for="ct_kernel_preset">GKI preset</label><select id="ct_kernel_preset"></select><div class="ct-choice-grid" style="margin-top:10px"><div><label for="ct_kernel_release">uname release</label><input id="ct_kernel_release" type="text" maxlength="64" autocomplete="off" spellcheck="false"></div><div><label for="ct_kernel_version">uname version</label><input id="ct_kernel_version" type="text" maxlength="64" autocomplete="off" spellcheck="false"></div></div><button id="ct_kernel_save" class="primary" type="button" style="width:100%;margin-top:12px">Save kernel identity</button></div></details>`;
+  const customPanel = document.getElementById('ct_custom_template_panel');
+  if (customPanel) customPanel.insertAdjacentElement('afterend',panel); else spoof.append(panel);
+  loadKernelIdentity().catch(error => notify(error.message || 'Could not load kernel identity','error'));
+}
+
+async function loadKernelIdentity() {
+  const state = await request('/api/kernel_identity');
+  const enabled = document.getElementById('ct_kernel_enabled');
+  const children = document.getElementById('ct_kernel_children');
+  const preset = document.getElementById('ct_kernel_preset');
+  const release = document.getElementById('ct_kernel_release');
+  const version = document.getElementById('ct_kernel_version');
+  if (!enabled || !children || !preset || !release || !version) return;
+  preset.innerHTML = '<option value="custom">Custom</option>' + (state.presets || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join('');
+  enabled.checked = Boolean(state.enabled);
+  children.hidden = !enabled.checked;
+  preset.value = state.preset || 'custom';
+  release.value = state.release || '';
+  version.value = state.version || '';
+  enabled.onchange = () => { children.hidden = !enabled.checked; };
+  preset.onchange = () => {
+    const selected = (state.presets || []).find(item => item.id === preset.value);
+    if (selected) { release.value = selected.release; version.value = selected.version; }
+  };
+  document.getElementById('ct_kernel_save').onclick = async () => {
+    const payload = {enabled:enabled.checked,preset:preset.value,release:release.value.trim(),version:version.value.trim()};
+    const body = new URLSearchParams(); body.set('data',JSON.stringify(payload));
+    const result = await request('/api/kernel_identity',{method:'POST',body});
+    notify(result.applied ? 'Kernel identity applied' : 'Kernel identity saved for next native activation');
+  };
+}
+
 function installAppsProfileCard() {
   const apps = document.getElementById('apps');
   if (!apps || document.getElementById('ct_apps_profiles_card')) return;
@@ -1014,6 +1109,8 @@ async function initialize() {
   retireLegacyLocalization();
   installFeatureCenter();
   installConfigurationActions();
+  installCustomTemplateBuilder();
+  installKernelIdentityControls();
   installAppsProfileCard();
   removeLegacySurfaces();
   markIdentityActionGroups();

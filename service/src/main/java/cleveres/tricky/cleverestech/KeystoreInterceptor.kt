@@ -180,6 +180,42 @@ object KeystoreInterceptor : BinderInterceptor() {
         return null
     }
 
+    private fun runNativeActivation(pid: Int, symbol: String): Boolean {
+        return try {
+            val modulePath = getModuleDir()
+            val injectPath = "$modulePath/inject"
+            val process =
+                ProcessBuilder(
+                    injectPath,
+                    pid.toString(),
+                    "$modulePath/libcleverestricky.so",
+                    symbol,
+                    KernelIdentityManager.activationPayload(),
+                ).redirectOutput(java.io.File("/dev/null"))
+                    .redirectError(java.io.File("/dev/null"))
+                    .start()
+            if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                Logger.e("native activation timed out after 30s, killing it")
+                process.destroyForcibly()
+                false
+            } else {
+                val exitCode = process.exitValue()
+                if (exitCode != 0) Logger.e("native activation failed (exit=$exitCode)")
+                exitCode == 0
+            }
+        } catch (error: Exception) {
+            Logger.e("failed to run native activation", error)
+            false
+        }
+    }
+
+    @Synchronized
+    fun refreshKernelIdentity(): Boolean {
+        val pid = findKeystore2Pid() ?: return false
+        if (!injected || injectedPid != pid) return true
+        return runNativeActivation(pid, "resume")
+    }
+
     @Synchronized
     fun tryRunKeystoreInterceptor(): Boolean {
         if (registered && ::keystore.isInitialized && keystore.isBinderAlive) return true
@@ -209,42 +245,15 @@ object KeystoreInterceptor : BinderInterceptor() {
             lastInjectionAttemptMs = now
             val symbol = if (injected && injectedPid == pid) "resume" else "entry"
             Logger.i("trying to activate the keystore Binder hook ...")
-            try {
-                val modulePath = getModuleDir()
-                val injectPath = "$modulePath/inject"
-                val p =
-                    ProcessBuilder(
-                        injectPath,
-                        pid.toString(),
-                        "$modulePath/libcleverestricky.so",
-                        symbol,
-                    ).redirectOutput(java.io.File("/dev/null"))
-                        .redirectError(java.io.File("/dev/null"))
-                        .start()
-                val completed = p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
-                if (!completed) {
-                    Logger.e("inject process timed out after 30s, killing it")
-                    p.destroyForcibly()
-                    triedCount.incrementAndGet()
-                    return false
-                }
-                val exitCode = p.exitValue()
-                if (exitCode != 0) {
-                    Logger.e("failed to activate the keystore Binder hook (exit=$exitCode)!")
-                    triedCount.incrementAndGet()
-                    return false
-                } else {
-                    Logger.i("keystore Binder hook activated successfully")
-                    injected = true
-                    injectedPid = pid
-                }
+            if (!runNativeActivation(pid, symbol)) {
                 triedCount.incrementAndGet()
-                return false
-            } catch (error: Exception) {
-                triedCount.incrementAndGet()
-                Logger.e("failed to run the keystore injector", error)
                 return false
             }
+            Logger.i("keystore Binder hook activated successfully")
+            injected = true
+            injectedPid = pid
+            triedCount.incrementAndGet()
+            return false
         }
         val ks = IKeystoreService.Stub.asInterface(b)
         val tee =

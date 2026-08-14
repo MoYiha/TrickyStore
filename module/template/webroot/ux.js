@@ -592,6 +592,31 @@
         'Could not restore defaults': 'Varsayılanlar geri yüklenemedi'
     });
 
+    Object.assign(TRANSLATIONS.tr, {
+        'Custom Templates': 'Özel Şablonlar',
+        'Create a reusable device identity template. The form stays collapsed until you open it.': 'Yeniden kullanılabilir bir cihaz kimliği şablonu oluşturun. Form siz açana kadar kapalı kalır.',
+        'Template ID': 'Şablon Kimliği', 'Manufacturer': 'Üretici', 'Model': 'Model', 'Fingerprint': 'Parmak izi',
+        'Brand': 'Marka', 'Product': 'Ürün', 'Device': 'Cihaz', 'Android release': 'Android sürümü',
+        'Build ID': 'Derleme Kimliği', 'Incremental': 'Artımlı derleme', 'Build type': 'Derleme türü', 'Build tags': 'Derleme etiketleri',
+        'Security patch': 'Güvenlik yaması', 'Save custom template': 'Özel şablonu kaydet',
+        'Custom template saved': 'Özel şablon kaydedildi', 'Template ID is invalid': 'Şablon kimliği geçersiz',
+        'Built-in template IDs cannot be replaced': 'Yerleşik şablon kimlikleri değiştirilemez',
+        'All template fields are required': 'Tüm şablon alanları zorunludur',
+        'Security patch must be YYYY-MM-DD': 'Güvenlik yaması YYYY-AA-GG biçiminde olmalıdır',
+        'Template catalog is unavailable': 'Şablon kataloğu kullanılamıyor',
+        'Could not save custom template': 'Özel şablon kaydedilemedi'
+    });
+
+    Object.assign(TRANSLATIONS.tr, {
+        'Kernel Identity': 'Çekirdek Kimliği', 'Hook kernel name': 'Çekirdek adını hookla', 'GKI preset': 'GKI ön ayarı',
+        'uname release': 'uname sürümü', 'uname version': 'uname derleme bilgisi', 'Save kernel identity': 'Çekirdek kimliğini kaydet',
+        'Custom': 'Özel', 'Kernel identity applied': 'Çekirdek kimliği uygulandı',
+        'Kernel identity saved for next native activation': 'Çekirdek kimliği sonraki yerel etkinleştirme için kaydedildi',
+        'Could not load kernel identity': 'Çekirdek kimliği yüklenemedi',
+        'Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.': 'Enjekte edilen Keystore çalışma zamanında uname sürüm/derleme bilgisini isteğe bağlı olarak değiştirir. Resmî GKI ön ayarları yayımlanan temel çekirdek sürümlerini kullanır ve düzenlenebilir.',
+        'Disabled by default. Core Binder protection is independent from this option.': 'Varsayılan olarak kapalıdır. Temel Binder koruması bu seçenekten bağımsızdır.'
+    });
+
     // Complete catalogs share one source key per row to keep all built-in
     // locales aligned without adding locale-specific runtime assets. Columns:
     // source, zh-CN, es, de, ru, id, hi, ar.
@@ -977,6 +1002,41 @@
         ["Restores module settings using the built-in default profile. Stored keyboxes and encrypted backups are not deleted.", "使用内置默认配置恢复模块设置。已保存的密钥盒和加密备份不会被删除。", "Restaura la configuración del módulo con el perfil predeterminado integrado. No elimina keyboxes guardados ni copias cifradas.", "Stellt Moduleinstellungen mit dem integrierten Standardprofil wieder her. Gespeicherte Keyboxen und verschlüsselte Backups werden nicht gelöscht.", "Восстанавливает настройки модуля встроенным профилем по умолчанию. Сохранённые keybox и зашифрованные резервные копии не удаляются.", "Memulihkan pengaturan modul memakai profil default bawaan. Keybox tersimpan dan cadangan terenkripsi tidak dihapus.", "अंतर्निहित डिफ़ॉल्ट प्रोफ़ाइल से मॉड्यूल सेटिंग्स बहाल करता है। सहेजे गए keybox और एन्क्रिप्टेड बैकअप हटाए नहीं जाते।", "يستعيد إعدادات الوحدة باستخدام الملف الافتراضي المدمج. لا يتم حذف صناديق المفاتيح المحفوظة أو النسخ الاحتياطية المشفرة."],
         ["Default settings restored", "已恢复默认设置", "Valores predeterminados restaurados", "Standardeinstellungen wiederhergestellt", "Настройки по умолчанию восстановлены", "Pengaturan default dipulihkan", "डिफ़ॉल्ट सेटिंग्स बहाल की गईं", "تمت استعادة الإعدادات الافتراضية"],
         ["Could not restore defaults", "无法恢复默认设置", "No se pudieron restaurar los valores predeterminados", "Standardeinstellungen konnten nicht wiederhergestellt werden", "Не удалось восстановить настройки по умолчанию", "Tidak dapat memulihkan default", "डिफ़ॉल्ट बहाल नहीं किए जा सके", "تعذر استعادة الإعدادات الافتراضية"],
+        ["Custom Templates", "自定义模板", "Plantillas personalizadas", "Benutzerdefinierte Vorlagen", "Пользовательские шаблоны", "Template Kustom", "कस्टम टेम्पलेट", "قوالب مخصصة"],
+        ["Create a reusable device identity template. The form stays collapsed until you open it.", "创建可重复使用的设备身份模板。表单在打开前保持折叠。", "Crea una plantilla reutilizable de identidad del dispositivo. El formulario permanece contraído hasta que lo abras.", "Erstellt eine wiederverwendbare Geräteidentitätsvorlage. Das Formular bleibt bis zum Öffnen eingeklappt.", "Создайте многоразовый шаблон идентичности устройства. Форма остаётся свёрнутой, пока вы её не откроете.", "Buat template identitas perangkat yang dapat digunakan kembali. Form tetap tertutup sampai dibuka.", "दोबारा उपयोग योग्य डिवाइस पहचान टेम्पलेट बनाएँ। खोलने तक फ़ॉर्म बंद रहता है।", "أنشئ قالب هوية جهاز قابل لإعادة الاستخدام. يبقى النموذج مطويا حتى تفتحه."],
+        ["Template ID", "模板 ID", "ID de plantilla", "Vorlagen-ID", "ID шаблона", "ID Template", "टेम्पलेट आईडी", "معرف القالب"],
+        ["Manufacturer", "制造商", "Fabricante", "Hersteller", "Производитель", "Produsen", "निर्माता", "الشركة المصنعة"],
+        ["Model", "型号", "Modelo", "Modell", "Модель", "Model", "मॉडल", "الطراز"],
+        ["Fingerprint", "指纹", "Huella digital", "Fingerprint", "Отпечаток", "Fingerprint", "फिंगरप्रिंट", "البصمة"],
+        ["Brand", "品牌", "Marca", "Marke", "Бренд", "Merek", "ब्रांड", "العلامة التجارية"],
+        ["Product", "产品", "Producto", "Produkt", "Продукт", "Produk", "उत्पाद", "المنتج"],
+        ["Device", "设备", "Dispositivo", "Gerät", "Устройство", "Perangkat", "डिवाइस", "الجهاز"],
+        ["Android release", "Android 版本", "Versión de Android", "Android-Version", "Версия Android", "Rilis Android", "Android रिलीज़", "إصدار Android"],
+        ["Build ID", "构建 ID", "ID de compilación", "Build-ID", "ID сборки", "ID Build", "बिल्ड आईडी", "معرف البناء"],
+        ["Incremental", "增量版本", "Incremental", "Inkrementell", "Инкремент", "Inkremental", "इन्क्रिमेंटल", "تزايدي"],
+        ["Build type", "构建类型", "Tipo de compilación", "Build-Typ", "Тип сборки", "Tipe build", "बिल्ड प्रकार", "نوع البناء"],
+        ["Build tags", "构建标签", "Etiquetas de compilación", "Build-Tags", "Теги сборки", "Tag build", "बिल्ड टैग", "وسوم البناء"],
+        ["Security patch", "安全补丁", "Parche de seguridad", "Sicherheitspatch", "Патч безопасности", "Patch keamanan", "सुरक्षा पैच", "تصحيح الأمان"],
+        ["Save custom template", "保存自定义模板", "Guardar plantilla personalizada", "Benutzerdefinierte Vorlage speichern", "Сохранить пользовательский шаблон", "Simpan template kustom", "कस्टम टेम्पलेट सहेजें", "حفظ القالب المخصص"],
+        ["Custom template saved", "自定义模板已保存", "Plantilla personalizada guardada", "Benutzerdefinierte Vorlage gespeichert", "Пользовательский шаблон сохранён", "Template kustom disimpan", "कस्टम टेम्पलेट सहेजा गया", "تم حفظ القالب المخصص"],
+        ["Template ID is invalid", "模板 ID 无效", "El ID de plantilla no es válido", "Vorlagen-ID ist ungültig", "Недопустимый ID шаблона", "ID template tidak valid", "टेम्पलेट आईडी अमान्य है", "معرف القالب غير صالح"],
+        ["Built-in template IDs cannot be replaced", "不能替换内置模板 ID", "No se pueden reemplazar los ID de plantillas integradas", "Integrierte Vorlagen-IDs können nicht ersetzt werden", "Встроенные ID шаблонов нельзя заменять", "ID template bawaan tidak dapat diganti", "अंतर्निहित टेम्पलेट आईडी बदली नहीं जा सकती", "لا يمكن استبدال معرفات القوالب المدمجة"],
+        ["All template fields are required", "所有模板字段均为必填", "Todos los campos de la plantilla son obligatorios", "Alle Vorlagenfelder sind erforderlich", "Все поля шаблона обязательны", "Semua kolom template wajib diisi", "सभी टेम्पलेट फ़ील्ड आवश्यक हैं", "جميع حقول القالب مطلوبة"],
+        ["Security patch must be YYYY-MM-DD", "安全补丁必须为 YYYY-MM-DD", "El parche de seguridad debe tener formato AAAA-MM-DD", "Sicherheitspatch muss JJJJ-MM-TT sein", "Патч безопасности должен быть YYYY-MM-DD", "Patch keamanan harus YYYY-MM-DD", "सुरक्षा पैच YYYY-MM-DD होना चाहिए", "يجب أن يكون تصحيح الأمان بالصيغة YYYY-MM-DD"],
+        ["Template catalog is unavailable", "模板目录不可用", "El catálogo de plantillas no está disponible", "Vorlagenkatalog ist nicht verfügbar", "Каталог шаблонов недоступен", "Katalog template tidak tersedia", "टेम्पलेट कैटलॉग उपलब्ध नहीं है", "كتالوج القوالب غير متاح"],
+        ["Could not save custom template", "无法保存自定义模板", "No se pudo guardar la plantilla personalizada", "Benutzerdefinierte Vorlage konnte nicht gespeichert werden", "Не удалось сохранить пользовательский шаблон", "Tidak dapat menyimpan template kustom", "कस्टम टेम्पलेट सहेजा नहीं जा सका", "تعذر حفظ القالب المخصص"],
+        ["Kernel Identity", "内核身份", "Identidad del kernel", "Kernel-Identität", "Идентичность ядра", "Identitas Kernel", "कर्नेल पहचान", "هوية النواة"],
+        ["Hook kernel name", "Hook 内核名称", "Interceptar nombre del kernel", "Kernel-Namen hooken", "Перехватывать имя ядра", "Hook nama kernel", "कर्नेल नाम हुक करें", "اعتراض اسم النواة"],
+        ["GKI preset", "GKI 预设", "Preajuste GKI", "GKI-Voreinstellung", "Профиль GKI", "Preset GKI", "GKI प्रीसेट", "إعداد GKI مسبق"],
+        ["uname release", "uname release", "release de uname", "uname release", "uname release", "uname release", "uname release", "uname release"],
+        ["uname version", "uname version", "versión de uname", "uname version", "uname version", "uname version", "uname version", "uname version"],
+        ["Save kernel identity", "保存内核身份", "Guardar identidad del kernel", "Kernel-Identität speichern", "Сохранить идентичность ядра", "Simpan identitas kernel", "कर्नेल पहचान सहेजें", "حفظ هوية النواة"],
+        ["Kernel identity applied", "内核身份已应用", "Identidad del kernel aplicada", "Kernel-Identität angewendet", "Идентичность ядра применена", "Identitas kernel diterapkan", "कर्नेल पहचान लागू की गई", "تم تطبيق هوية النواة"],
+        ["Kernel identity saved for next native activation", "内核身份已保存，将在下次原生激活时应用", "Identidad del kernel guardada para la próxima activación nativa", "Kernel-Identität für die nächste native Aktivierung gespeichert", "Идентичность ядра сохранена для следующей нативной активации", "Identitas kernel disimpan untuk aktivasi native berikutnya", "कर्नेल पहचान अगली नेटिव सक्रियता के लिए सहेजी गई", "تم حفظ هوية النواة للتفعيل الأصلي التالي"],
+        ["Could not load kernel identity", "无法加载内核身份", "No se pudo cargar la identidad del kernel", "Kernel-Identität konnte nicht geladen werden", "Не удалось загрузить идентичность ядра", "Tidak dapat memuat identitas kernel", "कर्नेल पहचान लोड नहीं हो सकी", "تعذر تحميل هوية النواة"],
+        ["Disabled by default. Core Binder protection is independent from this option.", "默认关闭。核心 Binder 保护独立于此选项。", "Desactivado de forma predeterminada. La protección Binder principal es independiente de esta opción.", "Standardmäßig deaktiviert. Der Binder-Kernschutz ist von dieser Option unabhängig.", "По умолчанию отключено. Основная защита Binder не зависит от этой опции.", "Dinonaktifkan secara default. Perlindungan inti Binder tidak bergantung pada opsi ini.", "डिफ़ॉल्ट रूप से बंद। मुख्य Binder सुरक्षा इस विकल्प से स्वतंत्र है।", "معطل افتراضيا. حماية Binder الأساسية مستقلة عن هذا الخيار."],
+        ["Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.", "可选地覆盖注入 Keystore 运行时中的 uname release/version。官方 GKI 预设使用已发布的基础内核版本并可编辑。", "Sustituye opcionalmente release/version de uname dentro del entorno Keystore inyectado. Los preajustes GKI oficiales usan versiones base publicadas y siguen siendo editables.", "Überschreibt optional uname release/version in der injizierten Keystore-Laufzeit. Offizielle GKI-Voreinstellungen verwenden veröffentlichte Basis-Kernelversionen und bleiben editierbar.", "При необходимости заменяет uname release/version во внедрённой среде Keystore. Официальные профили GKI используют опубликованные базовые версии ядра и остаются редактируемыми.", "Secara opsional mengganti uname release/version di runtime Keystore yang diinjeksi. Preset GKI resmi memakai versi kernel dasar yang dipublikasikan dan tetap dapat diedit.", "इंजेक्ट किए गए Keystore रनटाइम में uname release/version को वैकल्पिक रूप से बदलता है। आधिकारिक GKI प्रीसेट प्रकाशित बेस कर्नेल संस्करणों का उपयोग करते हैं और संपादन योग्य रहते हैं।", "يستبدل اختياريا uname release/version داخل بيئة Keystore المحقونة. تستخدم إعدادات GKI الرسمية إصدارات النواة الأساسية المنشورة وتظل قابلة للتحرير."],
+        ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],
     ];
 
     for (const row of COMPLETE_CATALOG_ROWS) {

@@ -1,0 +1,14 @@
+const fs = require('fs');
+const assert = require('assert');
+const policy = fs.readFileSync('module/template/webroot/policy.js','utf8');
+const manager = fs.readFileSync('service/src/main/java/cleveres/tricky/cleverestech/KernelIdentityManager.kt','utf8');
+const binder = fs.readFileSync('module/src/main/cpp/binder_interceptor.cpp','utf8');
+const engine = fs.readFileSync('rust/injector-core/src/engine.rs','utf8');
+assert(policy.includes('<details><summary><strong>Kernel Identity</strong>'), 'kernel UI must stay collapsed');
+assert(policy.includes('children.hidden = !enabled.checked'), 'kernel inputs must be conditional');
+for (const version of ['5.15.208-android14','6.1.172-android14','6.6.139-android15','6.12.81-android16']) assert(manager.includes(version), `missing GKI base ${version}`);
+assert(binder.includes('syscall(SYS_uname, buffer)'), 'hook must obtain genuine uname through raw syscall');
+assert(binder.includes('g_enabled.load'), 'disabled hook must preserve genuine uname');
+assert(binder.includes('Binder core remains active'), 'optional kernel hook must not disable Binder core');
+assert(engine.includes('optional activation context'), 'injector must validate optional native context');
+console.log('kernel-identity regression checks passed');
