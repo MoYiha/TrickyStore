@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "features": {
+    "buildIdentity": false,
+    "attestationIdentity": false,
+    "telephonyIdentity": false,
+    "regionIdentity": false,
+    "identityRefresh": false,
+    "securityPatch": true
+  },
+  "securityPatch": {
+    "automaticThresholdMonths": 6,
+    "system": { "mode": "automatic" },
+    "vendor": { "mode": "automatic" },
+    "boot": { "mode": "automatic" }
+  },
+  "profiles": [],
+  "activeProfile": null
+}
