@@ -34,7 +34,6 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Security;
 import java.security.Signature;
@@ -86,17 +85,6 @@ public final class CertHack {
                     }
                 }
             };
-    private static final ThreadLocal<MessageDigest> SHA256_DIGEST =
-            new ThreadLocal<MessageDigest>() {
-                @Override
-                protected MessageDigest initialValue() {
-                    try {
-                        return MessageDigest.getInstance("SHA-256");
-                    } catch (Exception e) {
-                        throw new IllegalStateException("SHA-256 digest is unavailable", e);
-                    }
-                }
-            };
     private static final ThreadLocal<JcaX509CertificateConverter> CERTIFICATE_CONVERTER =
             ThreadLocal.withInitial(JcaX509CertificateConverter::new);
     private static final ThreadLocal<JcaContentSignerBuilder> EC_SIGNER_BUILDER =
@@ -107,13 +95,25 @@ public final class CertHack {
     private static final class PreparedKeyBox {
         final X500Name issuer;
         final String signatureAlgorithm;
+        final Certificate[] issuerChain;
 
         PreparedKeyBox(KeyBox keybox) throws Exception {
             if (keybox.certificates.isEmpty()) throw new IOException("Keybox has no certificates");
             this.issuer = new X509CertificateHolder(keybox.certificates.get(0).getEncoded()).getSubject();
             this.signatureAlgorithm = signatureAlgorithmForKeybox(keybox);
             if (this.signatureAlgorithm == null) throw new IOException("Unsupported keybox algorithm");
+            this.issuerChain = keybox.certificates.toArray(new Certificate[0]);
+            // Resolve the provider and signing implementation while keyboxes are loaded. The
+            // per-Binder-worker builders below remain thread-confined for concurrency safety.
+            new JcaContentSignerBuilder(this.signatureAlgorithm).build(keybox.keyPair.getPrivate());
         }
+    }
+
+    private static final class AuthorizationSummary {
+        boolean hasRootOfTrust;
+        Integer systemPatch;
+        Integer vendorPatch;
+        Integer bootPatch;
     }
 
     private static class State {
@@ -204,12 +204,15 @@ public final class CertHack {
     }
 
     private static final class CacheKey {
-        private final byte[] leafDigest;
+        private final byte[] leafEncoded;
         private final int hashCode;
 
         public CacheKey(byte[] leafEncoded) {
-            this.leafDigest = SHA256_DIGEST.get().digest(leafEncoded);
-            this.hashCode = Arrays.hashCode(leafDigest);
+            // Certificates are public data and the cache is tiny/bounded, so a cryptographic digest
+            // only adds provider work to every generateKey reply. Retain the exact DER bytes instead;
+            // Arrays.equals protects correctness even if the ordinary hash collides.
+            this.leafEncoded = leafEncoded.clone();
+            this.hashCode = Arrays.hashCode(this.leafEncoded);
         }
 
         int indexForPool(int size) {
@@ -222,7 +225,7 @@ public final class CertHack {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             CacheKey cacheKey = (CacheKey) o;
-            return MessageDigest.isEqual(leafDigest, cacheKey.leafDigest);
+            return Arrays.equals(leafEncoded, cacheKey.leafEncoded);
         }
 
         @Override
@@ -235,21 +238,55 @@ public final class CertHack {
         return component.getDisposition() != Config.PatchDisposition.KEEP;
     }
 
+    private static int patchValue(ASN1TaggedObject taggedObject) throws CertificateParsingException {
+        try {
+            return ASN1Integer.getInstance(taggedObject.getBaseObject()).getValue().intValueExact();
+        } catch (Throwable error) {
+            throw new CertificateParsingException("Invalid security patch authorization", error);
+        }
+    }
+
+    private static Integer mergePatchValue(Integer current, int parsed)
+            throws CertificateParsingException {
+        if (current != null && current != parsed) {
+            throw new CertificateParsingException("Conflicting security patch authorizations");
+        }
+        return parsed;
+    }
+
+    private static AuthorizationSummary summarizeAuthorizationList(ASN1Sequence sequence)
+            throws CertificateParsingException {
+        AuthorizationSummary summary = new AuthorizationSummary();
+        for (ASN1Encodable value : sequence) {
+            if (!(value instanceof ASN1TaggedObject taggedObject)) {
+                throw new CertificateParsingException("Invalid authorization-list element");
+            }
+            switch (taggedObject.getTagNo()) {
+                case 704 -> summary.hasRootOfTrust = true;
+                case 706 -> summary.systemPatch = mergePatchValue(summary.systemPatch, patchValue(taggedObject));
+                case 718 -> summary.vendorPatch = mergePatchValue(summary.vendorPatch, patchValue(taggedObject));
+                case 719 -> summary.bootPatch = mergePatchValue(summary.bootPatch, patchValue(taggedObject));
+                default -> {
+                }
+            }
+        }
+        return summary;
+    }
+
+    private static Integer combineCapturedPatch(Integer teeValue, Integer softwareValue)
+            throws CertificateParsingException {
+        if (teeValue != null && softwareValue != null && !teeValue.equals(softwareValue)) {
+            throw new CertificateParsingException("Conflicting security patch authorization lists");
+        }
+        return teeValue != null ? teeValue : softwareValue;
+    }
+
     private static Integer readPatchTag(ASN1Sequence sequence, int targetTag)
             throws CertificateParsingException {
         Integer result = null;
         for (ASN1Encodable value : sequence) {
             if (!(value instanceof ASN1TaggedObject taggedObject) || taggedObject.getTagNo() != targetTag) continue;
-            int parsed;
-            try {
-                parsed = ASN1Integer.getInstance(taggedObject.getBaseObject()).getValue().intValueExact();
-            } catch (Throwable error) {
-                throw new CertificateParsingException("Invalid security patch authorization", error);
-            }
-            if (result != null && result != parsed) {
-                throw new CertificateParsingException("Conflicting security patch authorizations");
-            }
-            result = parsed;
+            result = mergePatchValue(result, patchValue(taggedObject));
         }
         return result;
     }
@@ -259,12 +296,7 @@ public final class CertHack {
             ASN1Sequence softwareEnforced,
             int tag
     ) throws CertificateParsingException {
-        Integer teeValue = readPatchTag(teeEnforced, tag);
-        Integer softwareValue = readPatchTag(softwareEnforced, tag);
-        if (teeValue != null && softwareValue != null && !teeValue.equals(softwareValue)) {
-            throw new CertificateParsingException("Conflicting security patch authorization lists");
-        }
-        return teeValue != null ? teeValue : softwareValue;
+        return combineCapturedPatch(readPatchTag(teeEnforced, tag), readPatchTag(softwareEnforced, tag));
     }
 
     private static void addPatchTag(
@@ -591,43 +623,37 @@ public final class CertHack {
                         new ByteArrayInputStream(leafEncoded));
             }
 
-            byte[] bytes = leaf.getExtensionValue(OID.getId());
-            if (bytes == null) return caList;
-            if (bytes.length > MAX_ATTESTATION_EXTENSION_BYTES) {
+            X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
+            Extension ext = leafHolder.getExtension(OID);
+            if (ext == null || ext.getExtnValue() == null) return caList;
+            byte[] extensionOctets = ext.getExtnValue().getOctets();
+            if (extensionOctets.length > MAX_ATTESTATION_EXTENSION_BYTES) {
                 Logger.e("Attestation extension exceeds the safety limit");
                 return caList;
             }
-
-            X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
-            Extension ext = leafHolder.getExtension(OID);
-            if (ext == null || ext.getExtnValue() == null) {
-                Logger.e("Attestation extension present but holder returned null; skipping rewrite");
-                return caList;
-            }
-            ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
+            ASN1Sequence sequence = ASN1Sequence.getInstance(extensionOctets);
             ASN1Encodable[] encodables = sequence.toArray();
             if (encodables.length <= 7 || !(encodables[6] instanceof ASN1Sequence) ||
                     !(encodables[7] instanceof ASN1Sequence)) {
                 Logger.e("Attestation record is missing an authorization list");
                 return caList;
             }
-            int teeEnforcedIndex = containsTag((ASN1Sequence) encodables[6], 704) &&
-                    !containsTag((ASN1Sequence) encodables[7], 704) ? 6 : 7;
+            ASN1Sequence listSix = (ASN1Sequence) encodables[6];
+            ASN1Sequence listSeven = (ASN1Sequence) encodables[7];
+            AuthorizationSummary summarySix = summarizeAuthorizationList(listSix);
+            AuthorizationSummary summarySeven = summarizeAuthorizationList(listSeven);
+            int teeEnforcedIndex = summarySix.hasRootOfTrust && !summarySeven.hasRootOfTrust ? 6 : 7;
             int softwareEnforcedIndex = teeEnforcedIndex == 6 ? 7 : 6;
-            ASN1Sequence teeEnforced = (ASN1Sequence) encodables[teeEnforcedIndex];
-            ASN1Sequence softwareEnforced = (ASN1Sequence) encodables[softwareEnforcedIndex];
+            ASN1Sequence teeEnforced = teeEnforcedIndex == 6 ? listSix : listSeven;
+            ASN1Sequence softwareEnforced = teeEnforcedIndex == 6 ? listSeven : listSix;
+            AuthorizationSummary teeSummary = teeEnforcedIndex == 6 ? summarySix : summarySeven;
+            AuthorizationSummary softwareSummary = teeEnforcedIndex == 6 ? summarySeven : summarySix;
             int attestationVersion = ASN1Integer.getInstance(encodables[0]).getValue().intValueExact();
             int keyMintVersion = ASN1Integer.getInstance(encodables[2]).getValue().intValueExact();
             boolean supportsModuleHash = attestationVersion >= 400 && keyMintVersion >= 400;
-            boolean systemWasTee = containsTag(teeEnforced, 706);
-            boolean systemWasSoftware = containsTag(softwareEnforced, 706);
-            boolean vendorWasTee = containsTag(teeEnforced, 718);
-            boolean vendorWasSoftware = containsTag(softwareEnforced, 718);
-            boolean bootWasTee = containsTag(teeEnforced, 719);
-            boolean bootWasSoftware = containsTag(softwareEnforced, 719);
-            Integer capturedSystem = readCapturedPatch(teeEnforced, softwareEnforced, 706);
-            Integer capturedVendor = readCapturedPatch(teeEnforced, softwareEnforced, 718);
-            Integer capturedBoot = readCapturedPatch(teeEnforced, softwareEnforced, 719);
+            Integer capturedSystem = combineCapturedPatch(teeSummary.systemPatch, softwareSummary.systemPatch);
+            Integer capturedVendor = combineCapturedPatch(teeSummary.vendorPatch, softwareSummary.vendorPatch);
+            Integer capturedBoot = combineCapturedPatch(teeSummary.bootPatch, softwareSummary.bootPatch);
             Config.AttestationPatchLevels patchLevels = PolicyState.INSTANCE.resolveAttestationPatchLevels(
                     uid, capturedSystem, capturedVendor, capturedBoot);
 
@@ -636,10 +662,6 @@ public final class CertHack {
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
             ASN1TaggedObject originalModuleHash = null;
-
-            // Most attestations do not carry device-ID authorization tags. Resolve an
-            // override only when the genuine TEE list actually contains that tag, avoiding nine
-            // policy/privacy lookups and temporary collections on the common timing-sensitive path.
             Map<Integer, byte[]> presentIdAttestationTags = null;
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
@@ -689,9 +711,12 @@ public final class CertHack {
                 softwareTags.add(taggedObject);
             }
 
-            addPatchTag(teeTags, softwareTags, 706, patchLevels.getSystem(), systemWasTee, systemWasSoftware);
-            addPatchTag(teeTags, softwareTags, 718, patchLevels.getVendor(), vendorWasTee, vendorWasSoftware);
-            addPatchTag(teeTags, softwareTags, 719, patchLevels.getBoot(), bootWasTee, bootWasSoftware);
+            addPatchTag(teeTags, softwareTags, 706, patchLevels.getSystem(),
+                    teeSummary.systemPatch != null, softwareSummary.systemPatch != null);
+            addPatchTag(teeTags, softwareTags, 718, patchLevels.getVendor(),
+                    teeSummary.vendorPatch != null, softwareSummary.vendorPatch != null);
+            addPatchTag(teeTags, softwareTags, 719, patchLevels.getBoot(),
+                    teeSummary.bootPatch != null, softwareSummary.bootPatch != null);
 
             if (presentIdAttestationTags != null) {
                 for (Map.Entry<Integer, byte[]> entry : presentIdAttestationTags.entrySet()) {
@@ -707,7 +732,10 @@ public final class CertHack {
                 }
             }
 
-            String preferredSignerAlgorithm = signingKeyAlgorithm(leaf.getSigAlgName());
+            // The subject key algorithm does not constrain the CA key algorithm. Prefer EC when
+            // available because signing the replacement leaf is the only unavoidable work unique to
+            // the attested path and EC signing is materially cheaper than RSA on mobile cores.
+            String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             List<KeyBox> list;
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
@@ -722,7 +750,6 @@ public final class CertHack {
             PreparedKeyBox prepared = currentState.preparedKeyboxes.get(k);
             if (prepared == null) throw new UnsupportedOperationException("Keybox metadata is unavailable");
 
-            LinkedList<Certificate> certificates = new LinkedList<>(k.certificates);
             X509v3CertificateBuilder builder = new X509v3CertificateBuilder(
                     prepared.issuer,
                     leafHolder.getSerialNumber(),
@@ -795,9 +822,10 @@ public final class CertHack {
                     builder.addExtension(leafHolder.getExtension(extensionOID));
                 }
             }
-            certificates.addFirst(CERTIFICATE_CONVERTER.get().getCertificate(builder.build(signer)));
-
-            Certificate[] result = certificates.toArray(new Certificate[0]);
+            Certificate rewrittenLeaf = CERTIFICATE_CONVERTER.get().getCertificate(builder.build(signer));
+            Certificate[] result = new Certificate[prepared.issuerChain.length + 1];
+            result[0] = rewrittenLeaf;
+            System.arraycopy(prepared.issuerChain, 0, result, 1, prepared.issuerChain.length);
             synchronized (cache) {
                 Certificate[] raced = cache.get(cacheKey);
                 if (raced != null) return raced.clone();
