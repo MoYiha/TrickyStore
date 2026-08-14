@@ -1430,6 +1430,9 @@ class WebServer(
             if (filename != null && filename in EDITABLE_CONFIG_FILES && content != null) {
                 if (validateContent(filename, content)) {
                     if (saveFile(filename, content)) {
+                        if (filename == "templates.json") {
+                            DeviceTemplateManager.initialize(configDir)
+                        }
                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
                     }
                 } else {

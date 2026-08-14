@@ -8,3 +8,4 @@
 - Added stage-specific native activation diagnostics and strengthened TEE/native regression guardrails.
 - Completed all built-in WebUI locales with full first-party catalog coverage and localization regression tests.
 - Restored a localized WebUI Restore Defaults action backed by the built-in default profile without deleting stored keyboxes or encrypted backups.
+- Added a localized, collapsible Identity custom-template builder whose saved templates are immediately available in Profiles.

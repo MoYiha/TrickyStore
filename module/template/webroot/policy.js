@@ -500,6 +500,61 @@ function installConfigurationActions() {
   panel.append(note,button);
 }
 
+
+const BUILT_IN_TEMPLATE_IDS = new Set(['pixel8pro','pixel8','pixel7pro','pixel6pro','s24ultra','s23ultra','xiaomi14','oneplus11','nothing2']);
+const CUSTOM_TEMPLATE_FIELDS = [
+  ['id','Template ID'],['manufacturer','Manufacturer'],['model','Model'],['fingerprint','Fingerprint'],
+  ['brand','Brand'],['product','Product'],['device','Device'],['release','Android release'],
+  ['buildId','Build ID'],['incremental','Incremental'],['type','Build type'],['tags','Build tags'],
+  ['securityPatch','Security patch']
+];
+
+function installCustomTemplateBuilder() {
+  const spoof = document.getElementById('spoof');
+  if (!spoof || document.getElementById('ct_custom_template_panel')) return;
+  const identityPanel = [...spoof.querySelectorAll('.panel')].find(item => /^Identity Manager$/i.test((item.querySelector('h3')?.textContent || '').trim()));
+  if (!identityPanel) return;
+  const panel = document.createElement('div');
+  panel.id = 'ct_custom_template_panel';
+  panel.className = 'panel';
+  const fields = CUSTOM_TEMPLATE_FIELDS.map(([key,label]) => {
+    const value = key === 'type' ? 'user' : (key === 'tags' ? 'release-keys' : '');
+    return `<div><label for="ct_template_${key}">${escapeHtml(label)}</label><input id="ct_template_${key}" type="text" maxlength="512" value="${escapeHtml(value)}" autocomplete="off" spellcheck="false"></div>`;
+  }).join('');
+  panel.innerHTML = `<details id="ct_custom_template_details"><summary><strong>Custom Templates</strong></summary><div class="scope-note" style="margin-top:12px">Create a reusable device identity template. The form stays collapsed until you open it.</div><div class="ct-choice-grid">${fields}</div><button id="ct_template_save" type="button" class="primary" style="width:100%;margin-top:14px">Save custom template</button></details>`;
+  identityPanel.insertAdjacentElement('afterend',panel);
+  panel.querySelector('#ct_template_save').onclick = () => saveCustomTemplate().catch(error => notify(error.message || 'Could not save custom template','error'));
+}
+
+async function saveCustomTemplate() {
+  const template = {};
+  for (const [key] of CUSTOM_TEMPLATE_FIELDS) {
+    const input = document.getElementById(`ct_template_${key}`);
+    template[key] = input ? input.value.trim() : '';
+  }
+  template.id = template.id.toLowerCase();
+  if (!/^[a-z0-9_-]{1,64}$/.test(template.id)) throw new Error('Template ID is invalid');
+  if (BUILT_IN_TEMPLATE_IDS.has(template.id)) throw new Error('Built-in template IDs cannot be replaced');
+  if (Object.entries(template).some(([key,value]) => key !== 'id' && (!value || value.length > 512 || /[\u0000-\u001f\u007f]/.test(value)))) throw new Error('All template fields are required');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(template.securityPatch)) throw new Error('Security patch must be YYYY-MM-DD');
+
+  const currentResponse = await bridge.fetch('/api/file?filename=templates.json');
+  if (!currentResponse.ok) throw new Error('Template catalog is unavailable');
+  let current;
+  try { current = JSON.parse(await currentResponse.text()); } catch (_) { throw new Error('Template catalog is unavailable'); }
+  if (!Array.isArray(current)) throw new Error('Template catalog is unavailable');
+  const next = current.filter(item => String(item && item.id || '').toLowerCase() !== template.id);
+  next.push(template);
+  const body = new URLSearchParams();
+  body.set('filename','templates.json');
+  body.set('content',JSON.stringify(next,null,2));
+  const save = await bridge.fetch('/api/save',{method:'POST',body});
+  if (!save.ok) throw new Error((await save.text()) || 'Could not save custom template');
+  await loadReferenceData();
+  notify('Custom template saved');
+  global.setTimeout(() => global.location.reload(),500);
+}
+
 function installAppsProfileCard() {
   const apps = document.getElementById('apps');
   if (!apps || document.getElementById('ct_apps_profiles_card')) return;
@@ -1014,6 +1069,7 @@ async function initialize() {
   retireLegacyLocalization();
   installFeatureCenter();
   installConfigurationActions();
+  installCustomTemplateBuilder();
   installAppsProfileCard();
   removeLegacySurfaces();
   markIdentityActionGroups();
