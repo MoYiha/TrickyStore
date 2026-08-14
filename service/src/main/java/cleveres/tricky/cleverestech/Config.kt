@@ -1743,6 +1743,7 @@ object Config {
     private const val RANDOM_ON_BOOT_FILE = "random_on_boot"
     private const val AUTO_KEYBOX_CHECK_FILE = "auto_keybox_check"
     private const val APPLY_PROFILE_FILE = "apply_profile"
+    private const val RECOMMENDED_DEFAULTS_PENDING_FILE = "recommended_defaults_pending"
     private const val MAX_DRM_PACKAGES_BYTES = 64L * 1024
     private const val MAX_DRM_PACKAGE_RULES = 256
     private const val MAX_TARGET_FILE_BYTES = 1024L * 1024
@@ -2118,6 +2119,7 @@ object Config {
         Logger.i("Config.initialize: starting (root=${root.absolutePath})")
         SecureFile.mkdirs(root, 448) // 0700
         SecureFile.mkdirs(keyboxDir, 448) // 0700
+        KeyboxVerifier.configureCacheRoot(root)
         DeviceKeyManager.initialize(root)
         CboxManager.initialize()
         ServerManager.initialize()
@@ -2137,6 +2139,7 @@ object Config {
         updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         updateAppConfigs(File(root, APP_CONFIG_FILE))
         PolicyState.initialize(root).getOrThrow()
+        applyPendingRecommendedDefaults()
         refreshPrivacySeed().getOrThrow()
 
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
@@ -2158,6 +2161,20 @@ object Config {
 
         ConfigObserver.startWatching()
         KeyboxDirObserver.startWatching()
+    }
+
+    private fun applyPendingRecommendedDefaults() {
+        val marker = File(root, RECOMMENDED_DEFAULTS_PENDING_FILE)
+        val path = marker.toPath()
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+            Logger.e("Refusing unsafe recommended-defaults marker")
+            return
+        }
+        PolicyState.applyRecommendedDefaults()
+        if (!marker.delete()) {
+            Logger.w("Could not remove recommended-defaults marker; defaults may be re-evaluated on restart")
+        }
     }
 
     @Volatile

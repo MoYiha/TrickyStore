@@ -1129,14 +1129,24 @@ object PolicyState {
         )
     }
 
+    private fun recommendedSecurityPatchRequired(thresholdMonths: Long): Boolean {
+        val cutoff = currentDateSource().minusMonths(thresholdMonths)
+        return listOf("system", "vendor", "boot")
+            .asSequence()
+            .mapNotNull(::readPropertyDate)
+            .any { it.isBefore(cutoff) }
+    }
+
     @Synchronized
     fun applyRecommendedDefaults() {
+        val thresholdMonths = 6L
         val automatic = PatchPolicy(PatchMode.AUTOMATIC)
+        val securityPatchRequired = recommendedSecurityPatchRequired(thresholdMonths)
         persistAndPublish(
             Snapshot(
                 explicit = true,
-                features = FeatureSet(false, false, false, false, false, true),
-                patch = PatchSet(6, automatic, automatic, automatic),
+                features = FeatureSet(false, false, false, false, false, securityPatchRequired),
+                patch = PatchSet(thresholdMonths, automatic, automatic, automatic),
                 profiles = emptyMap(),
                 activeProfile = null,
                 assignments = emptyList(),
