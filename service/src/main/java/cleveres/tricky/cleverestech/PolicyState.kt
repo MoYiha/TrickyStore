@@ -233,6 +233,7 @@ object PolicyState {
     private const val MAX_AUTO_CACHE = 128
     private const val MAX_UID_RESOLUTIONS = 1024
     private const val CAPTURE_TTL_MS = 15 * 60 * 1000L
+    private const val CAPTURE_REFRESH_MS = 30 * 1000L
     private val profileNamePattern = Regex("[A-Za-z0-9][A-Za-z0-9 _.-]{0,63}")
     private val packagePattern = Regex("""(?:[A-Za-z_][A-Za-z0-9_]*|[*])(?:[.](?:[A-Za-z_][A-Za-z0-9_]*|[*]))*""")
     private val keyboxPattern = Regex("[A-Za-z0-9_.-]{5,128}")
@@ -718,10 +719,11 @@ object PolicyState {
         if (!current.explicit) return Config.getAttestationPatchLevels(uid)
         val selected = resolvedUid.selection.profile
         val basePatch = current.patch
+        val now = currentDateSource()
         return Config.AttestationPatchLevels(
-            system = resolvePatchComponent("system", selected?.systemPatch ?: basePatch.system, false, capturedSystem, basePatch.thresholdMonths),
-            vendor = resolvePatchComponent("vendor", selected?.vendorPatch ?: basePatch.vendor, true, capturedVendor, basePatch.thresholdMonths),
-            boot = resolvePatchComponent("boot", selected?.bootPatch ?: basePatch.boot, true, capturedBoot, basePatch.thresholdMonths),
+            system = resolvePatchComponent("system", selected?.systemPatch ?: basePatch.system, false, capturedSystem, basePatch.thresholdMonths, now),
+            vendor = resolvePatchComponent("vendor", selected?.vendorPatch ?: basePatch.vendor, true, capturedVendor, basePatch.thresholdMonths, now),
+            boot = resolvePatchComponent("boot", selected?.bootPatch ?: basePatch.boot, true, capturedBoot, basePatch.thresholdMonths, now),
         )
     }
 
@@ -738,6 +740,7 @@ object PolicyState {
         long: Boolean,
         captured: Int?,
         thresholdMonths: Long,
+        now: LocalDate? = null,
     ): Config.AttestationPatchComponent =
         when (policy.mode) {
             PatchMode.DEVICE_DEFAULT -> Config.AttestationPatchComponent(Config.PatchDisposition.KEEP)
@@ -755,7 +758,7 @@ object PolicyState {
                     Config.AttestationPatchComponent(Config.PatchDisposition.REPLACE, dateToPatch(propertyDate, long))
                 }
             }
-            PatchMode.AUTOMATIC -> resolveAutomatic(component, long, captured, thresholdMonths)
+            PatchMode.AUTOMATIC -> resolveAutomatic(component, long, captured, thresholdMonths, now ?: currentDateSource())
         }
 
     private fun resolveAutomatic(
@@ -763,12 +766,11 @@ object PolicyState {
         long: Boolean,
         captured: Int?,
         thresholdMonths: Long,
+        now: LocalDate,
     ): Config.AttestationPatchComponent {
         val capturedDate = captured?.let { patchToDate(it, long) }
-        val propertyDate = readPropertyDate(component)
-        val sourceDate = capturedDate ?: propertyDate
+        val sourceDate = capturedDate ?: readPropertyDate(component)
             ?: return Config.AttestationPatchComponent(Config.PatchDisposition.KEEP)
-        val now = currentDateSource()
         val cacheKey = AutoCacheKey(component, sourceDate, YearMonth.from(now), thresholdMonths, capturedDate != null)
         automaticCache[cacheKey]?.let { return it }
         val result =
@@ -822,9 +824,18 @@ object PolicyState {
         boot: Int?,
     ) {
         if (system == null && vendor == null && boot == null) return
-        if (capturedByPackage.size >= MAX_CAPTURED_PACKAGES) capturedByPackage.clear()
-        val record = CapturedPatch(system, vendor, boot, System.currentTimeMillis())
-        packages.asSequence().filter(packagePattern::matches).distinct().take(16).forEach { capturedByPackage[it] = record }
+        val now = System.currentTimeMillis()
+        var record: CapturedPatch? = null
+        packages.asSequence().filter(packagePattern::matches).distinct().take(16).forEach { packageName ->
+            val previous = capturedByPackage[packageName]
+            val age = previous?.let { now - it.timestamp }
+            if (previous != null && previous.system == system && previous.vendor == vendor && previous.boot == boot && age != null && age >= 0 && age < CAPTURE_REFRESH_MS) {
+                return@forEach
+            }
+            if (capturedByPackage.size >= MAX_CAPTURED_PACKAGES) capturedByPackage.clear()
+            val next = record ?: CapturedPatch(system, vendor, boot, now).also { record = it }
+            capturedByPackage[packageName] = next
+        }
     }
 
     private fun capturedForPackage(packageName: String): CapturedPatch? {
@@ -1115,6 +1126,23 @@ object PolicyState {
             assignments = assignments,
             generation = generationCounter.incrementAndGet(),
             recovery = "configured",
+        )
+    }
+
+    @Synchronized
+    fun applyRecommendedDefaults() {
+        val automatic = PatchPolicy(PatchMode.AUTOMATIC)
+        persistAndPublish(
+            Snapshot(
+                explicit = true,
+                features = FeatureSet(false, false, false, false, false, true),
+                patch = PatchSet(6, automatic, automatic, automatic),
+                profiles = emptyMap(),
+                activeProfile = null,
+                assignments = emptyList(),
+                generation = generationCounter.incrementAndGet(),
+                recovery = "default",
+            ),
         )
     }
 

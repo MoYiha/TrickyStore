@@ -211,7 +211,7 @@ public final class CertHack {
             // Certificates are public data and the cache is tiny/bounded, so a cryptographic digest
             // only adds provider work to every generateKey reply. Retain the exact DER bytes instead;
             // Arrays.equals protects correctness even if the ordinary hash collides.
-            this.leafEncoded = leafEncoded.clone();
+            this.leafEncoded = Objects.requireNonNull(leafEncoded, "leafEncoded");
             this.hashCode = Arrays.hashCode(this.leafEncoded);
         }
 
