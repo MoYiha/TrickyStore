@@ -40,7 +40,7 @@ jobs:
           node --check module/template/webroot/policy.js
           node --check module/template/webroot/ux.js
           for test in module/webui-tests/*.test.js; do node "$test"; done
-          cargo fmt --all -- --check
+          cargo fmt --manifest-path rust/Cargo.toml --all -- --check
           git config user.name "Yiğit"
           git config user.email "40565628+tryigit@users.noreply.github.com"
           git add -A
