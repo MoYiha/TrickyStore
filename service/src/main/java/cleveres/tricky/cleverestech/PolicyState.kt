@@ -1130,15 +1130,16 @@ object PolicyState {
     }
 
     private fun recommendedSecurityPatchRequired(thresholdMonths: Long): Boolean {
-        val cutoff = currentDateSource().minusMonths(thresholdMonths)
-        return listOf("system", "vendor", "boot")
-            .asSequence()
-            .mapNotNull(::readPropertyDate)
-            .any { it.isBefore(cutoff) }
-    }
+    // Restore Defaults follows the device's primary Android security patch.
+    // Vendor/boot metadata can legitimately lag and must not enable the global
+    // feature by themselves. If the system patch is stale, all component
+    // policies below still remain automatic.
+    val systemPatch = readPropertyDate("system") ?: return false
+    return systemPatch.isBefore(currentDateSource().minusMonths(thresholdMonths))
+}
 
-    @Synchronized
-    fun applyRecommendedDefaults() {
+@Synchronized
+fun applyRecommendedDefaults() {
         val thresholdMonths = 6L
         val automatic = PatchPolicy(PatchMode.AUTOMATIC)
         val securityPatchRequired = recommendedSecurityPatchRequired(thresholdMonths)

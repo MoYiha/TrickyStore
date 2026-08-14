@@ -1,12 +1,8 @@
 # Changelog
 
-## V2.5.7
+## V2.5.8
 
-- Restored native activation on KernelSU/mount-namespace devices with fail-closed platform image and ELF identity validation.
-- Fixed intermittent Binder descriptor-cache collision and call-site churn that could cause inconsistent native timing overhead.
-- Added regression coverage for alternating Binder exchange sites, descriptor collisions, and reused descriptor identities.
-- Added stage-specific native activation diagnostics and strengthened TEE/native regression guardrails.
-- Completed all built-in WebUI locales with full first-party catalog coverage and localization regression tests.
-- Restored a localized WebUI Restore Defaults action backed by the built-in default profile without deleting stored keyboxes or encrypted backups.
-- Added a localized, collapsible Identity custom-template builder whose saved templates are immediately available in Profiles.
-- Added an opt-in, localized Kernel Identity uname hook with editable Android 14/15/16 GKI base-version presets while keeping core Binder protection independent.
+- Fixed Restore Defaults enabling Automatic Security Patch on current ROMs when only vendor or boot patch metadata lagged behind.
+- Recommended defaults now use the primary system security patch to decide whether Security Patch should be enabled, while system/vendor/boot remain automatic when the feature is actually needed.
+- Stabilized early-boot attestation by reusing only fresh, successfully parsed Google attestation revocation state across daemon restarts and reboots.
+- Kept Global Mode and Automatic Keybox Check enabled by default while optional identity/privacy features remain disabled.
