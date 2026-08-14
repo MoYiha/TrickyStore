@@ -62,7 +62,7 @@ set_target_properties(platform_binder_link_stub PROPERTIES OUTPUT_NAME binder)
 add_library(platform_utils_link_stub SHARED "${PLATFORM_LINK_STUB_DIR}/utils_link_stub.cpp")
 set_target_properties(platform_utils_link_stub PROPERTIES OUTPUT_NAME utils)
 
-add_library(${MODULE_NAME} SHARED binder_interceptor.cpp kernel_identity.cpp)
+add_library(${MODULE_NAME} SHARED binder_interceptor.cpp)
 target_include_directories(${MODULE_NAME} PRIVATE
     binder/include
     ../../../../rust/native-core/include
