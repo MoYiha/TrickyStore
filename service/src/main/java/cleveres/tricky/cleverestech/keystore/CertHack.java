@@ -34,7 +34,6 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.MessageDigest;
 import java.security.PublicKey;
 import java.security.Security;
 import java.security.Signature;
@@ -86,33 +85,27 @@ public final class CertHack {
                     }
                 }
             };
-    private static final ThreadLocal<MessageDigest> SHA256_DIGEST =
-            new ThreadLocal<MessageDigest>() {
-                @Override
-                protected MessageDigest initialValue() {
-                    try {
-                        return MessageDigest.getInstance("SHA-256");
-                    } catch (Exception e) {
-                        throw new IllegalStateException("SHA-256 digest is unavailable", e);
-                    }
-                }
-            };
-    private static final ThreadLocal<JcaX509CertificateConverter> CERTIFICATE_CONVERTER =
-            ThreadLocal.withInitial(JcaX509CertificateConverter::new);
-    private static final ThreadLocal<JcaContentSignerBuilder> EC_SIGNER_BUILDER =
-            ThreadLocal.withInitial(() -> new JcaContentSignerBuilder("SHA256withECDSA"));
-    private static final ThreadLocal<JcaContentSignerBuilder> RSA_SIGNER_BUILDER =
-            ThreadLocal.withInitial(() -> new JcaContentSignerBuilder("SHA256withRSA"));
+    // Converter configuration is immutable after construction. Keeping one process-wide instance
+    // avoids paying ThreadLocal initialization on whichever Keystore Binder worker happens to see
+    // the first attested request.
+    private static final JcaX509CertificateConverter CERTIFICATE_CONVERTER =
+            new JcaX509CertificateConverter();
 
     private static final class PreparedKeyBox {
         final X500Name issuer;
         final String signatureAlgorithm;
+        final JcaContentSignerBuilder signerBuilder;
+        final Certificate[] issuerChain;
 
         PreparedKeyBox(KeyBox keybox) throws Exception {
             if (keybox.certificates.isEmpty()) throw new IOException("Keybox has no certificates");
             this.issuer = new X509CertificateHolder(keybox.certificates.get(0).getEncoded()).getSubject();
             this.signatureAlgorithm = signatureAlgorithmForKeybox(keybox);
             if (this.signatureAlgorithm == null) throw new IOException("Unsupported keybox algorithm");
+            this.signerBuilder = new JcaContentSignerBuilder(this.signatureAlgorithm);
+            this.issuerChain = keybox.certificates.toArray(new Certificate[0]);
+            // Force JCA/provider lookup while keyboxes are loaded, not on the first attestation.
+            this.signerBuilder.build(keybox.keyPair.getPrivate());
         }
     }
 
@@ -204,12 +197,15 @@ public final class CertHack {
     }
 
     private static final class CacheKey {
-        private final byte[] leafDigest;
+        private final byte[] leafEncoded;
         private final int hashCode;
 
         public CacheKey(byte[] leafEncoded) {
-            this.leafDigest = SHA256_DIGEST.get().digest(leafEncoded);
-            this.hashCode = Arrays.hashCode(leafDigest);
+            // Certificates are public data and the cache is tiny/bounded, so a cryptographic digest
+            // only adds provider work to every generateKey reply. Retain the exact DER bytes instead;
+            // Arrays.equals protects correctness even if the ordinary hash collides.
+            this.leafEncoded = leafEncoded.clone();
+            this.hashCode = Arrays.hashCode(this.leafEncoded);
         }
 
         int indexForPool(int size) {
@@ -222,7 +218,7 @@ public final class CertHack {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
             CacheKey cacheKey = (CacheKey) o;
-            return MessageDigest.isEqual(leafDigest, cacheKey.leafDigest);
+            return Arrays.equals(leafEncoded, cacheKey.leafEncoded);
         }
 
         @Override
@@ -351,12 +347,6 @@ public final class CertHack {
         if (KeyProperties.KEY_ALGORITHM_EC.equals(algorithm)) return "SHA256withECDSA";
         if (KeyProperties.KEY_ALGORITHM_RSA.equals(algorithm)) return "SHA256withRSA";
         return null;
-    }
-
-    private static JcaContentSignerBuilder signerBuilder(String signatureAlgorithm) {
-        if ("SHA256withECDSA".equals(signatureAlgorithm)) return EC_SIGNER_BUILDER.get();
-        if ("SHA256withRSA".equals(signatureAlgorithm)) return RSA_SIGNER_BUILDER.get();
-        throw new IllegalArgumentException("Unsupported keybox signature algorithm");
     }
 
     public static List<KeyBox> parseKeyboxXml(Reader reader) {
@@ -591,20 +581,15 @@ public final class CertHack {
                         new ByteArrayInputStream(leafEncoded));
             }
 
-            byte[] bytes = leaf.getExtensionValue(OID.getId());
-            if (bytes == null) return caList;
-            if (bytes.length > MAX_ATTESTATION_EXTENSION_BYTES) {
+            X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
+            Extension ext = leafHolder.getExtension(OID);
+            if (ext == null || ext.getExtnValue() == null) return caList;
+            byte[] extensionOctets = ext.getExtnValue().getOctets();
+            if (extensionOctets.length > MAX_ATTESTATION_EXTENSION_BYTES) {
                 Logger.e("Attestation extension exceeds the safety limit");
                 return caList;
             }
-
-            X509CertificateHolder leafHolder = new X509CertificateHolder(leafEncoded);
-            Extension ext = leafHolder.getExtension(OID);
-            if (ext == null || ext.getExtnValue() == null) {
-                Logger.e("Attestation extension present but holder returned null; skipping rewrite");
-                return caList;
-            }
-            ASN1Sequence sequence = ASN1Sequence.getInstance(ext.getExtnValue().getOctets());
+            ASN1Sequence sequence = ASN1Sequence.getInstance(extensionOctets);
             ASN1Encodable[] encodables = sequence.toArray();
             if (encodables.length <= 7 || !(encodables[6] instanceof ASN1Sequence) ||
                     !(encodables[7] instanceof ASN1Sequence)) {
@@ -636,10 +621,6 @@ public final class CertHack {
             ASN1Encodable rootOfTrust = null;
             byte[] moduleHash = Config.INSTANCE.getModuleHash();
             ASN1TaggedObject originalModuleHash = null;
-
-            // Most attestations do not carry device-ID authorization tags. Resolve an
-            // override only when the genuine TEE list actually contains that tag, avoiding nine
-            // policy/privacy lookups and temporary collections on the common timing-sensitive path.
             Map<Integer, byte[]> presentIdAttestationTags = null;
 
             for (ASN1Encodable asn1Encodable : teeEnforced) {
@@ -707,7 +688,10 @@ public final class CertHack {
                 }
             }
 
-            String preferredSignerAlgorithm = signingKeyAlgorithm(leaf.getSigAlgName());
+            // The subject key algorithm does not constrain the CA key algorithm. Prefer EC when
+            // available because signing the replacement leaf is the only unavoidable work unique to
+            // the attested path and EC signing is materially cheaper than RSA on mobile cores.
+            String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             List<KeyBox> list;
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
@@ -722,7 +706,6 @@ public final class CertHack {
             PreparedKeyBox prepared = currentState.preparedKeyboxes.get(k);
             if (prepared == null) throw new UnsupportedOperationException("Keybox metadata is unavailable");
 
-            LinkedList<Certificate> certificates = new LinkedList<>(k.certificates);
             X509v3CertificateBuilder builder = new X509v3CertificateBuilder(
                     prepared.issuer,
                     leafHolder.getSerialNumber(),
@@ -731,7 +714,7 @@ public final class CertHack {
                     leafHolder.getSubject(),
                     leafHolder.getSubjectPublicKeyInfo()
             );
-            ContentSigner signer = signerBuilder(prepared.signatureAlgorithm).build(k.keyPair.getPrivate());
+            ContentSigner signer = prepared.signerBuilder.build(k.keyPair.getPrivate());
 
             byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
             byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
@@ -795,9 +778,10 @@ public final class CertHack {
                     builder.addExtension(leafHolder.getExtension(extensionOID));
                 }
             }
-            certificates.addFirst(CERTIFICATE_CONVERTER.get().getCertificate(builder.build(signer)));
-
-            Certificate[] result = certificates.toArray(new Certificate[0]);
+            Certificate rewrittenLeaf = CERTIFICATE_CONVERTER.getCertificate(builder.build(signer));
+            Certificate[] result = new Certificate[prepared.issuerChain.length + 1];
+            result[0] = rewrittenLeaf;
+            System.arraycopy(prepared.issuerChain, 0, result, 1, prepared.issuerChain.length);
             synchronized (cache) {
                 Certificate[] raced = cache.get(cacheKey);
                 if (raced != null) return raced.clone();
