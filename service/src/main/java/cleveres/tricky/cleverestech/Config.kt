@@ -1931,18 +1931,19 @@ object Config {
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "default" -> {
-                SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
+                SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
+                SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 removeConfigFiles(
+                    SPOOF_ENABLED_FILE,
                     BUILD_IDENTITY_FILE,
-                    GLOBAL_MODE_FILE,
                     TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE,
                     BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN,
                     TELEPHONY_FILE,
+                    RKP_PASSTHROUGH_FILE,
+                    DRM_PASSTHROUGH_FILE,
                 )
-                SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
-                SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
         }
 
@@ -1955,7 +1956,11 @@ object Config {
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateTargetPackages(File(root, TARGET_FILE))
-        PolicyState.synchronizeBuiltInProfile()
+        if (profile == "default") {
+            PolicyState.applyRecommendedDefaults()
+        } else {
+            PolicyState.synchronizeBuiltInProfile()
+        }
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
         KeyboxAutoCleaner.setEnabled(isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
     }
@@ -2342,8 +2347,8 @@ object Config {
                 }
             if (isDrm) return false
         }
-        if (getAppConfig(callingUid) != null) return true
         if (isGlobalMode) return true
+        if (getAppConfig(callingUid) != null) return true
 
         val state = targetState
         val cached = getCachedDecision(state.hackCache, callingUid)
