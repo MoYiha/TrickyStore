@@ -40,7 +40,7 @@ jobs:
           path = Path('module/template/webroot/ux.js')
           text = path.read_text()
           marker = '    ];\n\n    for (const row of COMPLETE_CATALOG_ROWS) {'
-          row = '        ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "कस्टम"],\n'
+          row = '        ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],\n'
           if row not in text:
               if marker not in text:
                   raise SystemExit('complete catalog marker missing')
