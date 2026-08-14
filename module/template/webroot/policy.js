@@ -464,6 +464,42 @@ function installIdentityBanner() {
   banner.hidden = identityEnabled();
 }
 
+function installConfigurationActions() {
+  const dashboard = document.getElementById('dashboard');
+  if (!dashboard || document.getElementById('ct_restore_defaults')) return;
+  const panel = [...dashboard.querySelectorAll('.panel')].find(item => /^Configuration Management$/i.test((item.querySelector('h3')?.textContent || '').trim()));
+  if (!panel) return;
+  const note = document.createElement('div');
+  note.className = 'scope-note';
+  note.style.marginTop = '12px';
+  note.textContent = 'Restores module settings using the built-in default profile. Stored keyboxes and encrypted backups are not deleted.';
+  const button = document.createElement('button');
+  button.id = 'ct_restore_defaults';
+  button.type = 'button';
+  button.className = 'danger';
+  button.style.width = '100%';
+  button.textContent = 'Restore Defaults';
+  button.onclick = async () => {
+    if (global.confirm && !global.confirm('Restore module settings to defaults?')) return;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Restoring...';
+    try {
+      const body = new URLSearchParams();
+      body.set('profile','default');
+      await request('/api/apply_profile',{method:'POST',body});
+      await request('/api/reload',{method:'POST'});
+      notify('Default settings restored');
+      global.setTimeout(() => global.location.reload(),600);
+    } catch (error) {
+      notify(error.message || 'Could not restore defaults','error');
+      button.disabled = false;
+      button.textContent = original;
+    }
+  };
+  panel.append(note,button);
+}
+
 function installAppsProfileCard() {
   const apps = document.getElementById('apps');
   if (!apps || document.getElementById('ct_apps_profiles_card')) return;
@@ -977,6 +1013,7 @@ async function initialize() {
   installTabNavigationOwner();
   retireLegacyLocalization();
   installFeatureCenter();
+  installConfigurationActions();
   installAppsProfileCard();
   removeLegacySurfaces();
   markIdentityActionGroups();

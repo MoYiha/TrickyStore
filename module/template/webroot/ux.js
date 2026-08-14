@@ -584,6 +584,14 @@
         'Policy file is too large': 'Politika dosyası çok büyük'
     });
 
+    Object.assign(TRANSLATIONS.tr, {
+        'Restore Defaults': 'Varsayılanlara Dön',
+        'Restore module settings to defaults?': 'Modül ayarları varsayılanlara döndürülsün mü?',
+        'Restores module settings using the built-in default profile. Stored keyboxes and encrypted backups are not deleted.': 'Yerleşik varsayılan profil ile modül ayarlarını geri yükler. Kayıtlı keyboxlar ve şifreli yedekler silinmez.',
+        'Default settings restored': 'Varsayılan ayarlar geri yüklendi',
+        'Could not restore defaults': 'Varsayılanlar geri yüklenemedi'
+    });
+
     // Complete catalogs share one source key per row to keep all built-in
     // locales aligned without adding locale-specific runtime assets. Columns:
     // source, zh-CN, es, de, ru, id, hi, ar.
@@ -964,6 +972,11 @@
         ["Select a non-empty XML or CBOX file up to 10 MB", "请选择最大 10 MB 的非空 XML 或 CBOX 文件", "Selecciona un archivo XML o CBOX no vacío de hasta 10 MB", "Nicht leere XML- oder CBOX-Datei bis 10 MB auswählen", "Выберите непустой файл XML или CBOX размером до 10 МБ", "Pilih file XML atau CBOX yang tidak kosong hingga 10 MB", "10 MB तक की गैर-खाली XML या CBOX फ़ाइल चुनें", "اختر ملف XML أو CBOX غير فارغ حتى 10 MB"],
         ["Could not import profile policy", "无法导入配置档案策略", "No se pudo importar la política del perfil", "Profilrichtlinie konnte nicht importiert werden", "Не удалось импортировать политику профиля", "Kebijakan profil tidak dapat diimpor", "प्रोफ़ाइल नीति आयात नहीं हो सकी", "تعذر استيراد سياسة الملف الشخصي"],
         ["Policy file is too large", "策略文件过大", "El archivo de política es demasiado grande", "Richtliniendatei ist zu groß", "Файл политики слишком велик", "File kebijakan terlalu besar", "नीति फ़ाइल बहुत बड़ी है", "ملف السياسة كبير جدا"],
+        ["Restore Defaults", "恢复默认设置", "Restaurar valores predeterminados", "Standardeinstellungen wiederherstellen", "Восстановить настройки по умолчанию", "Pulihkan Default", "डिफ़ॉल्ट बहाल करें", "استعادة الإعدادات الافتراضية"],
+        ["Restore module settings to defaults?", "将模块设置恢复为默认值？", "¿Restaurar la configuración del módulo a los valores predeterminados?", "Moduleinstellungen auf Standardwerte zurücksetzen?", "Восстановить настройки модуля по умолчанию?", "Pulihkan pengaturan modul ke default?", "मॉड्यूल सेटिंग्स को डिफ़ॉल्ट पर बहाल करें?", "هل تريد استعادة إعدادات الوحدة إلى القيم الافتراضية؟"],
+        ["Restores module settings using the built-in default profile. Stored keyboxes and encrypted backups are not deleted.", "使用内置默认配置恢复模块设置。已保存的密钥盒和加密备份不会被删除。", "Restaura la configuración del módulo con el perfil predeterminado integrado. No elimina keyboxes guardados ni copias cifradas.", "Stellt Moduleinstellungen mit dem integrierten Standardprofil wieder her. Gespeicherte Keyboxen und verschlüsselte Backups werden nicht gelöscht.", "Восстанавливает настройки модуля встроенным профилем по умолчанию. Сохранённые keybox и зашифрованные резервные копии не удаляются.", "Memulihkan pengaturan modul memakai profil default bawaan. Keybox tersimpan dan cadangan terenkripsi tidak dihapus.", "अंतर्निहित डिफ़ॉल्ट प्रोफ़ाइल से मॉड्यूल सेटिंग्स बहाल करता है। सहेजे गए keybox और एन्क्रिप्टेड बैकअप हटाए नहीं जाते।", "يستعيد إعدادات الوحدة باستخدام الملف الافتراضي المدمج. لا يتم حذف صناديق المفاتيح المحفوظة أو النسخ الاحتياطية المشفرة."],
+        ["Default settings restored", "已恢复默认设置", "Valores predeterminados restaurados", "Standardeinstellungen wiederhergestellt", "Настройки по умолчанию восстановлены", "Pengaturan default dipulihkan", "डिफ़ॉल्ट सेटिंग्स बहाल की गईं", "تمت استعادة الإعدادات الافتراضية"],
+        ["Could not restore defaults", "无法恢复默认设置", "No se pudieron restaurar los valores predeterminados", "Standardeinstellungen konnten nicht wiederhergestellt werden", "Не удалось восстановить настройки по умолчанию", "Tidak dapat memulihkan default", "डिफ़ॉल्ट बहाल नहीं किए जा सके", "تعذر استعادة الإعدادات الافتراضية"],
     ];
 
     for (const row of COMPLETE_CATALOG_ROWS) {

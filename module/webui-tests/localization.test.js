@@ -82,7 +82,9 @@ const completeSurfaces = [
     'Estimated impact: CPU very low while idle and low per matching Binder call; RAM low.',
     'View recent logs from the module. You can also download them for sharing.',
     'Support the Development',
-    'Thank you for your support!'
+    'Thank you for your support!',
+    'Restore Defaults',
+    'Restores module settings using the built-in default profile. Stored keyboxes and encrypted backups are not deleted.'
 ];
 
 const runtimeGlobal = 'Native runtime is active with 4 verified keyboxes. Global application scope is enabled. Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';

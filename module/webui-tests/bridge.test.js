@@ -77,6 +77,9 @@ assert.ok(!indexSource.includes('<h3>Identity Controls</h3>'), 'Retired Identity
 assert.ok(!indexSource.includes('class=\"toggle\"'), 'Legacy toggle class must stay removed from static WebUI markup');
 assert.match(indexSource, /class=\"ct-switch\" id=\"srvAutoRefresh\"/);
 assert.match(policySource, /ct_keybox_status_panel/);
+assert.match(policySource, /ct_restore_defaults/);
+assert.match(policySource, /body\.set\('profile','default'\)/);
+assert.ok(!policySource.includes("request('/api/reset_environment'"), 'Restore Defaults must not use destructive environment reset');
 
 require('./bridge-base.test.js');
 require('./localization.test.js');
