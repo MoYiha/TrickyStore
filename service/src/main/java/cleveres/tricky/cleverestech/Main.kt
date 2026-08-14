@@ -60,6 +60,7 @@ fun main(args: Array<String>) {
             if (PolicyMigration.sanitize(configDir)) {
                 Logger.i("Prepared persisted policy state for this runtime")
             }
+            KernelIdentityManager.initialize(configDir)
             Config.initialize()
             BootLogic.run()
             CertificatePolicyWatcher.start(configDir)

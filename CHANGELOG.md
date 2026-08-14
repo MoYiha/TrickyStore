@@ -9,3 +9,4 @@
 - Completed all built-in WebUI locales with full first-party catalog coverage and localization regression tests.
 - Restored a localized WebUI Restore Defaults action backed by the built-in default profile without deleting stored keyboxes or encrypted backups.
 - Added a localized, collapsible Identity custom-template builder whose saved templates are immediately available in Profiles.
+- Added an opt-in, localized Kernel Identity uname hook with editable Android 14/15/16 GKI base-version presets while keeping core Binder protection independent.

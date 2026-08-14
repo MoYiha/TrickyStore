@@ -555,6 +555,46 @@ async function saveCustomTemplate() {
   global.setTimeout(() => global.location.reload(),500);
 }
 
+
+function installKernelIdentityControls() {
+  const spoof = document.getElementById('spoof');
+  if (!spoof || document.getElementById('ct_kernel_identity_panel')) return;
+  const panel = document.createElement('div');
+  panel.id = 'ct_kernel_identity_panel';
+  panel.className = 'panel';
+  panel.innerHTML = `<details><summary><strong>Kernel Identity</strong></summary><div class="scope-note" style="margin-top:12px">Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.</div><div class="row"><label for="ct_kernel_enabled" style="flex:1"><strong>Hook kernel name</strong><span class="res-desc">Disabled by default. Core Binder protection is independent from this option.</span></label>${switchMarkup('ct_kernel_enabled',false)}</div><div id="ct_kernel_children" hidden><label for="ct_kernel_preset">GKI preset</label><select id="ct_kernel_preset"></select><div class="ct-choice-grid" style="margin-top:10px"><div><label for="ct_kernel_release">uname release</label><input id="ct_kernel_release" type="text" maxlength="64" autocomplete="off" spellcheck="false"></div><div><label for="ct_kernel_version">uname version</label><input id="ct_kernel_version" type="text" maxlength="64" autocomplete="off" spellcheck="false"></div></div><button id="ct_kernel_save" class="primary" type="button" style="width:100%;margin-top:12px">Save kernel identity</button></div></details>`;
+  const customPanel = document.getElementById('ct_custom_template_panel');
+  if (customPanel) customPanel.insertAdjacentElement('afterend',panel); else spoof.append(panel);
+  loadKernelIdentity().catch(error => notify(error.message || 'Could not load kernel identity','error'));
+}
+
+async function loadKernelIdentity() {
+  const state = await request('/api/kernel_identity');
+  const enabled = document.getElementById('ct_kernel_enabled');
+  const children = document.getElementById('ct_kernel_children');
+  const preset = document.getElementById('ct_kernel_preset');
+  const release = document.getElementById('ct_kernel_release');
+  const version = document.getElementById('ct_kernel_version');
+  if (!enabled || !children || !preset || !release || !version) return;
+  preset.innerHTML = '<option value="custom">Custom</option>' + (state.presets || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.label)}</option>`).join('');
+  enabled.checked = Boolean(state.enabled);
+  children.hidden = !enabled.checked;
+  preset.value = state.preset || 'custom';
+  release.value = state.release || '';
+  version.value = state.version || '';
+  enabled.onchange = () => { children.hidden = !enabled.checked; };
+  preset.onchange = () => {
+    const selected = (state.presets || []).find(item => item.id === preset.value);
+    if (selected) { release.value = selected.release; version.value = selected.version; }
+  };
+  document.getElementById('ct_kernel_save').onclick = async () => {
+    const payload = {enabled:enabled.checked,preset:preset.value,release:release.value.trim(),version:version.value.trim()};
+    const body = new URLSearchParams(); body.set('data',JSON.stringify(payload));
+    const result = await request('/api/kernel_identity',{method:'POST',body});
+    notify(result.applied ? 'Kernel identity applied' : 'Kernel identity saved for next native activation');
+  };
+}
+
 function installAppsProfileCard() {
   const apps = document.getElementById('apps');
   if (!apps || document.getElementById('ct_apps_profiles_card')) return;
@@ -1070,6 +1110,7 @@ async function initialize() {
   installFeatureCenter();
   installConfigurationActions();
   installCustomTemplateBuilder();
+  installKernelIdentityControls();
   installAppsProfileCard();
   removeLegacySurfaces();
   markIdentityActionGroups();

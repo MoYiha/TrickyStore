@@ -30,6 +30,7 @@
 
 #include "cleverestricky_native_core.h"
 #include "lsplt.hpp"
+#include "kernel_identity.hpp"
 
 #define LOG_TAG "CleveresTricky"
 #ifdef DEBUG_BUILD
@@ -979,13 +980,23 @@ bool initialize_hooks() {
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]] bool
-entry(void *) {
+entry(void *activation_context) {
   LOGI("native Binder interceptor injected");
-  return initialize_hooks();
+  cleverestricky::kernel_identity::configure(static_cast<const char *>(activation_context));
+  const bool binder_ready = initialize_hooks();
+  if (binder_ready && !cleverestricky::kernel_identity::install_hooks_if_enabled()) {
+    LOGW("kernel identity hook requested but no uname import could be hooked; Binder core remains active");
+  }
+  return binder_ready;
 }
 
 extern "C" [[gnu::visibility("default")]] [[gnu::used]] bool
-resume(void *) {
+resume(void *activation_context) {
   LOGI("resuming parked native Binder hook");
-  return initialize_hooks();
+  cleverestricky::kernel_identity::configure(static_cast<const char *>(activation_context));
+  const bool binder_ready = initialize_hooks();
+  if (binder_ready && !cleverestricky::kernel_identity::install_hooks_if_enabled()) {
+    LOGW("kernel identity hook requested but no uname import could be hooked; Binder core remains active");
+  }
+  return binder_ready;
 }

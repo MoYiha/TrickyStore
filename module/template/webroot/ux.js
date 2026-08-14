@@ -607,6 +607,16 @@
         'Could not save custom template': 'Özel şablon kaydedilemedi'
     });
 
+    Object.assign(TRANSLATIONS.tr, {
+        'Kernel Identity': 'Çekirdek Kimliği', 'Hook kernel name': 'Çekirdek adını hookla', 'GKI preset': 'GKI ön ayarı',
+        'uname release': 'uname sürümü', 'uname version': 'uname derleme bilgisi', 'Save kernel identity': 'Çekirdek kimliğini kaydet',
+        'Custom': 'Özel', 'Kernel identity applied': 'Çekirdek kimliği uygulandı',
+        'Kernel identity saved for next native activation': 'Çekirdek kimliği sonraki yerel etkinleştirme için kaydedildi',
+        'Could not load kernel identity': 'Çekirdek kimliği yüklenemedi',
+        'Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.': 'Enjekte edilen Keystore çalışma zamanında uname sürüm/derleme bilgisini isteğe bağlı olarak değiştirir. Resmî GKI ön ayarları yayımlanan temel çekirdek sürümlerini kullanır ve düzenlenebilir.',
+        'Disabled by default. Core Binder protection is independent from this option.': 'Varsayılan olarak kapalıdır. Temel Binder koruması bu seçenekten bağımsızdır.'
+    });
+
     // Complete catalogs share one source key per row to keep all built-in
     // locales aligned without adding locale-specific runtime assets. Columns:
     // source, zh-CN, es, de, ru, id, hi, ar.
@@ -1015,6 +1025,18 @@
         ["Security patch must be YYYY-MM-DD", "安全补丁必须为 YYYY-MM-DD", "El parche de seguridad debe tener formato AAAA-MM-DD", "Sicherheitspatch muss JJJJ-MM-TT sein", "Патч безопасности должен быть YYYY-MM-DD", "Patch keamanan harus YYYY-MM-DD", "सुरक्षा पैच YYYY-MM-DD होना चाहिए", "يجب أن يكون تصحيح الأمان بالصيغة YYYY-MM-DD"],
         ["Template catalog is unavailable", "模板目录不可用", "El catálogo de plantillas no está disponible", "Vorlagenkatalog ist nicht verfügbar", "Каталог шаблонов недоступен", "Katalog template tidak tersedia", "टेम्पलेट कैटलॉग उपलब्ध नहीं है", "كتالوج القوالب غير متاح"],
         ["Could not save custom template", "无法保存自定义模板", "No se pudo guardar la plantilla personalizada", "Benutzerdefinierte Vorlage konnte nicht gespeichert werden", "Не удалось сохранить пользовательский шаблон", "Tidak dapat menyimpan template kustom", "कस्टम टेम्पलेट सहेजा नहीं जा सका", "تعذر حفظ القالب المخصص"],
+        ["Kernel Identity", "内核身份", "Identidad del kernel", "Kernel-Identität", "Идентичность ядра", "Identitas Kernel", "कर्नेल पहचान", "هوية النواة"],
+        ["Hook kernel name", "Hook 内核名称", "Interceptar nombre del kernel", "Kernel-Namen hooken", "Перехватывать имя ядра", "Hook nama kernel", "कर्नेल नाम हुक करें", "اعتراض اسم النواة"],
+        ["GKI preset", "GKI 预设", "Preajuste GKI", "GKI-Voreinstellung", "Профиль GKI", "Preset GKI", "GKI प्रीसेट", "إعداد GKI مسبق"],
+        ["uname release", "uname release", "release de uname", "uname release", "uname release", "uname release", "uname release", "uname release"],
+        ["uname version", "uname version", "versión de uname", "uname version", "uname version", "uname version", "uname version", "uname version"],
+        ["Save kernel identity", "保存内核身份", "Guardar identidad del kernel", "Kernel-Identität speichern", "Сохранить идентичность ядра", "Simpan identitas kernel", "कर्नेल पहचान सहेजें", "حفظ هوية النواة"],
+        ["Kernel identity applied", "内核身份已应用", "Identidad del kernel aplicada", "Kernel-Identität angewendet", "Идентичность ядра применена", "Identitas kernel diterapkan", "कर्नेल पहचान लागू की गई", "تم تطبيق هوية النواة"],
+        ["Kernel identity saved for next native activation", "内核身份已保存，将在下次原生激活时应用", "Identidad del kernel guardada para la próxima activación nativa", "Kernel-Identität für die nächste native Aktivierung gespeichert", "Идентичность ядра сохранена для следующей нативной активации", "Identitas kernel disimpan untuk aktivasi native berikutnya", "कर्नेल पहचान अगली नेटिव सक्रियता के लिए सहेजी गई", "تم حفظ هوية النواة للتفعيل الأصلي التالي"],
+        ["Could not load kernel identity", "无法加载内核身份", "No se pudo cargar la identidad del kernel", "Kernel-Identität konnte nicht geladen werden", "Не удалось загрузить идентичность ядра", "Tidak dapat memuat identitas kernel", "कर्नेल पहचान लोड नहीं हो सकी", "تعذر تحميل هوية النواة"],
+        ["Disabled by default. Core Binder protection is independent from this option.", "默认关闭。核心 Binder 保护独立于此选项。", "Desactivado de forma predeterminada. La protección Binder principal es independiente de esta opción.", "Standardmäßig deaktiviert. Der Binder-Kernschutz ist von dieser Option unabhängig.", "По умолчанию отключено. Основная защита Binder не зависит от этой опции.", "Dinonaktifkan secara default. Perlindungan inti Binder tidak bergantung pada opsi ini.", "डिफ़ॉल्ट रूप से बंद। मुख्य Binder सुरक्षा इस विकल्प से स्वतंत्र है।", "معطل افتراضيا. حماية Binder الأساسية مستقلة عن هذا الخيار."],
+        ["Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.", "可选地覆盖注入 Keystore 运行时中的 uname release/version。官方 GKI 预设使用已发布的基础内核版本并可编辑。", "Sustituye opcionalmente release/version de uname dentro del entorno Keystore inyectado. Los preajustes GKI oficiales usan versiones base publicadas y siguen siendo editables.", "Überschreibt optional uname release/version in der injizierten Keystore-Laufzeit. Offizielle GKI-Voreinstellungen verwenden veröffentlichte Basis-Kernelversionen und bleiben editierbar.", "При необходимости заменяет uname release/version во внедрённой среде Keystore. Официальные профили GKI используют опубликованные базовые версии ядра и остаются редактируемыми.", "Secara opsional mengganti uname release/version di runtime Keystore yang diinjeksi. Preset GKI resmi memakai versi kernel dasar yang dipublikasikan dan tetap dapat diedit.", "इंजेक्ट किए गए Keystore रनटाइम में uname release/version को वैकल्पिक रूप से बदलता है। आधिकारिक GKI प्रीसेट प्रकाशित बेस कर्नेल संस्करणों का उपयोग करते हैं और संपादन योग्य रहते हैं।", "يستبدل اختياريا uname release/version داخل بيئة Keystore المحقونة. تستخدم إعدادات GKI الرسمية إصدارات النواة الأساسية المنشورة وتظل قابلة للتحرير."],
+        ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],
     ];
 
     for (const row of COMPLETE_CATALOG_ROWS) {
