@@ -35,9 +35,13 @@ object KeyboxVerifier {
     private const val MAX_CRL_KEY_CHARS = 128
     private const val MAX_KEYBOX_XML_BYTES = 10L * 1024 * 1024
     private const val MAX_KEYBOX_FILES = 64
+    private const val PERSISTED_CRL_FILE = "attestation_status_cache.json"
 
     @Volatile
     private var crlUrl = DEFAULT_CRL_URL
+
+    @Volatile
+    private var cacheRoot = File("/data/adb/cleverestricky")
     private val HASH_LENGTHS = listOf(32, 40, 64)
     private val ZEROS = "0".repeat(64)
 
@@ -58,6 +62,47 @@ object KeyboxVerifier {
         cacheLock.lock()
         try {
             crlUrl = DEFAULT_CRL_URL
+            clearCacheLocked()
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    fun configureCacheRoot(configDir: File) {
+        cacheLock.lock()
+        try {
+            cacheRoot = configDir
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun setCacheRootForTesting(configDir: File) {
+        cacheLock.lock()
+        try {
+            cacheRoot = configDir
+            clearCacheLocked()
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun clearMemoryCacheForTesting() {
+        cacheLock.lock()
+        try {
+            clearCacheLocked()
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun resetCacheRootForTesting() {
+        cacheLock.lock()
+        try {
+            cacheRoot = File("/data/adb/cleverestricky")
             clearCacheLocked()
         } finally {
             cacheLock.unlock()
@@ -143,6 +188,13 @@ object KeyboxVerifier {
                 return cachedCrl
             }
 
+            loadPersistedCrlLocked(now)?.let { persisted ->
+                cachedCrl = persisted.first
+                lastFetchTime = persisted.second
+                Logger.i("Loaded fresh attestation revocation cache from disk")
+                return persisted.first
+            }
+
             val requestedUrl = crlUrl
             if (!isAllowedCrlUrl(requestedUrl, allowLoopbackHttp = requestedUrl != DEFAULT_CRL_URL)) {
                 Logger.e("Rejected unsafe CRL URL")
@@ -173,10 +225,15 @@ object KeyboxVerifier {
 
                 val declaredLength = connection.contentLengthLong
                 if (declaredLength > MAX_CRL_BYTES) throw IOException("CRL response is too large")
-                val newCrl = BoundedInputStream(connection.inputStream, MAX_CRL_BYTES).bufferedReader().use(::parseCrl)
+                val rawCrl =
+                    BoundedInputStream(connection.inputStream, MAX_CRL_BYTES)
+                        .bufferedReader(Charsets.UTF_8)
+                        .use { it.readText() }
+                val newCrl = parseCrl(rawCrl)
                 cachedCrl = newCrl
                 cachedEtag = connection.getHeaderField("ETag")?.take(512)
                 lastFetchTime = now
+                persistCrlLocked(rawCrl)
                 return newCrl
             } catch (e: Exception) {
                 Logger.e("Failed to fetch CRL", e)
@@ -206,6 +263,33 @@ object KeyboxVerifier {
         } catch (e: Exception) {
             false
         }
+
+    private fun loadPersistedCrlLocked(now: Long): Pair<Set<String>, Long>? {
+        val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
+        val path = cacheFile.toPath()
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
+        val size = cacheFile.length()
+        val modified = cacheFile.lastModified()
+        val age = now - modified
+        if (size !in 1..MAX_CRL_BYTES || modified <= 0L || age < 0L || age >= CACHE_TTL) return null
+        return runCatching {
+            val parsed =
+                BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
+                    .bufferedReader(Charsets.UTF_8)
+                    .use(::parseCrl)
+            parsed to modified
+        }.onFailure {
+            Logger.w("Ignoring invalid persisted attestation revocation cache")
+        }.getOrNull()
+    }
+
+    private fun persistCrlLocked(rawCrl: String) {
+        runCatching {
+            SecureFile.writeText(File(cacheRoot, PERSISTED_CRL_FILE), rawCrl)
+        }.onFailure {
+            Logger.w("Could not persist attestation revocation cache")
+        }
+    }
 
     private fun clearCacheLocked() {
         cachedCrl = null

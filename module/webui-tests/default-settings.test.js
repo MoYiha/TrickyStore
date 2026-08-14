@@ -15,7 +15,7 @@ assert.deepStrictEqual(policy.features, {
   telephonyIdentity: false,
   regionIdentity: false,
   identityRefresh: false,
-  securityPatch: true
+  securityPatch: false
 });
 assert.strictEqual(policy.securityPatch.automaticThresholdMonths, 6);
 for (const component of ['system', 'vendor', 'boot']) {
@@ -32,6 +32,7 @@ const defaultsBlock = installer.slice(start, end);
 assert.match(defaultsBlock, /CONFIG_DIR\/global_mode/);
 assert.match(defaultsBlock, /CONFIG_DIR\/auto_keybox_check/);
 assert.match(defaultsBlock, /policy_state_v2\.json/);
+assert.match(defaultsBlock, /recommended_defaults_pending/);
 assert.doesNotMatch(defaultsBlock, /: > "\$CONFIG_DIR\/spoof_enabled"/);
 assert.doesNotMatch(defaultsBlock, /: > "\$CONFIG_DIR\/drm_passthrough"/);
 assert.doesNotMatch(defaultsBlock, /: > "\$CONFIG_DIR\/telephony"/);

@@ -201,6 +201,12 @@ if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
     mv "$TMPDIR/policy_state_v2.json" "$CONFIG_DIR/policy_state_v2.json" \
       || abort "! Could not install the default policy state"
   fi
+  : > "$CONFIG_DIR/recommended_defaults_pending" \
+    || abort "! Could not schedule device-aware default evaluation"
+  chmod 600 "$CONFIG_DIR/recommended_defaults_pending" \
+    || abort "! Could not secure device-aware default marker"
+  chown 0:0 "$CONFIG_DIR/recommended_defaults_pending" \
+    || abort "! Could not set device-aware default marker ownership"
   : > "$CONFIG_DIR/spoof_switch_initialized" \
     || abort "! Could not write the default-settings migration marker"
 fi
