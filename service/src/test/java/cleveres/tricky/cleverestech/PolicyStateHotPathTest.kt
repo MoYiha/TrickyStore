@@ -9,7 +9,7 @@ import org.junit.Test
 
 class PolicyStateHotPathTest {
     @Test
-    fun recommendedDefaultsKeepSecurityPatchOffForCurrentRom() {
+    fun recommendedDefaultsUsePrimarySystemPatchForEnableDecision() {
         val root = Files.createTempDirectory("ct-defaults-current").toFile()
         val oldProperties = systemPropertiesGet
         try {
@@ -18,8 +18,8 @@ class PolicyStateHotPathTest {
             systemPropertiesGet = { name, default ->
                 when (name) {
                     "ro.build.version.security_patch" -> "2026-08-05"
-                    "ro.vendor.build.security_patch" -> "2026-07-05"
-                    "ro.bootimage.build.version.security_patch" -> "2026-07-05"
+                    "ro.vendor.build.security_patch" -> "2025-12-05"
+                    "ro.bootimage.build.version.security_patch" -> "2025-12-05"
                     else -> default
                 }
             }
@@ -54,8 +54,8 @@ class PolicyStateHotPathTest {
             systemPropertiesGet = { name, default ->
                 when (name) {
                     "ro.build.version.security_patch" -> "2025-12-05"
-                    "ro.vendor.build.security_patch" -> "2025-12-05"
-                    "ro.bootimage.build.version.security_patch" -> "2025-12-05"
+                    "ro.vendor.build.security_patch" -> "2026-08-05"
+                    "ro.bootimage.build.version.security_patch" -> "2026-08-05"
                     else -> default
                 }
             }
