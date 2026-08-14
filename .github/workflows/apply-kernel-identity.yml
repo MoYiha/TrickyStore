@@ -25,6 +25,18 @@ jobs:
         run: |
           set -euo pipefail
           python3 .agent/apply_kernel_identity.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('module/template/webroot/ux.js')
+          text = path.read_text()
+          marker = '    ];\n\n    for (const row of COMPLETE_CATALOG_ROWS) {'
+          row = '        ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],\n'
+          if row not in text:
+              if marker not in text:
+                  raise SystemExit('complete catalog marker missing')
+              text = text.replace(marker, row + marker, 1)
+          path.write_text(text)
+          PY
           node --check module/template/webroot/policy.js
           node --check module/template/webroot/ux.js
           for test in module/webui-tests/*.test.js; do node "$test"; done
