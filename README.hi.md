@@ -3,6 +3,9 @@
 **भाषा:** [English](README.md) | [Türkçe](README.tr.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Bahasa Indonesia](README.id.md) | **हिन्दी** | [العربية](README.ar.md)
 
 [![Release](https://img.shields.io/github/v/release/tryigit/CleveresTricky?display_name=tag&sort=semver&label=Release)](https://github.com/tryigit/CleveresTricky/releases/latest)
+[![Localization](https://img.shields.io/badge/Localization-9%20Languages-teal?logo=googletranslate)](LANGUAGES.md)
+[![Channel](https://img.shields.io/badge/Follow-Telegram-blue.svg?logo=telegram)](https://t.me/cleverestech)
+[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPL--3.0--only-orange.svg?logo=gnu)](LICENSING.md)
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 ![Architecture](https://img.shields.io/badge/Arch-ARM64%20%7C%20x86--64-0969DA)
