@@ -32,6 +32,14 @@ The vendored LSPlt implementation remains C++ as an external dependency. Its sou
 
 This exception must not grow. Any part that becomes practical to express safely in Rust must move to Rust, and a new first party C or C++ source file fails the source policy check.
 
+## Camera visibility boundary
+
+Camera visibility is an explicit opt-in runtime path. A cold-disabled configuration does not scan for `cameraserver`, invoke the injector, or register the camera Binder interceptor. When enabled, the injector target remains restricted to the exact `cameraserver` process name.
+
+Android SELinux policy is loaded statically, so the `cameraserver` `execmem` permission required by the existing LSPlt/Binder injection mechanism cannot follow the WebUI toggle dynamically. Installing the module therefore makes that narrow permission available even while Camera visibility is disabled. This is an explicit attack-surface trade-off of the current injection design; removing it requires replacing the cameraserver hook mechanism rather than changing the runtime feature gate.
+
+Listener shutdown deliberately does not remove a proxy and re-register the application's original listener from the module service. Such a re-registration would originate under the module service identity instead of the application's original Binder caller identity and could change CameraService permission and device-context filtering. Instead, disabling the feature restores hidden camera states to already-registered application listeners and switches their existing proxies to pass-through drain mode. New listeners are not proxied while disabled. The narrow interceptor remains only until those pre-existing listeners are removed, die, or CameraService restarts, after which the hook is parked. This transition adds no polling worker and avoids breaking a live `CameraManagerGlobal` connection.
+
 ## Boundary verification
 
 Rust and the narrow C++ boundary share explicit layout structures. Tests and compile time assertions pin their size and critical field offsets on supported 64 bit architectures. Both Android targets are compiled and linked in continuous integration.
@@ -41,5 +49,7 @@ Release binaries expose only the intended library entry points, use position ind
 ## Resource behavior
 
 The injected Binder parser performs no heap allocation. Descriptor classification uses a fixed cache and validates device plus inode identity before trusting a cached result. A second identity check closes the file descriptor reuse race around procfs resolution. Rust release code uses size optimization and full link time optimization. The injector exits after activation, so its orchestration buffers do not remain in the target process.
+
+Camera listener state is also bounded. Initial callbacks received before the listener snapshot is known are retained in a fixed-count, fixed-byte queue, replay state is capped, and the listener proxy map has a hard limit. Exceeding the proxy limit while filtering is active fails closed instead of registering an unfiltered listener.
 
 [Return to the project overview](../README.md)
