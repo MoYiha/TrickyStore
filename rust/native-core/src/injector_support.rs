@@ -233,7 +233,10 @@ pub fn is_supported_target_cmdline(input: &[u8]) -> bool {
     }
     let first = &input[..first_end];
     let basename = first.rsplit(|byte| *byte == b'/').next().unwrap_or(first);
-    matches!(basename, b"keystore2" | b"com.android.phone")
+    matches!(
+        basename,
+        b"keystore2" | b"com.android.phone" | b"cameraserver"
+    )
 }
 
 fn read_bounded_cmdline(reader: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
@@ -638,6 +641,8 @@ mod tests {
     fn validates_only_supported_stopped_process_names() {
         assert!(is_supported_target_cmdline(b"/system/bin/keystore2\0"));
         assert!(is_supported_target_cmdline(b"com.android.phone\0extra\0"));
+        assert!(is_supported_target_cmdline(b"/system/bin/cameraserver\0"));
+        assert!(!is_supported_target_cmdline(b"cameraserver.helper\0"));
         assert!(!is_supported_target_cmdline(
             b"/system/bin/keystore2.helper\0"
         ));

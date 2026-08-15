@@ -267,6 +267,11 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
     <div id="visibleSimScope" class="scope-note" style="margin:0;align-self:end;">Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.</div>
 </div>
 <div style="margin-top:10px;"><button type="button" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('telephony'))" style="width:100%;">Randomize Telephony</button></div>
+<div class="section-header">Hardware visibility</div>
+<div class="grid-2">
+    <div><label for="inputVisibleCameraCount">Visible camera count</label><div class="identity-input-action"><div class="identity-input-slot"><input type="number" id="inputVisibleCameraCount" min="0" max="16" step="1" inputmode="numeric" aria-describedby="visibleCameraScope"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('visible_camera_count'))">Random</button></div></div>
+    <div id="visibleCameraScope" class="scope-note" style="margin:0;align-self:end;">Limits discoverable camera IDs for selected apps. It never creates cameras that are not present.</div>
+</div>
 <div class="section-header">Device</div>
 <div><label for="inputSerial">Serial</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputSerial" placeholder="Device serial" maxlength="64" style="font-family:monospace;" enterkeyhint="done" autocapitalize="characters" oninput="validateRealtime(this, 'serial')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('serial'))">Random</button></div></div>
 <div class="identity-actions" style="flex-wrap:wrap;"><button type="button" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('all'))">Randomize All</button><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
@@ -1392,7 +1397,8 @@ const fields = {
     inputImei: 'imei', inputImei2: 'imei2', inputMeid: 'meid', inputMeid2: 'meid2',
     inputImsi: 'imsi', inputImsi2: 'imsi2', inputIccid: 'iccid', inputIccid2: 'iccid2',
     inputPhoneNumber: 'phone_number', inputPhoneNumber2: 'phone_number2', inputSerial: 'serial',
-    inputVisibleSimCount: 'visible_sim_count'
+    inputVisibleSimCount: 'visible_sim_count',
+    inputVisibleCameraCount: 'visible_camera_count'
 };
 Object.entries(fields).forEach(([id, key]) => {
     const input = document.getElementById(id);
@@ -1410,7 +1416,7 @@ previewTemplate();
 imei: 'inputImei', imei2: 'inputImei2', meid: 'inputMeid', meid2: 'inputMeid2',
 imsi: 'inputImsi', imsi2: 'inputImsi2', iccid: 'inputIccid', iccid2: 'inputIccid2',
 phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial',
-visible_sim_count: 'inputVisibleSimCount'
+visible_sim_count: 'inputVisibleSimCount', visible_camera_count: 'inputVisibleCameraCount'
         });
 
         async function fetchRandomIdentity(selection = 'all') {
@@ -1611,7 +1617,8 @@ try {
         function clearSpoofingInputs() {
 [
     'inputImei', 'inputImei2', 'inputMeid', 'inputMeid2', 'inputImsi', 'inputImsi2',
-    'inputIccid', 'inputIccid2', 'inputPhoneNumber', 'inputPhoneNumber2', 'inputSerial', 'inputVisibleSimCount'
+    'inputIccid', 'inputIccid2', 'inputPhoneNumber', 'inputPhoneNumber2', 'inputSerial',
+    'inputVisibleSimCount', 'inputVisibleCameraCount'
 ].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -1646,7 +1653,7 @@ const fields = {
     imei: 'inputImei', imei2: 'inputImei2', meid: 'inputMeid', meid2: 'inputMeid2',
     imsi: 'inputImsi', imsi2: 'inputImsi2', iccid: 'inputIccid', iccid2: 'inputIccid2',
     phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial',
-    visible_sim_count: 'inputVisibleSimCount'
+    visible_sim_count: 'inputVisibleSimCount', visible_camera_count: 'inputVisibleCameraCount'
 };
 const identity = { template: document.getElementById('templateSelect').value || '' };
 Object.entries(fields).forEach(([key, id]) => {

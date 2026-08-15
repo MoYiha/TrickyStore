@@ -33,3 +33,9 @@ assert(index.includes('id="inputVisibleSimCount"'), 'visible SIM count control m
 assert(index.includes("randomizeIdentityField('visible_sim_count')"), 'visible SIM count must support single-field randomization');
 assert(index.includes("generateRandomIdentity('telephony')"), 'Telephony section must support grouped randomization');
 assert(index.includes("visible_sim_count: 'inputVisibleSimCount'"), 'random payload must map visible SIM count');
+
+assert(index.includes('id="inputVisibleCameraCount"'), 'visible camera count control must exist');
+assert(index.includes("randomizeIdentityField('visible_camera_count')"), 'camera count must support single-field randomization');
+assert(index.includes("visible_camera_count: 'inputVisibleCameraCount'"), 'random payload must map visible camera count');
+assert(policy.includes("setLegacyToggle('camera_visibility'"), 'camera visibility must be an explicit opt-in legacy toggle');
+assert(policy.includes('Disabled means no cameraserver interceptor is started.'), 'camera control must document disabled lifecycle');

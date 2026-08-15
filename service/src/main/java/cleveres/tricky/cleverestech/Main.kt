@@ -108,8 +108,10 @@ fun main(args: Array<String>) {
 
         var previousIdentityEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
+        var previousCameraState: Boolean? = null
         var previousDrmEngineState: Boolean? = null
         var telephonyStopPending = false
+        var cameraStopPending = false
         var drmStopPending = false
         var runtimeRetryDelayMs = RUNTIME_RETRY_INITIAL_MS
         while (true) {
@@ -134,6 +136,8 @@ fun main(args: Array<String>) {
                         TelephonyInterceptor.isRunning() &&
                             (!Config.shouldInterceptSubscriptionVisibility || SubscriptionVisibilityInterceptor.isRunning())
                     )
+            val cameraEnabled = Config.shouldInterceptCameraVisibility
+            var cameraSuccess = !cameraEnabled || CameraVisibilityInterceptor.isRunning()
             val drmEnabled = Config.shouldInterceptDrm
             var drmSuccess = !drmEnabled || DrmInterceptor.isRunning()
 
@@ -166,6 +170,19 @@ fun main(args: Array<String>) {
                     null
                 }
 
+            val cameraJob =
+                if (cameraEnabled && !cameraSuccess) {
+                    launch(Dispatchers.IO) {
+                        try {
+                            cameraSuccess = CameraVisibilityInterceptor.tryRun()
+                        } catch (e: Exception) {
+                            Logger.e("Camera visibility interceptor threw unexpected exception", e)
+                        }
+                    }
+                } else {
+                    null
+                }
+
             val drmJob =
                 if (drmEnabled && !drmSuccess) {
                     launch(Dispatchers.IO) {
@@ -181,6 +198,7 @@ fun main(args: Array<String>) {
 
             ksJob?.join()
             telJob?.join()
+            cameraJob?.join()
             drmJob?.join()
 
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
@@ -199,6 +217,18 @@ fun main(args: Array<String>) {
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
+            if (!cameraEnabled && (previousCameraState != false || cameraStopPending)) {
+                val wasPending = cameraStopPending
+                cameraStopPending = !CameraVisibilityInterceptor.stop()
+                if (cameraStopPending && !wasPending) {
+                    Logger.w("Camera visibility hook cleanup is incomplete; retry scheduled")
+                }
+                cameraSuccess = !cameraStopPending
+            } else if (cameraEnabled) {
+                cameraStopPending = false
+            }
+            previousCameraState = if (cameraStopPending) null else cameraEnabled
+
             if (!drmEnabled && (previousDrmEngineState != false || drmStopPending)) {
                 val wasPending = drmStopPending
                 drmStopPending = !DrmInterceptor.stopDrmInterceptor()
@@ -213,10 +243,17 @@ fun main(args: Array<String>) {
 
             if (!ksSuccess) Logger.d("Core Keystore interceptor is not ready; retry scheduled")
             if (!telSuccess) Logger.d("Telephony interceptor not ready yet")
+            if (!cameraSuccess) Logger.d("Camera visibility interceptor not ready yet")
             if (!drmSuccess) Logger.d("DRM privacy interceptor not ready yet")
 
             val runtimeHealthy =
-                ksSuccess && telSuccess && drmSuccess && !telephonyStopPending && !drmStopPending
+                ksSuccess &&
+                    telSuccess &&
+                    cameraSuccess &&
+                    drmSuccess &&
+                    !telephonyStopPending &&
+                    !cameraStopPending &&
+                    !drmStopPending
             val controllerWaitMs = if (runtimeHealthy) 30_000L else runtimeRetryDelayMs
             try {
                 Config.awaitRuntimeController(controllerWaitMs)
@@ -225,6 +262,7 @@ fun main(args: Array<String>) {
                 KeyboxDirectoryRefreshWatcher.stop()
                 CertificatePolicyWatcher.stop()
                 SubscriptionVisibilityInterceptor.stop()
+                CameraVisibilityInterceptor.stop()
                 DrmInterceptor.stopDrmInterceptor()
                 Logger.i("Main: Runtime controller interrupted, shutting down")
                 return@runBlocking

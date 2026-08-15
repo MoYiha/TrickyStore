@@ -90,6 +90,7 @@ object Config {
         val phoneNumber2: String? = null,
         val serial: String? = null,
         val visibleSimCount: Int? = null,
+        val visibleCameraCount: Int? = null,
     ) {
         private fun valueForSlot(
             primary: String?,
@@ -156,6 +157,10 @@ object Config {
 
     @Volatile
     var isTelephonyEnabled = false
+
+    @Volatile
+    var isCameraVisibilityEnabled = false
+        private set
 
     /**
      * Legacy compatibility marker retained for older backups and configurations.
@@ -259,6 +264,12 @@ object Config {
 
     fun getVisibleSimCount(uid: Int): Int? =
         identityOverrides.visibleSimCount.takeIf { shouldApplyTelephonyPrivacy(uid) }
+
+    val shouldInterceptCameraVisibility: Boolean
+        get() = shouldRunCameraVisibility(isCameraVisibilityEnabled, identityOverrides.visibleCameraCount)
+
+    fun getVisibleCameraCount(uid: Int): Int? =
+        identityOverrides.visibleCameraCount.takeIf { isCameraVisibilityEnabled && isTargetedUid(uid) }
 
     fun shouldApplyTelephonyPrivacy(uid: Int): Boolean {
         val legacyPrivacy = !PolicyState.usesV2() && isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
@@ -623,6 +634,14 @@ object Config {
         if (changed) signalRuntimeController()
     }
 
+    private fun updateCameraVisibility(f: File?) {
+        val enabled = isRegularFlagFile(f)
+        val changed = isCameraVisibilityEnabled != enabled
+        isCameraVisibilityEnabled = enabled
+        Logger.i("Camera visibility is ${if (enabled) "enabled" else "disabled"}")
+        if (changed) signalRuntimeController()
+    }
+
     private fun updateRkpPassthrough(f: File?) {
         isRkpPassthroughEnabled = isRegularFlagFile(f)
         Logger.i("Legacy RKP passthrough marker is ${if (isRkpPassthroughEnabled) "present" else "absent"}; RKP protection is always active")
@@ -654,6 +673,7 @@ object Config {
                 updateTargetPackages(File(root, TARGET_FILE))
             }
             TELEPHONY_FILE -> updateTelephony(file)
+            CAMERA_VISIBILITY_FILE -> updateCameraVisibility(file)
             RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(file)
             DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(file)
             RANDOM_ON_BOOT_FILE -> {
@@ -1217,6 +1237,7 @@ object Config {
                 "ATTESTATION_ID_PHONE_NUMBER",
                 "ATTESTATION_ID_PHONE_NUMBER2",
                 "VISIBLE_SIM_COUNT",
+                "VISIBLE_CAMERA_COUNT",
             )
 
     internal fun isValidBuildVarEntry(
@@ -1230,6 +1251,7 @@ object Config {
         if (key == "TEMPLATE") return value.length <= 64 && templates.containsKey(value.lowercase())
         if (key == "MODULE_HASH") return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
         if (key == "VISIBLE_SIM_COUNT") return value.length == 1 && value[0] in '0'..'8'
+        if (key == "VISIBLE_CAMERA_COUNT") return value.toIntOrNull()?.let { it in 0..16 } == true
         when (key) {
             "FINGERPRINT" ->
                 return value.all { it.isLetterOrDigit() || it in "._:/+-" }
@@ -1321,6 +1343,7 @@ object Config {
                     value.hexToByteArray().also { require(it.size == 32) }
                 }
             val previousVisibleSimCount = identityOverrides.visibleSimCount
+            val previousVisibleCameraCount = identityOverrides.visibleCameraCount
             val newIdentityOverrides =
                 IdentityOverrides(
                     template = newVars["TEMPLATE"],
@@ -1336,13 +1359,19 @@ object Config {
                     phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"],
                     serial = newVars["ATTESTATION_ID_SERIAL"],
                     visibleSimCount = newVars["VISIBLE_SIM_COUNT"]?.toInt(),
+                    visibleCameraCount = newVars["VISIBLE_CAMERA_COUNT"]?.toInt(),
                 )
             buildVars = newVars.toMap()
             attestationIds = newIds.toMap()
             identityOverrides = newIdentityOverrides
             moduleHashFromVars = parsedModuleHash
             stringToBytesCache.clear()
-            if (previousVisibleSimCount != newIdentityOverrides.visibleSimCount) signalRuntimeController()
+            if (
+                previousVisibleSimCount != newIdentityOverrides.visibleSimCount ||
+                previousVisibleCameraCount != newIdentityOverrides.visibleCameraCount
+            ) {
+                signalRuntimeController()
+            }
 
             CertHack.clearCertificateCache()
             updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
@@ -1742,6 +1771,7 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val TELEPHONY_FILE = "telephony"
+    private const val CAMERA_VISIBILITY_FILE = "camera_visibility"
     private const val RKP_PASSTHROUGH_FILE = "rkp_passthrough"
     private const val DRM_PASSTHROUGH_FILE = "drm_passthrough"
     private const val DRM_PACKAGES_FILE = "drm_packages.txt"
@@ -1899,6 +1929,8 @@ object Config {
                 else -> throw IllegalArgumentException("Unknown profile")
             }
         Logger.i("Applying profile: $profile")
+        // Hardware-visibility interceptors remain explicitly opt-in in every built-in profile.
+        removeConfigFiles(CAMERA_VISIBILITY_FILE)
         when (profile) {
             "maximum" -> {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
@@ -1966,6 +1998,7 @@ object Config {
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
+        updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
         updateRkpPassthrough(File(root, RKP_PASSTHROUGH_FILE))
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
@@ -2006,6 +2039,10 @@ object Config {
                     "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
                     "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                     "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
+                    "VISIBLE_SIM_COUNT" to
+                        (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"),
+                    "VISIBLE_CAMERA_COUNT" to
+                        (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                 )
             val currentTemplate = buildVars["TEMPLATE"]
             val templateCandidates = templates.keys.filterNot { it.equals(currentTemplate, ignoreCase = true) }
@@ -2102,6 +2139,7 @@ object Config {
                 }
 
                 TELEPHONY_FILE -> updateTelephony(f)
+                CAMERA_VISIBILITY_FILE -> updateCameraVisibility(f)
                 RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(f)
                 DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(f)
                 RANDOM_ON_BOOT_FILE -> {
@@ -2143,6 +2181,7 @@ object Config {
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
+        updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
         updateRkpPassthrough(File(root, RKP_PASSTHROUGH_FILE))
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateDrmPackages(File(root, DRM_PACKAGES_FILE))
@@ -2422,6 +2461,7 @@ object Config {
         isBuildIdentityEnabled = false
         isTeeBrokenMode = false
         isTelephonyEnabled = false
+        isCameraVisibilityEnabled = false
         isRkpPassthroughEnabled = false
         isDrmPassthroughEnabled = false
         drmState = DrmState(PackageTrie())

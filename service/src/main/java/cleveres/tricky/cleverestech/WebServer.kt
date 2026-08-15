@@ -313,6 +313,7 @@ class WebServer(
             .put("phone_number2", identity.phoneNumber2 ?: "")
             .put("serial", identity.serial ?: "")
             .put("visible_sim_count", identity.visibleSimCount?.toString() ?: "")
+            .put("visible_camera_count", identity.visibleCameraCount?.toString() ?: "")
     }
 
     private fun randomIdentityValue(field: String): String =
@@ -324,6 +325,8 @@ class WebServer(
             "phone_number", "phone_number2" -> "+1${RandomUtils.generateDigits(10)}"
             "serial" -> RandomUtils.generateRandomSerial(12)
             "visible_sim_count" -> RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"
+            "visible_camera_count" ->
+                RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"
             else -> throw IllegalArgumentException("Unsupported random identity field")
         }
 
@@ -372,6 +375,7 @@ class WebServer(
                     "phone_number2",
                     "serial",
                     "visible_sim_count",
+                    "visible_camera_count",
                 )
             }
             "template" -> if (!copyTemplateIfAvailable(required = true)) return null
@@ -384,8 +388,10 @@ class WebServer(
                     "visible_sim_count",
                 )
             "device" -> putFields("serial")
+            "hardware" -> putFields("visible_camera_count")
             "imei", "imei2", "imsi", "imsi2", "iccid", "iccid2", "meid", "meid2",
-            "phone_number", "phone_number2", "serial", "visible_sim_count" -> putFields(normalized)
+            "phone_number", "phone_number2", "serial", "visible_sim_count", "visible_camera_count" ->
+                putFields(normalized)
             else -> throw IllegalArgumentException("Unsupported random identity field")
         }
         return json
@@ -1718,6 +1724,10 @@ class WebServer(
                             "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
                             "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                             "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
+                            "VISIBLE_SIM_COUNT" to
+                                (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"),
+                            "VISIBLE_CAMERA_COUNT" to
+                                (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                         )
                     val lines =
                         if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -2028,6 +2038,7 @@ class WebServer(
                 "phone_number2" to "ATTESTATION_ID_PHONE_NUMBER2",
                 "serial" to "ATTESTATION_ID_SERIAL",
                 "visible_sim_count" to "VISIBLE_SIM_COUNT",
+                "visible_camera_count" to "VISIBLE_CAMERA_COUNT",
             )
         private val BUILD_IDENTITY_VAR_KEYS =
             linkedSetOf(
@@ -2055,6 +2066,7 @@ class WebServer(
                 "random_on_boot",
                 "spoof_region_cn",
                 "telephony",
+                "camera_visibility",
                 "drm_passthrough",
             )
         private val EDITABLE_CONFIG_FILES =
@@ -2088,6 +2100,7 @@ class WebServer(
                 "hide_sensitive_props",
                 "spoof_region_cn",
                 "telephony",
+                "camera_visibility",
                 // Retained only for legacy backup compatibility.
                 "rkp_passthrough",
                 "drm_passthrough",

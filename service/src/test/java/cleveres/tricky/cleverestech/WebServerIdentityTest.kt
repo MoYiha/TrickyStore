@@ -125,6 +125,7 @@ class WebServerIdentityTest {
                 .put("phone_number2", "+12025550124")
                 .put("serial", "DEVICE_01")
                 .put("visible_sim_count", "1")
+                .put("visible_camera_count", "3")
 
         val response = postIdentity(request)
         assertEquals(200, response.first)
@@ -146,6 +147,8 @@ class WebServerIdentityTest {
         assertEquals("+12025550124", saved.getString("phone_number2"))
         assertEquals("1", saved.getString("visible_sim_count"))
         assertEquals(1, Config.getIdentityOverrides().visibleSimCount)
+        assertEquals("3", saved.getString("visible_camera_count"))
+        assertEquals(3, Config.getIdentityOverrides().visibleCameraCount)
     }
 
     @Test
@@ -158,6 +161,8 @@ class WebServerIdentityTest {
         assertEquals(400, postIdentity(JSONObject().put("imei", "123")).first)
         assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "9")).first)
         assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "-1")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_camera_count", "17")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_camera_count", "-1")).first)
         assertEquals(400, postIdentity(JSONObject().put("unknown", "value")).first)
         assertEquals(before, file.readText())
     }
@@ -193,6 +198,7 @@ class WebServerIdentityTest {
         assertTrue(json.getString("imei").isNotBlank())
         assertTrue(json.getString("iccid2").isNotBlank())
         assertTrue(json.getInt("visible_sim_count") in 0..2)
+        assertTrue(json.getInt("visible_camera_count") in 1..4)
     }
 
     @Test
@@ -261,6 +267,15 @@ class WebServerIdentityTest {
         assertTrue(json.has("imei2"))
         assertTrue(json.getInt("visible_sim_count") in 0..2)
         assertFalse(json.has("serial"))
+    }
+
+    @Test
+    fun `hardware random group contains only camera visibility`() {
+        val response = request("GET", "/api/random_identity?field=hardware")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(1, json.length())
+        assertTrue(json.getInt("visible_camera_count") in 1..4)
     }
 
     @Test
