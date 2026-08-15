@@ -128,7 +128,12 @@ fun main(args: Array<String>) {
             // Keystore interception is the always-on core path. Disabling identity
             // spoofing must never unregister it or park the native Binder hook.
             var ksSuccess = KeystoreInterceptor.isRunning()
-            var telSuccess = !Config.shouldInterceptTelephony || TelephonyInterceptor.isRunning()
+            var telSuccess =
+                !Config.shouldInterceptTelephony ||
+                    (
+                        TelephonyInterceptor.isRunning() &&
+                            (!Config.shouldInterceptSubscriptionVisibility || SubscriptionVisibilityInterceptor.isRunning())
+                    )
             val drmEnabled = Config.shouldInterceptDrm
             var drmSuccess = !drmEnabled || DrmInterceptor.isRunning()
 
@@ -150,7 +155,9 @@ fun main(args: Array<String>) {
                 if (telephonyEnabled && !telSuccess) {
                     launch(Dispatchers.IO) {
                         try {
-                            telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
+                            telSuccess =
+                                TelephonyInterceptor.tryRunTelephonyInterceptor() &&
+                                    SubscriptionVisibilityInterceptor.tryRun()
                         } catch (e: Exception) {
                             Logger.e("Telephony interceptor threw unexpected exception", e)
                         }
@@ -178,13 +185,17 @@ fun main(args: Array<String>) {
 
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
                 val wasPending = telephonyStopPending
-                telephonyStopPending = !TelephonyInterceptor.stopTelephonyInterceptor()
+                val subscriptionStopped = SubscriptionVisibilityInterceptor.stop()
+                telephonyStopPending = !subscriptionStopped || !TelephonyInterceptor.stopTelephonyInterceptor()
                 if (telephonyStopPending && !wasPending) {
                     Logger.w("Telephony hook cleanup is incomplete; retry scheduled")
                 }
                 telSuccess = !telephonyStopPending
             } else if (telephonyEnabled) {
                 telephonyStopPending = false
+                if (!Config.shouldInterceptSubscriptionVisibility) {
+                    SubscriptionVisibilityInterceptor.stop()
+                }
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
@@ -213,6 +224,7 @@ fun main(args: Array<String>) {
                 Thread.currentThread().interrupt()
                 KeyboxDirectoryRefreshWatcher.stop()
                 CertificatePolicyWatcher.stop()
+                SubscriptionVisibilityInterceptor.stop()
                 DrmInterceptor.stopDrmInterceptor()
                 Logger.i("Main: Runtime controller interrupted, shutting down")
                 return@runBlocking

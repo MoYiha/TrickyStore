@@ -124,6 +124,7 @@ class WebServerIdentityTest {
                 .put("phone_number", "")
                 .put("phone_number2", "+12025550124")
                 .put("serial", "DEVICE_01")
+                .put("visible_sim_count", "1")
 
         val response = postIdentity(request)
         assertEquals(200, response.first)
@@ -143,6 +144,8 @@ class WebServerIdentityTest {
         assertEquals(imsi2, saved.getString("imsi2"))
         assertEquals(iccid2, saved.getString("iccid2"))
         assertEquals("+12025550124", saved.getString("phone_number2"))
+        assertEquals("1", saved.getString("visible_sim_count"))
+        assertEquals(1, Config.getIdentityOverrides().visibleSimCount)
     }
 
     @Test
@@ -153,6 +156,8 @@ class WebServerIdentityTest {
         val before = file.readText()
 
         assertEquals(400, postIdentity(JSONObject().put("imei", "123")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "9")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "-1")).first)
         assertEquals(400, postIdentity(JSONObject().put("unknown", "value")).first)
         assertEquals(before, file.readText())
     }
@@ -187,6 +192,7 @@ class WebServerIdentityTest {
         assertTrue(json.getString("phone_number2").startsWith("+1"))
         assertTrue(json.getString("imei").isNotBlank())
         assertTrue(json.getString("iccid2").isNotBlank())
+        assertTrue(json.getInt("visible_sim_count") in 0..2)
     }
 
     @Test
@@ -243,6 +249,18 @@ class WebServerIdentityTest {
         val device = JSONObject(deviceResponse.second)
         assertEquals(1, device.length())
         assertTrue(Config.isValidBuildVarEntry("ATTESTATION_ID_SERIAL", device.getString("serial")))
+    }
+
+    @Test
+    fun `telephony random group includes visibility but not device serial`() {
+        val response = request("GET", "/api/random_identity?field=telephony")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(11, json.length())
+        assertTrue(json.has("imei"))
+        assertTrue(json.has("imei2"))
+        assertTrue(json.getInt("visible_sim_count") in 0..2)
+        assertFalse(json.has("serial"))
     }
 
     @Test

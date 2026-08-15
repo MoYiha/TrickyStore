@@ -261,6 +261,12 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
     <div><label for="inputIccid2">ICCID 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputIccid2" placeholder="SIM card identity" maxlength="22" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('iccid2'))">Random</button></div></div>
     <div><label for="inputPhoneNumber2">Phone number 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="tel" id="inputPhoneNumber2" placeholder="+12025550124" maxlength="32" style="font-family:monospace;" inputmode="tel" enterkeyhint="next" oninput="validateRealtime(this, 'phone')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('phone_number2'))">Random</button></div></div>
 </div>
+<div class="section-header">Telephony visibility</div>
+<div class="grid-2">
+    <div><label for="inputVisibleSimCount">Visible SIM count</label><div class="identity-input-action"><div class="identity-input-slot"><input type="number" id="inputVisibleSimCount" min="0" max="8" step="1" inputmode="numeric" aria-describedby="visibleSimScope"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('visible_sim_count'))">Random</button></div></div>
+    <div id="visibleSimScope" class="scope-note" style="margin:0;align-self:end;">Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.</div>
+</div>
+<div style="margin-top:10px;"><button type="button" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('telephony'))" style="width:100%;">Randomize Telephony</button></div>
 <div class="section-header">Device</div>
 <div><label for="inputSerial">Serial</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputSerial" placeholder="Device serial" maxlength="64" style="font-family:monospace;" enterkeyhint="done" autocapitalize="characters" oninput="validateRealtime(this, 'serial')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('serial'))">Random</button></div></div>
 <div class="identity-actions" style="flex-wrap:wrap;"><button type="button" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('all'))">Randomize All</button><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
@@ -1385,7 +1391,8 @@ const identity = await res.json();
 const fields = {
     inputImei: 'imei', inputImei2: 'imei2', inputMeid: 'meid', inputMeid2: 'meid2',
     inputImsi: 'imsi', inputImsi2: 'imsi2', inputIccid: 'iccid', inputIccid2: 'iccid2',
-    inputPhoneNumber: 'phone_number', inputPhoneNumber2: 'phone_number2', inputSerial: 'serial'
+    inputPhoneNumber: 'phone_number', inputPhoneNumber2: 'phone_number2', inputSerial: 'serial',
+    inputVisibleSimCount: 'visible_sim_count'
 };
 Object.entries(fields).forEach(([id, key]) => {
     const input = document.getElementById(id);
@@ -1402,7 +1409,8 @@ previewTemplate();
         const identityRandomInputMap = Object.freeze({
 imei: 'inputImei', imei2: 'inputImei2', meid: 'inputMeid', meid2: 'inputMeid2',
 imsi: 'inputImsi', imsi2: 'inputImsi2', iccid: 'inputIccid', iccid2: 'inputIccid2',
-phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial'
+phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial',
+visible_sim_count: 'inputVisibleSimCount'
         });
 
         async function fetchRandomIdentity(selection = 'all') {
@@ -1603,7 +1611,7 @@ try {
         function clearSpoofingInputs() {
 [
     'inputImei', 'inputImei2', 'inputMeid', 'inputMeid2', 'inputImsi', 'inputImsi2',
-    'inputIccid', 'inputIccid2', 'inputPhoneNumber', 'inputPhoneNumber2', 'inputSerial'
+    'inputIccid', 'inputIccid2', 'inputPhoneNumber', 'inputPhoneNumber2', 'inputSerial', 'inputVisibleSimCount'
 ].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
@@ -1637,7 +1645,8 @@ for (const [id, type] of Object.entries(inputTypes)) {
 const fields = {
     imei: 'inputImei', imei2: 'inputImei2', meid: 'inputMeid', meid2: 'inputMeid2',
     imsi: 'inputImsi', imsi2: 'inputImsi2', iccid: 'inputIccid', iccid2: 'inputIccid2',
-    phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial'
+    phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial',
+    visible_sim_count: 'inputVisibleSimCount'
 };
 const identity = { template: document.getElementById('templateSelect').value || '' };
 Object.entries(fields).forEach(([key, id]) => {

@@ -28,3 +28,8 @@ assert.ok(policy.includes('function renderIdentityControls()'), 'Identity Contro
 assert.ok(policy.includes("panel.id !== 'ct_identity_controls'"), 'legacy cleanup must preserve policy-owned Identity Controls');
 
 console.log('Identity randomization and placement regression tests passed');
+
+assert(index.includes('id="inputVisibleSimCount"'), 'visible SIM count control must exist');
+assert(index.includes("randomizeIdentityField('visible_sim_count')"), 'visible SIM count must support single-field randomization');
+assert(index.includes("generateRandomIdentity('telephony')"), 'Telephony section must support grouped randomization');
+assert(index.includes("visible_sim_count: 'inputVisibleSimCount'"), 'random payload must map visible SIM count');

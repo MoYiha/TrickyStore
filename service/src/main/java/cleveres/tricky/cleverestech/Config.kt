@@ -89,6 +89,7 @@ object Config {
         val phoneNumber: String? = null,
         val phoneNumber2: String? = null,
         val serial: String? = null,
+        val visibleSimCount: Int? = null,
     ) {
         private fun valueForSlot(
             primary: String?,
@@ -251,6 +252,13 @@ object Config {
 
     val shouldInterceptDrm: Boolean
         get() = (isSpoofEnabled && appConfigState.hasPrivacyRules) || PolicyState.hasDrmProfileWork()
+
+    /** Subscription visibility reuses the opt-in telephony runtime and never starts it by itself. */
+    val shouldInterceptSubscriptionVisibility: Boolean
+        get() = identityOverrides.visibleSimCount != null && shouldInterceptTelephony
+
+    fun getVisibleSimCount(uid: Int): Int? =
+        identityOverrides.visibleSimCount.takeIf { shouldApplyTelephonyPrivacy(uid) }
 
     fun shouldApplyTelephonyPrivacy(uid: Int): Boolean {
         val legacyPrivacy = !PolicyState.usesV2() && isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
@@ -1208,6 +1216,7 @@ object Config {
                 "ATTESTATION_ID_MODEL",
                 "ATTESTATION_ID_PHONE_NUMBER",
                 "ATTESTATION_ID_PHONE_NUMBER2",
+                "VISIBLE_SIM_COUNT",
             )
 
     internal fun isValidBuildVarEntry(
@@ -1220,6 +1229,7 @@ object Config {
         if (value.any(Char::isISOControl)) return false
         if (key == "TEMPLATE") return value.length <= 64 && templates.containsKey(value.lowercase())
         if (key == "MODULE_HASH") return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
+        if (key == "VISIBLE_SIM_COUNT") return value.length == 1 && value[0] in '0'..'8'
         when (key) {
             "FINGERPRINT" ->
                 return value.all { it.isLetterOrDigit() || it in "._:/+-" }
@@ -1310,6 +1320,7 @@ object Config {
                     require(value.length == 64) { "MODULE_HASH must be a SHA-256 digest" }
                     value.hexToByteArray().also { require(it.size == 32) }
                 }
+            val previousVisibleSimCount = identityOverrides.visibleSimCount
             val newIdentityOverrides =
                 IdentityOverrides(
                     template = newVars["TEMPLATE"],
@@ -1324,12 +1335,14 @@ object Config {
                     phoneNumber = newVars["ATTESTATION_ID_PHONE_NUMBER"],
                     phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"],
                     serial = newVars["ATTESTATION_ID_SERIAL"],
+                    visibleSimCount = newVars["VISIBLE_SIM_COUNT"]?.toInt(),
                 )
             buildVars = newVars.toMap()
             attestationIds = newIds.toMap()
             identityOverrides = newIdentityOverrides
             moduleHashFromVars = parsedModuleHash
             stringToBytesCache.clear()
+            if (previousVisibleSimCount != newIdentityOverrides.visibleSimCount) signalRuntimeController()
 
             CertHack.clearCertificateCache()
             updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))

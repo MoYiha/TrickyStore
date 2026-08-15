@@ -312,6 +312,7 @@ class WebServer(
             .put("phone_number", identity.phoneNumber ?: "")
             .put("phone_number2", identity.phoneNumber2 ?: "")
             .put("serial", identity.serial ?: "")
+            .put("visible_sim_count", identity.visibleSimCount?.toString() ?: "")
     }
 
     private fun randomIdentityValue(field: String): String =
@@ -322,6 +323,7 @@ class WebServer(
             "meid", "meid2" -> RandomUtils.generateHex(14)
             "phone_number", "phone_number2" -> "+1${RandomUtils.generateDigits(10)}"
             "serial" -> RandomUtils.generateRandomSerial(12)
+            "visible_sim_count" -> RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"
             else -> throw IllegalArgumentException("Unsupported random identity field")
         }
 
@@ -369,14 +371,21 @@ class WebServer(
                     "phone_number",
                     "phone_number2",
                     "serial",
+                    "visible_sim_count",
                 )
             }
             "template" -> if (!copyTemplateIfAvailable(required = true)) return null
             "sim1" -> putFields("imei", "imsi", "iccid", "meid", "phone_number")
             "sim2" -> putFields("imei2", "imsi2", "iccid2", "meid2", "phone_number2")
+            "telephony" ->
+                putFields(
+                    "imei", "imsi", "iccid", "meid", "phone_number",
+                    "imei2", "imsi2", "iccid2", "meid2", "phone_number2",
+                    "visible_sim_count",
+                )
             "device" -> putFields("serial")
             "imei", "imei2", "imsi", "imsi2", "iccid", "iccid2", "meid", "meid2",
-            "phone_number", "phone_number2", "serial" -> putFields(normalized)
+            "phone_number", "phone_number2", "serial", "visible_sim_count" -> putFields(normalized)
             else -> throw IllegalArgumentException("Unsupported random identity field")
         }
         return json
@@ -2018,6 +2027,7 @@ class WebServer(
                 "phone_number" to "ATTESTATION_ID_PHONE_NUMBER",
                 "phone_number2" to "ATTESTATION_ID_PHONE_NUMBER2",
                 "serial" to "ATTESTATION_ID_SERIAL",
+                "visible_sim_count" to "VISIBLE_SIM_COUNT",
             )
         private val BUILD_IDENTITY_VAR_KEYS =
             linkedSetOf(

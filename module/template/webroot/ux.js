@@ -22,6 +22,7 @@
     const TRANSLATIONS = {
         tr: {
             'Identity Controls': 'Kimlik Denetimleri', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin. Devre dışı yollar isteğe bağlı yakalayıcıları başlatmaz.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Kimlik şu anda devre dışı. Aşağıdan yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin.', 'Random': 'Rastgele', 'Identity value randomized': 'Kimlik değeri rastgeleleştirildi',
+            'Visible SIM count': 'Görünür SIM sayısı', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Seçili uygulamalara döndürülen etkin abonelik listesini sınırlar. Var olmayan SIM oluşturmaz.', 'Randomize Telephony': 'Telefon kimliğini rastgeleleştir',
             'Dashboard': 'Gösterge Paneli', 'Identity': 'Kimlik', 'Apps': 'Uygulamalar', 'Keyboxes': 'Keyboxlar',
             'Info & Resources': 'Bilgi ve Kaynaklar', 'Guide': 'Kılavuz', 'Logs': 'Günlükler', 'Editor': 'Düzenleyici',
             'Donate': 'Bağış', 'Profiles': 'Profiller', 'Security Patch': 'Güvenlik Yaması',
@@ -50,6 +51,7 @@
         },
         'zh-CN': {
             'Identity Controls': '身份控制', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': '只启用你需要的身份路径。禁用的路径不会启动可选拦截器。', 'Identity is currently disabled. Enable only the identity paths you need below.': '身份功能当前已关闭。请在下方仅启用你需要的身份路径。', 'Random': '随机', 'Identity value randomized': '身份值已随机化',
+            'Visible SIM count': '可见 SIM 数量', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': '限制向所选应用返回的活动订阅列表。不会创建实际不存在的 SIM。', 'Randomize Telephony': '随机化电话身份',
             'Dashboard': '仪表盘', 'Identity': '身份', 'Apps': '应用', 'Keyboxes': '密钥盒', 'Info & Resources': '信息与资源',
             'Guide': '指南', 'Logs': '日志', 'Editor': '编辑器', 'Donate': '捐赠', 'Profiles': '配置档案',
             'Security Patch': '安全补丁', 'Core Protection': '核心保护', 'Global Mode': '全局模式',
@@ -76,6 +78,7 @@
         },
         es: {
             'Identity Controls': 'Controles de identidad', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Activa solo las rutas de identidad que necesites. Las rutas desactivadas no inician interceptores opcionales.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'La identidad está desactivada. Activa abajo solo las rutas que necesites.', 'Random': 'Aleatorio', 'Identity value randomized': 'Valor de identidad aleatorizado',
+            'Visible SIM count': 'Cantidad de SIM visibles', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Limita la lista de suscripciones activas devuelta a las apps seleccionadas. Nunca crea SIM inexistentes.', 'Randomize Telephony': 'Aleatorizar telefonía',
             'Dashboard': 'Panel', 'Identity': 'Identidad', 'Apps': 'Aplicaciones', 'Keyboxes': 'Keyboxes', 'Info & Resources': 'Info y recursos',
             'Guide': 'Guía', 'Logs': 'Registros', 'Editor': 'Editor', 'Donate': 'Donar', 'Profiles': 'Perfiles',
             'Security Patch': 'Parche de seguridad', 'Core Protection': 'Protección principal', 'Global Mode': 'Modo global',
@@ -105,6 +108,7 @@
         },
         de: {
             'Identity Controls': 'Identitätssteuerung', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktiviere nur die benötigten Identitätspfade. Deaktivierte Pfade starten keine optionalen Interzeptoren.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identität ist derzeit deaktiviert. Aktiviere unten nur die benötigten Identitätspfade.', 'Random': 'Zufällig', 'Identity value randomized': 'Identitätswert randomisiert',
+            'Visible SIM count': 'Sichtbare SIM-Anzahl', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Begrenzt die Liste aktiver Abonnements für ausgewählte Apps. Es werden keine nicht vorhandenen SIMs erzeugt.', 'Randomize Telephony': 'Telefonie randomisieren',
             'Dashboard': 'Übersicht', 'Identity': 'Identität', 'Apps': 'Anwendungen', 'Keyboxes': 'Keyboxen', 'Info & Resources': 'Info & Ressourcen',
             'Guide': 'Anleitung', 'Logs': 'Protokolle', 'Editor': 'Editor', 'Donate': 'Spenden', 'Profiles': 'Profile',
             'Security Patch': 'Sicherheitspatch', 'Core Protection': 'Kernschutz', 'Global Mode': 'Globaler Modus',
@@ -133,6 +137,7 @@
         },
         ru: {
             'Identity Controls': 'Управление идентичностью', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Включайте только нужные пути идентичности. Отключённые пути не запускают необязательные перехватчики.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Идентичность сейчас отключена. Ниже включите только нужные пути.', 'Random': 'Случайно', 'Identity value randomized': 'Значение идентичности рандомизировано',
+            'Visible SIM count': 'Количество видимых SIM', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Ограничивает список активных подписок для выбранных приложений. Не создаёт несуществующие SIM.', 'Randomize Telephony': 'Рандомизировать телефонию',
             'Dashboard': 'Панель', 'Identity': 'Идентичность', 'Apps': 'Приложения', 'Keyboxes': 'Keybox', 'Info & Resources': 'Инфо и ресурсы',
             'Guide': 'Руководство', 'Logs': 'Логи', 'Editor': 'Редактор', 'Donate': 'Поддержать', 'Profiles': 'Профили',
             'Security Patch': 'Патч безопасности', 'Core Protection': 'Основная защита', 'Global Mode': 'Глобальный режим',
@@ -160,6 +165,7 @@
         },
         id: {
             'Identity Controls': 'Kontrol Identitas', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktifkan hanya jalur identitas yang diperlukan. Jalur yang dinonaktifkan tidak menjalankan interceptor opsional.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identitas saat ini dinonaktifkan. Aktifkan hanya jalur yang diperlukan di bawah.', 'Random': 'Acak', 'Identity value randomized': 'Nilai identitas diacak',
+            'Visible SIM count': 'Jumlah SIM terlihat', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Membatasi daftar langganan aktif yang dikembalikan ke aplikasi terpilih. Tidak membuat SIM yang sebenarnya tidak ada.', 'Randomize Telephony': 'Acak identitas telepon',
             'Dashboard': 'Dasbor', 'Identity': 'Identitas', 'Apps': 'Aplikasi', 'Keyboxes': 'Keybox', 'Info & Resources': 'Info & Sumber Daya',
             'Guide': 'Panduan', 'Logs': 'Log', 'Editor': 'Editor', 'Donate': 'Donasi', 'Profiles': 'Profil',
             'Security Patch': 'Patch Keamanan', 'Core Protection': 'Perlindungan Inti', 'Global Mode': 'Mode Global',
@@ -188,6 +194,7 @@
         },
         hi: {
             'Identity Controls': 'पहचान नियंत्रण', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'केवल आवश्यक पहचान पथ सक्षम करें। अक्षम पथ वैकल्पिक इंटरसेप्टर शुरू नहीं करते।', 'Identity is currently disabled. Enable only the identity paths you need below.': 'पहचान अभी अक्षम है। नीचे केवल आवश्यक पहचान पथ सक्षम करें।', 'Random': 'रैंडम', 'Identity value randomized': 'पहचान मान रैंडम किया गया',
+            'Visible SIM count': 'दिखाई देने वाली SIM संख्या', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'चुने गए ऐप्स को लौटाई जाने वाली सक्रिय सदस्यता सूची सीमित करता है। मौजूद न होने वाली SIM नहीं बनाता।', 'Randomize Telephony': 'टेलीफोनी रैंडमाइज़ करें',
             'Dashboard': 'डैशबोर्ड', 'Identity': 'पहचान', 'Apps': 'ऐप्स', 'Keyboxes': 'कीबॉक्स', 'Info & Resources': 'जानकारी और संसाधन',
             'Guide': 'मार्गदर्शिका', 'Logs': 'लॉग', 'Editor': 'संपादक', 'Donate': 'दान', 'Profiles': 'प्रोफाइल',
             'Security Patch': 'सुरक्षा पैच', 'Core Protection': 'मुख्य सुरक्षा', 'Global Mode': 'ग्लोबल मोड',
@@ -216,6 +223,7 @@
         },
         ar: {
             'Identity Controls': 'عناصر التحكم بالهوية', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'فعّل فقط مسارات الهوية التي تحتاجها. المسارات المعطلة لا تشغّل المعترضات الاختيارية.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'الهوية معطلة حاليًا. فعّل أدناه فقط مسارات الهوية التي تحتاجها.', 'Random': 'عشوائي', 'Identity value randomized': 'تم توليد قيمة هوية عشوائية',
+            'Visible SIM count': 'عدد شرائح SIM الظاهرة', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'يحد من قائمة الاشتراكات النشطة المعادة للتطبيقات المحددة، ولا ينشئ شرائح SIM غير موجودة.', 'Randomize Telephony': 'توليد هوية الهاتف عشوائياً',
             'Dashboard': 'لوحة التحكم', 'Identity': 'الهوية', 'Apps': 'التطبيقات', 'Keyboxes': 'صناديق المفاتيح', 'Info & Resources': 'المعلومات والموارد',
             'Guide': 'الدليل', 'Logs': 'السجلات', 'Editor': 'المحرر', 'Donate': 'تبرع', 'Profiles': 'الملفات الشخصية',
             'Security Patch': 'تصحيح الأمان', 'Core Protection': 'الحماية الأساسية', 'Global Mode': 'الوضع العام',
