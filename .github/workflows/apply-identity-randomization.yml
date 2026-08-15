@@ -1,10 +1,9 @@
-name: Apply Identity Randomization Patch
+name: Finalize Identity Randomization
 
 on:
   push:
     branches: [ "agent/identity-randomization" ]
     paths:
-      - ".github/scripts/apply_identity_randomization.py"
       - ".github/workflows/apply-identity-randomization.yml"
   workflow_dispatch:
 
@@ -12,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-and-validate:
+  finalize-and-validate:
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -32,61 +31,23 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
 
-      - name: Scope locale patch anchors
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/scripts/apply_identity_randomization.py')
-          text = path.read_text(encoding='utf-8')
-          old = '''for locale, values in new_strings.items():
-              marker = locale_markers[locale]
-              if ux.count(marker) != 1:
-                  raise RuntimeError(f"Locale marker {locale}: expected one anchor")
-              line = "            " + ", ".join(
-                  f"{source!r}: {translation!r}" for source, translation in values.items()
-              ) + ",\\n"
-              ux = ux.replace(marker, marker + line, 1)
-          '''
-          new = '''translations_start = ux.find("    const TRANSLATIONS = {")
-          if translations_start < 0:
-              raise RuntimeError("TRANSLATIONS catalog anchor is missing")
-          for locale, values in new_strings.items():
-              marker = locale_markers[locale]
-              index = ux.find(marker, translations_start)
-              if index < 0:
-                  raise RuntimeError(f"Locale marker {locale}: missing from TRANSLATIONS catalog")
-              line = "            " + ", ".join(
-                  f"{source!r}: {translation!r}" for source, translation in values.items()
-              ) + ",\\n"
-              insertion = index + len(marker)
-              ux = ux[:insertion] + line + ux[insertion:]
-          '''
-          if old not in text:
-              raise SystemExit('locale patch-script anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-
-      - name: Apply bounded Identity patch
-        id: apply_patch
-        shell: bash
-        run: |
-          set -o pipefail
-          python3 .github/scripts/apply_identity_randomization.py 2>&1 | tee /tmp/identity-patch.log
-
-      - name: Preserve patch diagnostics
-        if: failure() && steps.apply_patch.outcome == 'failure'
+      - name: Reuse localized Identity description and remove diagnostic
         shell: bash
         run: |
           set -euo pipefail
-          cp /tmp/identity-patch.log .github/identity-patch-error.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/identity-patch-error.txt
-          git commit -m "chore: record identity patch diagnostic"
-          git push origin HEAD:agent/identity-randomization
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('module/template/webroot/policy.js')
+          text = path.read_text(encoding='utf-8')
+          old = 'Optional identity substitution. Enable only the paths you need.'
+          new = 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one Identity description, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm -f .github/identity-patch-error.txt
 
-      - name: Validate WebUI syntax and tests
+      - name: Validate WebUI syntax and behavior
         shell: bash
         env:
           NODE_OPTIONS: --throw-deprecation
@@ -103,19 +64,14 @@ jobs:
       - name: Run service JVM unit tests
         run: ./gradlew :service:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
 
-      - name: Commit validated implementation
+      - name: Commit final source cleanup
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add service/src/main/java/cleveres/tricky/cleverestech/WebServer.kt \
-                  service/src/test/java/cleveres/tricky/cleverestech/WebServerIdentityTest.kt \
-                  module/template/webroot/index.html \
-                  module/template/webroot/policy.js \
-                  module/template/webroot/ux.js \
-                  module/webui-tests/localization.test.js \
-                  module/webui-tests/identity-randomization.test.js
+          git add module/template/webroot/policy.js
+          git add -u .github/identity-patch-error.txt || true
           git diff --cached --check
-          git commit -m "feat: improve Identity randomization controls"
+          git commit -m "fix: keep Identity controls fully localized"
           git push origin HEAD:agent/identity-randomization
