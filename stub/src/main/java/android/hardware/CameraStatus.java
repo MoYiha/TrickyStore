@@ -3,9 +3,13 @@ package android.hardware;
 import android.os.Parcel;
 import android.os.Parcelable;
 
-/** Minimal compile-only mirror. */
+/** Minimal compile-only mirror. Runtime classes come from Android. */
 public class CameraStatus implements Parcelable {
     public String cameraId;
+    public int status;
+
+    /** Present on modern Android; runtime code accesses this field reflectively for compatibility. */
+    public int deviceId;
 
     @Override
     public int describeContents() {
