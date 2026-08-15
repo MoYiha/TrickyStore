@@ -61,7 +61,16 @@ jobs:
           path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
           PY
           python3 -m py_compile .github/scripts/apply_camera_visibility_identity.py
-          python3 .github/scripts/apply_camera_visibility_identity.py
+          if ! python3 .github/scripts/apply_camera_visibility_identity.py > /tmp/camera-patch.log 2>&1; then
+            cat /tmp/camera-patch.log
+            cp /tmp/camera-patch.log .github/camera-patch-error.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/camera-patch-error.txt
+            git commit -m "chore: capture camera patch failure"
+            git push origin HEAD:agent/identity-randomization
+            exit 1
+          fi
 
           # Kotlin does not allow an inner class inside an object declaration.
           # Keep the listener proxy nested and explicitly qualify singleton state.
