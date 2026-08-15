@@ -47,25 +47,27 @@ text = replace_once(
 )
 text = replace_once(
     text,
-    '''                    "visible_sim_count",\n                )\n            "device" -> putFields("serial")''',
-    '''                    "visible_sim_count",\n                )\n                .also { json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false)) }\n            "device" -> putFields("serial")''',
+    '''            "telephony" ->\n                putFields(\n                    "imei", "imsi", "iccid", "meid", "phone_number",\n                    "imei2", "imsi2", "iccid2", "meid2", "phone_number2",\n                    "visible_sim_count",\n                )\n            "device" -> putFields("serial")''',
+    '''            "telephony" -> {\n                putFields(\n                    "imei", "imsi", "iccid", "meid", "phone_number",\n                    "imei2", "imsi2", "iccid2", "meid2", "phone_number2",\n                    "visible_sim_count",\n                )\n                json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false))\n            }\n            "device" -> putFields("serial")''',
     "Telephony active SIM count",
 )
-# Environment reset also generates actual SIM identity values.
-text = text.replace(
+text = replace_once(
+    text,
     '''"VISIBLE_SIM_COUNT" to\n                                (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1")''',
     '''"VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false)''',
+    "environment reset active SIM count",
 )
 write(rel, text)
 
 # Boot identity refresh generates both slots as well; keep count non-zero.
 rel = "service/src/main/java/cleveres/tricky/cleverestech/Config.kt"
 text = read(rel)
-old = '''"VISIBLE_SIM_COUNT" to\n                        (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1")'''
-count = text.count(old)
-if count != 1:
-    raise RuntimeError(f"boot active SIM count: expected one anchor, found {count}")
-text = text.replace(old, '''"VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false)''', 1)
+text = replace_once(
+    text,
+    '''"VISIBLE_SIM_COUNT" to\n                        (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1")''',
+    '''"VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false)''',
+    "boot active SIM count",
+)
 write(rel, text)
 
 # Tighten service regressions: All + Telephony cannot report 0 active SIMs.
