@@ -205,25 +205,33 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         val limit = Config.getVisibleCameraCount(callingUid)
         val position = reply.dataPosition()
         return try {
-            reply.readException()
-            val statuses = reply.createTypedArray(CameraStatus.CREATOR) ?: emptyArray()
-            val visibleKeys = proxy.initializeSnapshot(statuses, limit)
-            if (limit == null) return Skip
+            try {
+                reply.readException()
+            } catch (_: RuntimeException) {
+                removeProxy(originalListener)
+                return Skip
+            }
 
-            val filtered =
-                statuses.filter { status ->
-                    val key = cameraStatusKey(status)
-                    key == null || key in visibleKeys
-                }
-            if (filtered.size == statuses.size) return Skip
+            try {
+                val statuses = reply.createTypedArray(CameraStatus.CREATOR) ?: emptyArray()
+                val visibleKeys = proxy.initializeSnapshot(statuses, limit)
+                if (limit == null) return Skip
 
-            Parcel.obtain().also { replacement ->
-                replacement.writeNoException()
-                replacement.writeTypedArray(filtered.toTypedArray(), 0)
-            }.let { OverrideReply(0, it) }
-        } catch (_: RuntimeException) {
-            proxy.failOpenInitialization()
-            Skip
+                val filtered =
+                    statuses.filter { status ->
+                        val key = cameraStatusKey(status)
+                        key == null || key in visibleKeys
+                    }
+                if (filtered.size == statuses.size) return Skip
+
+                Parcel.obtain().also { replacement ->
+                    replacement.writeNoException()
+                    replacement.writeTypedArray(filtered.toTypedArray(), 0)
+                }.let { OverrideReply(0, it) }
+            } catch (_: RuntimeException) {
+                proxy.failOpenInitialization()
+                Skip
+            }
         } finally {
             reply.setDataPosition(position)
         }
@@ -369,7 +377,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     private fun visibleCameraKeysForUid(uid: Int): Set<CameraVisibilityKey>? =
         synchronized(listenerLock) {
             val matching = listenerProxies.values.filter { proxy -> proxy.ownerUid == uid && !proxy.isDead() }
-            if (matching.isEmpty()) return@synchronized null
+            if (matching.isEmpty() || matching.any { !it.canFilterVisibility() }) return@synchronized null
             matching.flatMapTo(linkedSetOf()) { it.visibleCameraKeysSnapshot() }
         }
 
@@ -476,6 +484,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         private val replayCallbacks = LinkedHashMap<ReplayKey, StoredCallback>()
         private var initialCallbackBytes = 0
         private var initialized = false
+        private var failedInitialization = false
         private var passThrough = false
         private var activeLimit: Int? = null
 
@@ -500,7 +509,11 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
 
         fun isDead(): Boolean = dead
 
-        fun matchesLimit(limit: Int?): Boolean = synchronized(stateLock) { initialized && activeLimit == limit }
+        fun matchesLimit(limit: Int?): Boolean =
+            synchronized(stateLock) { failedInitialization || (initialized && activeLimit == limit) }
+
+        fun canFilterVisibility(): Boolean =
+            synchronized(stateLock) { initialized && !failedInitialization }
 
         fun initializeSnapshot(
             statuses: Array<CameraStatus>,
@@ -516,6 +529,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             synchronized(stateLock) {
                 ledger.initialize(entries, limit)
                 activeLimit = limit
+                failedInitialization = false
                 passThrough = limit == null
                 initialized = true
                 visible = ledger.visibleSnapshot()
@@ -535,6 +549,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             val buffered: List<StoredCallback>
             synchronized(stateLock) {
                 activeLimit = null
+                failedInitialization = true
                 passThrough = true
                 initialized = true
                 buffered = drainInitialCallbacksLocked()
@@ -551,6 +566,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         fun refreshVisibility(limit: Int?) {
             val delta: CameraVisibilityDelta
             synchronized(stateLock) {
+                if (failedInitialization) return
                 if (!initialized) {
                     activeLimit = limit
                     return
@@ -629,13 +645,15 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             if (code == onStatusChangedTransaction) {
                 val status = event.status ?: return true
                 val delta: CameraVisibilityDelta
+                val wasVisible: Boolean
                 val visibleNow: Boolean
                 synchronized(stateLock) {
+                    wasVisible = ledger.isVisible(event.key)
                     delta = ledger.updateStatus(event.key, status)
                     visibleNow = ledger.isVisible(event.key)
                 }
                 dispatchVisibilityDelta(delta, event.key)
-                return if (visibleNow) forward(code, data, reply, flags) else true
+                return if (wasVisible || visibleNow) forward(code, data, reply, flags) else true
             }
 
             rememberCallback(event, code, data, flags)
