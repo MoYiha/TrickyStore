@@ -50,9 +50,9 @@ jobs:
           needle = "    count = text.count(old)\n    if count != 1:\n"
           replacement = (
               "    count = text.count(old)\n"
-              "    if label in {\"profile refresh camera flag\", \"legacy toggle rerender identity success\"}:\n"
+              "    if label in {\"profile refresh camera flag\", \"legacy toggle rerender identity success\", \"test random all camera\"}:\n"
               "        if count != 2:\n"
-              "            raise RuntimeError(f\"{label}: expected two known lifecycle anchors, found {count}\")\n"
+              "            raise RuntimeError(f\"{label}: expected two known anchors, found {count}\")\n"
               "        return text.replace(old, new, 1)\n"
               "    if count != 1:\n"
           )
