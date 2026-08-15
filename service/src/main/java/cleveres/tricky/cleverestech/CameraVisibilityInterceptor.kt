@@ -12,6 +12,7 @@ import android.os.ServiceManager
 import android.os.SystemClock
 import cleveres.tricky.cleverestech.binder.BinderInterceptor
 import java.io.File
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicInteger
 
 object CameraVisibilityInterceptor : BinderInterceptor() {
@@ -20,7 +21,11 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     private const val CAMERA_SERVICE_NAME = "media.camera"
     private const val CAMERA_SERVER_PROCESS = "cameraserver"
     private const val MAX_LISTENER_PROXIES = 256
+    private const val MAX_BUFFERED_CALLBACKS = 64
+    private const val MAX_BUFFERED_CALLBACK_BYTES = 256 * 1024
+    private const val MAX_REPLAY_CALLBACKS = 256
     private const val INJECTION_RETRY_INTERVAL_MS = 15_000L
+    private const val INJECTION_TIMEOUT_SECONDS = 10L
 
     private val getNumberOfCamerasTransaction =
         getTransactCode(ICameraService.Stub::class.java, "getNumberOfCameras")
@@ -62,6 +67,10 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             onCameraOpenedInSharedModeTransaction,
             onCameraClosedTransaction,
         )
+
+    private val cameraStatusDeviceIdField by lazy {
+        runCatching { CameraStatus::class.java.getField("deviceId") }.getOrNull()
+    }
 
     private lateinit var cameraService: IBinder
     private var binderBackdoor: IBinder? = null
@@ -125,7 +134,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             addListenerTransaction -> {
                 if (Config.getVisibleCameraCount(callingUid) == null) return Skip
                 val original = readListenerBinder(data) ?: return Skip
-                val proxy = getOrCreateProxy(original, callingUid) ?: return Skip
+                val proxy = getOrCreateProxy(original, callingUid) ?: return rejectListenerRegistration()
                 rewriteListenerRequest(proxy)
             }
 
@@ -194,29 +203,26 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         val originalListener = readListenerBinder(request) ?: return Skip
         val proxy = synchronized(listenerLock) { listenerProxies[originalListener] } ?: return Skip
         val limit = Config.getVisibleCameraCount(callingUid)
-        if (limit == null) {
-            proxy.setPassThrough(true)
-            return Skip
-        }
-
         val position = reply.dataPosition()
         return try {
             reply.readException()
             val statuses = reply.createTypedArray(CameraStatus.CREATOR) ?: emptyArray()
-            val visibleCount = boundedVisibleCameraCount(statuses.size, limit)
-            val visibleIds = LinkedHashSet<String>(visibleCount)
-            for (index in 0 until visibleCount) {
-                statuses[index].cameraId?.let(visibleIds::add)
-            }
-            proxy.updateVisibleCameraIds(visibleIds)
-            if (visibleCount == statuses.size) return Skip
+            val visibleKeys = proxy.initializeSnapshot(statuses, limit)
+            if (limit == null) return Skip
+
+            val filtered =
+                statuses.filter { status ->
+                    val key = cameraStatusKey(status)
+                    key == null || key in visibleKeys
+                }
+            if (filtered.size == statuses.size) return Skip
 
             Parcel.obtain().also { replacement ->
                 replacement.writeNoException()
-                replacement.writeTypedArray(statuses.copyOf(visibleCount), 0)
+                replacement.writeTypedArray(filtered.toTypedArray(), 0)
             }.let { OverrideReply(0, it) }
         } catch (_: RuntimeException) {
-            proxy.setPassThrough(true)
+            proxy.failOpenInitialization()
             Skip
         } finally {
             reply.setDataPosition(position)
@@ -238,7 +244,8 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
                 reply.setDataPosition(position)
             }
         }
-        removeProxy(original)
+        val becameEmpty = removeProxy(original)
+        if (becameEmpty && !Config.shouldInterceptCameraVisibility) Config.signalRuntimeController()
         return Skip
     }
 
@@ -247,7 +254,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         reply: Parcel?,
     ): Result {
         reply ?: return Skip
-        val visibleIds = visibleCameraIdsForUid(callingUid) ?: return Skip
+        val visibleKeys = visibleCameraKeysForUid(callingUid) ?: return Skip
         val position = reply.dataPosition()
         return try {
             reply.readException()
@@ -255,8 +262,8 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
                 reply.createTypedArray(ConcurrentCameraIdCombination.CREATOR) ?: return Skip
             val filtered =
                 combinations.filter { combination ->
-                    val ids = combinationCameraIds(combination)
-                    ids == null || visibleIds.containsAll(ids)
+                    val keys = combinationCameraKeys(combination)
+                    keys == null || visibleKeys.containsAll(keys)
                 }
             if (filtered.size == combinations.size) return Skip
             Parcel.obtain().also { replacement ->
@@ -270,7 +277,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         }
     }
 
-    private fun combinationCameraIds(combination: ConcurrentCameraIdCombination): Set<String>? {
+    private fun combinationCameraKeys(combination: ConcurrentCameraIdCombination): Set<CameraVisibilityKey>? {
         val raw =
             try {
                 combination.getConcurrentCameraIdCombination()
@@ -279,17 +286,34 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             } catch (_: LinkageError) {
                 return null
             }
-        val result = LinkedHashSet<String>(raw.size)
+        val result = LinkedHashSet<CameraVisibilityKey>(raw.size)
         for (entry in raw) {
-            val id =
+            val key =
                 when (entry) {
-                    is String -> entry
-                    is android.util.Pair<*, *> -> entry.first as? String
-                    else -> null
-                } ?: return null
-            result += id
+                    is String -> CameraVisibilityKey(entry)
+                    is android.util.Pair<*, *> -> {
+                        val cameraId = entry.first as? String ?: return null
+                        val deviceId = (entry.second as? Number)?.toInt() ?: DEFAULT_CAMERA_DEVICE_ID
+                        CameraVisibilityKey(cameraId, deviceId)
+                    }
+                    else -> return null
+                }
+            result += key
         }
         return result
+    }
+
+    private fun cameraStatusKey(status: CameraStatus): CameraVisibilityKey? {
+        val cameraId = status.cameraId ?: return null
+        val deviceId =
+            try {
+                cameraStatusDeviceIdField?.getInt(status) ?: DEFAULT_CAMERA_DEVICE_ID
+            } catch (_: IllegalAccessException) {
+                DEFAULT_CAMERA_DEVICE_ID
+            } catch (_: IllegalArgumentException) {
+                DEFAULT_CAMERA_DEVICE_ID
+            }
+        return CameraVisibilityKey(cameraId, deviceId)
     }
 
     private fun readListenerBinder(data: Parcel): IBinder? {
@@ -311,6 +335,11 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             replacement.writeStrongBinder(proxy)
         }.let(::OverrideData)
 
+    private fun rejectListenerRegistration(): Result =
+        Parcel.obtain().also { replacement ->
+            replacement.writeException(IllegalStateException("Camera visibility listener capacity reached"))
+        }.let { OverrideReply(0, it) }
+
     private fun getOrCreateProxy(
         original: IBinder,
         callingUid: Int,
@@ -318,29 +347,49 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         synchronized(listenerLock) {
             listenerProxies[original]?.let { return@synchronized it }
             if (listenerProxies.size >= MAX_LISTENER_PROXIES) {
-                Logger.w("Camera listener proxy limit reached; leaving additional listener unchanged")
+                Logger.w("Camera listener proxy limit reached; rejecting additional filtered listener")
                 return@synchronized null
             }
             val proxy = CameraListenerProxy(original, callingUid)
-            if (proxy.isDead()) return@synchronized null
+            if (proxy.isDead()) {
+                proxy.dispose()
+                return@synchronized null
+            }
             listenerProxies[original] = proxy
             proxy
         }
 
-    private fun removeProxy(original: IBinder) {
-        val proxy = synchronized(listenerLock) { listenerProxies.remove(original) } ?: return
+    /** Returns true when the final retained proxy was removed. */
+    private fun removeProxy(original: IBinder): Boolean {
+        val proxy = synchronized(listenerLock) { listenerProxies.remove(original) } ?: return false
         proxy.dispose()
+        return synchronized(listenerLock) { listenerProxies.isEmpty() }
     }
 
-    private fun visibleCameraIdsForUid(uid: Int): Set<String>? =
+    private fun visibleCameraKeysForUid(uid: Int): Set<CameraVisibilityKey>? =
         synchronized(listenerLock) {
-            listenerProxies.values
-                .firstOrNull { proxy -> proxy.ownerUid == uid && !proxy.isDead() }
-                ?.visibleCameraIdsSnapshot()
+            val matching = listenerProxies.values.filter { proxy -> proxy.ownerUid == uid && !proxy.isDead() }
+            if (matching.isEmpty()) return@synchronized null
+            matching.flatMapTo(linkedSetOf()) { it.visibleCameraKeysSnapshot() }
         }
 
     private fun hasDeadProxies(): Boolean =
         synchronized(listenerLock) { listenerProxies.values.any(CameraListenerProxy::isDead) }
+
+    private fun hasStaleProxyLimits(): Boolean =
+        synchronized(listenerLock) {
+            listenerProxies.values.any { proxy ->
+                !proxy.isDead() && !proxy.matchesLimit(Config.getVisibleCameraCount(proxy.ownerUid))
+            }
+        }
+
+    private fun refreshProxyVisibility(): Boolean {
+        val proxies = synchronized(listenerLock) { listenerProxies.values.toList() }
+        proxies.forEach { proxy ->
+            if (!proxy.isDead()) proxy.refreshVisibility(Config.getVisibleCameraCount(proxy.ownerUid))
+        }
+        return cleanupDeadProxies()
+    }
 
     private fun cleanupDeadProxies(): Boolean {
         val deadEntries =
@@ -351,23 +400,6 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             }
         var clean = true
         deadEntries.forEach { (original, proxy) ->
-            if (removeRemoteListener(proxy)) {
-                synchronized(listenerLock) {
-                    if (listenerProxies[original] === proxy) listenerProxies.remove(original)
-                }
-                proxy.dispose()
-            } else {
-                clean = false
-            }
-        }
-        return clean
-    }
-
-    private fun removeAllRemoteListeners(): Boolean {
-        val entries = synchronized(listenerLock) { listenerProxies.entries.map { it.key to it.value } }
-        entries.forEach { (_, proxy) -> proxy.setPassThrough(true) }
-        var clean = true
-        entries.forEach { (original, proxy) ->
             if (removeRemoteListener(proxy)) {
                 synchronized(listenerLock) {
                     if (listenerProxies[original] === proxy) listenerProxies.remove(original)
@@ -401,18 +433,54 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         }
     }
 
+    private data class CameraCallbackEvent(
+        val key: CameraVisibilityKey,
+        val status: Int? = null,
+        val secondaryId: String? = null,
+    )
+
+    private data class ReplayKey(
+        val key: CameraVisibilityKey,
+        val code: Int,
+        val secondaryId: String?,
+    )
+
+    private class StoredCallback(
+        val code: Int,
+        val flags: Int,
+        val data: Parcel,
+        val size: Int,
+    ) {
+        fun copy(): StoredCallback? {
+            val clone = Parcel.obtain()
+            return try {
+                clone.appendFrom(data, 0, size)
+                clone.setDataPosition(0)
+                StoredCallback(code, flags, clone, size)
+            } catch (_: RuntimeException) {
+                clone.recycle()
+                null
+            }
+        }
+
+        fun recycle() = data.recycle()
+    }
+
     private class CameraListenerProxy(
         private val original: IBinder,
         val ownerUid: Int,
     ) : Binder() {
+        private val stateLock = Any()
+        private val ledger = CameraVisibilityLedger()
+        private val initialCallbacks = ArrayDeque<StoredCallback>()
+        private val replayCallbacks = LinkedHashMap<ReplayKey, StoredCallback>()
+        private var initialCallbackBytes = 0
+        private var initialized = false
+        private var passThrough = false
+        private var activeLimit: Int? = null
+
         @Volatile
         private var dead = false
-
-        @Volatile
-        private var passThrough = false
-
-        @Volatile
-        private var visibleCameraIds: Set<String> = emptySet()
 
         private val deathRecipient =
             object : IBinder.DeathRecipient {
@@ -432,18 +500,81 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
 
         fun isDead(): Boolean = dead
 
-        fun setPassThrough(value: Boolean) {
-            passThrough = value
+        fun matchesLimit(limit: Int?): Boolean = synchronized(stateLock) { initialized && activeLimit == limit }
+
+        fun initializeSnapshot(
+            statuses: Array<CameraStatus>,
+            limit: Int?,
+        ): Set<CameraVisibilityKey> {
+            val entries =
+                statuses.mapNotNull { status ->
+                    val key = cameraStatusKey(status) ?: return@mapNotNull null
+                    CameraVisibilityStatus(key, status.status)
+                }
+            val buffered: List<StoredCallback>
+            val visible: Set<CameraVisibilityKey>
+            synchronized(stateLock) {
+                ledger.initialize(entries, limit)
+                activeLimit = limit
+                passThrough = limit == null
+                initialized = true
+                visible = ledger.visibleSnapshot()
+                buffered = drainInitialCallbacksLocked()
+            }
+            buffered.forEach { callback ->
+                try {
+                    dispatchStoredCallback(callback)
+                } finally {
+                    callback.recycle()
+                }
+            }
+            return visible
         }
 
-        fun updateVisibleCameraIds(ids: Set<String>) {
-            visibleCameraIds = ids.toSet()
-            passThrough = false
+        fun failOpenInitialization() {
+            val buffered: List<StoredCallback>
+            synchronized(stateLock) {
+                activeLimit = null
+                passThrough = true
+                initialized = true
+                buffered = drainInitialCallbacksLocked()
+            }
+            buffered.forEach { callback ->
+                try {
+                    forwardStored(callback)
+                } finally {
+                    callback.recycle()
+                }
+            }
         }
 
-        fun visibleCameraIdsSnapshot(): Set<String> = visibleCameraIds
+        fun refreshVisibility(limit: Int?) {
+            val delta: CameraVisibilityDelta
+            synchronized(stateLock) {
+                if (!initialized) {
+                    activeLimit = limit
+                    return
+                }
+                delta = ledger.updateLimit(limit)
+                activeLimit = limit
+                if (limit != null) passThrough = false
+            }
+            dispatchVisibilityDelta(delta)
+            if (limit == null) synchronized(stateLock) { passThrough = true }
+        }
+
+        fun visibleCameraKeysSnapshot(): Set<CameraVisibilityKey> =
+            synchronized(stateLock) { ledger.visibleSnapshot() }
 
         fun dispose() {
+            val pending: List<StoredCallback>
+            synchronized(stateLock) {
+                pending = initialCallbacks.toList() + replayCallbacks.values.toList()
+                initialCallbacks.clear()
+                replayCallbacks.clear()
+                initialCallbackBytes = 0
+            }
+            pending.distinctBy { System.identityHashCode(it) }.forEach(StoredCallback::recycle)
             try {
                 original.unlinkToDeath(deathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
@@ -456,35 +587,188 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             reply: Parcel?,
             flags: Int,
         ): Boolean {
-            if (passThrough || code !in CameraVisibilityInterceptor.cameraSpecificCallbackCodes) {
-                return forward(code, data, reply, flags)
-            }
-            val cameraId = readCameraIdFromCallback(code, data) ?: return forward(code, data, reply, flags)
-            if (cameraId !in visibleCameraIds) return true
-            return forward(code, data, reply, flags)
+            if (code !in cameraSpecificCallbackCodes) return forward(code, data, reply, flags)
+            if (bufferInitialCallback(code, data, flags)) return true
+            if (synchronized(stateLock) { passThrough }) return forward(code, data, reply, flags)
+            return handleFilteredCallback(code, data, reply, flags)
         }
 
-        private fun readCameraIdFromCallback(
+        private fun bufferInitialCallback(
             code: Int,
             data: Parcel,
-        ): String? {
+            flags: Int,
+        ): Boolean {
+            synchronized(stateLock) {
+                if (initialized || passThrough) return false
+                val stored = copyCallback(code, data, flags) ?: return true
+                while (
+                    initialCallbacks.size >= MAX_BUFFERED_CALLBACKS ||
+                    initialCallbackBytes + stored.size > MAX_BUFFERED_CALLBACK_BYTES
+                ) {
+                    val removed = initialCallbacks.pollFirst() ?: break
+                    initialCallbackBytes -= removed.size
+                    removed.recycle()
+                }
+                if (stored.size <= MAX_BUFFERED_CALLBACK_BYTES) {
+                    initialCallbacks.addLast(stored)
+                    initialCallbackBytes += stored.size
+                } else {
+                    stored.recycle()
+                }
+                return true
+            }
+        }
+
+        private fun handleFilteredCallback(
+            code: Int,
+            data: Parcel,
+            reply: Parcel?,
+            flags: Int,
+        ): Boolean {
+            val event = parseCallback(code, data) ?: return true
+            if (code == onStatusChangedTransaction) {
+                val status = event.status ?: return true
+                val delta: CameraVisibilityDelta
+                val visibleNow: Boolean
+                synchronized(stateLock) {
+                    delta = ledger.updateStatus(event.key, status)
+                    visibleNow = ledger.isVisible(event.key)
+                }
+                dispatchVisibilityDelta(delta, event.key)
+                return if (visibleNow) forward(code, data, reply, flags) else true
+            }
+
+            rememberCallback(event, code, data, flags)
+            val visible = synchronized(stateLock) { ledger.isVisible(event.key) }
+            return if (visible) forward(code, data, reply, flags) else true
+        }
+
+        private fun dispatchStoredCallback(callback: StoredCallback) {
+            if (synchronized(stateLock) { passThrough }) {
+                forwardStored(callback)
+                return
+            }
+            handleFilteredCallback(callback.code, callback.data, null, callback.flags)
+        }
+
+        private fun dispatchVisibilityDelta(
+            delta: CameraVisibilityDelta,
+            currentStatusKey: CameraVisibilityKey? = null,
+        ) {
+            delta.hidden.filter { it != currentStatusKey }.forEach { key ->
+                sendSyntheticStatus(key, CAMERA_STATUS_NOT_PRESENT)
+            }
+            delta.shown.filter { it.key != currentStatusKey }.forEach { shown ->
+                sendSyntheticStatus(shown.key, shown.status)
+                replayLatestCallbacks(shown.key)
+            }
+        }
+
+        private fun rememberCallback(
+            event: CameraCallbackEvent,
+            code: Int,
+            data: Parcel,
+            flags: Int,
+        ) {
+            val stored = copyCallback(code, data, flags) ?: return
+            synchronized(stateLock) {
+                val replayKey = ReplayKey(event.key, code, event.secondaryId)
+                if (replayKey !in replayCallbacks && replayCallbacks.size >= MAX_REPLAY_CALLBACKS) {
+                    stored.recycle()
+                    return
+                }
+                replayCallbacks.put(replayKey, stored)?.recycle()
+            }
+        }
+
+        private fun replayLatestCallbacks(key: CameraVisibilityKey) {
+            val callbacks =
+                synchronized(stateLock) {
+                    replayCallbacks.entries
+                        .asSequence()
+                        .filter { it.key.key == key }
+                        .mapNotNull { it.value.copy() }
+                        .toList()
+                }
+            callbacks.forEach { callback ->
+                try {
+                    forwardStored(callback)
+                } finally {
+                    callback.recycle()
+                }
+            }
+        }
+
+        private fun sendSyntheticStatus(
+            key: CameraVisibilityKey,
+            status: Int,
+        ) {
+            if (onStatusChangedTransaction <= 0 || dead) return
+            val parcel = Parcel.obtain()
+            try {
+                parcel.writeInterfaceToken(CAMERA_LISTENER_DESCRIPTOR)
+                parcel.writeInt(status)
+                parcel.writeString(key.cameraId)
+                if (cameraStatusDeviceIdField != null) parcel.writeInt(key.deviceId)
+                if (!original.transact(onStatusChangedTransaction, parcel, null, IBinder.FLAG_ONEWAY)) {
+                    dead = true
+                    Config.signalRuntimeController()
+                }
+            } catch (_: RemoteException) {
+                dead = true
+                Config.signalRuntimeController()
+            } catch (_: RuntimeException) {
+                dead = true
+                Config.signalRuntimeController()
+            } finally {
+                parcel.recycle()
+            }
+        }
+
+        private fun parseCallback(
+            code: Int,
+            data: Parcel,
+        ): CameraCallbackEvent? {
             val position = data.dataPosition()
             return try {
+                data.setDataPosition(0)
                 data.enforceInterface(CAMERA_LISTENER_DESCRIPTOR)
                 when (code) {
-                    CameraVisibilityInterceptor.onStatusChangedTransaction,
-                    CameraVisibilityInterceptor.onPhysicalCameraStatusChangedTransaction,
-                    CameraVisibilityInterceptor.onTorchStatusChangedTransaction,
-                    -> {
-                        data.readInt()
-                        data.readString()
+                    onStatusChangedTransaction -> {
+                        val status = data.readInt()
+                        val cameraId = data.readString() ?: return null
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)), status)
                     }
-
-                    CameraVisibilityInterceptor.onTorchStrengthLevelChangedTransaction,
-                    CameraVisibilityInterceptor.onCameraOpenedTransaction,
-                    CameraVisibilityInterceptor.onCameraOpenedInSharedModeTransaction,
-                    CameraVisibilityInterceptor.onCameraClosedTransaction,
-                    -> data.readString()
+                    onPhysicalCameraStatusChangedTransaction -> {
+                        val status = data.readInt()
+                        val cameraId = data.readString() ?: return null
+                        val physicalId = data.readString()
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)), status, physicalId)
+                    }
+                    onTorchStatusChangedTransaction -> {
+                        val status = data.readInt()
+                        val cameraId = data.readString() ?: return null
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)), status)
+                    }
+                    onTorchStrengthLevelChangedTransaction -> {
+                        val cameraId = data.readString() ?: return null
+                        data.readInt()
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)))
+                    }
+                    onCameraOpenedTransaction -> {
+                        val cameraId = data.readString() ?: return null
+                        val clientPackage = data.readString()
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)), secondaryId = clientPackage)
+                    }
+                    onCameraOpenedInSharedModeTransaction -> {
+                        val cameraId = data.readString() ?: return null
+                        val clientPackage = data.readString()
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)), secondaryId = clientPackage)
+                    }
+                    onCameraClosedTransaction -> {
+                        val cameraId = data.readString() ?: return null
+                        CameraCallbackEvent(CameraVisibilityKey(cameraId, readDeviceId(data)))
+                    }
                     else -> null
                 }
             } catch (_: RuntimeException) {
@@ -493,6 +777,41 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
                 data.setDataPosition(position)
             }
         }
+
+        private fun readDeviceId(data: Parcel): Int =
+            if (cameraStatusDeviceIdField != null && data.dataAvail() >= Int.SIZE_BYTES) {
+                data.readInt()
+            } else {
+                DEFAULT_CAMERA_DEVICE_ID
+            }
+
+        private fun copyCallback(
+            code: Int,
+            data: Parcel,
+            flags: Int,
+        ): StoredCallback? {
+            val size = data.dataSize()
+            if (size <= 0 || size > MAX_BUFFERED_CALLBACK_BYTES) return null
+            val copy = Parcel.obtain()
+            return try {
+                copy.appendFrom(data, 0, size)
+                copy.setDataPosition(0)
+                StoredCallback(code, flags, copy, size)
+            } catch (_: RuntimeException) {
+                copy.recycle()
+                null
+            }
+        }
+
+        private fun drainInitialCallbacksLocked(): List<StoredCallback> {
+            val result = ArrayList<StoredCallback>(initialCallbacks.size)
+            while (initialCallbacks.isNotEmpty()) result += initialCallbacks.removeFirst()
+            initialCallbackBytes = 0
+            return result
+        }
+
+        private fun forwardStored(callback: StoredCallback): Boolean =
+            forward(callback.code, callback.data, null, callback.flags)
 
         private fun forward(
             code: Int,
@@ -584,7 +903,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
                 ).redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
                     .start()
-            if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+            if (!process.waitFor(INJECTION_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 Logger.e("Camera visibility injector timed out")
                 false
@@ -601,11 +920,9 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
 
     @Synchronized
     fun tryRun(): Boolean {
-        if (!Config.shouldInterceptCameraVisibility) {
-            return stop()
-        }
+        if (!Config.shouldInterceptCameraVisibility) return stop()
         if (registered && ::cameraService.isInitialized && cameraService.isBinderAlive) {
-            return cleanupDeadProxies()
+            return refreshProxyVisibility()
         }
         registered = false
 
@@ -646,35 +963,40 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             stop()
             return false
         }
-        if (!Config.shouldInterceptCameraVisibility) {
-            return stop()
-        }
+        if (!Config.shouldInterceptCameraVisibility) return stop()
         triedCount.set(0)
         Logger.i("Camera visibility interceptor registered")
-        return cleanupDeadProxies()
+        return refreshProxyVisibility()
     }
 
     fun isRunning(): Boolean =
         registered &&
             ::cameraService.isInitialized &&
             cameraService.isBinderAlive &&
-            !hasDeadProxies()
+            !hasDeadProxies() &&
+            !hasStaleProxyLimits()
+
+    fun isDraining(): Boolean =
+        synchronized(listenerLock) { listenerProxies.isNotEmpty() }
 
     @Synchronized
     fun stop(): Boolean {
-        if (::cameraService.isInitialized && cameraService.isBinderAlive) {
-            if (!removeAllRemoteListeners()) {
-                Logger.d("Camera listener cleanup remains pending")
-                return false
-            }
-        } else {
+        val targetAlive = ::cameraService.isInitialized && cameraService.isBinderAlive
+        if (!targetAlive) {
             synchronized(listenerLock) {
                 listenerProxies.values.forEach(CameraListenerProxy::dispose)
                 listenerProxies.clear()
             }
+        } else {
+            val proxies = synchronized(listenerLock) { listenerProxies.values.toList() }
+            proxies.forEach { proxy -> if (!proxy.isDead()) proxy.refreshVisibility(null) }
+            if (!cleanupDeadProxies()) return false
+            if (synchronized(listenerLock) { listenerProxies.isNotEmpty() }) {
+                Logger.d("Camera visibility disabled; existing listeners are draining in pass-through mode")
+                return true
+            }
         }
 
-        val targetAlive = ::cameraService.isInitialized && cameraService.isBinderAlive
         val control = binderBackdoor ?: if (targetAlive) getBinderControlEndpoint(cameraService) else null
         var stopped = control?.let(::clearAndParkBinderHook) == true
         if (!stopped && control != null) {
@@ -700,6 +1022,8 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     }
 
     override fun onInterceptorReplaced() {
+        val proxies = synchronized(listenerLock) { listenerProxies.values.toList() }
+        proxies.forEach { proxy -> if (!proxy.isDead()) proxy.refreshVisibility(null) }
         registered = false
         binderBackdoor = null
         Config.signalRuntimeController()
