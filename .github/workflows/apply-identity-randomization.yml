@@ -32,6 +32,41 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
 
+      - name: Scope locale patch anchors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_identity_randomization.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''for locale, values in new_strings.items():
+              marker = locale_markers[locale]
+              if ux.count(marker) != 1:
+                  raise RuntimeError(f"Locale marker {locale}: expected one anchor")
+              line = "            " + ", ".join(
+                  f"{source!r}: {translation!r}" for source, translation in values.items()
+              ) + ",\\n"
+              ux = ux.replace(marker, marker + line, 1)
+          '''
+          new = '''translations_start = ux.find("    const TRANSLATIONS = {")
+          if translations_start < 0:
+              raise RuntimeError("TRANSLATIONS catalog anchor is missing")
+          for locale, values in new_strings.items():
+              marker = locale_markers[locale]
+              index = ux.find(marker, translations_start)
+              if index < 0:
+                  raise RuntimeError(f"Locale marker {locale}: missing from TRANSLATIONS catalog")
+              line = "            " + ", ".join(
+                  f"{source!r}: {translation!r}" for source, translation in values.items()
+              ) + ",\\n"
+              insertion = index + len(marker)
+              ux = ux[:insertion] + line + ux[insertion:]
+          '''
+          if old not in text:
+              raise SystemExit('locale patch-script anchor not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply bounded Identity patch
         id: apply_patch
         shell: bash
