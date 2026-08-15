@@ -33,7 +33,23 @@ jobs:
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
 
       - name: Apply bounded Identity patch
-        run: python3 .github/scripts/apply_identity_randomization.py
+        id: apply_patch
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/apply_identity_randomization.py 2>&1 | tee /tmp/identity-patch.log
+
+      - name: Preserve patch diagnostics
+        if: failure() && steps.apply_patch.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/identity-patch.log .github/identity-patch-error.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/identity-patch-error.txt
+          git commit -m "chore: record identity patch diagnostic"
+          git push origin HEAD:agent/identity-randomization
 
       - name: Validate WebUI syntax and tests
         shell: bash
