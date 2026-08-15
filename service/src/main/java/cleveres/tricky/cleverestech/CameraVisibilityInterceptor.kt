@@ -132,9 +132,16 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             -> if (Config.getVisibleCameraCount(callingUid) != null) Continue else Skip
 
             addListenerTransaction -> {
-                if (Config.getVisibleCameraCount(callingUid) == null) return Skip
                 val original = readListenerBinder(data) ?: return Skip
-                val proxy = getOrCreateProxy(original, callingUid) ?: return rejectListenerRegistration()
+                val existing = synchronized(listenerLock) { listenerProxies[original] }
+                if (existing != null && existing.ownerUid != callingUid) {
+                    Logger.w("Camera listener Binder reused across different UIDs; rejecting registration")
+                    return rejectListenerRegistration()
+                }
+                if (Config.getVisibleCameraCount(callingUid) == null) {
+                    return existing?.let(::rewriteListenerRequest) ?: Skip
+                }
+                val proxy = existing ?: getOrCreateProxy(original, callingUid) ?: return rejectListenerRegistration()
                 rewriteListenerRequest(proxy)
             }
 
@@ -207,8 +214,9 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         return try {
             try {
                 reply.readException()
+                proxy.markRemoteRegistered()
             } catch (_: RuntimeException) {
-                removeProxy(originalListener)
+                if (!proxy.isRemoteRegistered()) removeProxy(originalListener)
                 return Skip
             }
 
@@ -486,6 +494,7 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         private var initialized = false
         private var failedInitialization = false
         private var passThrough = false
+        private var remoteRegistered = false
         private var activeLimit: Int? = null
 
         @Volatile
@@ -508,6 +517,12 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         }
 
         fun isDead(): Boolean = dead
+
+        fun markRemoteRegistered() {
+            synchronized(stateLock) { remoteRegistered = true }
+        }
+
+        fun isRemoteRegistered(): Boolean = synchronized(stateLock) { remoteRegistered }
 
         fun matchesLimit(limit: Int?): Boolean =
             synchronized(stateLock) { failedInitialization || (initialized && activeLimit == limit) }
