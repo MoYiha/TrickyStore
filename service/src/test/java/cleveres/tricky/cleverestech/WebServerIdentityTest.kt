@@ -203,6 +203,68 @@ class WebServerIdentityTest {
     }
 
     @Test
+    fun `single random identity field returns only that validated value`() {
+        val response = request("GET", "/api/random_identity?field=imei")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(1, json.length())
+        assertTrue(json.has("imei"))
+        assertTrue(Config.isValidBuildVarEntry("ATTESTATION_ID_IMEI", json.getString("imei")))
+    }
+
+    @Test
+    fun `random identity groups stay within their requested scope`() {
+        val sim1Response = request("GET", "/api/random_identity?field=sim1")
+        assertEquals(200, sim1Response.first)
+        val sim1 = JSONObject(sim1Response.second)
+        assertEquals(5, sim1.length())
+        assertTrue(sim1.has("imei"))
+        assertTrue(sim1.has("imsi"))
+        assertTrue(sim1.has("iccid"))
+        assertTrue(sim1.has("meid"))
+        assertTrue(sim1.has("phone_number"))
+        assertFalse(sim1.has("imei2"))
+        assertFalse(sim1.has("serial"))
+
+        val sim2Response = request("GET", "/api/random_identity?field=sim2")
+        assertEquals(200, sim2Response.first)
+        val sim2 = JSONObject(sim2Response.second)
+        assertEquals(5, sim2.length())
+        assertTrue(sim2.has("imei2"))
+        assertTrue(sim2.has("imsi2"))
+        assertTrue(sim2.has("iccid2"))
+        assertTrue(sim2.has("meid2"))
+        assertTrue(sim2.has("phone_number2"))
+        assertFalse(sim2.has("imei"))
+        assertFalse(sim2.has("serial"))
+
+        val deviceResponse = request("GET", "/api/random_identity?field=device")
+        assertEquals(200, deviceResponse.first)
+        val device = JSONObject(deviceResponse.second)
+        assertEquals(1, device.length())
+        assertTrue(Config.isValidBuildVarEntry("ATTESTATION_ID_SERIAL", device.getString("serial")))
+    }
+
+    @Test
+    fun `random template returns a bounded known template view`() {
+        val response = request("GET", "/api/random_identity?field=template")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(5, json.length())
+        assertTrue(json.getString("id").isNotBlank())
+        assertTrue(json.getString("model").isNotBlank())
+        assertTrue(json.getString("manufacturer").isNotBlank())
+        assertTrue(json.getString("fingerprint").isNotBlank())
+        assertTrue(json.getString("securityPatch").isNotBlank())
+    }
+
+    @Test
+    fun `unsupported random identity field is rejected`() {
+        val response = request("GET", "/api/random_identity?field=unknown")
+        assertEquals(400, response.first)
+    }
+
+    @Test
     fun `identity API refuses a symbolic link destination`() {
         val destination = File(configDir, "outside.txt").apply { writeText("SAFE") }
         Files.createSymbolicLink(File(configDir, "spoof_build_vars").toPath(), destination.toPath())

@@ -60,6 +60,10 @@
         .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #333; font-size: 0.75em; margin-right: 5px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .identity-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; }
+        .identity-input-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+        .identity-input-slot { min-width: 0; }
+        .identity-input-slot input, .identity-input-slot select { width: 100%; }
+        .identity-random-btn { min-width: 84px; padding: 10px 12px; text-transform: none; letter-spacing: 0; }
         .scope-note { font-size: 0.85em; color: #999; line-height: 1.5; margin-bottom: 15px; }
         .master-panel { border-color: var(--accent); background: linear-gradient(135deg, var(--panel), #18202d); }
         .master-copy { flex: 1; min-width: 0; padding-right: 16px; }
@@ -230,36 +234,36 @@ input[type="text"], input[type="tel"], input[type="password"], input[type="searc
         <div class="panel">
 <h3>Identity Manager</h3>
 <label for="templateSelect" style="display:block; font-size:0.85em; color:#888; margin-bottom:8px;">Select the attestation identity used for configured target applications.</label>
-<select id="templateSelect" onchange="previewTemplate()" style="margin-bottom:15px;"><option value="">No attestation template</option></select>
+<div class="identity-input-action" style="margin-bottom:15px;"><div class="identity-input-slot"><select id="templateSelect" onchange="previewTemplate()"><option value="">No attestation template</option></select></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('template'))">Random</button></div>
 <div id="templatePreview" style="background:var(--input-bg); border-radius:8px; padding:15px; margin-bottom:15px;">
     <div class="grid-2"><div><div class="section-header">Device</div><div id="pModel"></div></div><div><div class="section-header">Manufacturer</div><div id="pManuf"></div></div></div>
     <div class="section-header">Template fingerprint <button onclick="copyToClipboard(document.getElementById('pFing').innerText, 'Fingerprint Copied', this)" style="font-size:0.9em; padding:8px 12px; margin-left:5px; min-height:44px;" title="Copy template fingerprint" aria-label="Copy Template Fingerprint">Copy</button></div><div style="font-family:monospace; font-size:0.8em; color:#999; word-break:break-all;" id="pFing"></div>
 </div>
 <div class="scope-note">Applying a template persists its fingerprint and build fields. Build Identity at Boot requires Identity Engine and a reboot. Android ID remains Android's per-app SSAID, and the actual kernel uname remains unchanged.</div>
-<div style="display:flex; gap:10px; flex-wrap:wrap;"><button onclick="runWithState(this, 'Generating...', generateRandomIdentity)" class="primary" style="flex:1;">Randomize All Identifiers</button><button onclick="runWithState(this, 'Fetching...', applyAutoIdentity)" style="flex:1;">Auto Identity (Pixel Beta)</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" style="flex:1;">Apply Identity</button></div>
+<div style="display:flex; gap:10px; flex-wrap:wrap;"><button onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('all'))" class="primary" style="flex:1;">Randomize All Identifiers</button><button onclick="runWithState(this, 'Fetching...', applyAutoIdentity)" style="flex:1;">Auto Identity (Pixel Beta)</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" style="flex:1;">Apply Identity</button></div>
 <div class="scope-note" style="margin-top:12px; margin-bottom:0;"><strong>Auto Identity:</strong> for Play Integrity it pulls a current Pixel beta/canary ROM identity from Google's public metadata. Recommended only if you use a Custom ROM. The result is saved locally; enable Identity Engine and reboot to expose build fields.</div>
         </div>
         <div class="panel"><h3>Attestation and Telephony Identifiers</h3>
 <div id="identityScope" class="scope-note">These overrides are visible only to selected apps after Android grants the original API request. They do not change modem, SIM, EFS, baseband, or mobile-network identity.</div>
 <div class="section-header">SIM 1</div>
 <div class="grid-2">
-    <div><label for="inputImei">IMEI</label><input type="text" id="inputImei" placeholder="35..." maxlength="15" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputMeid">MEID</label><input type="text" id="inputMeid" placeholder="14 hexadecimal characters" maxlength="14" style="font-family:monospace;" inputmode="text" enterkeyhint="next" oninput="validateRealtime(this, 'meid')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="characters"></div>
-    <div><label for="inputImsi">IMSI</label><input type="text" id="inputImsi" placeholder="Subscriber identity" maxlength="16" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'imsi')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputIccid">ICCID</label><input type="text" id="inputIccid" placeholder="SIM card identity" maxlength="22" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputPhoneNumber">Phone number</label><input type="tel" id="inputPhoneNumber" placeholder="+12025550123" maxlength="32" style="font-family:monospace;" inputmode="tel" enterkeyhint="next" oninput="validateRealtime(this, 'phone')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+    <div><label for="inputImei">IMEI</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputImei" placeholder="35..." maxlength="15" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('imei'))">Random</button></div></div>
+    <div><label for="inputMeid">MEID</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputMeid" placeholder="14 hexadecimal characters" maxlength="14" style="font-family:monospace;" inputmode="text" enterkeyhint="next" oninput="validateRealtime(this, 'meid')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="characters"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('meid'))">Random</button></div></div>
+    <div><label for="inputImsi">IMSI</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputImsi" placeholder="Subscriber identity" maxlength="16" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'imsi')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('imsi'))">Random</button></div></div>
+    <div><label for="inputIccid">ICCID</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputIccid" placeholder="SIM card identity" maxlength="22" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('iccid'))">Random</button></div></div>
+    <div><label for="inputPhoneNumber">Phone number</label><div class="identity-input-action"><div class="identity-input-slot"><input type="tel" id="inputPhoneNumber" placeholder="+12025550123" maxlength="32" style="font-family:monospace;" inputmode="tel" enterkeyhint="next" oninput="validateRealtime(this, 'phone')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('phone_number'))">Random</button></div></div>
 </div>
 <div class="section-header">SIM 2 (optional)</div>
 <div class="grid-2">
-    <div><label for="inputImei2">IMEI 2</label><input type="text" id="inputImei2" placeholder="35..." maxlength="15" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputMeid2">MEID 2</label><input type="text" id="inputMeid2" placeholder="14 hexadecimal characters" maxlength="14" style="font-family:monospace;" inputmode="text" enterkeyhint="next" oninput="validateRealtime(this, 'meid')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="characters"></div>
-    <div><label for="inputImsi2">IMSI 2</label><input type="text" id="inputImsi2" placeholder="Subscriber identity" maxlength="16" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'imsi')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputIccid2">ICCID 2</label><input type="text" id="inputIccid2" placeholder="SIM card identity" maxlength="22" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
-    <div><label for="inputPhoneNumber2">Phone number 2</label><input type="tel" id="inputPhoneNumber2" placeholder="+12025550124" maxlength="32" style="font-family:monospace;" inputmode="tel" enterkeyhint="next" oninput="validateRealtime(this, 'phone')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div>
+    <div><label for="inputImei2">IMEI 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputImei2" placeholder="35..." maxlength="15" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('imei2'))">Random</button></div></div>
+    <div><label for="inputMeid2">MEID 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputMeid2" placeholder="14 hexadecimal characters" maxlength="14" style="font-family:monospace;" inputmode="text" enterkeyhint="next" oninput="validateRealtime(this, 'meid')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="characters"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('meid2'))">Random</button></div></div>
+    <div><label for="inputImsi2">IMSI 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputImsi2" placeholder="Subscriber identity" maxlength="16" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'imsi')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('imsi2'))">Random</button></div></div>
+    <div><label for="inputIccid2">ICCID 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputIccid2" placeholder="SIM card identity" maxlength="22" style="font-family:monospace;" inputmode="numeric" enterkeyhint="next" oninput="validateRealtime(this, 'luhn')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('iccid2'))">Random</button></div></div>
+    <div><label for="inputPhoneNumber2">Phone number 2</label><div class="identity-input-action"><div class="identity-input-slot"><input type="tel" id="inputPhoneNumber2" placeholder="+12025550124" maxlength="32" style="font-family:monospace;" inputmode="tel" enterkeyhint="next" oninput="validateRealtime(this, 'phone')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('phone_number2'))">Random</button></div></div>
 </div>
 <div class="section-header">Device</div>
-<div><label for="inputSerial">Serial</label><input type="text" id="inputSerial" placeholder="Device serial" maxlength="64" style="font-family:monospace;" enterkeyhint="done" autocapitalize="characters" oninput="validateRealtime(this, 'serial')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off"></div>
-<div class="identity-actions" style="flex-wrap:wrap;"><button type="button" onclick="runWithState(this, 'Generating...', generateRandomIdentity)">Randomize All</button><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
+<div><label for="inputSerial">Serial</label><div class="identity-input-action"><div class="identity-input-slot"><input type="text" id="inputSerial" placeholder="Device serial" maxlength="64" style="font-family:monospace;" enterkeyhint="done" autocapitalize="characters" oninput="validateRealtime(this, 'serial')" aria-describedby="identityScope" spellcheck="false" autocomplete="off" autocorrect="off"></div><button type="button" class="identity-random-btn" title="Random" aria-label="Random" onclick="runWithState(this, 'Generating...', () => randomizeIdentityField('serial'))">Random</button></div></div>
+<div class="identity-actions" style="flex-wrap:wrap;"><button type="button" onclick="runWithState(this, 'Generating...', () => generateRandomIdentity('all'))">Randomize All</button><button type="button" onclick="const btn = this; requireConfirm(btn, () => clearSpoofingInputs(), 'Confirm Clear')" style="background:transparent; border:1px solid var(--danger); color:var(--danger); min-height:44px; padding:0 20px;">Clear All</button><button onclick="runWithState(this, 'Saving...', applySpoofing)" class="danger">Apply Identity</button></div>
         </div>
 
     </div>
@@ -1395,30 +1399,47 @@ select.dataset.lockExtras = 'true';
 previewTemplate();
         }
 
-        async function generateRandomIdentity() {
-try {
-    const res = await fetchAuth('/api/random_identity');
-    if (!res.ok) { const msg = await res.text(); notify('Error: ' + msg, 'error'); return; }
-    const t = await res.json();
-    document.getElementById('inputImei').value = t.imei || '';
-    document.getElementById('inputImei2').value = t.imei2 || '';
-    document.getElementById('inputImsi').value = t.imsi || '';
-    document.getElementById('inputImsi2').value = t.imsi2 || '';
-    document.getElementById('inputIccid').value = t.iccid || '';
-    document.getElementById('inputIccid2').value = t.iccid2 || '';
-    document.getElementById('inputMeid').value = t.meid || '';
-    document.getElementById('inputMeid2').value = t.meid2 || '';
-    document.getElementById('inputPhoneNumber').value = t.phone_number || '';
-    document.getElementById('inputPhoneNumber2').value = t.phone_number2 || '';
-    document.getElementById('inputSerial').value = t.serial || '';
+        const identityRandomInputMap = Object.freeze({
+imei: 'inputImei', imei2: 'inputImei2', meid: 'inputMeid', meid2: 'inputMeid2',
+imsi: 'inputImsi', imsi2: 'inputImsi2', iccid: 'inputIccid', iccid2: 'inputIccid2',
+phone_number: 'inputPhoneNumber', phone_number2: 'inputPhoneNumber2', serial: 'inputSerial'
+        });
+
+        async function fetchRandomIdentity(selection = 'all') {
+const res = await fetchAuth('/api/random_identity?field=' + encodeURIComponent(selection));
+if (!res.ok) throw new Error(await res.text());
+return res.json();
+        }
+
+        function applyRandomIdentityPayload(payload) {
+Object.entries(identityRandomInputMap).forEach(([key, id]) => {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) return;
+    const input = document.getElementById(id);
+    if (!input) return;
+    input.value = payload[key] || '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+if (payload.id) {
     const sel = document.getElementById('templateSelect');
-    if ([...sel.options].some(option => option.value === t.id)) sel.value = t.id;
-    sel.dataset.lockExtras = 'true';
-    previewTemplate();
-    document.getElementById('pModel').innerText = t.model + ' (Randomized)';
-    document.getElementById('pManuf').innerText = t.manufacturer;
-    document.getElementById('pFing').innerText = t.fingerprint;
-    notify('Identity Generated');
+    if (sel && [...sel.options].some(option => option.value === payload.id)) {
+        sel.value = payload.id;
+        sel.dataset.lockExtras = 'true';
+        previewTemplate();
+    }
+}
+        }
+
+        async function randomizeIdentityField(field) {
+const payload = await fetchRandomIdentity(field);
+applyRandomIdentityPayload(payload);
+notify('Identity value randomized');
+        }
+
+        async function generateRandomIdentity(selection = 'all') {
+try {
+    const payload = await fetchRandomIdentity(selection);
+    applyRandomIdentityPayload(payload);
+    notify(selection === 'all' ? 'Identity Generated' : 'Identity value randomized');
 } catch (e) {
     console.error(e);
     notify('Error generating identity: ' + e.message, 'error');
