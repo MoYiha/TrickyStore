@@ -1,0 +1,116 @@
+name: Validate Camera Visibility Identity
+
+on:
+  push:
+    branches: [ "agent/identity-randomization" ]
+    paths:
+      - ".github/workflows/apply-camera-visibility.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Validate and apply staged camera patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/apply_camera_visibility_identity.py
+          python3 .github/scripts/apply_camera_visibility_identity.py
+
+          # Kotlin does not allow an inner class inside an object declaration.
+          # Keep the listener proxy nested and explicitly qualify singleton state.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('service/src/main/java/cleveres/tricky/cleverestech/CameraVisibilityInterceptor.kt')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('    private inner class CameraListenerProxy(')
+          end = text.index('    private fun findCameraServerPid()', start)
+          block = text[start:end].replace('    private inner class CameraListenerProxy(', '    private class CameraListenerProxy(', 1)
+          for name in [
+              'cameraSpecificCallbackCodes',
+              'onStatusChangedTransaction',
+              'onPhysicalCameraStatusChangedTransaction',
+              'onTorchStatusChangedTransaction',
+              'onTorchStrengthLevelChangedTransaction',
+              'onCameraOpenedTransaction',
+              'onCameraOpenedInSharedModeTransaction',
+              'onCameraClosedTransaction',
+          ]:
+              block = block.replace(name, f'CameraVisibilityInterceptor.{name}')
+          path.write_text(text[:start] + block + text[end:], encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Validate WebUI syntax and behavior
+        shell: bash
+        env:
+          NODE_OPTIONS: --throw-deprecation
+        run: |
+          set -euo pipefail
+          for script in module/template/webroot/*.js; do
+            node --check "$script"
+          done
+          for test_file in module/webui-tests/*.test.js; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
+
+      - name: Run Android JVM tests
+        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
+      - name: Run Kotlin and Android lint
+        run: ./gradlew ktlintCheck :service:lintDebug :stub:lintDebug --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
+      - name: Run Rust quality gates
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace --verbose
+          cargo clippy --workspace --all-targets --target aarch64-linux-android -- -D warnings
+          cargo clippy --workspace --all-targets --target x86_64-linux-android -- -D warnings
+
+      - name: Build release module archive
+        run: ./gradlew zipRelease --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
+      - name: Commit validated camera source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add service module stub rust
+          git diff --cached --check
+          git commit -m "feat: add opt-in camera visibility identity"
+          git push origin HEAD:agent/identity-randomization
