@@ -324,7 +324,7 @@ class WebServer(
             "meid", "meid2" -> RandomUtils.generateHex(14)
             "phone_number", "phone_number2" -> "+1${RandomUtils.generateDigits(10)}"
             "serial" -> RandomUtils.generateRandomSerial(12)
-            "visible_sim_count" -> RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"
+            "visible_sim_count" -> RandomUtils.generateVisibleSimCount(allowZero = true)
             "visible_camera_count" ->
                 RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"
             else -> throw IllegalArgumentException("Unsupported random identity field")
@@ -377,16 +377,19 @@ class WebServer(
                     "visible_sim_count",
                     "visible_camera_count",
                 )
+                json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false))
             }
             "template" -> if (!copyTemplateIfAvailable(required = true)) return null
             "sim1" -> putFields("imei", "imsi", "iccid", "meid", "phone_number")
             "sim2" -> putFields("imei2", "imsi2", "iccid2", "meid2", "phone_number2")
-            "telephony" ->
+            "telephony" -> {
                 putFields(
                     "imei", "imsi", "iccid", "meid", "phone_number",
                     "imei2", "imsi2", "iccid2", "meid2", "phone_number2",
                     "visible_sim_count",
                 )
+                json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false))
+            }
             "device" -> putFields("serial")
             "hardware" -> putFields("visible_camera_count")
             "imei", "imei2", "imsi", "imsi2", "iccid", "iccid2", "meid", "meid2",
@@ -1724,8 +1727,7 @@ class WebServer(
                             "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
                             "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                             "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
-                            "VISIBLE_SIM_COUNT" to
-                                (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"),
+                            "VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false),
                             "VISIBLE_CAMERA_COUNT" to
                                 (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                         )

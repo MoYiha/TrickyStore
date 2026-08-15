@@ -2039,8 +2039,7 @@ object Config {
                     "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
                     "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                     "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
-                    "VISIBLE_SIM_COUNT" to
-                        (RandomUtils.choose(listOf("0", "1", "1", "1", "1", "2", "2")) ?: "1"),
+                    "VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false),
                     "VISIBLE_CAMERA_COUNT" to
                         (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                 )
