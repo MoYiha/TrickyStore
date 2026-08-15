@@ -50,7 +50,7 @@ jobs:
           needle = "    count = text.count(old)\n    if count != 1:\n"
           replacement = (
               "    count = text.count(old)\n"
-              "    if label == \"profile refresh camera flag\":\n"
+              "    if label in {\"profile refresh camera flag\", \"legacy toggle rerender identity success\"}:\n"
               "        if count != 2:\n"
               "            raise RuntimeError(f\"{label}: expected two known lifecycle anchors, found {count}\")\n"
               "        return text.replace(old, new, 1)\n"
@@ -94,6 +94,10 @@ jobs:
               block = block.replace(name, f'CameraVisibilityInterceptor.{name}')
           path.write_text(text[:start] + block + text[end:], encoding='utf-8')
           PY
+
+          if ! grep -qxF 'allow cameraserver cameraserver:process { execmem };' module/template/sepolicy.rule; then
+            printf '\nallow cameraserver cameraserver:process { execmem };\n' >> module/template/sepolicy.rule
+          fi
           git diff --check
 
       - name: Validate WebUI syntax and behavior
