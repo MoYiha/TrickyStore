@@ -439,7 +439,7 @@ function identityControlsMarkup(prefix) {
   const features = policyState ? policyState.features : {};
   const identityOn = identityEnabled();
   const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
-  return `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Optional identity substitution. Enable only the paths you need.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}</div>${helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.')}</div>`;
+  return `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}</div>${helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.')}</div>`;
 }
 
 function bindIdentityControls(panel, prefix) {
