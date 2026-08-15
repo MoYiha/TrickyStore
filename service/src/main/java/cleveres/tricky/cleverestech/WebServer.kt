@@ -312,6 +312,92 @@ class WebServer(
             .put("phone_number", identity.phoneNumber ?: "")
             .put("phone_number2", identity.phoneNumber2 ?: "")
             .put("serial", identity.serial ?: "")
+            .put("visible_sim_count", identity.visibleSimCount?.toString() ?: "")
+            .put("visible_camera_count", identity.visibleCameraCount?.toString() ?: "")
+    }
+
+    private fun randomIdentityValue(field: String): String =
+        when (field) {
+            "imei", "imei2" -> RandomUtils.generateLuhn(15, "35")
+            "imsi", "imsi2" -> RandomUtils.generateDigits(15, "310260")
+            "iccid", "iccid2" -> RandomUtils.generateLuhn(20, "8901")
+            "meid", "meid2" -> RandomUtils.generateHex(14)
+            "phone_number", "phone_number2" -> "+1${RandomUtils.generateDigits(10)}"
+            "serial" -> RandomUtils.generateRandomSerial(12)
+            "visible_sim_count" -> RandomUtils.generateVisibleSimCount(allowZero = true)
+            "visible_camera_count" ->
+                RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"
+            else -> throw IllegalArgumentException("Unsupported random identity field")
+        }
+
+    private fun randomTemplateJson(): JSONObject? {
+        val template = RandomUtils.choose(DeviceTemplateManager.listTemplates()) ?: return null
+        return JSONObject()
+            .put("id", template.id)
+            .put("model", template.model)
+            .put("manufacturer", template.manufacturer)
+            .put("fingerprint", template.fingerprint)
+            .put("securityPatch", template.securityPatch)
+    }
+
+    private fun randomIdentityJson(selection: String): JSONObject? {
+        val normalized = selection.trim().lowercase()
+        val json = JSONObject()
+
+        fun copyTemplateIfAvailable(required: Boolean): Boolean {
+            val template = randomTemplateJson()
+            if (template == null) return !required
+            val keys = template.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                json.put(key, template.get(key))
+            }
+            return true
+        }
+
+        fun putFields(vararg fields: String) {
+            fields.forEach { field -> json.put(field, randomIdentityValue(field)) }
+        }
+
+        when (normalized) {
+            "all" -> {
+                copyTemplateIfAvailable(required = false)
+                putFields(
+                    "imei",
+                    "imei2",
+                    "imsi",
+                    "imsi2",
+                    "iccid",
+                    "iccid2",
+                    "meid",
+                    "meid2",
+                    "phone_number",
+                    "phone_number2",
+                    "serial",
+                    "visible_sim_count",
+                    "visible_camera_count",
+                )
+                json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false))
+            }
+            "template" -> if (!copyTemplateIfAvailable(required = true)) return null
+            "sim1" -> putFields("imei", "imsi", "iccid", "meid", "phone_number")
+            "sim2" -> putFields("imei2", "imsi2", "iccid2", "meid2", "phone_number2")
+            "telephony" -> {
+                putFields(
+                    "imei", "imsi", "iccid", "meid", "phone_number",
+                    "imei2", "imsi2", "iccid2", "meid2", "phone_number2",
+                    "visible_sim_count",
+                )
+                json.put("visible_sim_count", RandomUtils.generateVisibleSimCount(allowZero = false))
+            }
+            "device" -> putFields("serial")
+            "hardware" -> putFields("visible_camera_count")
+            "imei", "imei2", "imsi", "imsi2", "iccid", "iccid2", "meid", "meid2",
+            "phone_number", "phone_number2", "serial", "visible_sim_count", "visible_camera_count" ->
+                putFields(normalized)
+            else -> throw IllegalArgumentException("Unsupported random identity field")
+        }
+        return json
     }
 
     private fun parseIdentityUpdates(json: String): Map<String, String?> {
@@ -1176,29 +1262,14 @@ class WebServer(
         }
 
         if (uri == "/api/random_identity" && method == Method.GET) {
-            val templates = DeviceTemplateManager.listTemplates()
-            if (templates.isNotEmpty()) {
-                val t = templates.random()
-                val json = JSONObject()
-                json.put("id", t.id)
-                json.put("model", t.model)
-                json.put("manufacturer", t.manufacturer)
-                json.put("fingerprint", t.fingerprint)
-                json.put("securityPatch", t.securityPatch)
-                json.put("imei", RandomUtils.generateLuhn(15, "35"))
-                json.put("imei2", RandomUtils.generateLuhn(15, "35"))
-                json.put("serial", RandomUtils.generateRandomSerial(12))
-                json.put("imsi", RandomUtils.generateDigits(15, "310260"))
-                json.put("imsi2", RandomUtils.generateDigits(15, "310260"))
-                json.put("iccid", RandomUtils.generateLuhn(20, "8901"))
-                json.put("iccid2", RandomUtils.generateLuhn(20, "8901"))
-                json.put("meid", RandomUtils.generateHex(14))
-                json.put("meid2", RandomUtils.generateHex(14))
-                json.put("phone_number", "+1${RandomUtils.generateDigits(10)}")
-                json.put("phone_number2", "+1${RandomUtils.generateDigits(10)}")
-                return secureResponse(Response.Status.OK, "application/json", json.toString())
+            val selection = getParam(session, "field")?.trim()?.lowercase().orEmpty().ifEmpty { "all" }
+            return try {
+                val json = randomIdentityJson(selection)
+                    ?: return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
+                secureResponse(Response.Status.OK, "application/json", json.toString())
+            } catch (error: IllegalArgumentException) {
+                secureResponse(Response.Status.BAD_REQUEST, "text/plain", error.message ?: "Invalid random identity request")
             }
-            return secureResponse(Response.Status.NOT_FOUND, "text/plain", "No templates found")
         }
 
         if (uri == "/api/auto_identity" && method == Method.POST) {
@@ -1656,6 +1727,9 @@ class WebServer(
                             "ATTESTATION_ID_MEID2" to RandomUtils.generateHex(14),
                             "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                             "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
+                            "VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false),
+                            "VISIBLE_CAMERA_COUNT" to
+                                (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                         )
                     val lines =
                         if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -1965,6 +2039,8 @@ class WebServer(
                 "phone_number" to "ATTESTATION_ID_PHONE_NUMBER",
                 "phone_number2" to "ATTESTATION_ID_PHONE_NUMBER2",
                 "serial" to "ATTESTATION_ID_SERIAL",
+                "visible_sim_count" to "VISIBLE_SIM_COUNT",
+                "visible_camera_count" to "VISIBLE_CAMERA_COUNT",
             )
         private val BUILD_IDENTITY_VAR_KEYS =
             linkedSetOf(
@@ -1992,6 +2068,7 @@ class WebServer(
                 "random_on_boot",
                 "spoof_region_cn",
                 "telephony",
+                "camera_visibility",
                 "drm_passthrough",
             )
         private val EDITABLE_CONFIG_FILES =
@@ -2025,6 +2102,7 @@ class WebServer(
                 "hide_sensitive_props",
                 "spoof_region_cn",
                 "telephony",
+                "camera_visibility",
                 // Retained only for legacy backup compatibility.
                 "rkp_passthrough",
                 "drm_passthrough",

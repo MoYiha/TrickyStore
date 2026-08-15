@@ -283,7 +283,7 @@ function removeLegacySurfaces() {
   if (spoof) {
     [...spoof.querySelectorAll('.panel')].forEach(panel => {
       const title = (panel.querySelector('h3')?.textContent || '').trim();
-      if (/^Identity Controls$/i.test(title)) panel.remove();
+      if (/^Identity Controls$/i.test(title) && panel.id !== 'ct_identity_controls') panel.remove();
     });
   }
   const stale = document.getElementById('ct_resources_controls');
@@ -309,9 +309,13 @@ function markIdentityActionGroups() {
   });
 }
 
-function identityEnabled() {
+function policyIdentityEnabled() {
   if (!policyState || !policyState.features) return false;
   return FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
+}
+
+function identityEnabled() {
+  return policyIdentityEnabled() || Boolean(legacyConfig && legacyConfig.camera_visibility);
 }
 
 function helpMarkup(text) {
@@ -337,17 +341,14 @@ function isAutoPatch() {
 
 function buildFeatureCenterMarkup(prefix) {
   const features = policyState ? policyState.features : {};
-  const identityOn = identityEnabled();
   const patchOn = Boolean(features && features.securityPatch);
   const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
-  const identityChildren = `<div class="ct-subcontrols" id="${prefix}_identity_children" ${identityOn ? '' : 'hidden'}>${FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('')}</div>`;
   const patchChildren = `<div class="ct-subcontrols" id="${prefix}_patch_children" ${patchOn ? '' : 'hidden'}><div class="row"><label for="${prefix}_auto_patch" style="flex:1;padding-right:10px"><strong>Auto Security Patch</strong><span class="res-desc">Use automatic mode for stale captured patch values.</span></label>${switchMarkup(`${prefix}_auto_patch`,isAutoPatch())}</div><button type="button" data-open-tab="patch" style="width:100%;margin-top:5px">Advanced Security Patch</button></div>`;
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
   return `<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
-    ${cardMarkup(`${prefix}_identity`,'Identity','Optional identity substitution. Turn it on first, then choose only the child identity paths you want.',identityOn,identityChildren + helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.'))}
     ${cardMarkup(`${prefix}_patch`,'Security Patch','Independent attestation patch policy. Default is off unless stale-ROM policy enables it.',patchOn,patchChildren + helpMarkup('Security Patch is independent from Identity.'))}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
@@ -370,7 +371,6 @@ function renderFeatureCenter() {
 function bindFeatureCenter(panel, prefix) {
   const globalToggle = panel.querySelector(`#${prefix}_global`);
   const keyboxToggle = panel.querySelector(`#${prefix}_keybox`);
-  const identityToggle = panel.querySelector(`#${prefix}_identity`);
   const patchToggle = panel.querySelector(`#${prefix}_patch`);
   const autoPatch = panel.querySelector(`#${prefix}_auto_patch`);
   const drmToggle = panel.querySelector(`#${prefix}_drm_passthrough`);
@@ -381,16 +381,6 @@ function bindFeatureCenter(panel, prefix) {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
     setLegacyToggle('drm_passthrough',drmToggle.checked);
   };
-  if (identityToggle) identityToggle.onchange = () => {
-    const enabled = identityToggle.checked;
-    savePolicy(next => FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; }), enabled ? 'Identity enabled' : 'Identity disabled');
-  };
-  panel.querySelectorAll('[data-policy-feature]').forEach(toggle => {
-    toggle.onchange = () => {
-      const key = toggle.dataset.policyFeature;
-      savePolicy(next => { next.features[key] = toggle.checked; }, `${toggle.closest('.row').querySelector('strong').textContent} updated`);
-    };
-  });
   if (patchToggle) patchToggle.onchange = () => {
     const enabled = patchToggle.checked;
     savePolicy(next => {
@@ -417,11 +407,13 @@ async function setLegacyToggle(setting, enabled) {
     await request('/api/toggle',{method:'POST',body});
     await loadLegacyConfig();
     renderFeatureCenter();
+    renderIdentityControls();
     refreshPresentation();
   } catch (error) {
     notify(error.message || 'Could not update setting','error');
     await loadLegacyConfig();
     renderFeatureCenter();
+    renderIdentityControls();
     refreshPresentation();
   }
 }
@@ -449,6 +441,54 @@ function installFeatureCenter() {
   }
 }
 
+function identityControlsMarkup(prefix) {
+  const features = policyState ? policyState.features : {};
+  const identityOn = policyIdentityEnabled();
+  const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
+  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
+  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}</div>${helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.')}</div>`;
+  const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
+  return `<div class="ct-feature-grid">${core}${camera}</div>`;
+}
+
+function bindIdentityControls(panel, prefix) {
+  const master = panel.querySelector(`#${prefix}_master`);
+  const children = panel.querySelector(`#${prefix}_children`);
+  const cameraToggle = panel.querySelector(`#${prefix}_camera_visibility`);
+  if (cameraToggle) cameraToggle.onchange = () => setLegacyToggle('camera_visibility',cameraToggle.checked);
+  if (master) master.onchange = () => {
+    const enabled = master.checked;
+    if (children) children.hidden = !enabled;
+    savePolicy(next => FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; }), enabled ? 'Identity enabled' : 'Identity disabled');
+  };
+  panel.querySelectorAll('[data-policy-feature]').forEach(toggle => {
+    toggle.onchange = () => {
+      const key = toggle.dataset.policyFeature;
+      savePolicy(next => { next.features[key] = toggle.checked; }, `${toggle.closest('.row').querySelector('strong').textContent} updated`);
+    };
+  });
+}
+
+function installIdentityControls() {
+  const spoof = document.getElementById('spoof');
+  if (!spoof || document.getElementById('ct_identity_controls')) return;
+  const panel = document.createElement('div');
+  panel.id = 'ct_identity_controls';
+  panel.className = 'panel';
+  panel.innerHTML = '<h3>Identity Controls</h3><div class="scope-note">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</div><div class="ct-control-host"></div>';
+  spoof.prepend(panel);
+}
+
+function renderIdentityControls() {
+  if (!policyState) return;
+  installIdentityControls();
+  const panel = document.getElementById('ct_identity_controls');
+  const host = panel && panel.querySelector('.ct-control-host');
+  if (!panel || !host) return;
+  host.innerHTML = identityControlsMarkup('ct_identity');
+  bindIdentityControls(panel,'ct_identity');
+}
+
 function installIdentityBanner() {
   const spoof = document.getElementById('spoof');
   if (!spoof) return;
@@ -457,8 +497,7 @@ function installIdentityBanner() {
     banner = document.createElement('div');
     banner.id = 'ct_identity_disabled_banner';
     banner.className = 'ct-banner';
-    banner.innerHTML = 'Identity is currently disabled. You can enable it from Dashboard. <button type="button" style="margin-left:8px;padding:8px 10px;min-height:38px">Dashboard</button>';
-    banner.querySelector('button').onclick = () => global.switchTab && global.switchTab('dashboard');
+    banner.textContent = 'Identity is currently disabled. Enable only the identity paths you need below.';
     spoof.prepend(banner);
   }
   banner.hidden = identityEnabled();
@@ -1088,6 +1127,7 @@ async function loadReferenceData() {
 function renderAll() {
   if (!policyState) return;
   renderFeatureCenter();
+  renderIdentityControls();
   installIdentityBanner();
   renderPatchPage();
   renderProfiles();
@@ -1108,6 +1148,7 @@ async function initialize() {
   installTabNavigationOwner();
   retireLegacyLocalization();
   installFeatureCenter();
+  installIdentityControls();
   installConfigurationActions();
   installCustomTemplateBuilder();
   installKernelIdentityControls();

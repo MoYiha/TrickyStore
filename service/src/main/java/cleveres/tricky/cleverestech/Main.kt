@@ -108,8 +108,10 @@ fun main(args: Array<String>) {
 
         var previousIdentityEngineState: Boolean? = null
         var previousTelephonyState: Boolean? = null
+        var previousCameraState: Boolean? = null
         var previousDrmEngineState: Boolean? = null
         var telephonyStopPending = false
+        var cameraStopPending = false
         var drmStopPending = false
         var runtimeRetryDelayMs = RUNTIME_RETRY_INITIAL_MS
         while (true) {
@@ -128,7 +130,14 @@ fun main(args: Array<String>) {
             // Keystore interception is the always-on core path. Disabling identity
             // spoofing must never unregister it or park the native Binder hook.
             var ksSuccess = KeystoreInterceptor.isRunning()
-            var telSuccess = !Config.shouldInterceptTelephony || TelephonyInterceptor.isRunning()
+            var telSuccess =
+                !Config.shouldInterceptTelephony ||
+                    (
+                        TelephonyInterceptor.isRunning() &&
+                            (!Config.shouldInterceptSubscriptionVisibility || SubscriptionVisibilityInterceptor.isRunning())
+                    )
+            val cameraEnabled = Config.shouldInterceptCameraVisibility
+            var cameraSuccess = !cameraEnabled || CameraVisibilityInterceptor.isRunning()
             val drmEnabled = Config.shouldInterceptDrm
             var drmSuccess = !drmEnabled || DrmInterceptor.isRunning()
 
@@ -150,9 +159,24 @@ fun main(args: Array<String>) {
                 if (telephonyEnabled && !telSuccess) {
                     launch(Dispatchers.IO) {
                         try {
-                            telSuccess = TelephonyInterceptor.tryRunTelephonyInterceptor()
+                            telSuccess =
+                                TelephonyInterceptor.tryRunTelephonyInterceptor() &&
+                                    SubscriptionVisibilityInterceptor.tryRun()
                         } catch (e: Exception) {
                             Logger.e("Telephony interceptor threw unexpected exception", e)
+                        }
+                    }
+                } else {
+                    null
+                }
+
+            val cameraJob =
+                if (cameraEnabled && !cameraSuccess) {
+                    launch(Dispatchers.IO) {
+                        try {
+                            cameraSuccess = CameraVisibilityInterceptor.tryRun()
+                        } catch (e: Exception) {
+                            Logger.e("Camera visibility interceptor threw unexpected exception", e)
                         }
                     }
                 } else {
@@ -174,19 +198,39 @@ fun main(args: Array<String>) {
 
             ksJob?.join()
             telJob?.join()
+            cameraJob?.join()
             drmJob?.join()
 
             if (!telephonyEnabled && (previousTelephonyState != false || telephonyStopPending)) {
                 val wasPending = telephonyStopPending
-                telephonyStopPending = !TelephonyInterceptor.stopTelephonyInterceptor()
+                val subscriptionStopped = SubscriptionVisibilityInterceptor.stop()
+                telephonyStopPending = !subscriptionStopped || !TelephonyInterceptor.stopTelephonyInterceptor()
                 if (telephonyStopPending && !wasPending) {
                     Logger.w("Telephony hook cleanup is incomplete; retry scheduled")
                 }
                 telSuccess = !telephonyStopPending
             } else if (telephonyEnabled) {
                 telephonyStopPending = false
+                if (!Config.shouldInterceptSubscriptionVisibility) {
+                    SubscriptionVisibilityInterceptor.stop()
+                }
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
+
+            if (
+                !cameraEnabled &&
+                (previousCameraState != false || cameraStopPending || CameraVisibilityInterceptor.isDraining())
+            ) {
+                val wasPending = cameraStopPending
+                cameraStopPending = !CameraVisibilityInterceptor.stop()
+                if (cameraStopPending && !wasPending) {
+                    Logger.w("Camera visibility hook cleanup is incomplete; retry scheduled")
+                }
+                cameraSuccess = !cameraStopPending
+            } else if (cameraEnabled) {
+                cameraStopPending = false
+            }
+            previousCameraState = if (cameraStopPending) null else cameraEnabled
 
             if (!drmEnabled && (previousDrmEngineState != false || drmStopPending)) {
                 val wasPending = drmStopPending
@@ -202,10 +246,17 @@ fun main(args: Array<String>) {
 
             if (!ksSuccess) Logger.d("Core Keystore interceptor is not ready; retry scheduled")
             if (!telSuccess) Logger.d("Telephony interceptor not ready yet")
+            if (!cameraSuccess) Logger.d("Camera visibility interceptor not ready yet")
             if (!drmSuccess) Logger.d("DRM privacy interceptor not ready yet")
 
             val runtimeHealthy =
-                ksSuccess && telSuccess && drmSuccess && !telephonyStopPending && !drmStopPending
+                ksSuccess &&
+                    telSuccess &&
+                    cameraSuccess &&
+                    drmSuccess &&
+                    !telephonyStopPending &&
+                    !cameraStopPending &&
+                    !drmStopPending
             val controllerWaitMs = if (runtimeHealthy) 30_000L else runtimeRetryDelayMs
             try {
                 Config.awaitRuntimeController(controllerWaitMs)
@@ -213,6 +264,8 @@ fun main(args: Array<String>) {
                 Thread.currentThread().interrupt()
                 KeyboxDirectoryRefreshWatcher.stop()
                 CertificatePolicyWatcher.stop()
+                SubscriptionVisibilityInterceptor.stop()
+                CameraVisibilityInterceptor.stop()
                 DrmInterceptor.stopDrmInterceptor()
                 Logger.i("Main: Runtime controller interrupted, shutting down")
                 return@runBlocking

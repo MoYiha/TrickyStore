@@ -1,2 +1,4 @@
 allow keystore keystore:process { execmem };
 allow radio radio:process { execmem };
+
+allow cameraserver cameraserver:process { execmem };

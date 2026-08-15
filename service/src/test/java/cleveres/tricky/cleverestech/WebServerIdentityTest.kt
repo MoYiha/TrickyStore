@@ -124,6 +124,8 @@ class WebServerIdentityTest {
                 .put("phone_number", "")
                 .put("phone_number2", "+12025550124")
                 .put("serial", "DEVICE_01")
+                .put("visible_sim_count", "1")
+                .put("visible_camera_count", "3")
 
         val response = postIdentity(request)
         assertEquals(200, response.first)
@@ -143,6 +145,10 @@ class WebServerIdentityTest {
         assertEquals(imsi2, saved.getString("imsi2"))
         assertEquals(iccid2, saved.getString("iccid2"))
         assertEquals("+12025550124", saved.getString("phone_number2"))
+        assertEquals("1", saved.getString("visible_sim_count"))
+        assertEquals(1, Config.getIdentityOverrides().visibleSimCount)
+        assertEquals("3", saved.getString("visible_camera_count"))
+        assertEquals(3, Config.getIdentityOverrides().visibleCameraCount)
     }
 
     @Test
@@ -153,6 +159,10 @@ class WebServerIdentityTest {
         val before = file.readText()
 
         assertEquals(400, postIdentity(JSONObject().put("imei", "123")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "9")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_sim_count", "-1")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_camera_count", "17")).first)
+        assertEquals(400, postIdentity(JSONObject().put("visible_camera_count", "-1")).first)
         assertEquals(400, postIdentity(JSONObject().put("unknown", "value")).first)
         assertEquals(before, file.readText())
     }
@@ -187,6 +197,8 @@ class WebServerIdentityTest {
         assertTrue(json.getString("phone_number2").startsWith("+1"))
         assertTrue(json.getString("imei").isNotBlank())
         assertTrue(json.getString("iccid2").isNotBlank())
+        assertTrue(json.getInt("visible_sim_count") in 1..2)
+        assertTrue(json.getInt("visible_camera_count") in 1..4)
     }
 
     @Test
@@ -200,6 +212,89 @@ class WebServerIdentityTest {
         assertTrue(vars.contains("SECURITY_PATCH=2026-08-05"))
         assertTrue(File(configDir, "spoof_build_identity").isFile)
         assertFalse(File(configDir, "spoof_enabled").exists())
+    }
+
+    @Test
+    fun `single random identity field returns only that validated value`() {
+        val response = request("GET", "/api/random_identity?field=imei")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(1, json.length())
+        assertTrue(json.has("imei"))
+        assertTrue(Config.isValidBuildVarEntry("ATTESTATION_ID_IMEI", json.getString("imei")))
+    }
+
+    @Test
+    fun `random identity groups stay within their requested scope`() {
+        val sim1Response = request("GET", "/api/random_identity?field=sim1")
+        assertEquals(200, sim1Response.first)
+        val sim1 = JSONObject(sim1Response.second)
+        assertEquals(5, sim1.length())
+        assertTrue(sim1.has("imei"))
+        assertTrue(sim1.has("imsi"))
+        assertTrue(sim1.has("iccid"))
+        assertTrue(sim1.has("meid"))
+        assertTrue(sim1.has("phone_number"))
+        assertFalse(sim1.has("imei2"))
+        assertFalse(sim1.has("serial"))
+
+        val sim2Response = request("GET", "/api/random_identity?field=sim2")
+        assertEquals(200, sim2Response.first)
+        val sim2 = JSONObject(sim2Response.second)
+        assertEquals(5, sim2.length())
+        assertTrue(sim2.has("imei2"))
+        assertTrue(sim2.has("imsi2"))
+        assertTrue(sim2.has("iccid2"))
+        assertTrue(sim2.has("meid2"))
+        assertTrue(sim2.has("phone_number2"))
+        assertFalse(sim2.has("imei"))
+        assertFalse(sim2.has("serial"))
+
+        val deviceResponse = request("GET", "/api/random_identity?field=device")
+        assertEquals(200, deviceResponse.first)
+        val device = JSONObject(deviceResponse.second)
+        assertEquals(1, device.length())
+        assertTrue(Config.isValidBuildVarEntry("ATTESTATION_ID_SERIAL", device.getString("serial")))
+    }
+
+    @Test
+    fun `telephony random group includes visibility but not device serial`() {
+        val response = request("GET", "/api/random_identity?field=telephony")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(11, json.length())
+        assertTrue(json.has("imei"))
+        assertTrue(json.has("imei2"))
+        assertTrue(json.getInt("visible_sim_count") in 1..2)
+        assertFalse(json.has("serial"))
+    }
+
+    @Test
+    fun `hardware random group contains only camera visibility`() {
+        val response = request("GET", "/api/random_identity?field=hardware")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(1, json.length())
+        assertTrue(json.getInt("visible_camera_count") in 1..4)
+    }
+
+    @Test
+    fun `random template returns a bounded known template view`() {
+        val response = request("GET", "/api/random_identity?field=template")
+        assertEquals(200, response.first)
+        val json = JSONObject(response.second)
+        assertEquals(5, json.length())
+        assertTrue(json.getString("id").isNotBlank())
+        assertTrue(json.getString("model").isNotBlank())
+        assertTrue(json.getString("manufacturer").isNotBlank())
+        assertTrue(json.getString("fingerprint").isNotBlank())
+        assertTrue(json.getString("securityPatch").isNotBlank())
+    }
+
+    @Test
+    fun `unsupported random identity field is rejected`() {
+        val response = request("GET", "/api/random_identity?field=unknown")
+        assertEquals(400, response.first)
     }
 
     @Test
