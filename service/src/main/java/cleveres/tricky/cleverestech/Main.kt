@@ -217,7 +217,10 @@ fun main(args: Array<String>) {
             }
             previousTelephonyState = if (telephonyStopPending) null else telephonyEnabled
 
-            if (!cameraEnabled && (previousCameraState != false || cameraStopPending)) {
+            if (
+                !cameraEnabled &&
+                (previousCameraState != false || cameraStopPending || CameraVisibilityInterceptor.isDraining())
+            ) {
                 val wasPending = cameraStopPending
                 cameraStopPending = !CameraVisibilityInterceptor.stop()
                 if (cameraStopPending && !wasPending) {
