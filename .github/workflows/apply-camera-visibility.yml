@@ -47,25 +47,18 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/apply_camera_visibility_identity.py')
           text = path.read_text(encoding='utf-8')
-          old = '''def replace_once(text, old, new, label):
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f"{label}: expected one exact anchor, found {count}")
-              return text.replace(old, new, 1)
-          '''
-          new = '''def replace_once(text, old, new, label):
-              count = text.count(old)
-              if label == "profile refresh camera flag":
-                  if count != 2:
-                      raise RuntimeError(f"{label}: expected two known lifecycle anchors, found {count}")
-                  return text.replace(old, new, 1)
-              if count != 1:
-                  raise RuntimeError(f"{label}: expected one exact anchor, found {count}")
-              return text.replace(old, new, 1)
-          '''
-          if old not in text:
-              raise SystemExit('replace_once helper anchor not found')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          needle = "    count = text.count(old)\n    if count != 1:\n"
+          replacement = (
+              "    count = text.count(old)\n"
+              "    if label == \"profile refresh camera flag\":\n"
+              "        if count != 2:\n"
+              "            raise RuntimeError(f\"{label}: expected two known lifecycle anchors, found {count}\")\n"
+              "        return text.replace(old, new, 1)\n"
+              "    if count != 1:\n"
+          )
+          if text.count(needle) != 1:
+              raise SystemExit(f'replace_once helper anchor count={text.count(needle)}')
+          path.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
           PY
           python3 -m py_compile .github/scripts/apply_camera_visibility_identity.py
           python3 .github/scripts/apply_camera_visibility_identity.py
