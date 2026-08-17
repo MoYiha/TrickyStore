@@ -34,6 +34,12 @@ object KeyboxVerifier {
         ERROR,
     }
 
+    private sealed interface RevocationSource {
+        data class Rust(val handle: CrlWire.Handle) : RevocationSource
+
+        data class Legacy(val entries: Set<String>) : RevocationSource
+    }
+
     private const val DEFAULT_CRL_URL = "https://android.googleapis.com/attestation/status"
     private const val MAX_CRL_BYTES = 8L * 1024 * 1024
     private const val MAX_KEYBOX_XML_BYTES = 10L * 1024 * 1024
@@ -117,14 +123,26 @@ object KeyboxVerifier {
     }
 
     @JvmStatic
-    @JvmOverloads
+    fun verify(configDir: File): List<Result> =
+        verifyWithSource(configDir) { fetchCrl()?.let(RevocationSource::Rust) }
+
+    /** JVM test compatibility only; production never models a Rust CRL generation as a Set. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
     fun verify(
         configDir: File,
-        crlFetcher: () -> Set<String>? = { fetchCrl() },
+        crlFetcher: () -> Set<String>?,
+    ): List<Result> =
+        verifyWithSource(configDir) { crlFetcher()?.let(RevocationSource::Legacy) }
+
+    private fun verifyWithSource(
+        configDir: File,
+        crlFetcher: () -> RevocationSource?,
     ): List<Result> {
         val results = ArrayList<Result>()
-        val crl = crlFetcher()
-            ?: return listOf(Result(File(""), "Global", Status.ERROR, "Failed to initialize CRL index"))
+        val crl =
+            crlFetcher()
+                ?: return listOf(Result(File(""), "Global", Status.ERROR, "Failed to initialize CRL index"))
 
         if (!Files.isDirectory(configDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             return listOf(Result(File(""), "Global", Status.ERROR, "Config directory not found"))
@@ -233,11 +251,32 @@ object KeyboxVerifier {
         }
     }
 
+    /** Rebuilds only from the persisted raw cache; restart recovery never performs recursive network work. */
+    internal fun refreshPersistedCrlForBackendRecovery(): CrlWire.Handle? {
+        val now = System.currentTimeMillis()
+        cacheLock.lock()
+        try {
+            cachedCrl = null
+            lastFetchTime = 0
+            val persisted = loadPersistedCrlLocked(now) ?: return null
+            val (raw, modified) = persisted
+            return try {
+                CrlBackend.refresh(raw)?.also { handle ->
+                    cachedCrl = handle
+                    lastFetchTime = modified
+                }
+            } finally {
+                raw.fill(0)
+            }
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
     @JvmStatic
     fun countRevokedKeys(): Int = fetchCrl()?.normalizedEntryCount ?: -1
 
-    @androidx.annotation.VisibleForTesting
-    fun invalidateBackendGenerationForTesting() {
+    internal fun invalidateBackendGeneration() {
         cacheLock.lock()
         try {
             cachedCrl = null
@@ -246,6 +285,9 @@ object KeyboxVerifier {
             cacheLock.unlock()
         }
     }
+
+    @androidx.annotation.VisibleForTesting
+    fun invalidateBackendGenerationForTesting() = invalidateBackendGeneration()
 
     private fun isAllowedCrlUrl(
         value: String,
@@ -299,7 +341,7 @@ object KeyboxVerifier {
         file: File,
         scope: KeyboxLoader.FileScope,
         filename: String,
-        crl: Set<String>,
+        crl: RevocationSource,
     ): Result =
         try {
             if (!isSafeKeyboxFile(file)) {
@@ -311,7 +353,12 @@ object KeyboxVerifier {
             }
 
             for (keybox in keyboxes) {
-                when (verifyKeybox(keybox, crl)) {
+                val status =
+                    when (crl) {
+                        is RevocationSource.Rust -> verifyKeybox(keybox, crl.handle)
+                        is RevocationSource.Legacy -> verifyKeybox(keybox, crl.entries)
+                    }
+                when (status) {
                     Status.REVOKED -> {
                         val chain = keybox.certificates()
                         val serial =
@@ -338,22 +385,9 @@ object KeyboxVerifier {
         Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
             file.length() in 1..MAX_KEYBOX_XML_BYTES
 
+    /** Production verifier for opaque Rust revocation state. */
     @JvmStatic
     fun verifyKeybox(
-        keybox: CertHack.KeyBox,
-        revoked: Set<String>,
-    ): Status {
-        if (revoked is CrlWire.Handle) return verifyKeyboxWithHandle(keybox, revoked)
-        val certificates = keybox.certificates()
-        if (certificates.isEmpty()) return Status.INVALID
-        for (certificate in certificates) {
-            val x509 = certificate as? X509Certificate ?: return Status.INVALID
-            if (isRevokedLegacySet(x509, revoked)) return Status.REVOKED
-        }
-        return Status.VALID
-    }
-
-    private fun verifyKeyboxWithHandle(
         keybox: CertHack.KeyBox,
         crl: CrlWire.Handle,
     ): Status {
@@ -371,22 +405,43 @@ object KeyboxVerifier {
         return if (result.revoked.any { it }) Status.REVOKED else Status.VALID
     }
 
+    /** JVM test/injection compatibility only. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
+    fun verifyKeybox(
+        keybox: CertHack.KeyBox,
+        revoked: Set<String>,
+    ): Status {
+        val certificates = keybox.certificates()
+        if (certificates.isEmpty()) return Status.INVALID
+        for (certificate in certificates) {
+            val x509 = certificate as? X509Certificate ?: return Status.INVALID
+            if (isRevokedLegacySet(x509, revoked)) return Status.REVOKED
+        }
+        return Status.VALID
+    }
+
     @JvmStatic
     fun isRevoked(
         certificate: X509Certificate,
-        revoked: Set<String>,
+        crl: CrlWire.Handle,
     ): Boolean {
-        if (revoked is CrlWire.Handle) {
-            val serial = certificate.serialNumber.toByteArray()
-            val spki = certificate.publicKey.encoded ?: return false
-            val result = CrlBackend.check(revoked.generation, listOf(CrlWire.Query(serial, spki)))
+        val serial = certificate.serialNumber.toByteArray()
+        val spki = certificate.publicKey.encoded ?: return false
+        val result =
+            CrlBackend.check(crl.generation, listOf(CrlWire.Query(serial, spki)))
                 ?: throw RustBackendUnavailableException(IOException("CRL generation query failed"))
-            return result.revoked.single()
-        }
-        return isRevokedLegacySet(certificate, revoked)
+        return result.revoked.single()
     }
 
-    /** Test/injection compatibility only; production CRL snapshots are opaque Rust handles. */
+    /** JVM test/injection compatibility only. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
+    fun isRevoked(
+        certificate: X509Certificate,
+        revoked: Set<String>,
+    ): Boolean = isRevokedLegacySet(certificate, revoked)
+
     private fun isRevokedLegacySet(
         certificate: X509Certificate,
         revoked: Set<String>,
