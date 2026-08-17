@@ -70,8 +70,10 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        // Current Compose/AndroidX artifacts contain JVM 11 bytecode. Keeping Java and Kotlin on
+        // the same target avoids higher-platform inlining failures while D8 still supports minSdk 26.
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
@@ -97,7 +99,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget("1.8"))
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
 }
 
@@ -142,6 +144,12 @@ tasks.register("verifyModuleVersionParity") {
         }
         check(android.defaultConfig.versionName == moduleVersionName) {
             "Encryptor versionName must match module verName"
+        }
+        check(android.compileOptions.sourceCompatibility == JavaVersion.VERSION_11) {
+            "Encryptor Java sourceCompatibility must remain JVM 11"
+        }
+        check(android.compileOptions.targetCompatibility == JavaVersion.VERSION_11) {
+            "Encryptor Java targetCompatibility must remain JVM 11"
         }
     }
 }
