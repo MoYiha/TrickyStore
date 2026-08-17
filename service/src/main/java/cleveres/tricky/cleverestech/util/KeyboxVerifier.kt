@@ -16,6 +16,7 @@ import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.security.MessageDigest
 import java.security.cert.X509Certificate
 
 object KeyboxVerifier {
@@ -119,7 +120,7 @@ object KeyboxVerifier {
     @JvmOverloads
     fun verify(
         configDir: File,
-        crlFetcher: () -> CrlWire.Handle? = { fetchCrl() },
+        crlFetcher: () -> Set<String>? = { fetchCrl() },
     ): List<Result> {
         val results = ArrayList<Result>()
         val crl = crlFetcher()
@@ -298,7 +299,7 @@ object KeyboxVerifier {
         file: File,
         scope: KeyboxLoader.FileScope,
         filename: String,
-        crl: CrlWire.Handle,
+        crl: Set<String>,
     ): Result =
         try {
             if (!isSafeKeyboxFile(file)) {
@@ -340,6 +341,20 @@ object KeyboxVerifier {
     @JvmStatic
     fun verifyKeybox(
         keybox: CertHack.KeyBox,
+        revoked: Set<String>,
+    ): Status {
+        if (revoked is CrlWire.Handle) return verifyKeyboxWithHandle(keybox, revoked)
+        val certificates = keybox.certificates()
+        if (certificates.isEmpty()) return Status.INVALID
+        for (certificate in certificates) {
+            val x509 = certificate as? X509Certificate ?: return Status.INVALID
+            if (isRevokedLegacySet(x509, revoked)) return Status.REVOKED
+        }
+        return Status.VALID
+    }
+
+    private fun verifyKeyboxWithHandle(
+        keybox: CertHack.KeyBox,
         crl: CrlWire.Handle,
     ): Status {
         val certificates = keybox.certificates()
@@ -359,13 +374,34 @@ object KeyboxVerifier {
     @JvmStatic
     fun isRevoked(
         certificate: X509Certificate,
-        crl: CrlWire.Handle,
+        revoked: Set<String>,
     ): Boolean {
-        val serial = certificate.serialNumber.toByteArray()
+        if (revoked is CrlWire.Handle) {
+            val serial = certificate.serialNumber.toByteArray()
+            val spki = certificate.publicKey.encoded ?: return false
+            val result = CrlBackend.check(revoked.generation, listOf(CrlWire.Query(serial, spki)))
+                ?: throw RustBackendUnavailableException(IOException("CRL generation query failed"))
+            return result.revoked.single()
+        }
+        return isRevokedLegacySet(certificate, revoked)
+    }
+
+    /** Test/injection compatibility only; production CRL snapshots are opaque Rust handles. */
+    private fun isRevokedLegacySet(
+        certificate: X509Certificate,
+        revoked: Set<String>,
+    ): Boolean {
+        if (revoked.contains(certificate.serialNumber.toString(16))) return true
         val spki = certificate.publicKey.encoded ?: return false
-        val result = CrlBackend.check(crl.generation, listOf(CrlWire.Query(serial, spki)))
-            ?: throw RustBackendUnavailableException(IOException("CRL generation query failed"))
-        return result.revoked.single()
+        for (algorithm in LEGACY_HASH_ALGORITHMS) {
+            val digest = runCatching { MessageDigest.getInstance(algorithm).digest(spki) }.getOrNull() ?: continue
+            val hex = buildString(digest.size * 2) {
+                for (byte in digest) append(HEX[(byte.toInt() ushr 4) and 0xf]).append(HEX[byte.toInt() and 0xf])
+            }
+            digest.fill(0)
+            if (revoked.contains(hex)) return true
+        }
+        return false
     }
 
     private fun readAllBytesBounded(input: InputStream): ByteArray {
@@ -408,4 +444,7 @@ object KeyboxVerifier {
             if (count > maxBytes) throw IOException("CRL response exceeds $maxBytes bytes")
         }
     }
+
+    private val LEGACY_HASH_ALGORITHMS = arrayOf("SHA-1", "SHA-256", "MD5")
+    private const val HEX = "0123456789abcdef"
 }
