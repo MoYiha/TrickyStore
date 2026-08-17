@@ -51,17 +51,23 @@ jobs:
             curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output /dev/null "$url"
           done
 
-      - name: Enforce resolved Bouncy Castle security baseline
+      - name: Enforce Bouncy Castle test-only security baseline
         shell: bash
         run: |
           set -euo pipefail
-          check_bc() {
+          resolved_version() {
+            artifact="$1"
+            configuration="$2"
+            output=$(./gradlew :service:dependencyInsight --dependency "org.bouncycastle:${artifact}" --configuration "$configuration" --console=plain)
+            printf '%s\n' "$output" | sed -nE "s/^org\.bouncycastle:${artifact}:([^[:space:]]+).*/\1/p" | head -n1
+          }
+          enforce_minimum() {
             artifact="$1"
             minimum="$2"
-            output=$(./gradlew :service:dependencyInsight --dependency "org.bouncycastle:${artifact}" --configuration debugRuntimeClasspath --console=plain)
-            resolved=$(printf '%s\n' "$output" | sed -nE "s/^org\.bouncycastle:${artifact}:([^[:space:]]+).*/\1/p" | head -n1)
+            configuration="$3"
+            resolved=$(resolved_version "$artifact" "$configuration")
             if [[ -z "$resolved" ]]; then
-              echo "::error::Could not resolve org.bouncycastle:${artifact}"
+              echo "::error::Could not resolve org.bouncycastle:${artifact} from ${configuration}"
               exit 1
             fi
             lowest=$(printf '%s\n%s\n' "$minimum" "$resolved" | sort -V | head -n1)
@@ -69,11 +75,18 @@ jobs:
               echo "::error::org.bouncycastle:${artifact} resolved to $resolved below security baseline $minimum"
               exit 1
             fi
-            echo "org.bouncycastle:${artifact} resolved to $resolved (minimum $minimum)"
+            echo "org.bouncycastle:${artifact} test oracle resolved to $resolved (minimum $minimum)"
           }
-          check_bc bcprov-jdk18on 1.84
-          check_bc bcpkix-jdk18on 1.84
-          check_bc bcutil-jdk18on 1.84
+          for artifact in bcprov-jdk18on bcpkix-jdk18on bcutil-jdk18on; do
+            runtime=$(resolved_version "$artifact" debugRuntimeClasspath)
+            if [[ -n "$runtime" ]]; then
+              echo "::error::org.bouncycastle:${artifact}:$runtime leaked into production debugRuntimeClasspath"
+              exit 1
+            fi
+          done
+          enforce_minimum bcprov-jdk18on 1.84 debugUnitTestRuntimeClasspath
+          enforce_minimum bcpkix-jdk18on 1.84 debugUnitTestRuntimeClasspath
+          enforce_minimum bcutil-jdk18on 1.84 debugUnitTestRuntimeClasspath
 
       - name: Validate all WebUI syntax and behavior
         shell: bash
