@@ -8,13 +8,13 @@ import android.util.Base64
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
-import java.security.spec.ECGenParameterSpec
 
 /** Android-only key adapter. Portable CBOX/KDF/AEAD/storage logic lives in Rust. */
 internal object MobileCrypto {
-    private const val KEY_ALIAS = "cleveres_encryptor_signing_key_v2"
+    // Preserve the established alias and RSA public-key identity across app upgrades.
+    private const val KEY_ALIAS = "cleveres_encryptor_signing_key"
     private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
-    private const val SIGNATURE_ALGORITHM = "SHA256withECDSA"
+    private const val SIGNATURE_ALGORITHM = "SHA256withRSA"
     private const val MAX_AUTHOR_UTF16_UNITS = 1024
     private const val MAX_AUTHOR_UTF8_BYTES = 4 * MAX_AUTHOR_UTF16_UNITS
     private const val MAX_XML_BYTES = 10 * 1024 * 1024
@@ -30,7 +30,7 @@ internal object MobileCrypto {
                 generateKey(strongBox = true)
                 return
             } catch (_: StrongBoxUnavailableException) {
-                // Fall through to the Android Keystore provider selected by the OS.
+                // Preserve behavior on devices that expose Android Keystore without StrongBox RSA.
             }
         }
         generateKey(strongBox = false)
@@ -90,14 +90,15 @@ internal object MobileCrypto {
     }
 
     private fun generateKey(strongBox: Boolean) {
-        val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE_PROVIDER)
+        val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE_PROVIDER)
         val builder =
             KeyGenParameterSpec.Builder(
                 KEY_ALIAS,
                 KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
             )
-                .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                .setKeySize(2048)
                 .setDigests(KeyProperties.DIGEST_SHA256)
+                .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                 .setUserAuthenticationRequired(false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             builder.setUnlockedDeviceRequired(true)
