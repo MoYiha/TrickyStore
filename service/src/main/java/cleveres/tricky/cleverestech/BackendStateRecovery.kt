@@ -23,9 +23,7 @@ internal object BackendStateRecovery {
             if (recovering) return false
             val current = NativeBackend.currentBackendIdentity() ?: return false
             if (current != expectedIdentity) return false
-            if (recoveredIdentity == current && KeyboxActivation.isCommittedForCurrentInstance()) {
-                return true
-            }
+            if (recoveredIdentity == current) return true
             recovering = true
             return try {
                 recoveryOverride?.let { override ->
