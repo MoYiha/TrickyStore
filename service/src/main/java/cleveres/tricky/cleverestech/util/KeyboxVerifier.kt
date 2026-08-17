@@ -234,7 +234,7 @@ object KeyboxVerifier {
     }
 
     @JvmStatic
-    fun countRevokedKeys(): Int = fetchCrl()?.rawEntryCount ?: -1
+    fun countRevokedKeys(): Int = fetchCrl()?.normalizedEntryCount ?: -1
 
     @androidx.annotation.VisibleForTesting
     fun invalidateBackendGenerationForTesting() {
