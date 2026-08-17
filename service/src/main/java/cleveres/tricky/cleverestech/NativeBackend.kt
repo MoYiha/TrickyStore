@@ -48,7 +48,6 @@ object NativeBackend {
     private val readHeaderBuffer = ByteArray(HEADER_BYTES)
     private val writeHeaderBuffer = ByteArray(HEADER_BYTES)
 
-    @Synchronized
     fun openCbox(
         encrypted: ByteArray,
         password: String,
@@ -82,19 +81,16 @@ object NativeBackend {
         }
     }
 
-    @Synchronized
     fun encryptBackup(
         plaintext: ByteArray,
         password: String,
     ): ByteArray? = transformBackup(OP_CRYPTO_BACKUP_ENCRYPT, plaintext, password)
 
-    @Synchronized
     fun decryptBackup(
         encrypted: ByteArray,
         password: String,
     ): ByteArray? = transformBackup(OP_CRYPTO_BACKUP_DECRYPT, encrypted, password)
 
-    @Synchronized
     internal fun parseKeybox(xml: ByteArray): KeyboxWire.Document? {
         if (xml.isEmpty() || xml.size > MAX_KEYBOX_XML_BYTES) {
             xml.fill(0)
@@ -114,7 +110,6 @@ object NativeBackend {
         }
     }
 
-    @Synchronized
     internal fun parseKeyboxFile(
         scope: Int,
         filename: String,
@@ -148,17 +143,16 @@ object NativeBackend {
         }
     }
 
-    @Synchronized
     internal fun awaitReady(timeoutMs: Long): Boolean {
         require(timeoutMs in 1..MAX_STARTUP_WAIT_MS)
         val deadlineNanos = System.nanoTime() + timeoutMs * NANOS_PER_MILLISECOND
         var sleepMs = STARTUP_RETRY_INITIAL_MS
         while (true) {
             try {
-                connectedSocket()
+                synchronized(this) { connectedSocket() }
                 return true
             } catch (_: Exception) {
-                closeSocket()
+                synchronized(this) { closeSocket() }
             }
 
             val remainingNanos = deadlineNanos - System.nanoTime()
@@ -240,7 +234,6 @@ object NativeBackend {
         }
     }
 
-    @Synchronized
     internal fun transact(
         opcode: Int,
         payloadLength: Int,
@@ -250,35 +243,45 @@ object NativeBackend {
     ): ByteArray? {
         var automaticRetryUsed = false
         while (true) {
-            val identityBeforeAttempt = backendIdentity
+            var identityBeforeAttempt: BackendIdentity? = null
             try {
-                return transactOnce(opcode, payloadLength, responseLimit, writePayload)
+                return synchronized(this) {
+                    identityBeforeAttempt = backendIdentity
+                    transactOnce(opcode, payloadLength, responseLimit, writePayload)
+                }
             } catch (error: RustBackendStateException) {
                 if (!automaticRetryUsed &&
                     error.status != BackendStatus.REJECTED &&
                     !BackendStateRecovery.isRecovering()
                 ) {
-                    val current = backendIdentity
-                    if (current != null && BackendStateRecovery.recover(current)) {
+                    val current = synchronized(this) { backendIdentity }
+                    if (current != null && recoverBackendOutsideIoLock(current)) {
                         automaticRetryUsed = true
                         continue
                     }
                 }
                 throw error
             } catch (error: Exception) {
-                closeSocket()
-                if (!automaticRetryUsed && !BackendStateRecovery.isRecovering() && identityBeforeAttempt != null) {
-                    val changedIdentity =
-                        runCatching {
-                            connectedSocket()
-                            backendIdentity?.takeIf { it != identityBeforeAttempt }
-                        }.getOrNull()
-                    if (changedIdentity != null && BackendStateRecovery.recover(changedIdentity)) {
-                        automaticRetryUsed = true
-                        continue
+                val changedIdentity =
+                    synchronized(this) {
+                        closeSocket()
+                        if (!automaticRetryUsed &&
+                            !BackendStateRecovery.isRecovering() &&
+                            identityBeforeAttempt != null
+                        ) {
+                            runCatching {
+                                connectedSocket()
+                                backendIdentity?.takeIf { it != identityBeforeAttempt }
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
                     }
-                    closeSocket()
+                if (changedIdentity != null && recoverBackendOutsideIoLock(changedIdentity)) {
+                    automaticRetryUsed = true
+                    continue
                 }
+                synchronized(this) { closeSocket() }
                 Logger.e("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
                 if (propagateTransportFailure) throw RustBackendUnavailableException(error)
                 return null
@@ -286,6 +289,10 @@ object NativeBackend {
         }
     }
 
+    private fun recoverBackendOutsideIoLock(identity: BackendIdentity): Boolean {
+        check(!Thread.holdsLock(this)) { "Backend recovery must not run while the backend IPC lock is held" }
+        return BackendStateRecovery.recover(identity)
+    }
     private fun transactOnce(
         opcode: Int,
         payloadLength: Int,
