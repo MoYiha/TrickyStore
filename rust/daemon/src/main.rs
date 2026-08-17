@@ -25,9 +25,10 @@ use std::time::{Duration, Instant};
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ERROR_BYTES: usize = 512;
-const BACKEND_RESTART_LIMIT: u32 = 5;
+const BACKEND_CIRCUIT_FAILURES: u32 = 5;
 const BACKEND_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BACKEND_MAX_BACKOFF: Duration = Duration::from_secs(30);
+const BACKEND_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(60);
 const BACKEND_BROKER_FD: RawFd = 9;
 const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
 const CAPABILITY_WORKERS: usize = 2;
@@ -237,6 +238,39 @@ fn run_backend_once(module_dir: &Path, adapter_pid: u32) -> io::Result<String> {
     Ok(format!("backend exited with {status}"))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BackendRetryPlan {
+    rapid_failures: u32,
+    delay: Duration,
+    circuit_open: bool,
+}
+
+fn backend_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> BackendRetryPlan {
+    if runtime >= BACKEND_STABLE_INTERVAL {
+        return BackendRetryPlan {
+            rapid_failures: 0,
+            delay: Duration::from_secs(1),
+            circuit_open: false,
+        };
+    }
+
+    let rapid_failures = previous_rapid_failures.saturating_add(1);
+    if rapid_failures >= BACKEND_CIRCUIT_FAILURES {
+        return BackendRetryPlan {
+            rapid_failures: 0,
+            delay: BACKEND_CIRCUIT_COOLDOWN,
+            circuit_open: true,
+        };
+    }
+
+    let backoff_seconds = 1u64 << rapid_failures.min(5);
+    BackendRetryPlan {
+        rapid_failures,
+        delay: Duration::from_secs(backoff_seconds).min(BACKEND_MAX_BACKOFF),
+        circuit_open: false,
+    }
+}
+
 fn supervise_backend(module_dir: PathBuf, adapter_pid: u32) {
     let mut rapid_failures = 0u32;
     loop {
@@ -247,19 +281,15 @@ fn supervise_backend(module_dir: PathBuf, adapter_pid: u32) {
             Err(error) => eprintln!("cleverestrickyd: backend launch/wait failed: {error}"),
         }
 
-        if started.elapsed() >= BACKEND_STABLE_INTERVAL {
-            rapid_failures = 0;
-        } else {
-            rapid_failures = rapid_failures.saturating_add(1);
-        }
-        if rapid_failures >= BACKEND_RESTART_LIMIT {
+        let plan = backend_retry_plan(rapid_failures, started.elapsed());
+        rapid_failures = plan.rapid_failures;
+        if plan.circuit_open {
             eprintln!(
-                "cleverestrickyd: disabling optional backend after {rapid_failures} rapid failures"
+                "cleverestrickyd: backend circuit open after {BACKEND_CIRCUIT_FAILURES} rapid failures; retrying after {}s",
+                plan.delay.as_secs()
             );
-            return;
         }
-        let backoff_seconds = 1u64 << rapid_failures.min(5);
-        thread::sleep(Duration::from_secs(backoff_seconds).min(BACKEND_MAX_BACKOFF));
+        thread::sleep(plan.delay);
     }
 }
 
@@ -308,7 +338,16 @@ fn serve_capability_worker(
             .is_some_and(|pid| pid == adapter_pid);
         if let Err(error) = handle_capability_request(&mut client, peer_is_adapter, &root, &mut scratch)
         {
-            let _ = reply_error(&mut client, OP_FILE_WRITE, &error);
+            if !matches!(
+                error.kind(),
+                io::ErrorKind::UnexpectedEof
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::TimedOut
+                    | io::ErrorKind::WouldBlock
+            ) {
+                eprintln!("cleverestrickyd: capability request transport failed: {error}");
+            }
         }
     }
 }
@@ -327,16 +366,10 @@ fn handle_capability_request(
         OP_FILE_WRITE if peer_is_adapter && header.flags == 0 => {
             match config_file_broker::handle_stream_from(root, client, header.payload_len, scratch) {
                 Ok(()) => write_frame(client, OP_FILE_WRITE, 0, b"ok"),
-                Err(error) => {
-                    let _ = reply_text_error(client, OP_FILE_WRITE, "file operation rejected");
-                    Err(error)
-                }
+                Err(_) => reply_text_error(client, OP_FILE_WRITE, "file operation rejected"),
             }
         }
-        _ => {
-            let _ = reply_text_error(client, header.opcode, "unsupported capability operation");
-            Ok(())
-        }
+        _ => reply_text_error(client, header.opcode, "unsupported capability operation"),
     }
 }
 
@@ -642,6 +675,63 @@ mod tests {
         ping_worker.join().unwrap();
         adapter_thread.join().unwrap();
         assert_eq!(fs::metadata(test.path.join("concurrent.bin")).unwrap().len(), 256 * 1024);
+    }
+
+    #[test]
+    fn rejected_file_request_has_exactly_one_error_frame() {
+        let test = TestRoot::new();
+        let root = test.trusted();
+        let (mut client, mut server) = UnixStream::pair().unwrap();
+        let payload = config_payload("../outside", b"x");
+        write_header(
+            &mut client,
+            FrameHeader {
+                opcode: OP_FILE_WRITE,
+                flags: 0,
+                payload_len: payload.len(),
+            },
+        )
+        .unwrap();
+        client.write_all(&payload).unwrap();
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        handle_capability_request(&mut server, true, &root, &mut scratch).unwrap();
+        drop(server);
+
+        let (header, body) = read_payload(&mut client, MAX_ERROR_BYTES);
+        assert_eq!(header.opcode, OP_FILE_WRITE);
+        assert_eq!(header.flags, FLAG_ERROR);
+        assert_eq!(body, b"file operation rejected");
+        assert!(read_header_bounded(&mut client, MAX_ERROR_BYTES).is_err());
+    }
+
+    #[test]
+    fn backend_circuit_breaker_recovers_after_cooldown() {
+        let mut failures = 0;
+        for attempt in 1..=BACKEND_CIRCUIT_FAILURES {
+            let plan = backend_retry_plan(failures, Duration::from_millis(1));
+            if attempt < BACKEND_CIRCUIT_FAILURES {
+                assert!(!plan.circuit_open);
+                assert!(plan.delay <= BACKEND_MAX_BACKOFF);
+                failures = plan.rapid_failures;
+            } else {
+                assert!(plan.circuit_open);
+                assert_eq!(plan.delay, BACKEND_CIRCUIT_COOLDOWN);
+                assert_eq!(plan.rapid_failures, 0);
+                failures = plan.rapid_failures;
+            }
+        }
+
+        let recovered = backend_retry_plan(failures, Duration::from_millis(1));
+        assert!(!recovered.circuit_open);
+        assert_eq!(recovered.rapid_failures, 1);
+    }
+
+    #[test]
+    fn stable_backend_run_resets_rapid_failure_state() {
+        let plan = backend_retry_plan(BACKEND_CIRCUIT_FAILURES - 1, BACKEND_STABLE_INTERVAL);
+        assert_eq!(plan.rapid_failures, 0);
+        assert!(!plan.circuit_open);
+        assert_eq!(plan.delay, Duration::from_secs(1));
     }
 
     #[test]
