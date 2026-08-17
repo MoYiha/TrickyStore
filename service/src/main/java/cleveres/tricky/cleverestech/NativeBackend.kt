@@ -188,6 +188,12 @@ object NativeBackend {
     }
 
     @Synchronized
+    internal fun currentBackendIdentity(): BackendIdentity? = backendIdentity
+
+    @Synchronized
+    internal fun isCurrentBackendIdentity(identity: BackendIdentity): Boolean = backendIdentity == identity
+
+    @Synchronized
     internal fun consumeBackendStateReset(): Boolean {
         val changed = backendStateResetPending
         backendStateResetPending = false
@@ -242,43 +248,78 @@ object NativeBackend {
         propagateTransportFailure: Boolean = false,
         writePayload: (OutputStream) -> Unit,
     ): ByteArray? {
-        try {
-            val active = connectedSocket()
-            if (backendStateResetPending && opcode != OP_BACKEND_PING) {
-                throw RustBackendStateException(BackendStatus.STATE_RESET)
-            }
-            val output = active.outputStream
-            val input = active.inputStream
-            writeHeader(output, opcode, payloadLength)
-            writePayload(output)
-            output.flush()
-
-            val header = readHeader(input, opcode, responseLimit)
-            val response = ByteArray(header.payloadLength)
+        var automaticRetryUsed = false
+        while (true) {
+            val identityBeforeAttempt = backendIdentity
             try {
-                readFully(input, response)
-                if (header.flags == FLAG_ERROR) {
-                    if (response.size != BACKEND_STATUS_BYTES) {
-                        throw IOException("Invalid typed backend error response")
+                return transactOnce(opcode, payloadLength, responseLimit, writePayload)
+            } catch (error: RustBackendStateException) {
+                if (!automaticRetryUsed &&
+                    error.status != BackendStatus.REJECTED &&
+                    !BackendStateRecovery.isRecovering()
+                ) {
+                    val current = backendIdentity
+                    if (current != null && BackendStateRecovery.recover(current)) {
+                        automaticRetryUsed = true
+                        continue
                     }
-                    val status = BackendStatus.fromWire(response[0].toInt() and 0xff)
-                        ?: throw IOException("Unknown typed backend status")
-                    response.fill(0)
-                    if (status == BackendStatus.REJECTED) return null
-                    throw RustBackendStateException(status)
                 }
-                return response
-            } catch (error: Throwable) {
-                response.fill(0)
                 throw error
+            } catch (error: Exception) {
+                closeSocket()
+                if (!automaticRetryUsed && !BackendStateRecovery.isRecovering() && identityBeforeAttempt != null) {
+                    val changedIdentity =
+                        runCatching {
+                            connectedSocket()
+                            backendIdentity?.takeIf { it != identityBeforeAttempt }
+                        }.getOrNull()
+                    if (changedIdentity != null && BackendStateRecovery.recover(changedIdentity)) {
+                        automaticRetryUsed = true
+                        continue
+                    }
+                    closeSocket()
+                }
+                Logger.e("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
+                if (propagateTransportFailure) throw RustBackendUnavailableException(error)
+                return null
             }
-        } catch (error: RustBackendStateException) {
+        }
+    }
+
+    private fun transactOnce(
+        opcode: Int,
+        payloadLength: Int,
+        responseLimit: Int,
+        writePayload: (OutputStream) -> Unit,
+    ): ByteArray? {
+        val active = connectedSocket()
+        if (backendStateResetPending && opcode != OP_BACKEND_PING) {
+            throw RustBackendStateException(BackendStatus.STATE_RESET)
+        }
+        val output = active.outputStream
+        val input = active.inputStream
+        writeHeader(output, opcode, payloadLength)
+        writePayload(output)
+        output.flush()
+
+        val header = readHeader(input, opcode, responseLimit)
+        val response = ByteArray(header.payloadLength)
+        try {
+            readFully(input, response)
+            if (header.flags == FLAG_ERROR) {
+                if (response.size != BACKEND_STATUS_BYTES) {
+                    throw IOException("Invalid typed backend error response")
+                }
+                val status = BackendStatus.fromWire(response[0].toInt() and 0xff)
+                    ?: throw IOException("Unknown typed backend status")
+                response.fill(0)
+                if (status == BackendStatus.REJECTED) return null
+                throw RustBackendStateException(status)
+            }
+            return response
+        } catch (error: Throwable) {
+            response.fill(0)
             throw error
-        } catch (error: Exception) {
-            closeSocket()
-            Logger.e("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
-            if (propagateTransportFailure) throw RustBackendUnavailableException(error)
-            return null
         }
     }
 
