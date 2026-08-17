@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -48,13 +47,13 @@ class WebServerAccessibilityTest {
         configDir = tempFolder.newFolder("config")
         server = WebServer(0, configDir)
         server.start()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @After
     fun tearDown() {
         server.stop()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @Test

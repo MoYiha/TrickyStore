@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -43,14 +42,11 @@ class ConfigCachingTest {
         tempDir.mkdirs()
         keyboxFile = File(tempDir, "keybox.xml")
 
-        // Reset Config state
         Config.reset()
         Config.setRootForTesting(tempDir)
+        ManagedKeyboxParserOracle.install()
+        ManagedOpaqueKeyOracle.readFromXml(null)
 
-        // Ensure CertHack is clean
-        CertHack.readFromXml(null)
-
-        // Mock Logger to avoid spam
         Logger.setImpl(
             object : Logger.LogImpl {
                 override fun d(
@@ -87,8 +83,9 @@ class ConfigCachingTest {
     @After
     fun tearDown() {
         Config.reset()
+        ManagedKeyboxParserOracle.reset()
         tempDir.deleteRecursively()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     private fun callUpdateKeyBoxes() {
@@ -108,38 +105,28 @@ class ConfigCachingTest {
 
     @Test
     fun testCacheReloadsWhenLengthChangesAtSameTimestamp() {
-        // 1. Write initial file
         keyboxFile.writeText(xmlV1)
         val initialTime = 10000L
         keyboxFile.setLastModified(initialTime)
 
-        // 2. Load
         callUpdateKeyBoxes()
 
-        // Verify loaded
         val cached1 = getCachedLegacyKeyboxes()
         assertEquals("Should load 1 keybox", 1, cached1.size)
 
-        // 3. Change content but KEEP timestamp
-        // We write V2 which has 0 keys.
         keyboxFile.writeText(xmlV2)
         keyboxFile.setLastModified(initialTime)
 
-        // 4. Reload
         callUpdateKeyBoxes()
 
-        // 5. The length change must invalidate the cache even when mtime is preserved.
         val cached2 = getCachedLegacyKeyboxes()
         assertEquals("Should reload the changed keybox", 0, cached2.size)
 
-        // 6. Update timestamp
         val newTime = 20000L
         keyboxFile.setLastModified(newTime)
 
-        // 7. Reload
         callUpdateKeyBoxes()
 
-        // 8. A later timestamp remains valid and keeps the parsed empty state.
         val cached3 = getCachedLegacyKeyboxes()
         assertEquals("Should still have 0 keyboxes", 0, cached3.size)
     }

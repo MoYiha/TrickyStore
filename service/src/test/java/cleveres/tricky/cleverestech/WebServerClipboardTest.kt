@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,13 +46,13 @@ class WebServerClipboardTest {
         configDir = tempFolder.newFolder("config")
         server = WebServer(0, configDir)
         server.start()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @After
     fun tearDown() {
         server.stop()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @Test
@@ -64,10 +63,7 @@ class WebServerClipboardTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify function signature accepts btn
         assertTrue("copyToClipboard signature invalid", html.contains("function copyToClipboard(text, msg, btn)"))
-
-        // Verify success logic
         assertTrue("Missing success logic", html.contains("btn.innerText = 'Copied'"))
         assertTrue("Missing timeout logic", html.contains("setTimeout(() => btn.innerHTML = originalHtml, 2000)"))
     }
@@ -80,15 +76,11 @@ class WebServerClipboardTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify calls pass 'this'
         val regex = Regex("copyToClipboard\\s*\\(\\s*'[^']+'\\s*,\\s*'[^']+'\\s*,\\s*this\\s*\\)")
         assertTrue("No clipboard call with 'this' found", regex.containsMatchIn(html))
 
-        // Check at least one specific one to be sure (now in Donate tab)
         val binancePart = "copyToClipboard('114574830','Copied Binance ID',this)"
         assertTrue("Binance button missing 'this'", html.contains(binancePart))
-
-        // Verify copy buttons use text instead of emojis
         assertTrue("Copy buttons should use text labels", html.contains(">Copy</button>"))
     }
 }

@@ -21,6 +21,7 @@ class ConfigKeyboxActivationTest {
         try {
             Config.reset()
             Config.setRootForTesting(root)
+            ManagedKeyboxParserOracle.install()
             val verificationCalls = AtomicInteger()
             Config.updateKeyBoxesSync(emptySet()) { _, _ ->
                 if (verificationCalls.getAndIncrement() == 0) {
@@ -34,8 +35,9 @@ class ConfigKeyboxActivationTest {
             assertEquals(0, CertHack.getKeyboxCount())
         } finally {
             Config.reset()
+            ManagedKeyboxParserOracle.reset()
             Config.setRootForTesting(originalRoot)
-            CertHack.readFromXml(null)
+            ManagedOpaqueKeyOracle.readFromXml(null)
             root.deleteRecursively()
         }
     }

@@ -1,7 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import java.security.KeyFactory
-import java.security.spec.PKCS8EncodedKeySpec
 import org.bouncycastle.asn1.ASN1Boolean
 import org.bouncycastle.asn1.ASN1Encodable
 import org.bouncycastle.asn1.ASN1EncodableVector
@@ -76,8 +74,9 @@ object ManagedCertificateBackendOracle {
 
     private fun rewrite(request: CertificateBackend.RewriteRequest): ByteArray? =
         runCatching {
+            val keyMaterial = ManagedOpaqueKeyOracle.lookup(request.keyId) ?: return null
             val genuine = X509CertificateHolder(request.genuineLeafDer)
-            val issuer = X509CertificateHolder(request.issuerCertificateDer)
+            val issuer = X509CertificateHolder(keyMaterial.issuerCertificate.encoded)
             val extension = genuine.getExtension(attestationOid) ?: return null
             val sequence = ASN1Sequence.getInstance(extension.extnValue.octets)
             val fields = sequence.toArray()
@@ -201,12 +200,9 @@ object ManagedCertificateBackendOracle {
                     CertificateBackend.SIGNING_RSA_PKCS1_SHA256 -> "RSA"
                     else -> error("Unsupported signing algorithm")
                 }
+            require(keyMaterial.privateKey.algorithm.equals(keyAlgorithm, ignoreCase = true))
             val signatureAlgorithm = if (keyAlgorithm == "EC") "SHA256withECDSA" else "SHA256withRSA"
-            val privateKey =
-                KeyFactory
-                    .getInstance(keyAlgorithm)
-                    .generatePrivate(PKCS8EncodedKeySpec(request.issuerPrivateKeyPkcs8))
-            val signer = JcaContentSignerBuilder(signatureAlgorithm).build(privateKey)
+            val signer = JcaContentSignerBuilder(signatureAlgorithm).build(keyMaterial.privateKey)
             builder.build(signer).encoded
         }.getOrNull()
 

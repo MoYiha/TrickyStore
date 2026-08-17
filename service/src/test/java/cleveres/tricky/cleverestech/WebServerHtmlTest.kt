@@ -2,7 +2,6 @@
 
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -50,13 +49,13 @@ class WebServerHtmlTest {
         configDir = tempFolder.newFolder("config")
         server = WebServer(0, configDir)
         server.start()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @After
     fun tearDown() {
         server.stop()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @Test
@@ -67,22 +66,15 @@ class WebServerHtmlTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify Title and Badge
         assertTrue("Missing Title", html.contains("<h1>CleveresTricky"))
-
-        // Verify Tabs
         assertTrue("Missing Dashboard Tab", html.contains("id=\"tab_dashboard\""))
         assertTrue("Missing Spoof Tab", html.contains("id=\"tab_spoof\""))
         assertTrue("Missing Apps Tab", html.contains("id=\"tab_apps\""))
-
-        // Verify Dynamic Island
         assertTrue("Missing Island Container", html.contains("class=\"island-container\""))
         assertTrue("Missing Island", html.contains("id=\"island\""))
         assertTrue("Missing Island Accessibility", html.contains("role=\"status\" aria-live=\"polite\""))
         assertTrue("Missing notify function", html.contains("function notify(msg, type = 'normal')"))
         assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for ${'$'}{rule.package}\""))
-
-        // Verify Random Logic
         assertTrue("Missing Identifier Header", html.contains("<h3>Attestation and Telephony Identifiers</h3>"))
         assertTrue("Missing IMEI Input", html.contains("id=\"inputImei\""))
         assertTrue("Missing IMEI Label", html.contains("<label for=\"inputImei\""))
@@ -103,24 +95,16 @@ class WebServerHtmlTest {
         assertFalse("Retired Telephony toggle must not be rendered", html.contains("id=\"telephony\""))
         assertFalse("Retired identity Spoof Engine toggle must not be rendered", html.contains("id=\"spoof_enabled\""))
         assertFalse("Retired build identity toggle must not be rendered", html.contains("id=\"spoof_build_identity\""))
-
-        // Verify Apps Logic
         assertTrue("Missing App Package Input", html.contains("id=\"appPkg\""))
         assertTrue("Missing App Package Label", html.contains("<label for=\"appPkg\""))
         assertTrue("Missing App Template Label", html.contains("<label for=\"appTemplate\""))
         assertTrue("Missing App Keybox Label", html.contains("<label for=\"appKeybox\""))
         assertTrue("Missing Remove Button Accessibility", html.contains("aria-label=\"Remove rule for \${rule.package}\""))
         assertTrue("Missing Empty State", html.contains("No active rules"))
-
-        // Verify Apps Search Filter
         assertTrue("Missing App Filter Input", html.contains("id=\"appFilter\""))
         assertTrue("Missing App Filter ARIA Label", html.contains("aria-label=\"Filter rules\""))
         assertTrue("Missing App Filter JS Logic", html.contains("rule.package.toLowerCase().includes(filter)"))
-
-        // Verify Editor
         assertTrue("Missing File Selector", html.contains("id=\"fileSelector\""))
-
-        // Verify Keybox
         assertTrue("Missing Keybox File Picker", html.contains("id=\"kbFilePicker\""))
         assertTrue("Missing Verify Button", html.contains("verifyKeyboxes"))
     }
@@ -133,24 +117,17 @@ class WebServerHtmlTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify Tabs Accessibility
         assertTrue("Missing Tab Role", html.contains("role=\"tab\""))
         assertTrue("Missing Active Tabindex", html.contains("tabindex=\"0\""))
         assertTrue("Missing Inactive Tabindex", html.contains("tabindex=\"-1\""))
         assertTrue("Missing Aria Selected", html.contains("aria-selected=\"true\""))
         assertTrue("Missing Key Handler", html.contains("onkeydown=\"handleTabNavigation"))
         assertTrue("Missing Tab Controls", html.contains("aria-controls=\"dashboard\""))
-
-        // Verify Panels Accessibility
         assertTrue("Missing Tabpanel Role", html.contains("role=\"tabpanel\""))
         assertTrue("Missing Aria Labelledby", html.contains("aria-labelledby=\"tab_dashboard\""))
-
-        // Verify JS helpers
         assertTrue("Missing handleTabNavigation JS", html.contains("function handleTabNavigation(e, id)"))
         assertTrue("Missing aria-selected update in switchTab", html.contains("setAttribute('aria-selected'"))
         assertTrue("Missing tabindex update in switchTab", html.contains("setAttribute('tabindex'"))
-
-        // Verify Numeric Inputs
         assertTrue(
             "IMEI missing inputmode=numeric",
             html.contains("id=\"inputImei\" placeholder=\"35...\" maxlength=\"15\"") &&
@@ -164,16 +141,12 @@ class WebServerHtmlTest {
             "ICCID missing inputmode=numeric",
             html.contains("id=\"inputIccid\" placeholder=\"SIM card identity\" maxlength=\"22\""),
         )
-
-        // Verify Autocapitalize Inputs
         assertTrue(
             "Serial missing autocapitalize=characters",
             html.contains(
                 "id=\"inputSerial\" placeholder=\"Device serial\" maxlength=\"64\" style=\"font-family:monospace;\" enterkeyhint=\"done\" autocapitalize=\"characters\"",
             ),
         )
-
-        // Verify Accessibility Labels for Textareas
         assertTrue(
             "File Editor missing aria-label",
             html.contains(
@@ -186,8 +159,6 @@ class WebServerHtmlTest {
                 "id=\"kbContent\" placeholder=\"Paste Keybox XML Content Here\" maxlength=\"5242880\" style=\"height:100px; font-family:monospace; font-size:0.8em; margin-bottom:10px;\" aria-label=\"Keybox XML Content\"",
             ),
         )
-
-        // Verify Keybox Filename Label and File Picker Accessibility
         assertTrue("Keybox Filename missing label", html.contains("<label for=\"kbFilePicker\""))
         assertTrue(
             "Keybox File Picker missing aria-label",
@@ -199,8 +170,6 @@ class WebServerHtmlTest {
             "File Selector missing aria-label",
             html.contains("id=\"fileSelector\" onchange=\"loadFile()\" style=\"width:70%;\" aria-label=\"Select file to edit\""),
         )
-
-        // Verify Drop Zone Accessibility
         assertTrue("Drop Zone missing accessibility attributes", html.contains("id=\"dropZone\" role=\"button\" tabindex=\"0\""))
         assertTrue(
             "Drop Zone missing keyboard handler",
@@ -218,7 +187,6 @@ class WebServerHtmlTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify Focus Visible CSS
         assertTrue(
             "Missing focus-visible CSS",
             html.contains("input[type=\"checkbox\"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"),
@@ -227,10 +195,7 @@ class WebServerHtmlTest {
             "Missing disabled toggle CSS",
             html.contains("input[type=\"checkbox\"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }"),
         )
-
-        // Verify Label Cursor CSS
         assertTrue("Missing label cursor CSS", html.contains("label { font-size: 0.95em; color: #BBB; cursor: pointer; }"))
-
         assertFalse("Core protection must not expose a safe-mode switch", html.contains("Disable Certificate Substitution (Safe Mode)"))
         assertFalse("Core property hiding must not expose a toggle", html.contains("id=\"hide_sensitive_props\""))
         assertTrue("Missing always-active core notice", html.contains("Bootloader/verified-boot property compatibility"))
@@ -245,12 +210,9 @@ class WebServerHtmlTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Verify HTML Attributes
         assertTrue("Missing oninput handler", html.contains("oninput=\"editorUnsavedBypass = false; updateSaveButtonState()\""))
         assertTrue("Missing handleSave in onkeydown", html.contains("handleSave(document.getElementById('saveBtn'))"))
         assertTrue("Missing handleSave in onclick", html.contains("onclick=\"handleSave(this)\""))
-
-        // Verify JavaScript Logic
         assertTrue("Missing originalContent variable", html.contains("let originalContent = '';"))
         assertTrue("Missing dirty state check", html.contains("if (currentFile && editor.value !== originalContent)"))
         assertTrue("Missing notify alert", html.contains("notify('You have unsaved changes"))

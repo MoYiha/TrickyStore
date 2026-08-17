@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
@@ -121,14 +120,13 @@ class ActionTest {
 
         server = WebServer(0, configDir, crlFetcher = { emptySet() })
         server.start()
-        // Reset CertHack
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @After
     fun tearDown() {
         server.stop()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
         Config.reset()
         ManagedKeyboxParserOracle.reset()
         Config.setRootForTesting(originalConfigRoot)
@@ -148,7 +146,6 @@ class ActionTest {
         val content = conn.inputStream.bufferedReader().readText()
         // no-op
 
-        // Initial state: 0 keys
         val json = JSONObject(content)
         assertEquals(0, json.getInt("keybox_count"))
     }
@@ -159,17 +156,15 @@ class ActionTest {
         val token = server.token
         val url = URL("http://localhost:$port/api/config?token=$token")
 
-        // 1. Valid XML
-        CertHack.readFromXml(StringReader(validXml))
+        ManagedOpaqueKeyOracle.readFromXml(StringReader(validXml))
 
         var conn = url.openConnection() as HttpURLConnection
         var content = conn.inputStream.bufferedReader().readText()
         var json = JSONObject(content)
         assertEquals(1, json.getInt("keybox_count"))
 
-        // 2. Invalid XML
         val invalidXml = "<AndroidAttestation><NumberOfKeyboxes>1</NumberOfKeyboxes>INVALID</AndroidAttestation>"
-        CertHack.readFromXml(StringReader(invalidXml))
+        ManagedOpaqueKeyOracle.readFromXml(StringReader(invalidXml))
 
         conn = url.openConnection() as HttpURLConnection
         content = conn.inputStream.bufferedReader().readText()
@@ -181,12 +176,10 @@ class ActionTest {
     fun testSaveFile() {
         val port = server.listeningPort
         val token = server.token
-        // Pass params in URL to avoid body parsing issues in test
         val saveUrl = URL("http://localhost:$port/api/save?token=$token&filename=target.txt&content=TEST_CONTENT")
 
         val conn = saveUrl.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
-        // Even with empty body, we need doOutput for POST usually, or just length 0.
         conn.doOutput = true
         conn.outputStream.close()
 
@@ -435,7 +428,7 @@ class ActionTest {
 
     private fun extractCertificateSerial(xml: String): String {
         return (
-            CertHack.parseKeyboxXml(StringReader(xml))
+            ManagedOpaqueKeyOracle.parse(StringReader(xml), "serial.xml")
                 .first()
                 .certificates()
                 .first() as X509Certificate
