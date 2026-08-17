@@ -380,17 +380,13 @@ jobs:
         run: |
           set -euo pipefail
           errors=0
-          for f in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule webroot/index.html webroot/bridge.js webroot/policy.js webroot/ux.js; do
+          for f in module.prop customize.sh verify.sh service.sh post-fs-data.sh action.sh sepolicy.rule webroot/index.html webroot/bridge.js webroot/policy.js webroot/ux.js; do
             if [ ! -f "module/template/$f" ]; then
               echo "::error::Missing required module file: module/template/$f"
               errors=$((errors + 1))
             fi
           done
-          if [ -e module/template/action.sh ]; then
-            echo "::error::Legacy external WebUI launcher must not be packaged"
-            errors=$((errors + 1))
-          fi
-          for script in module/template/customize.sh module/template/verify.sh module/template/service.sh module/template/post-fs-data.sh; do
+          for script in module/template/customize.sh module/template/verify.sh module/template/service.sh module/template/post-fs-data.sh module/template/action.sh; do
             if [ -f "$script" ] && ! bash -n "$script"; then
               echo "::error file=$script::Shell syntax error"
               errors=$((errors + 1))
@@ -616,7 +612,7 @@ jobs:
                 ;;
             esac
           done <<<"$entries"
-          for required in module.prop customize.sh verify.sh service.sh post-fs-data.sh sepolicy.rule; do
+          for required in module.prop customize.sh verify.sh service.sh post-fs-data.sh action.sh sepolicy.rule; do
             if ! grep -Fx "$required" <<<"$entries" >/dev/null; then
               echo "::error file=$archive::Missing required root entry: $required"
               exit 1
