@@ -7,12 +7,10 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
 
 pub const MAX_KEYBOX_XML_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_REQUEST_BYTES: usize = 1 + 255;
 pub const OP_KEYBOX_BROKER_OPEN: u16 = 30;
-const CONFIG_ROOT: &str = "/data/adb/cleverestricky";
 const KEYBOX_DIRECTORY: &str = "keyboxes";
 const LEGACY_KEYBOX: &str = "keybox.xml";
 const SCOPE_CONFIG_ROOT: u8 = 0;
@@ -36,7 +34,7 @@ struct FileFingerprint {
     changed_nanoseconds: i64,
 }
 
-pub fn serve(mut stream: UnixStream) -> io::Result<()> {
+pub fn serve(mut stream: UnixStream, root: &TrustedDir) -> io::Result<()> {
     let mut request = [0u8; MAX_REQUEST_BYTES];
     loop {
         let header = match read_header_bounded(&mut stream, MAX_REQUEST_BYTES) {
@@ -49,7 +47,9 @@ pub fn serve(mut stream: UnixStream) -> io::Result<()> {
             reply_rejected(&mut stream)?;
             continue;
         }
-        match open_requested(&request[..header.payload_len]).and_then(snapshot_opened_keybox) {
+        match open_requested_from(root, &request[..header.payload_len])
+            .and_then(snapshot_opened_keybox)
+        {
             Ok(snapshot) => {
                 write_frame_bounded(&mut stream, OP_KEYBOX_BROKER_OPEN, 0, &[], MAX_ERROR_BYTES)?;
                 stream.flush()?;
@@ -58,11 +58,6 @@ pub fn serve(mut stream: UnixStream) -> io::Result<()> {
             Err(_) => reply_rejected(&mut stream)?,
         }
     }
-}
-
-pub fn open_requested(payload: &[u8]) -> io::Result<OpenedKeybox> {
-    let root = TrustedDir::open(Path::new(CONFIG_ROOT))?;
-    open_requested_from(&root, payload)
 }
 
 fn open_requested_from(root: &TrustedDir, payload: &[u8]) -> io::Result<OpenedKeybox> {
@@ -343,6 +338,35 @@ mod tests {
         for name in ["../real.xml", "sub/real.xml", "link.xml", "empty.xml"] {
             assert!(open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, name)).is_err());
         }
+    }
+
+    #[test]
+    fn preopened_root_survives_root_path_replacement() {
+        let test = TestRoot::new();
+        let original_keybox = test.path.join(KEYBOX_DIRECTORY).join("stable.xml");
+        fs::write(&original_keybox, b"original").unwrap();
+        let root = TrustedDir::open(&test.path).unwrap();
+
+        let moved_path = test.path.with_extension("moved");
+        let _ = fs::remove_dir_all(&moved_path);
+        fs::rename(&test.path, &moved_path).unwrap();
+        fs::create_dir(&test.path).unwrap();
+        fs::create_dir(test.path.join(KEYBOX_DIRECTORY)).unwrap();
+        fs::write(
+            test.path.join(KEYBOX_DIRECTORY).join("stable.xml"),
+            b"replacement",
+        )
+        .unwrap();
+
+        let mut opened =
+            open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "stable.xml")).unwrap();
+        let mut bytes = Vec::new();
+        opened.file.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original");
+
+        drop(opened);
+        drop(root);
+        fs::remove_dir_all(moved_path).unwrap();
     }
 
     #[test]

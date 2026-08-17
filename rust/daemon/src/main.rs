@@ -62,12 +62,13 @@ fn run() -> io::Result<()> {
             }
         })?;
 
-    spawn_capability_workers(file_listener, adapter_pid, config_root)?;
+    spawn_capability_workers(file_listener, adapter_pid, Arc::clone(&config_root))?;
 
     let backend_dir = module_dir.clone();
+    let backend_root = Arc::clone(&config_root);
     thread::Builder::new()
         .name("ct-backend".to_string())
-        .spawn(move || supervise_backend(backend_dir, adapter_pid))?;
+        .spawn(move || supervise_backend(backend_dir, adapter_pid, backend_root))?;
 
     let status = adapter.wait()?;
     eprintln!("cleverestrickyd: Android adapter exited with {status}");
@@ -210,13 +211,17 @@ fn inherit_broker_fd(source: RawFd) -> io::Result<()> {
     Ok(())
 }
 
-fn run_backend_once(module_dir: &Path, adapter_pid: u32) -> io::Result<String> {
+fn run_backend_once(
+    module_dir: &Path,
+    adapter_pid: u32,
+    root: Arc<TrustedDir>,
+) -> io::Result<String> {
     let (mut child, broker) = spawn_backend(module_dir, adapter_pid)?;
     let backend_pid = child.id();
     let broker_thread = match thread::Builder::new()
         .name("ct-keybox-broker".to_string())
         .spawn(move || {
-            if let Err(error) = keybox_file_broker::serve(broker) {
+            if let Err(error) = keybox_file_broker::serve(broker, &root) {
                 eprintln!("cleverestrickyd: keybox broker failed: {error}");
                 // SAFETY: backend_pid came from the live Child. SIGTERM is a scalar process signal
                 // used only to force a clean supervised restart after private broker failure.
@@ -271,11 +276,11 @@ fn backend_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> Backen
     }
 }
 
-fn supervise_backend(module_dir: PathBuf, adapter_pid: u32) {
+fn supervise_backend(module_dir: PathBuf, adapter_pid: u32, root: Arc<TrustedDir>) {
     let mut rapid_failures = 0u32;
     loop {
         let started = Instant::now();
-        let outcome = run_backend_once(&module_dir, adapter_pid);
+        let outcome = run_backend_once(&module_dir, adapter_pid, Arc::clone(&root));
         match outcome {
             Ok(message) => eprintln!("cleverestrickyd: {message}"),
             Err(error) => eprintln!("cleverestrickyd: backend launch/wait failed: {error}"),
