@@ -147,6 +147,23 @@ public final class CertHack {
         return count;
     }
 
+    /**
+     * JVM-unit-test compatibility seam. The managed/BC parser is physically present only in
+     * src/test; release builds have no such class and therefore cannot execute a managed parser.
+     */
+    @SuppressWarnings("unchecked")
+    public static List<KeyBox> parseKeyboxXml(java.io.Reader reader, String filename) {
+        try {
+            Class<?> oracle = Class.forName("cleveres.tricky.cleverestech.keystore.ManagedKeyboxOracle");
+            Object parsed = oracle
+                    .getMethod("parse", java.io.Reader.class, String.class)
+                    .invoke(null, reader, filename);
+            return parsed instanceof List<?> ? (List<KeyBox>) parsed : Collections.emptyList();
+        } catch (ReflectiveOperationException unavailableOutsideTests) {
+            return Collections.emptyList();
+        }
+    }
+
     static Map<Integer, byte[]> selectPresentAttestationIdOverrides(
             Map<Integer, byte[]> configured,
             List<Integer> originalTags
