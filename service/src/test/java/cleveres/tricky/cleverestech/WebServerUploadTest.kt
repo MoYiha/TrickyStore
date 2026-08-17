@@ -5,6 +5,7 @@ import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -172,8 +173,10 @@ class WebServerUploadTest {
 
         val responseCode = uploadKeybox("activation_failure.xml", TestKeyboxFixtures.validEcKeyboxXml)
 
-        assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, responseCode)
-        assertEquals(0, cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount())
+        assertEquals(HttpURLConnection.HTTP_INTERNAL_ERROR, responseCode)
+        assertThrows(IllegalStateException::class.java) {
+            cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount()
+        }
         assert(File(configDir, "keyboxes/activation_failure.xml").exists())
     }
 
