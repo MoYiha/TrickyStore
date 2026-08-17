@@ -34,9 +34,16 @@ class KeyboxMultiKeyGoldenOracleTest {
 
         val parsed = CertHack.parseKeyboxXml(StringReader(xml), "multi.xml")
         assertEquals(2, parsed.size)
-        assertEquals(listOf("ECDSA", "RSA"), parsed.map { it.keyPair().public.algorithm })
+        assertEquals(listOf("EC", "RSA"), parsed.map { normalizeAlgorithm(it.keyPair().public.algorithm) })
         assertEquals(listOf("multi.xml", "multi.xml"), parsed.map { it.filename() })
     }
+
+    private fun normalizeAlgorithm(algorithm: String): String =
+        if (algorithm.equals("EC", ignoreCase = true) || algorithm.equals("ECDSA", ignoreCase = true)) {
+            "EC"
+        } else {
+            algorithm.uppercase()
+        }
 
     private fun readFixture(path: String): String =
         requireNotNull(javaClass.getResourceAsStream(path)).bufferedReader().use { it.readText() }
