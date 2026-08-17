@@ -208,7 +208,10 @@ mod tests {
         symlink(&outside, &root_path).unwrap();
 
         handle_from(&root, &request(ACTION_WRITE, "settings.json", b"inside")).unwrap();
-        assert_eq!(fs::read(moved_root.join("settings.json")).unwrap(), b"inside");
+        assert_eq!(
+            fs::read(moved_root.join("settings.json")).unwrap(),
+            b"inside"
+        );
         assert!(!outside.join("settings.json").exists());
         assert!(prepare_root_from(&parent_capability).is_err());
     }

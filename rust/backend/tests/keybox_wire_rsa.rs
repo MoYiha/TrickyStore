@@ -22,8 +22,11 @@ fn shared_rsa_fixture_uses_opaque_id_and_certificate_der_wire() {
     assert_eq!(&response[algorithm_start..algorithm_end], b"RSA");
     assert_eq!(certificate_count, 1);
 
-    let certificate_len =
-        u32::from_be_bytes(response[algorithm_end..algorithm_end + 4].try_into().unwrap()) as usize;
+    let certificate_len = u32::from_be_bytes(
+        response[algorithm_end..algorithm_end + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
     let certificate_start = algorithm_end + 4;
     let certificate_end = certificate_start + certificate_len;
     assert_eq!(response[certificate_start], 0x30);

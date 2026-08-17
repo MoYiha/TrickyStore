@@ -213,7 +213,10 @@ fn serve(listener: UnixListener, adapter_pid: u32, broker: &mut UnixStream) -> i
         let credentials = match peer_credentials(&stream) {
             Ok(credentials)
                 if credentials.uid == 0
-                    && u32::try_from(credentials.pid).ok() == Some(adapter_pid) => credentials,
+                    && u32::try_from(credentials.pid).ok() == Some(adapter_pid) =>
+            {
+                credentials
+            }
             _ => continue,
         };
         debug_assert_eq!(credentials.uid, 0);
@@ -716,7 +719,9 @@ mod tests {
         assert_eq!(wire.len(), wire_len);
         assert_eq!(wire.first().copied(), Some(3));
         assert!(!wire.windows(16).any(|window| window == b"PRIVATE KEY-----"));
-        assert!(!wire.windows(19).any(|window| window == b"AndroidAttestation"));
+        assert!(!wire
+            .windows(19)
+            .any(|window| window == b"AndroidAttestation"));
     }
 
     #[test]
@@ -750,7 +755,9 @@ mod tests {
         );
         let response = handle_request(OP_KEYBOX_PARSE, VALID_EC.to_vec()).unwrap();
         assert_eq!(response.first().copied(), Some(3));
-        assert!(!response.windows(16).any(|window| window == b"PRIVATE KEY-----"));
+        assert!(!response
+            .windows(16)
+            .any(|window| window == b"PRIVATE KEY-----"));
         assert!(response.len() <= MAX_KEYBOX_RESPONSE_BYTES);
     }
 

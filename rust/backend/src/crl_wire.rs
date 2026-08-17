@@ -47,9 +47,10 @@ fn refresh(request: &[u8]) -> Result<Vec<u8>, &'static str> {
         return Err("CRL refresh request exceeds configured bound");
     }
     let index = CrlIndex::parse(&request[REFRESH_PREFIX_BYTES..]).map_err(|_| "CRL rejected")?;
-    let raw_count = u32::try_from(index.raw_entry_count()).map_err(|_| "CRL raw count exceeds wire bound")?;
-    let normalized_count =
-        u32::try_from(index.normalized_count()).map_err(|_| "CRL normalized count exceeds wire bound")?;
+    let raw_count =
+        u32::try_from(index.raw_entry_count()).map_err(|_| "CRL raw count exceeds wire bound")?;
+    let normalized_count = u32::try_from(index.normalized_count())
+        .map_err(|_| "CRL normalized count exceeds wire bound")?;
 
     let store = STORE.get_or_init(|| Mutex::new(None));
     let mut guard = store.lock().map_err(|_| "CRL store lock poisoned")?;
@@ -164,19 +165,31 @@ impl<'a> Cursor<'a> {
 
     fn read_u16(&mut self) -> Result<usize, &'static str> {
         let value = read_u16(self.bytes, self.offset)?;
-        self.offset = self.offset.checked_add(2).ok_or("CRL wire length overflow")?;
+        self.offset = self
+            .offset
+            .checked_add(2)
+            .ok_or("CRL wire length overflow")?;
         Ok(value)
     }
 
     fn read_u32(&mut self) -> Result<usize, &'static str> {
         let value = read_u32(self.bytes, self.offset)?;
-        self.offset = self.offset.checked_add(4).ok_or("CRL wire length overflow")?;
+        self.offset = self
+            .offset
+            .checked_add(4)
+            .ok_or("CRL wire length overflow")?;
         Ok(value)
     }
 
     fn read_bytes(&mut self, length: usize) -> Result<&'a [u8], &'static str> {
-        let end = self.offset.checked_add(length).ok_or("CRL wire length overflow")?;
-        let value = self.bytes.get(self.offset..end).ok_or("CRL wire is truncated")?;
+        let end = self
+            .offset
+            .checked_add(length)
+            .ok_or("CRL wire length overflow")?;
+        let value = self
+            .bytes
+            .get(self.offset..end)
+            .ok_or("CRL wire is truncated")?;
         self.offset = end;
         Ok(value)
     }
@@ -241,7 +254,10 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(query[1], ACTION_QUERY);
-        assert_eq!(generation, u64::from_be_bytes(query[2..10].try_into().unwrap()));
+        assert_eq!(
+            generation,
+            u64::from_be_bytes(query[2..10].try_into().unwrap())
+        );
         assert!(response_bit(&query, 0));
         assert!(response_bit(&query, 1));
         assert!(!response_bit(&query, 2));

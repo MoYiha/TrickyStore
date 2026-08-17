@@ -93,7 +93,10 @@ pub fn with_key<T>(
 ) -> Result<T, &'static str> {
     let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
     let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
-    let key = guard.keys.get(id).ok_or("opaque key identifier is not registered")?;
+    let key = guard
+        .keys
+        .get(id)
+        .ok_or("opaque key identifier is not registered")?;
     let issuer = key
         .certificates_der
         .first()
@@ -151,7 +154,11 @@ fn build_stored_key(
         return Err("keybox private key does not match leaf certificate");
     }
 
-    let id = derive_key_id(algorithm_name, private_key_pkcs8.as_slice(), &certificates_der[0]);
+    let id = derive_key_id(
+        algorithm_name,
+        private_key_pkcs8.as_slice(),
+        &certificates_der[0],
+    );
     Ok(StoredKey {
         id,
         algorithm: signing_algorithm,
@@ -252,7 +259,9 @@ mod tests {
         assert!(records[0]
             .certificates_der
             .iter()
-            .all(|certificate| !certificate.windows(10).any(|window| window == b"-----BEGIN")));
+            .all(|certificate| !certificate
+                .windows(10)
+                .any(|window| window == b"-----BEGIN")));
     }
 
     #[test]

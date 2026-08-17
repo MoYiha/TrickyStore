@@ -62,7 +62,11 @@ fn handle_store_control(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
             return Err("active key set exceeds store bound");
         }
         let expected = STORE_CONTROL_HEADER_BYTES
-            .checked_add(count.checked_mul(KEY_ID_BYTES).ok_or("active key set size overflow")?)
+            .checked_add(
+                count
+                    .checked_mul(KEY_ID_BYTES)
+                    .ok_or("active key set size overflow")?,
+            )
             .ok_or("active key set size overflow")?;
         if request.len() != expected {
             return Err("invalid active key set length");
@@ -221,7 +225,9 @@ mod tests {
     fn active_set_control_prunes_and_rejects_unknown_handles() {
         let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
         let id_start = FIXED_HEADER_BYTES + 2;
-        let id: KeyId = response[id_start..id_start + KEY_ID_BYTES].try_into().unwrap();
+        let id: KeyId = response[id_start..id_start + KEY_ID_BYTES]
+            .try_into()
+            .unwrap();
         let mut control = Vec::new();
         control.extend_from_slice(STORE_CONTROL_MAGIC);
         control.push(STORE_CONTROL_VERSION);

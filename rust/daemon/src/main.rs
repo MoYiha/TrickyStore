@@ -304,7 +304,8 @@ fn spawn_capability_workers(
         thread::Builder::new()
             .name(format!("ct-file-ipc-{index}"))
             .spawn(move || {
-                if let Err(error) = serve_capability_worker(worker_listener, adapter_pid, worker_root)
+                if let Err(error) =
+                    serve_capability_worker(worker_listener, adapter_pid, worker_root)
                 {
                     eprintln!("cleverestrickyd: file IPC worker failed: {error}");
                     process::exit(1);
@@ -336,7 +337,8 @@ fn serve_capability_worker(
         let peer_is_adapter = u32::try_from(credentials.pid)
             .ok()
             .is_some_and(|pid| pid == adapter_pid);
-        if let Err(error) = handle_capability_request(&mut client, peer_is_adapter, &root, &mut scratch)
+        if let Err(error) =
+            handle_capability_request(&mut client, peer_is_adapter, &root, &mut scratch)
         {
             if !matches!(
                 error.kind(),
@@ -364,7 +366,8 @@ fn handle_capability_request(
             write_frame(client, OP_PING, 0, b"pong")
         }
         OP_FILE_WRITE if peer_is_adapter && header.flags == 0 => {
-            match config_file_broker::handle_stream_from(root, client, header.payload_len, scratch) {
+            match config_file_broker::handle_stream_from(root, client, header.payload_len, scratch)
+            {
                 Ok(()) => write_frame(client, OP_FILE_WRITE, 0, b"ok"),
                 Err(_) => reply_text_error(client, OP_FILE_WRITE, "file operation rejected"),
             }
@@ -674,7 +677,12 @@ mod tests {
         file_worker.join().unwrap();
         ping_worker.join().unwrap();
         adapter_thread.join().unwrap();
-        assert_eq!(fs::metadata(test.path.join("concurrent.bin")).unwrap().len(), 256 * 1024);
+        assert_eq!(
+            fs::metadata(test.path.join("concurrent.bin"))
+                .unwrap()
+                .len(),
+            256 * 1024
+        );
     }
 
     #[test]
