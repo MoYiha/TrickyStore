@@ -115,7 +115,9 @@ fn require_regular_file(path: &Path, name: &str) -> io::Result<()> {
 
 fn valid_backend_auth_value(value: &str) -> bool {
     value.len() == BACKEND_AUTH_HEX_BYTES
-        && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        && value
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
         && value.bytes().any(|byte| byte != b'0')
 }
 
