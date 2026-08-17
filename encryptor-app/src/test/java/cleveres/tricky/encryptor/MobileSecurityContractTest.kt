@@ -86,7 +86,8 @@ class MobileSecurityContractTest {
     }
 
     private fun locateRoot(): File {
-        var current = File(System.getProperty("user.dir")).canonicalFile
+        val userDir = requireNotNull(System.getProperty("user.dir")) { "user.dir is unavailable" }
+        var current = File(userDir).canonicalFile
         repeat(5) {
             if (File(current, "encryptor-app").isDirectory && File(current, "rust").isDirectory) {
                 return current
