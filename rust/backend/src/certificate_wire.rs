@@ -329,7 +329,7 @@ mod tests {
                 .to_be_bytes()
                 .into_iter()
                 .chain(1u16.to_be_bytes())
-                .chain([b'x']),
+                .chain(*b"x"),
         );
         assert!(parse_rewrite_request(&duplicate).is_err());
 
