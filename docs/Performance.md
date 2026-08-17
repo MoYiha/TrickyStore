@@ -40,23 +40,23 @@ Encrypted and backup operations enforce expanded size before retaining input. Se
 
 ## Measured migration artifacts
 
-Release artifact sizes are recorded from successful GitHub Actions Build artifacts for base commit `f62f8a3b`, the validated Rust-first checkpoint `8a864b61`, and current head `61a900a3`. The current-head artifact is `CleveresTricky-V2.5.8-2684-5647af56-release.zip` from Build run `31966457194`. These numbers measure packaged binary size, not process RSS or PSS.
+Release artifact sizes below are measured from successful GitHub Actions Build artifacts. The base is commit `f62f8a3b`; the validated Rust-first code head is `f02ec754`. The final code artifact is `CleveresTricky-V2.5.8-2624-1e6bfd9a-release.zip` from Build run `32002942562`, artifact id `9279263341`. Its size is **2,861,922 B** and its SHA-256 is `1258b3505d923a142cd08c2c28817764622937ed0889b862e96adae0249ae4f7`.
 
-| Artifact | Base `f62f8a3b` | Checkpoint `8a864b61` | Current head `61a900a3` | Current vs base |
-| --- | ---: | ---: | ---: | ---: |
-| Release ZIP | 3,954,171 B | 4,805,835 B | 4,939,500 B | +985,329 B (+24.9%) |
-| arm64 `inject` | 333,624 B | 333,624 B | 333,624 B | 0 B |
-| arm64 `libcleverestricky.so` | 577,512 B | 577,512 B | 577,512 B | 0 B |
-| arm64 `webui_bridge` | 327,952 B | 328,216 B | 328,216 B | +264 B |
-| arm64 `cleverestrickyd` | not present | 346,512 B | 359,304 B | +359,304 B |
-| arm64 `cleverestricky_backend` | not present | 441,288 B | 555,008 B | +555,008 B |
-| x86_64 `inject` | 368,768 B | 368,768 B | 368,768 B | 0 B |
-| x86_64 `libcleverestricky.so` | 595,248 B | 595,248 B | 595,248 B | 0 B |
-| x86_64 `webui_bridge` | 359,944 B | 359,816 B | 359,816 B | -128 B |
-| x86_64 `cleverestrickyd` | not present | 379,264 B | 392,688 B | +392,688 B |
-| x86_64 `cleverestricky_backend` | not present | 495,568 B | 628,712 B | +628,712 B |
+| Artifact | Base `f62f8a3b` | Final code `f02ec754` | Final vs base |
+| --- | ---: | ---: | ---: |
+| Release ZIP | 3,954,171 B | 2,861,922 B | -1,092,249 B (-27.62%) |
+| arm64 `inject` | 333,624 B | 333,624 B | 0 B |
+| arm64 `libcleverestricky.so` | 577,512 B | 577,512 B | 0 B |
+| arm64 `webui_bridge` | 327,952 B | 328,216 B | +264 B |
+| arm64 `cleverestrickyd` | not present | 371,088 B | +371,088 B |
+| arm64 `cleverestricky_backend` | not present | 747,912 B | +747,912 B |
+| x86_64 `inject` | 368,768 B | 368,768 B | 0 B |
+| x86_64 `libcleverestricky.so` | 595,248 B | 595,248 B | 0 B |
+| x86_64 `webui_bridge` | 359,944 B | 359,816 B | -128 B |
+| x86_64 `cleverestrickyd` | not present | 404,504 B | +404,504 B |
+| x86_64 `cleverestricky_backend` | not present | 860,632 B | +860,632 B |
 
-The injected Binder library and injector remain byte-for-byte unchanged in size from the base artifact. The archive growth is concentrated in the new privilege-separated Rust daemon and unprivileged backend plus their packaged support code; this is the deliberate binary-size cost of removing portable privileged/JVM backend logic from the trusted Android adapter path.
+The final `service.apk` is 486,817 B. The injected Binder library and injector remain exactly unchanged in size from the base artifact. The new daemon/backend account for the intentional native growth, while the overall release archive is smaller than the base artifact because portable parser/crypto/provider payload was removed from the production managed package.
 
 Physical-device memory is intentionally not estimated in CI. Capture real idle and exercised process memory on a representative Android device with the same build under test:
 
