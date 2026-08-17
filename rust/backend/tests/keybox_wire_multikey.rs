@@ -42,7 +42,7 @@ fn one_xml_keybox_with_ec_and_rsa_keys_flattens_to_two_wire_keys() {
             offset += certificate_len;
         }
     }
-    assert_eq!(algorithms, ["ecdsa", "RSA"]);
+    assert_eq!(algorithms, ["EC", "RSA"]);
     assert_eq!(offset, response.len());
     assert!(!response
         .windows(16)
