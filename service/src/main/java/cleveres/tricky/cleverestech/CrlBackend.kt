@@ -3,34 +3,54 @@ package cleveres.tricky.cleverestech
 import androidx.annotation.VisibleForTesting
 import java.io.IOException
 
-/** Thin managed transport boundary for CRL parsing and revocation matching performed in Rust. */
+/** Thin managed transport boundary for immutable CRL state owned by the Rust backend. */
 internal object CrlBackend {
     @VisibleForTesting
-    internal var checkerOverride: ((ByteArray, List<CrlWire.Query>) -> CrlWire.Result?)? = null
+    internal var refreshOverride: ((ByteArray) -> CrlWire.Handle?)? = null
 
-    fun check(
-        crl: ByteArray,
-        queries: List<CrlWire.Query>,
-    ): CrlWire.Result? {
-        checkerOverride?.let { return it(crl, queries) }
-        val payloadLength = CrlWire.requestLength(crl.size, queries) ?: return null
+    @VisibleForTesting
+    internal var queryOverride: ((Long, List<CrlWire.Query>) -> CrlWire.Result?)? = null
+
+    fun refresh(crl: ByteArray): CrlWire.Handle? {
+        refreshOverride?.let { return it(crl) }
+        val payloadLength = CrlWire.refreshLength(crl.size) ?: return null
         val response =
             NativeBackend.transact(
-                OP_CRL_CHECK_BATCH,
+                OP_CRL,
                 payloadLength,
                 CrlWire.MAX_RESPONSE_BYTES,
                 propagateTransportFailure = true,
             ) { output ->
-                CrlWire.writeRequest(output, crl, queries)
+                CrlWire.writeRefresh(output, crl)
             } ?: return null
-        return CrlWire.decode(response, queries.size)
-            ?: throw RustBackendUnavailableException(IOException("Invalid CRL backend response"))
+        return CrlWire.decodeRefresh(response)
+            ?: throw RustBackendUnavailableException(IOException("Invalid CRL refresh response"))
+    }
+
+    fun check(
+        generation: Long,
+        queries: List<CrlWire.Query>,
+    ): CrlWire.Result? {
+        queryOverride?.let { return it(generation, queries) }
+        val payloadLength = CrlWire.queryLength(queries) ?: return null
+        val response =
+            NativeBackend.transact(
+                OP_CRL,
+                payloadLength,
+                CrlWire.MAX_RESPONSE_BYTES,
+                propagateTransportFailure = true,
+            ) { output ->
+                CrlWire.writeQuery(output, generation, queries)
+            } ?: return null
+        return CrlWire.decodeQuery(response, generation, queries.size)
+            ?: throw RustBackendUnavailableException(IOException("Invalid CRL query response"))
     }
 
     @VisibleForTesting
     internal fun resetForTesting() {
-        checkerOverride = null
+        refreshOverride = null
+        queryOverride = null
     }
 
-    private const val OP_CRL_CHECK_BATCH = 27
+    private const val OP_CRL = 27
 }

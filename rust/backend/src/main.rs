@@ -36,10 +36,13 @@ const MAX_CBOX_REQUEST_BYTES: usize =
     2 + MAX_PASSWORD_BYTES + 2 + MAX_PUBLIC_KEY_BYTES + MAX_CBOX_BYTES;
 const MAX_BACKUP_REQUEST_BYTES: usize = 2 + MAX_PASSWORD_BYTES + MAX_BACKUP_BYTES + 64;
 const MAX_BACKEND_FRAME_BYTES: usize = MAX_BACKUP_REQUEST_BYTES;
-const MAX_CBOX_RESPONSE_BYTES: usize = MAX_CBOX_BYTES + 8 * 1024;
 const MAX_BACKUP_RESPONSE_BYTES: usize = MAX_BACKUP_BYTES + 64;
 const MAX_KEYBOX_RESPONSE_BYTES: usize =
     MAX_KEYBOX_REQUEST_BYTES + keybox_wire::MAX_KEYBOX_WIRE_OVERHEAD_BYTES;
+const MAX_CBOX_AUTHOR_BYTES: usize = 1024;
+const CBOX_RESPONSE_PREFIX_BYTES: usize = 7;
+const MAX_CBOX_RESPONSE_BYTES: usize =
+    CBOX_RESPONSE_PREFIX_BYTES + MAX_CBOX_AUTHOR_BYTES + MAX_KEYBOX_RESPONSE_BYTES;
 const MAX_ERROR_BYTES: usize = 256;
 const BACKEND_BROKER_FD: RawFd = 9;
 const OP_KEYBOX_FILE_PARSE: u16 = 24;
@@ -77,12 +80,10 @@ fn parse_adapter_pid() -> io::Result<u32> {
             "unexpected backend argument",
         ));
     }
-    let pid = pid
-        .to_str()
+    pid.to_str()
         .and_then(|value| value.parse::<u32>().ok())
         .filter(|value| *value > 1 && *value <= i32::MAX as u32)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid adapter PID"))?;
-    Ok(pid)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid adapter PID"))
 }
 
 fn take_broker_stream() -> io::Result<UnixStream> {
@@ -212,10 +213,7 @@ fn serve(listener: UnixListener, adapter_pid: u32, broker: &mut UnixStream) -> i
         let credentials = match peer_credentials(&stream) {
             Ok(credentials)
                 if credentials.uid == 0
-                    && u32::try_from(credentials.pid).ok() == Some(adapter_pid) =>
-            {
-                credentials
-            }
+                    && u32::try_from(credentials.pid).ok() == Some(adapter_pid) => credentials,
             _ => continue,
         };
         debug_assert_eq!(credentials.uid, 0);
@@ -246,8 +244,7 @@ fn serve_connection(stream: &mut UnixStream, broker: &mut UnixStream) -> io::Res
             reply_error(stream, header.opcode, "invalid backend flags")?;
             return Ok(());
         }
-        let request_limit = opcode_request_limit(header.opcode);
-        let Some(request_limit) = request_limit else {
+        let Some(request_limit) = opcode_request_limit(header.opcode) else {
             reply_error(stream, header.opcode, "unsupported backend operation")?;
             return Ok(());
         };
@@ -349,6 +346,7 @@ fn parse_keybox_file(
         broker
             .read_exact(&mut discard[..header.payload_len])
             .map_err(broker_io)?;
+        discard.zeroize();
         return Ok(Err("keybox file rejected"));
     }
     if header.flags != 0 || header.payload_len != 0 {
@@ -397,7 +395,7 @@ fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static
         OP_KEYBOX_PARSE => keybox_wire::parse_and_encode(request),
         OP_CERTIFICATE_INSPECT => certificate_wire::inspect_and_encode(request),
         OP_CERTIFICATE_REWRITE => certificate_wire::rewrite_and_encode(request),
-        OP_CRL_CHECK_BATCH => crl_wire::check_batch(request),
+        OP_CRL_CHECK_BATCH => crl_wire::handle(request),
         _ => {
             request.zeroize();
             Err("unsupported backend operation")
@@ -421,20 +419,34 @@ fn open_cbox(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
 
     let decrypted = decrypt_cbox(request, &password);
     password.zeroize();
-    let mut payload = match decrypted {
+    let payload = match decrypted {
         Ok(payload) => payload,
         Err(_) => return Err("CBOX rejected"),
     };
-    if !cbox_signature_policy_accepts(&payload, &public_key) {
+    fuse_cbox_payload(payload, &public_key)
+}
+
+fn fuse_cbox_payload(mut payload: CboxPayload, public_key: &str) -> Result<Vec<u8>, &'static str> {
+    if !cbox_signature_policy_accepts(&payload, public_key) {
         payload.author.zeroize();
         payload.xml_content.zeroize();
         payload.signature_base64.zeroize();
         return Err("CBOX rejected");
     }
-    let response = encode_cbox_response(&payload);
-    payload.author.zeroize();
-    payload.xml_content.zeroize();
+    let signature_present = !payload.signature_base64.is_empty();
     payload.signature_base64.zeroize();
+    let mut author = payload.author;
+    let xml = payload.xml_content.into_bytes();
+    let mut keybox_wire = match keybox_wire::parse_and_encode(xml) {
+        Ok(wire) => wire,
+        Err(error) => {
+            author.zeroize();
+            return Err(error);
+        }
+    };
+    let response = encode_cbox_response(author.as_bytes(), signature_present, &keybox_wire);
+    author.zeroize();
+    keybox_wire.zeroize();
     response
 }
 
@@ -545,26 +557,30 @@ fn parse_backup_prefix(request: &[u8]) -> Result<ParsedBackupPrefix<'_>, &'stati
     })
 }
 
-fn encode_cbox_response(payload: &CboxPayload) -> Result<Vec<u8>, &'static str> {
-    let author = payload.author.as_bytes();
-    let xml = payload.xml_content.as_bytes();
+fn encode_cbox_response(
+    author: &[u8],
+    signature_present: bool,
+    keybox_wire: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    if author.len() > MAX_CBOX_AUTHOR_BYTES || keybox_wire.is_empty() {
+        return Err("CBOX response fields exceed wire bound");
+    }
     let author_len = u16::try_from(author.len()).map_err(|_| "CBOX author exceeds wire bound")?;
-    let xml_len = u32::try_from(xml.len()).map_err(|_| "CBOX XML exceeds wire bound")?;
-    let total = 2usize
-        .checked_add(4)
-        .and_then(|value| value.checked_add(1))
-        .and_then(|value| value.checked_add(author.len()))
-        .and_then(|value| value.checked_add(xml.len()))
+    let keybox_len =
+        u32::try_from(keybox_wire.len()).map_err(|_| "CBOX keybox metadata exceeds wire bound")?;
+    let total = CBOX_RESPONSE_PREFIX_BYTES
+        .checked_add(author.len())
+        .and_then(|value| value.checked_add(keybox_wire.len()))
         .ok_or("CBOX response size overflow")?;
     if total > MAX_CBOX_RESPONSE_BYTES {
         return Err("CBOX response exceeds wire bound");
     }
     let mut output = Vec::with_capacity(total);
     output.extend_from_slice(&author_len.to_be_bytes());
-    output.extend_from_slice(&xml_len.to_be_bytes());
-    output.push(u8::from(!payload.signature_base64.is_empty()));
+    output.extend_from_slice(&keybox_len.to_be_bytes());
+    output.push(u8::from(signature_present));
     output.extend_from_slice(author);
-    output.extend_from_slice(xml);
+    output.extend_from_slice(keybox_wire);
     Ok(output)
 }
 
@@ -602,8 +618,8 @@ mod tests {
         ))
         .expect("crypto golden password fixture")
     }
+
     const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
-    const CBOX_V2: &str = "Q0JPWAAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqYmlPfNbKQEZdEZacWRvO3";
     const VALID_EC: &[u8] =
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
 
@@ -684,20 +700,23 @@ mod tests {
     }
 
     #[test]
-    fn cbox_open_operation_returns_length_delimited_fields() {
-        let request = encode_cbox_request(test_password().as_str(), "", &decode(CBOX_V2));
-        let response = handle_request(OP_CRYPTO_CBOX_OPEN, request).unwrap();
+    fn fused_cbox_payload_returns_only_public_keybox_metadata() {
+        let payload = CboxPayload {
+            author: "fixture author".to_string(),
+            xml_content: String::from_utf8(VALID_EC.to_vec()).unwrap(),
+            signature_base64: String::new(),
+            signature_version: 2,
+        };
+        let response = fuse_cbox_payload(payload, "").unwrap();
         let author_len = u16::from_be_bytes(response[0..2].try_into().unwrap()) as usize;
-        let xml_len = u32::from_be_bytes(response[2..6].try_into().unwrap()) as usize;
+        let wire_len = u32::from_be_bytes(response[2..6].try_into().unwrap()) as usize;
         assert_eq!(response[6], 0);
-        assert_eq!(
-            std::str::from_utf8(&response[7..7 + author_len]).unwrap(),
-            "CleveresTricky golden"
-        );
-        assert_eq!(
-            std::str::from_utf8(&response[7 + author_len..7 + author_len + xml_len]).unwrap(),
-            "<AndroidAttestation NumberOfKeyboxes=\"0\"></AndroidAttestation>"
-        );
+        assert_eq!(&response[7..7 + author_len], b"fixture author");
+        let wire = &response[7 + author_len..];
+        assert_eq!(wire.len(), wire_len);
+        assert_eq!(wire.first().copied(), Some(3));
+        assert!(!wire.windows(16).any(|window| window == b"PRIVATE KEY-----"));
+        assert!(!wire.windows(19).any(|window| window == b"AndroidAttestation"));
     }
 
     #[test]
@@ -720,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn keybox_parse_operation_uses_legacy_loader_bound_and_der_wire() {
+    fn keybox_parse_operation_uses_legacy_loader_bound_and_public_wire() {
         assert_eq!(
             opcode_request_limit(OP_KEYBOX_PARSE),
             Some(10 * 1024 * 1024)
@@ -730,7 +749,8 @@ mod tests {
             Some(MAX_KEYBOX_RESPONSE_BYTES)
         );
         let response = handle_request(OP_KEYBOX_PARSE, VALID_EC.to_vec()).unwrap();
-        assert_eq!(response.first().copied(), Some(2));
+        assert_eq!(response.first().copied(), Some(3));
+        assert!(!response.windows(16).any(|window| window == b"PRIVATE KEY-----"));
         assert!(response.len() <= MAX_KEYBOX_RESPONSE_BYTES);
     }
 
@@ -757,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn crl_operation_uses_bounded_batch_wire() {
+    fn crl_operation_uses_stateful_bounded_wire() {
         assert_eq!(
             opcode_request_limit(OP_CRL_CHECK_BATCH),
             Some(crl_wire::MAX_REQUEST_BYTES)

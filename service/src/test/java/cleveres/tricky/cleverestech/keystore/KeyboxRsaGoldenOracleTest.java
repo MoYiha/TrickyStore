@@ -27,7 +27,7 @@ public class KeyboxRsaGoldenOracleTest {
         });
 
         List<CertHack.KeyBox> parsed =
-                CertHack.parseKeyboxXml(new StringReader(readFixture()), "valid_rsa.xml");
+                ManagedKeyboxOracle.parse(new StringReader(readFixture()), "valid_rsa.xml");
         assertEquals(1, parsed.size());
         CertHack.KeyBox keybox = parsed.get(0);
         assertEquals("RSA", keybox.keyPair().getPrivate().getAlgorithm());

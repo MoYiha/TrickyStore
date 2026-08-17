@@ -26,11 +26,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-/**
- * Characterizes the production Java certificate/keybox oracle before the Rust certificate path is
- * allowed to replace it. These assertions intentionally compare security-relevant semantics rather
- * than DER bytes because ECDSA signatures are nondeterministic and providers may re-encode keys.
- */
+/** Test-only managed/BC oracle used for differential characterization of the Rust keybox path. */
 public class CertHackDifferentialBaselineTest {
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -38,7 +34,7 @@ public class CertHackDifferentialBaselineTest {
     public void generatedEcKeyboxParsesAndVerifies() throws Exception {
         GeneratedKeybox fixture = generateKeybox("EC");
 
-        List<CertHack.KeyBox> parsed = CertHack.parseKeyboxXml(
+        List<CertHack.KeyBox> parsed = ManagedKeyboxOracle.parse(
                 new StringReader(keyboxXml("ecdsa", fixture.privateKeyPem, List.of(fixture.certificatePem))),
                 "generated-ec.xml");
 
@@ -56,7 +52,7 @@ public class CertHackDifferentialBaselineTest {
     public void generatedRsaKeyboxParsesAndVerifies() throws Exception {
         GeneratedKeybox fixture = generateKeybox("RSA");
 
-        List<CertHack.KeyBox> parsed = CertHack.parseKeyboxXml(
+        List<CertHack.KeyBox> parsed = ManagedKeyboxOracle.parse(
                 new StringReader(keyboxXml("rsa", fixture.privateKeyPem, List.of(fixture.certificatePem))),
                 "generated-rsa.xml");
 
@@ -79,7 +75,7 @@ public class CertHackDifferentialBaselineTest {
                 wrongPrivateKey.privateKeyPem,
                 List.of(certificateOwner.certificatePem));
 
-        assertTrue(CertHack.parseKeyboxXml(new StringReader(xml)).isEmpty());
+        assertTrue(ManagedKeyboxOracle.parse(new StringReader(xml)).isEmpty());
     }
 
     @Test
@@ -91,7 +87,7 @@ public class CertHackDifferentialBaselineTest {
                 leaf.privateKeyPem,
                 List.of(leaf.certificatePem, unrelatedIssuer.certificatePem));
 
-        assertTrue(CertHack.parseKeyboxXml(new StringReader(xml)).isEmpty());
+        assertTrue(ManagedKeyboxOracle.parse(new StringReader(xml)).isEmpty());
     }
 
     @Test
@@ -99,7 +95,7 @@ public class CertHackDifferentialBaselineTest {
         GeneratedKeybox fixture = generateKeybox("EC");
         String xml = keyboxXml("rsa", fixture.privateKeyPem, List.of(fixture.certificatePem));
 
-        assertTrue(CertHack.parseKeyboxXml(new StringReader(xml)).isEmpty());
+        assertTrue(ManagedKeyboxOracle.parse(new StringReader(xml)).isEmpty());
     }
 
     @Test
@@ -108,7 +104,7 @@ public class CertHackDifferentialBaselineTest {
         String truncated = fixture.certificatePem.substring(0, fixture.certificatePem.length() / 2);
         String xml = keyboxXml("rsa", fixture.privateKeyPem, List.of(truncated));
 
-        assertTrue(CertHack.parseKeyboxXml(new StringReader(xml)).isEmpty());
+        assertTrue(ManagedKeyboxOracle.parse(new StringReader(xml)).isEmpty());
     }
 
     private static void assertKeyPairWorks(KeyPair pair, String signatureAlgorithm) throws Exception {

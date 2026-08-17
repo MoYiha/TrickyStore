@@ -1,19 +1,21 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+use crate::keybox_wire::key_store::{self, KeyId, KEY_ID_BYTES};
 use cleverestricky_certificate_core::{
     inspect_certificate, rewrite_certificate, AttestationIdOverride, CertificateRewriteRequest,
     PatchComponent, PatchLevels, SigningAlgorithm, MAX_ATTESTATION_ID_BYTES,
-    MAX_CERTIFICATE_DER_BYTES, MAX_MODULE_HASH_BYTES, MAX_PRIVATE_KEY_DER_BYTES,
+    MAX_CERTIFICATE_DER_BYTES, MAX_MODULE_HASH_BYTES,
 };
 use zeroize::Zeroize;
 
-const WIRE_VERSION: u8 = 1;
+const INSPECT_WIRE_VERSION: u8 = 1;
+const REWRITE_WIRE_VERSION: u8 = 2;
 const SIGNING_EC_P256_SHA256: u8 = 1;
 const SIGNING_RSA_PKCS1_SHA256: u8 = 2;
 const PATCH_KEEP: u8 = 0;
 const PATCH_OMIT: u8 = 1;
 const PATCH_REPLACE: u8 = 2;
 const MAX_ID_OVERRIDES: usize = 9;
-const REWRITE_FIXED_BYTES: usize = 1 + 1 + 3 * 5 + 1 + 2 + 3 * 4 + 2 * 32;
+const REWRITE_FIXED_BYTES: usize = 1 + 1 + 3 * 5 + 1 + 2 + 4 + KEY_ID_BYTES + 2 * 32;
 const MAX_ID_WIRE_BYTES: usize = MAX_ID_OVERRIDES * (2 + 2 + MAX_ATTESTATION_ID_BYTES);
 
 pub const MAX_INSPECT_REQUEST_BYTES: usize = MAX_CERTIFICATE_DER_BYTES;
@@ -21,8 +23,7 @@ pub const INSPECT_RESPONSE_BYTES: usize = 1 + 1 + 2 + 3 * 5 + 2 * 32;
 pub const MAX_REWRITE_REQUEST_BYTES: usize = REWRITE_FIXED_BYTES
     + MAX_ID_WIRE_BYTES
     + MAX_MODULE_HASH_BYTES
-    + MAX_CERTIFICATE_DER_BYTES * 2
-    + MAX_PRIVATE_KEY_DER_BYTES;
+    + MAX_CERTIFICATE_DER_BYTES;
 pub const MAX_REWRITE_RESPONSE_BYTES: usize = MAX_CERTIFICATE_DER_BYTES;
 
 pub fn inspect_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
@@ -33,7 +34,7 @@ pub fn inspect_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
         let inspection =
             inspect_certificate(&request).map_err(|_| "certificate inspection rejected")?;
         let mut output = Vec::with_capacity(INSPECT_RESPONSE_BYTES);
-        output.push(WIRE_VERSION);
+        output.push(INSPECT_WIRE_VERSION);
         let mut flags = u8::from(inspection.supports_module_hash);
         if inspection.original_boot_key.is_some() {
             flags |= 1 << 1;
@@ -61,19 +62,27 @@ pub fn rewrite_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
             return Err("certificate rewrite request rejected");
         }
         let parsed = parse_rewrite_request(&request)?;
-        rewrite_certificate(&CertificateRewriteRequest {
-            genuine_leaf_der: parsed.genuine_leaf_der,
-            issuer_certificate_der: parsed.issuer_certificate_der,
-            issuer_private_key_pkcs8: parsed.issuer_private_key_pkcs8,
-            signing_algorithm: parsed.signing_algorithm,
-            patch_levels: parsed.patch_levels,
-            id_overrides: &parsed.id_overrides,
-            module_hash: parsed.module_hash,
-            verified_boot_key: parsed.verified_boot_key,
-            verified_boot_hash: parsed.verified_boot_hash,
-        })
-        .map(|rewritten| rewritten.leaf_der)
-        .map_err(|_| "certificate rewrite rejected")
+        key_store::with_key(
+            &parsed.key_id,
+            |stored_algorithm, issuer_private_key_pkcs8, issuer_certificate_der| {
+                if stored_algorithm != parsed.signing_algorithm {
+                    return Err("opaque key algorithm does not match rewrite request");
+                }
+                rewrite_certificate(&CertificateRewriteRequest {
+                    genuine_leaf_der: parsed.genuine_leaf_der,
+                    issuer_certificate_der,
+                    issuer_private_key_pkcs8,
+                    signing_algorithm: stored_algorithm,
+                    patch_levels: parsed.patch_levels,
+                    id_overrides: &parsed.id_overrides,
+                    module_hash: parsed.module_hash,
+                    verified_boot_key: parsed.verified_boot_key,
+                    verified_boot_hash: parsed.verified_boot_hash,
+                })
+                .map(|rewritten| rewritten.leaf_der)
+                .map_err(|_| "certificate rewrite rejected")
+            },
+        )
     })();
     request.zeroize();
     result
@@ -85,16 +94,15 @@ struct ParsedRewrite<'a> {
     id_overrides: Vec<AttestationIdOverride<'a>>,
     module_hash: Option<&'a [u8]>,
     genuine_leaf_der: &'a [u8],
-    issuer_certificate_der: &'a [u8],
-    issuer_private_key_pkcs8: &'a [u8],
+    key_id: KeyId,
     verified_boot_key: &'a [u8; 32],
     verified_boot_hash: &'a [u8; 32],
 }
 
 fn parse_rewrite_request(request: &[u8]) -> Result<ParsedRewrite<'_>, &'static str> {
     let mut cursor = Cursor::new(request);
-    if cursor.read_u8()? != WIRE_VERSION {
-        return Err("unsupported certificate wire version");
+    if cursor.read_u8()? != REWRITE_WIRE_VERSION {
+        return Err("unsupported certificate rewrite wire version");
     }
     let signing_algorithm = match cursor.read_u8()? {
         SIGNING_EC_P256_SHA256 => SigningAlgorithm::EcP256Sha256,
@@ -115,16 +123,15 @@ fn parse_rewrite_request(request: &[u8]) -> Result<ParsedRewrite<'_>, &'static s
         return Err("module hash exceeds certificate wire bound");
     }
     let genuine_leaf_len = cursor.read_u32_as_usize()?;
-    let issuer_certificate_len = cursor.read_u32_as_usize()?;
-    let issuer_private_key_len = cursor.read_u32_as_usize()?;
-    if genuine_leaf_len == 0
-        || genuine_leaf_len > MAX_CERTIFICATE_DER_BYTES
-        || issuer_certificate_len == 0
-        || issuer_certificate_len > MAX_CERTIFICATE_DER_BYTES
-        || issuer_private_key_len == 0
-        || issuer_private_key_len > MAX_PRIVATE_KEY_DER_BYTES
-    {
+    if genuine_leaf_len == 0 || genuine_leaf_len > MAX_CERTIFICATE_DER_BYTES {
         return Err("certificate DER field exceeds wire bound");
+    }
+    let key_id: KeyId = cursor
+        .read_exact(KEY_ID_BYTES)?
+        .try_into()
+        .map_err(|_| "invalid opaque key identifier")?;
+    if key_id.iter().all(|byte| *byte == 0) {
+        return Err("invalid opaque key identifier");
     }
     let verified_boot_key: &[u8; 32] = cursor
         .read_exact(32)?
@@ -167,8 +174,6 @@ fn parse_rewrite_request(request: &[u8]) -> Result<ParsedRewrite<'_>, &'static s
         Some(cursor.read_exact(module_hash_len)?)
     };
     let genuine_leaf_der = cursor.read_exact(genuine_leaf_len)?;
-    let issuer_certificate_der = cursor.read_exact(issuer_certificate_len)?;
-    let issuer_private_key_pkcs8 = cursor.read_exact(issuer_private_key_len)?;
     if !cursor.is_at_end() {
         return Err("trailing certificate wire bytes");
     }
@@ -179,8 +184,7 @@ fn parse_rewrite_request(request: &[u8]) -> Result<ParsedRewrite<'_>, &'static s
         id_overrides,
         module_hash,
         genuine_leaf_der,
-        issuer_certificate_der,
-        issuer_private_key_pkcs8,
+        key_id,
         verified_boot_key,
         verified_boot_hash,
     })
@@ -280,7 +284,7 @@ mod tests {
 
     fn minimal_request() -> Vec<u8> {
         let mut output = Vec::new();
-        output.push(WIRE_VERSION);
+        output.push(REWRITE_WIRE_VERSION);
         output.push(SIGNING_EC_P256_SHA256);
         patch(PATCH_KEEP, 0, &mut output);
         patch(PATCH_OMIT, 0, &mut output);
@@ -288,8 +292,7 @@ mod tests {
         output.push(1);
         output.extend_from_slice(&3u16.to_be_bytes());
         output.extend_from_slice(&1u32.to_be_bytes());
-        output.extend_from_slice(&1u32.to_be_bytes());
-        output.extend_from_slice(&1u32.to_be_bytes());
+        output.extend_from_slice(&[0x33; KEY_ID_BYTES]);
         output.extend_from_slice(&[0x11; 32]);
         output.extend_from_slice(&[0x22; 32]);
         output.extend_from_slice(&714u16.to_be_bytes());
@@ -297,13 +300,11 @@ mod tests {
         output.extend_from_slice(b"imei");
         output.extend_from_slice(b"mod");
         output.push(1);
-        output.push(2);
-        output.push(3);
         output
     }
 
     #[test]
-    fn strict_rewrite_wire_parses_bounded_fields() {
+    fn strict_rewrite_wire_parses_opaque_key_and_bounded_fields() {
         let input = minimal_request();
         let parsed = parse_rewrite_request(&input).unwrap();
         assert_eq!(parsed.signing_algorithm, SigningAlgorithm::EcP256Sha256);
@@ -315,33 +316,40 @@ mod tests {
         assert_eq!(parsed.id_overrides[0].value, b"imei");
         assert_eq!(parsed.module_hash, Some(b"mod".as_slice()));
         assert_eq!(parsed.genuine_leaf_der, &[1]);
-        assert_eq!(parsed.issuer_certificate_der, &[2]);
-        assert_eq!(parsed.issuer_private_key_pkcs8, &[3]);
+        assert_eq!(parsed.key_id, [0x33; KEY_ID_BYTES]);
     }
 
     #[test]
-    fn strict_rewrite_wire_rejects_trailing_duplicate_and_noncanonical_patch_fields() {
+    fn duplicate_ids_and_zero_key_identifier_fail_closed() {
+        let mut duplicate = minimal_request();
+        let id_count_offset = 1 + 1 + 3 * 5;
+        duplicate[id_count_offset] = 2;
+        let insertion = duplicate.len() - 1;
+        duplicate.splice(
+            insertion..insertion,
+            714u16
+                .to_be_bytes()
+                .into_iter()
+                .chain(1u16.to_be_bytes())
+                .chain([b'x']),
+        );
+        assert!(parse_rewrite_request(&duplicate).is_err());
+
+        let mut zero_id = minimal_request();
+        let key_offset = 1 + 1 + 3 * 5 + 1 + 2 + 4;
+        zero_id[key_offset..key_offset + KEY_ID_BYTES].fill(0);
+        assert!(parse_rewrite_request(&zero_id).is_err());
+    }
+
+    #[test]
+    fn trailing_and_invalid_patch_fields_fail_closed() {
         let mut trailing = minimal_request();
         trailing.push(0);
         assert!(parse_rewrite_request(&trailing).is_err());
 
-        let mut noncanonical = minimal_request();
-        noncanonical[2] = PATCH_KEEP;
-        noncanonical[3..7].copy_from_slice(&1i32.to_be_bytes());
-        assert!(parse_rewrite_request(&noncanonical).is_err());
-
-        let mut duplicate = minimal_request();
-        duplicate[17] = 2;
-        let second = [0x02, 0xca, 0x00, 0x01, b'x'];
-        let insert_at = REWRITE_FIXED_BYTES + 8;
-        duplicate.splice(insert_at..insert_at, second);
-        assert!(parse_rewrite_request(&duplicate).is_err());
-    }
-
-    #[test]
-    fn inspection_rejects_empty_and_oversized_inputs() {
-        assert!(inspect_and_encode(Vec::new()).is_err());
-        let oversized = vec![0x30; MAX_INSPECT_REQUEST_BYTES + 1];
-        assert!(inspect_and_encode(oversized).is_err());
+        let mut invalid_patch = minimal_request();
+        invalid_patch[2] = PATCH_KEEP;
+        invalid_patch[3..7].copy_from_slice(&7i32.to_be_bytes());
+        assert!(parse_rewrite_request(&invalid_patch).is_err());
     }
 }

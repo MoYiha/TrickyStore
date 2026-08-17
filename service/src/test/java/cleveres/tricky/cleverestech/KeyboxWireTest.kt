@@ -10,28 +10,36 @@ import org.junit.Test
 
 class KeyboxWireTest {
     @Test
-    fun `valid DER response decodes and wipes transport bytes`() {
-        val privateKey = byteArrayOf(0x30, 0x03, 0x02, 0x01, 0x01)
-        val response = encodeResponse("ecdsa", privateKey, listOf("LEAF", "ROOT"))
+    fun `valid public metadata response decodes and wipes transport bytes`() {
+        val keyId = ByteArray(16) { index -> (index + 1).toByte() }
+        val certificates = listOf(byteArrayOf(0x30, 1), byteArrayOf(0x30, 2))
+        val response = encodeResponse("EC", keyId, certificates)
         val decoded = KeyboxWire.decode(response)
 
         requireNotNull(decoded)
         assertEquals(1, decoded.declaredKeyboxes)
         assertEquals(1, decoded.keyboxCount)
         assertEquals(1, decoded.keys.size)
-        assertEquals("ecdsa", decoded.keys[0].algorithm)
-        assertArrayEquals(privateKey, decoded.keys[0].privateKeyPkcs8)
-        assertEquals(listOf("LEAF", "ROOT"), decoded.keys[0].certificatesPem)
+        assertEquals("EC", decoded.keys[0].algorithm)
+        assertArrayEquals(keyId, decoded.keys[0].keyId)
+        assertEquals(2, decoded.keys[0].certificatesDer.size)
+        assertArrayEquals(certificates[0], decoded.keys[0].certificatesDer[0])
+        assertArrayEquals(certificates[1], decoded.keys[0].certificatesDer[1])
         assertTrue(response.all { it == 0.toByte() })
-
-        decoded.wipePrivateKeys()
-        assertTrue(decoded.keys[0].privateKeyPkcs8.all { it == 0.toByte() })
     }
 
     @Test
-    fun `legacy wire version fails closed`() {
-        val response = encodeResponse("EC", byteArrayOf(0x30, 1), listOf("CERT"))
-        response[0] = 1
+    fun `legacy private-key wire version fails closed`() {
+        val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1)))
+        response[0] = 2
+
+        assertNull(KeyboxWire.decode(response))
+        assertTrue(response.all { it == 0.toByte() })
+    }
+
+    @Test
+    fun `zero opaque key identifier fails closed`() {
+        val response = encodeResponse("EC", ByteArray(16), listOf(byteArrayOf(0x30, 1)))
 
         assertNull(KeyboxWire.decode(response))
         assertTrue(response.all { it == 0.toByte() })
@@ -39,7 +47,7 @@ class KeyboxWireTest {
 
     @Test
     fun `unsupported algorithm fails closed`() {
-        val response = encodeResponse("Ed25519", byteArrayOf(0x30, 1), listOf("CERT"))
+        val response = encodeResponse("Ed25519", validKeyId(), listOf(byteArrayOf(0x30, 1)))
 
         assertNull(KeyboxWire.decode(response))
         assertTrue(response.all { it == 0.toByte() })
@@ -47,7 +55,7 @@ class KeyboxWireTest {
 
     @Test
     fun `trailing bytes fail closed and transport is wiped`() {
-        val valid = encodeResponse("RSA", byteArrayOf(0x30, 1), listOf("CERT"))
+        val valid = encodeResponse("RSA", validKeyId(), listOf(byteArrayOf(0x30, 1)))
         val response = valid + byteArrayOf(1)
 
         assertNull(KeyboxWire.decode(response))
@@ -55,21 +63,8 @@ class KeyboxWireTest {
     }
 
     @Test
-    fun `invalid certificate utf8 fails closed and private copy is not returned`() {
-        val response =
-            encodeRawResponse(
-                algorithm = "EC".toByteArray(),
-                privateKey = byteArrayOf(0x30, 1),
-                certificates = listOf(byteArrayOf(0xc3.toByte(), 0x28)),
-            )
-
-        assertNull(KeyboxWire.decode(response))
-        assertTrue(response.all { it == 0.toByte() })
-    }
-
-    @Test
     fun `declared keybox count must match structural counts`() {
-        val response = encodeResponse("EC", byteArrayOf(0x30, 1), listOf("CERT"))
+        val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1)))
         response[1] = 2
 
         assertNull(KeyboxWire.decode(response))
@@ -78,39 +73,44 @@ class KeyboxWireTest {
 
     @Test
     fun `truncated length delimited fields fail closed`() {
-        val response = encodeResponse("EC", byteArrayOf(0x30, 1), listOf("CERT")).copyOf(12)
+        val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1))).copyOf(22)
 
         assertNull(KeyboxWire.decode(response))
         assertTrue(response.all { it == 0.toByte() })
     }
 
+    @Test
+    fun `oversized certificate length fails closed before allocation`() {
+        val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1)))
+        val certificateLengthOffset = 5 + 2 + 16 + 2
+        response[certificateLengthOffset] = 0x7f
+        response[certificateLengthOffset + 1] = 0xff.toByte()
+        response[certificateLengthOffset + 2] = 0xff.toByte()
+        response[certificateLengthOffset + 3] = 0xff.toByte()
+
+        assertNull(KeyboxWire.decode(response))
+        assertTrue(response.all { it == 0.toByte() })
+    }
+
+    private fun validKeyId(): ByteArray = ByteArray(16) { index -> (0x40 + index).toByte() }
+
     private fun encodeResponse(
         algorithm: String,
-        privateKey: ByteArray,
-        certificates: List<String>,
-    ): ByteArray =
-        encodeRawResponse(
-            algorithm.toByteArray(),
-            privateKey,
-            certificates.map { it.toByteArray() },
-        )
-
-    private fun encodeRawResponse(
-        algorithm: ByteArray,
-        privateKey: ByteArray,
+        keyId: ByteArray,
         certificates: List<ByteArray>,
     ): ByteArray {
+        require(keyId.size == 16)
+        val algorithmBytes = algorithm.toByteArray(Charsets.UTF_8)
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
-            data.writeByte(2)
+            data.writeByte(3)
             data.writeByte(1)
             data.writeByte(1)
             data.writeShort(1)
-            data.writeByte(algorithm.size)
+            data.writeByte(algorithmBytes.size)
             data.writeByte(certificates.size)
-            data.writeInt(privateKey.size)
-            data.write(algorithm)
-            data.write(privateKey)
+            data.write(keyId)
+            data.write(algorithmBytes)
             for (certificate in certificates) {
                 data.writeInt(certificate.size)
                 data.write(certificate)

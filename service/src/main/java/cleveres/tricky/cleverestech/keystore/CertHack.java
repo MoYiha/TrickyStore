@@ -2,32 +2,17 @@ package cleveres.tricky.cleverestech.keystore;
 
 import android.security.keystore.KeyProperties;
 
-import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.openssl.PEMKeyPair;
-import org.bouncycastle.openssl.PEMParser;
-import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
-import org.bouncycastle.util.io.pem.PemReader;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.Reader;
-import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
-import java.security.PublicKey;
-import java.security.Security;
-import java.security.Signature;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,12 +25,10 @@ import cleveres.tricky.cleverestech.PolicyState;
 import cleveres.tricky.cleverestech.UtilKt;
 
 public final class CertHack {
-    private static final int MAX_KEYBOXES_PER_FILE = 64;
-    private static final int MAX_KEYS_PER_KEYBOX = 4;
-    private static final int MAX_CERTIFICATES_PER_CHAIN = 16;
-    private static final int MAX_PEM_CHARS = 256 * 1024;
     private static final int MAX_CERTIFICATE_CACHE_ENTRIES = 64;
     private static final int MAX_LEAF_CERTIFICATE_BYTES = 64 * 1024;
+    private static final int BACKEND_KEY_ID_BYTES = 16;
+    private static final String BACKEND_KEY_FORMAT = "CleveresTricky-KeyId-v1";
     private static final String[] ATTESTATION_ID_NAMES =
             {"BRAND", "DEVICE", "PRODUCT", "SERIAL", "IMEI", "MEID", "MANUFACTURER", "MODEL", "IMEI2"};
     private static final int[] ATTESTATION_ID_TAGS = {710, 711, 712, 713, 714, 715, 716, 717, 723};
@@ -71,9 +54,20 @@ public final class CertHack {
             this.signatureAlgorithm = signatureAlgorithmForKeybox(keybox);
             if (this.signatureAlgorithm == null) throw new IOException("Unsupported keybox algorithm");
             this.issuerChain = keybox.certificates.toArray(new Certificate[0]);
+            if (!BACKEND_KEY_FORMAT.equals(keybox.keyPair.getPrivate().getFormat())) {
+                throw new IOException("Production keybox does not use an opaque backend key handle");
+            }
             byte[] encoded = keybox.keyPair.getPrivate().getEncoded();
-            if (encoded == null || encoded.length == 0) throw new IOException("Keybox private key is not encodable");
-            Arrays.fill(encoded, (byte) 0);
+            try {
+                if (encoded == null || encoded.length != BACKEND_KEY_ID_BYTES) {
+                    throw new IOException("Opaque backend key identifier is invalid");
+                }
+                int aggregate = 0;
+                for (byte value : encoded) aggregate |= value & 0xFF;
+                if (aggregate == 0) throw new IOException("Opaque backend key identifier is zero");
+            } finally {
+                if (encoded != null) Arrays.fill(encoded, (byte) 0);
+            }
         }
     }
 
@@ -93,7 +87,7 @@ public final class CertHack {
                     try {
                         prepared.put(keybox, new PreparedKeyBox(keybox));
                     } catch (Exception error) {
-                        Logger.e("Could not prepare keybox metadata", error);
+                        Logger.e("Could not prepare opaque keybox metadata", error);
                     }
                 }
             }
@@ -115,44 +109,6 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
-
-    static {
-        // Retained only for the legacy XML compatibility oracle. Production keybox parsing and all
-        // certificate/attestation DER rewriting run in Rust.
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(new BouncyCastleProvider());
-        }
-    }
-
-    public static boolean canHack() {
-        return !state.keyboxes.isEmpty();
-    }
-
-    public static int getKeyboxCount() {
-        int count = 0;
-        for (List<KeyBox> list : state.keyboxes.values()) count += list.size();
-        return count;
-    }
-
-    private static KeyPair parseKeyPair(String key, PublicKey leafPublicKey) throws Throwable {
-        try (PEMParser parser = new PEMParser(new StringReader(UtilKt.trimLine(key)))) {
-            Object parsed = parser.readObject();
-            JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
-            if (parsed instanceof PEMKeyPair pemKeyPair) return converter.getKeyPair(pemKeyPair);
-            if (parsed instanceof PrivateKeyInfo privateKeyInfo) {
-                return new KeyPair(leafPublicKey, converter.getPrivateKey(privateKeyInfo));
-            }
-            throw new IOException("Unsupported private-key PEM object");
-        }
-    }
-
-    private static Certificate parseCert(String cert) throws Throwable {
-        try (PemReader reader = new PemReader(new StringReader(UtilKt.trimLine(cert)))) {
-            var pemObject = reader.readPemObject();
-            if (pemObject == null) throw new IOException("Certificate PEM is empty");
-            return CERTIFICATE_FACTORY.get().generateCertificate(new ByteArrayInputStream(pemObject.getContent()));
-        }
-    }
 
     private static final class CacheKey {
         private final byte[] leafEncoded;
@@ -181,6 +137,16 @@ public final class CertHack {
         }
     }
 
+    public static boolean canHack() {
+        return !state.keyboxes.isEmpty();
+    }
+
+    public static int getKeyboxCount() {
+        int count = 0;
+        for (List<KeyBox> list : state.keyboxes.values()) count += list.size();
+        return count;
+    }
+
     static Map<Integer, byte[]> selectPresentAttestationIdOverrides(
             Map<Integer, byte[]> configured,
             List<Integer> originalTags
@@ -202,114 +168,6 @@ public final class CertHack {
         return null;
     }
 
-    public static List<KeyBox> parseKeyboxXml(Reader reader) {
-        return parseKeyboxXml(reader, "unknown.xml");
-    }
-
-    /** Legacy managed oracle retained for compatibility tests; production loading uses KeyboxLoader/Rust. */
-    public static List<KeyBox> parseKeyboxXml(Reader reader, String filename) {
-        if (reader == null) return Collections.emptyList();
-        List<KeyBox> parsedList = new ArrayList<>();
-        try {
-            XMLParser xmlParser = new XMLParser(reader);
-            XMLParser.Element root = xmlParser.getRoot();
-            if (root == null || !"AndroidAttestation".equals(root.name)) return Collections.emptyList();
-
-            XMLParser.Element numKeyboxes = root.getChild("NumberOfKeyboxes");
-            if (numKeyboxes == null || numKeyboxes.getText() == null) return Collections.emptyList();
-            List<XMLParser.Element> keyboxes = root.getChildren("Keybox");
-            int declaredKeyboxes = Integer.parseInt(Objects.requireNonNull(numKeyboxes.getText()));
-            if (declaredKeyboxes < 1 || declaredKeyboxes > MAX_KEYBOXES_PER_FILE || keyboxes.size() != declaredKeyboxes) {
-                Logger.e("Keybox count is invalid or does not match the XML declaration");
-                return Collections.emptyList();
-            }
-
-            for (XMLParser.Element keybox : keyboxes) {
-                List<XMLParser.Element> keys = keybox.getChildren("Key");
-                if (keys.isEmpty() || keys.size() > MAX_KEYS_PER_KEYBOX) return Collections.emptyList();
-                for (XMLParser.Element key : keys) {
-                    String keyboxAlgorithm = key.attributes.get("algorithm");
-                    XMLParser.Element privateKeyElement = key.getChild("PrivateKey");
-                    String privateKey = privateKeyElement != null ? privateKeyElement.getText() : null;
-                    if (privateKey == null || privateKey.length() > MAX_PEM_CHARS) return Collections.emptyList();
-
-                    XMLParser.Element certChain = key.getChild("CertificateChain");
-                    if (certChain == null) return Collections.emptyList();
-                    XMLParser.Element numCertsElement = certChain.getChild("NumberOfCertificates");
-                    if (numCertsElement == null || numCertsElement.getText() == null) return Collections.emptyList();
-                    int numberOfCertificates = Integer.parseInt(Objects.requireNonNull(numCertsElement.getText()));
-                    if (numberOfCertificates < 1 || numberOfCertificates > MAX_CERTIFICATES_PER_CHAIN) {
-                        return Collections.emptyList();
-                    }
-                    List<XMLParser.Element> certificates = certChain.getChildren("Certificate");
-                    if (certificates.size() != numberOfCertificates) {
-                        Logger.e("Keybox certificate count does not match its declaration");
-                        return Collections.emptyList();
-                    }
-                    LinkedList<Certificate> certificateChain = new LinkedList<>();
-                    for (int j = 0; j < numberOfCertificates; j++) {
-                        String certPem = certificates.get(j).getText();
-                        if (certPem == null || certPem.length() > MAX_PEM_CHARS) {
-                            certificateChain.clear();
-                            break;
-                        }
-                        certificateChain.add(parseCert(certPem));
-                    }
-                    if (certificateChain.size() != numberOfCertificates) return Collections.emptyList();
-                    KeyPair pair = parseKeyPair(privateKey, certificateChain.getFirst().getPublicKey());
-                    if (!isValidKeybox(pair, certificateChain, keyboxAlgorithm)) return Collections.emptyList();
-                    parsedList.add(new KeyBox(pair, certificateChain, filename));
-                }
-            }
-            return parsedList;
-        } catch (Throwable t) {
-            Logger.e("Error parsing xml: " + t.getClass().getName());
-            return Collections.emptyList();
-        }
-    }
-
-    private static boolean isValidKeybox(
-            KeyPair keyPair,
-            List<Certificate> certificateChain,
-            String declaredAlgorithm
-    ) {
-        try {
-            if (keyPair == null || certificateChain.isEmpty() || !(certificateChain.get(0) instanceof X509Certificate leaf)) {
-                return false;
-            }
-            String actualAlgorithm = keyPair.getPublic().getAlgorithm();
-            if (!(actualAlgorithm.equalsIgnoreCase("EC") || actualAlgorithm.equalsIgnoreCase("ECDSA") ||
-                    actualAlgorithm.equalsIgnoreCase("RSA"))) return false;
-            if (declaredAlgorithm == null || !(declaredAlgorithm.equalsIgnoreCase(actualAlgorithm) ||
-                    (declaredAlgorithm.equalsIgnoreCase("ecdsa") && actualAlgorithm.equalsIgnoreCase("EC")))) {
-                return false;
-            }
-            if (!Arrays.equals(keyPair.getPublic().getEncoded(), leaf.getPublicKey().getEncoded())) return false;
-            Signature proof = Signature.getInstance(
-                    actualAlgorithm.equalsIgnoreCase("RSA") ? "SHA256withRSA" : "SHA256withECDSA");
-            byte[] challenge = "CleveresTricky keybox validation".getBytes(StandardCharsets.UTF_8);
-            proof.initSign(keyPair.getPrivate());
-            proof.update(challenge);
-            byte[] signature = proof.sign();
-            try {
-                proof.initVerify(leaf.getPublicKey());
-                proof.update(challenge);
-                if (!proof.verify(signature)) return false;
-            } finally {
-                Arrays.fill(signature, (byte) 0);
-            }
-            for (int i = 0; i < certificateChain.size(); i++) {
-                if (!(certificateChain.get(i) instanceof X509Certificate certificate)) return false;
-                certificate.checkValidity();
-                if (i + 1 < certificateChain.size()) certificate.verify(certificateChain.get(i + 1).getPublicKey());
-            }
-            return true;
-        } catch (Exception e) {
-            Logger.e("Keybox cryptographic validation failed: " + e.getClass().getSimpleName());
-            return false;
-        }
-    }
-
     public static synchronized void setKeyboxes(List<KeyBox> boxes) {
         if (boxes == null || boxes.isEmpty()) {
             Logger.i("clear all keyboxes");
@@ -324,6 +182,12 @@ public final class CertHack {
                 Logger.e("Ignoring unsupported keybox algorithm: " + box.keyPair.getPublic().getAlgorithm());
                 continue;
             }
+            try {
+                new PreparedKeyBox(box);
+            } catch (Exception error) {
+                Logger.e("Ignoring keybox without a valid opaque backend handle", error);
+                continue;
+            }
             newKeyboxes.computeIfAbsent(algo, ignored -> new ArrayList<>()).add(box);
             newKeyboxFiles.computeIfAbsent(box.filename, ignored -> new ArrayList<>()).add(box);
         }
@@ -331,14 +195,6 @@ public final class CertHack {
         int rsaCount = newKeyboxes.getOrDefault(KeyProperties.KEY_ALGORITHM_RSA, Collections.emptyList()).size();
         Logger.i("update keyboxes: total=" + boxes.size() + " (EC=" + ecCount + ", RSA=" + rsaCount + ")");
         state = new State(newKeyboxes, newKeyboxFiles);
-    }
-
-    public static void readFromXml(Reader reader) {
-        if (reader == null) {
-            setKeyboxes(Collections.emptyList());
-            return;
-        }
-        setKeyboxes(parseKeyboxXml(reader));
     }
 
     public static void clearCertificateCache() {
@@ -368,15 +224,15 @@ public final class CertHack {
     /**
      * Rewrites one key's attestation chain once per policy snapshot. Portable X.509/DER inspection,
      * authorization-list rewriting and signing are performed by the unprivileged Rust backend.
-     * Managed code only resolves Android policy, selects JCA key material and materializes the final
-     * X.509 certificate object.
+     * Managed code resolves Android-derived policy facts, selects an opaque key handle and
+     * materializes the final JCA X.509 object. Private key bytes never enter this process.
      */
     public static Certificate[] hackCertificateChain(Certificate[] caList, int uid) {
         if (caList == null || caList.length == 0 || caList[0] == null) {
             throw new UnsupportedOperationException("Certificate chain is empty");
         }
         CertificateBackend.Inspection inspection = null;
-        byte[] privateKeyDer = null;
+        byte[] keyId = null;
         try {
             State currentState = state;
             byte[] leafEncoded = caList[0].getEncoded();
@@ -427,14 +283,12 @@ public final class CertHack {
 
             Map<Integer, byte[]> idOverrides = presentIdOverrides(uid, inspection.getPresentIdMask());
             byte[] moduleHash = inspection.getSupportsModuleHash() ? Config.INSTANCE.getModuleHash() : null;
-            byte[] issuerCertificateDer = prepared.issuerChain[0].getEncoded();
-            privateKeyDer = keybox.keyPair.getPrivate().getEncoded();
-            if (privateKeyDer == null || privateKeyDer.length == 0) return caList;
+            keyId = keybox.keyPair.getPrivate().getEncoded();
+            if (keyId == null || keyId.length != BACKEND_KEY_ID_BYTES) return caList;
 
             byte[] rewrittenDer = CertificateBackend.rewrite(
                     leafEncoded,
-                    issuerCertificateDer,
-                    privateKeyDer,
+                    keyId,
                     signingAlgorithm,
                     patchDisposition(patchLevels.getSystem()), patchLevels.getSystem().getValue(),
                     patchDisposition(patchLevels.getVendor()), patchLevels.getVendor().getValue(),
@@ -459,7 +313,7 @@ public final class CertHack {
             Logger.e("Exception in hackCertificateChain", t);
             return caList;
         } finally {
-            if (privateKeyDer != null) Arrays.fill(privateKeyDer, (byte) 0);
+            if (keyId != null) Arrays.fill(keyId, (byte) 0);
             if (inspection != null) inspection.wipe();
         }
     }

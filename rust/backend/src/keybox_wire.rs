@@ -1,30 +1,34 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
-use cleverestricky_keybox_core::normalize_private_key_pkcs8;
+#[path = "key_store.rs"]
+pub(crate) mod key_store;
+
 use cleverestricky_xml_core::{
-    parse_keybox_xml_bytes, KeyboxDocument, MAX_CERTIFICATES_PER_CHAIN, MAX_DOCUMENT_UTF8_BYTES,
+    parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_DOCUMENT_UTF8_BYTES,
     MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX,
 };
-use zeroize::{Zeroize, Zeroizing};
+use key_store::{KeyId, PublicKeyRecord, KEY_ID_BYTES, MAX_STORED_KEYS};
+use zeroize::Zeroize;
 
 pub const MAX_KEYBOX_XML_BYTES: usize = MAX_DOCUMENT_UTF8_BYTES;
 const MAX_TOTAL_KEYS: usize = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX;
 const MAX_TOTAL_CERTIFICATES: usize = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN;
-const WIRE_VERSION: u8 = 2;
+const WIRE_VERSION: u8 = 3;
 const FIXED_HEADER_BYTES: usize = 5;
-const KEY_HEADER_BYTES: usize = 6;
+const KEY_HEADER_BYTES: usize = 2 + KEY_ID_BYTES;
 const CERTIFICATE_HEADER_BYTES: usize = 4;
+const STORE_CONTROL_MAGIC: &[u8; 4] = b"CTKS";
+const STORE_CONTROL_VERSION: u8 = 1;
+const STORE_ACTION_RETAIN: u8 = 1;
+const STORE_CONTROL_HEADER_BYTES: usize = 8;
 pub const MAX_KEYBOX_WIRE_OVERHEAD_BYTES: usize = FIXED_HEADER_BYTES
     + MAX_TOTAL_KEYS * KEY_HEADER_BYTES
     + MAX_TOTAL_CERTIFICATES * CERTIFICATE_HEADER_BYTES;
 pub const MAX_KEYBOX_RESPONSE_BYTES: usize = MAX_KEYBOX_XML_BYTES + MAX_KEYBOX_WIRE_OVERHEAD_BYTES;
 
-struct WireKey<'a> {
-    algorithm: &'a str,
-    private_key_pkcs8: Zeroizing<Vec<u8>>,
-    certificates_pem: &'a [String],
-}
-
 pub fn parse_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    if request.starts_with(STORE_CONTROL_MAGIC) {
+        return handle_store_control(request);
+    }
     if !request_size_is_valid(request.len()) {
         request.zeroize();
         return Err("keybox XML exceeds operation bound");
@@ -40,35 +44,58 @@ pub fn parse_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     request.zeroize();
     drop(request);
 
-    let keys = normalize_keys(&document)?;
-    encode_document(&document, &keys)
+    let keys = key_store::register_document(&document)?;
+    encode_document(document.declared_keyboxes, document.keybox_count, &keys)
+}
+
+fn handle_store_control(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    let result = (|| {
+        if request.len() < STORE_CONTROL_HEADER_BYTES
+            || request[0..4] != STORE_CONTROL_MAGIC[..]
+            || request[4] != STORE_CONTROL_VERSION
+            || request[5] != STORE_ACTION_RETAIN
+        {
+            return Err("invalid key store control request");
+        }
+        let count = u16::from_be_bytes([request[6], request[7]]) as usize;
+        if count > MAX_STORED_KEYS {
+            return Err("active key set exceeds store bound");
+        }
+        let expected = STORE_CONTROL_HEADER_BYTES
+            .checked_add(count.checked_mul(KEY_ID_BYTES).ok_or("active key set size overflow")?)
+            .ok_or("active key set size overflow")?;
+        if request.len() != expected {
+            return Err("invalid active key set length");
+        }
+        let mut ids = Vec::<KeyId>::new();
+        ids.try_reserve_exact(count)
+            .map_err(|_| "active key set allocation failed")?;
+        for chunk in request[STORE_CONTROL_HEADER_BYTES..].chunks_exact(KEY_ID_BYTES) {
+            let id: KeyId = chunk
+                .try_into()
+                .map_err(|_| "invalid opaque key identifier")?;
+            if id.iter().all(|byte| *byte == 0) || ids.contains(&id) {
+                return Err("invalid active key identifier set");
+            }
+            ids.push(id);
+        }
+        key_store::retain_only(&ids)?;
+        Ok(b"ok".to_vec())
+    })();
+    request.zeroize();
+    result
 }
 
 fn request_size_is_valid(length: usize) -> bool {
     length != 0 && length <= MAX_KEYBOX_XML_BYTES
 }
 
-fn normalize_keys(document: &KeyboxDocument) -> Result<Vec<WireKey<'_>>, &'static str> {
-    let mut keys = Vec::new();
-    keys.try_reserve_exact(document.keys.len())
-        .map_err(|_| "keybox normalization allocation failed")?;
-    for key in &document.keys {
-        let private_key_pkcs8 = normalize_private_key_pkcs8(&key.algorithm, &key.private_key_pem)
-            .map_err(|_| "keybox private key rejected")?;
-        keys.push(WireKey {
-            algorithm: &key.algorithm,
-            private_key_pkcs8,
-            certificates_pem: &key.certificates_pem,
-        });
-    }
-    Ok(keys)
-}
-
 fn encode_document(
-    document: &KeyboxDocument,
-    keys: &[WireKey<'_>],
+    declared_keyboxes: usize,
+    keybox_count: usize,
+    keys: &[PublicKeyRecord],
 ) -> Result<Vec<u8>, &'static str> {
-    validate_wire_fields(document, keys)?;
+    validate_wire_fields(declared_keyboxes, keybox_count, keys)?;
     let total = encoded_len(keys)?;
     if total > MAX_KEYBOX_RESPONSE_BYTES {
         return Err("keybox response exceeds wire bound");
@@ -79,19 +106,18 @@ fn encode_document(
         .try_reserve_exact(total)
         .map_err(|_| "keybox response allocation failed")?;
     output.push(WIRE_VERSION);
-    output.push(document.declared_keyboxes as u8);
-    output.push(document.keybox_count as u8);
+    output.push(declared_keyboxes as u8);
+    output.push(keybox_count as u8);
     output.extend_from_slice(&(keys.len() as u16).to_be_bytes());
 
     for key in keys {
         output.push(key.algorithm.len() as u8);
-        output.push(key.certificates_pem.len() as u8);
-        output.extend_from_slice(&(key.private_key_pkcs8.len() as u32).to_be_bytes());
+        output.push(key.certificates_der.len() as u8);
+        output.extend_from_slice(&key.id);
         output.extend_from_slice(key.algorithm.as_bytes());
-        output.extend_from_slice(key.private_key_pkcs8.as_slice());
-        for certificate in key.certificates_pem {
+        for certificate in &key.certificates_der {
             output.extend_from_slice(&(certificate.len() as u32).to_be_bytes());
-            output.extend_from_slice(certificate.as_bytes());
+            output.extend_from_slice(certificate);
         }
     }
     debug_assert_eq!(output.len(), total);
@@ -99,32 +125,33 @@ fn encode_document(
 }
 
 fn validate_wire_fields(
-    document: &KeyboxDocument,
-    keys: &[WireKey<'_>],
+    declared_keyboxes: usize,
+    keybox_count: usize,
+    keys: &[PublicKeyRecord],
 ) -> Result<(), &'static str> {
-    if document.declared_keyboxes > u8::MAX as usize {
+    if declared_keyboxes == 0 || declared_keyboxes > u8::MAX as usize {
         return Err("keybox declaration exceeds wire bound");
     }
-    if document.keybox_count > u8::MAX as usize {
+    if keybox_count == 0 || keybox_count > u8::MAX as usize || keybox_count != declared_keyboxes {
         return Err("keybox count exceeds wire bound");
     }
-    if keys.len() != document.keys.len() || keys.len() > u16::MAX as usize {
+    if keys.len() < keybox_count || keys.len() > u16::MAX as usize {
         return Err("key count exceeds wire bound");
     }
     for key in keys {
-        if key.algorithm.len() > u8::MAX as usize {
+        if key.algorithm.is_empty() || key.algorithm.len() > u8::MAX as usize {
             return Err("key algorithm exceeds wire bound");
         }
-        if key.certificates_pem.len() > u8::MAX as usize {
+        if key.id.iter().all(|byte| *byte == 0) {
+            return Err("opaque key identifier is invalid");
+        }
+        if key.certificates_der.is_empty() || key.certificates_der.len() > u8::MAX as usize {
             return Err("certificate count exceeds wire bound");
         }
-        if key.private_key_pkcs8.len() > u32::MAX as usize {
-            return Err("private key exceeds wire bound");
-        }
         if key
-            .certificates_pem
+            .certificates_der
             .iter()
-            .any(|certificate| certificate.len() > u32::MAX as usize)
+            .any(|certificate| certificate.is_empty() || certificate.len() > u32::MAX as usize)
         {
             return Err("certificate exceeds wire bound");
         }
@@ -132,15 +159,14 @@ fn validate_wire_fields(
     Ok(())
 }
 
-fn encoded_len(keys: &[WireKey<'_>]) -> Result<usize, &'static str> {
+fn encoded_len(keys: &[PublicKeyRecord]) -> Result<usize, &'static str> {
     let mut total = FIXED_HEADER_BYTES;
     for key in keys {
         total = total
             .checked_add(KEY_HEADER_BYTES)
             .and_then(|value| value.checked_add(key.algorithm.len()))
-            .and_then(|value| value.checked_add(key.private_key_pkcs8.len()))
             .ok_or("keybox response size overflow")?;
-        for certificate in key.certificates_pem {
+        for certificate in &key.certificates_der {
             total = total
                 .checked_add(CERTIFICATE_HEADER_BYTES)
                 .and_then(|value| value.checked_add(certificate.len()))
@@ -158,7 +184,7 @@ mod tests {
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
 
     #[test]
-    fn shared_ec_fixture_encodes_pkcs8_length_delimited_response() {
+    fn shared_ec_fixture_encodes_opaque_id_and_certificate_der_only() {
         let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
         assert_eq!(response[0], WIRE_VERSION);
         assert_eq!(response[1], 1);
@@ -168,29 +194,49 @@ mod tests {
         let mut offset = FIXED_HEADER_BYTES;
         let algorithm_len = response[offset] as usize;
         let certificate_count = response[offset + 1] as usize;
-        let private_key_len =
-            u32::from_be_bytes(response[offset + 2..offset + 6].try_into().unwrap()) as usize;
-        offset += KEY_HEADER_BYTES;
-        assert_eq!(&response[offset..offset + algorithm_len], b"ecdsa");
+        let id_start = offset + 2;
+        let id_end = id_start + KEY_ID_BYTES;
+        assert!(response[id_start..id_end].iter().any(|byte| *byte != 0));
+        offset = id_end;
+        assert_eq!(&response[offset..offset + algorithm_len], b"EC");
         offset += algorithm_len;
-        let private_key = &response[offset..offset + private_key_len];
-        assert_eq!(private_key.first().copied(), Some(0x30));
-        assert!(!private_key
-            .windows(10)
-            .any(|window| window == b"-----BEGIN"));
-        offset += private_key_len;
         assert_eq!(certificate_count, 1);
         let certificate_len =
             u32::from_be_bytes(response[offset..offset + 4].try_into().unwrap()) as usize;
         offset += CERTIFICATE_HEADER_BYTES;
-        assert!(
-            std::str::from_utf8(&response[offset..offset + certificate_len])
-                .unwrap()
-                .starts_with("-----BEGIN CERTIFICATE-----")
-        );
+        let certificate = &response[offset..offset + certificate_len];
+        assert_eq!(certificate.first().copied(), Some(0x30));
+        assert!(!certificate
+            .windows(10)
+            .any(|window| window == b"-----BEGIN"));
+        assert!(!response
+            .windows(16)
+            .any(|window| window == b"PRIVATE KEY-----"));
         offset += certificate_len;
         assert_eq!(offset, response.len());
         assert!(response.len() <= MAX_KEYBOX_RESPONSE_BYTES);
+    }
+
+    #[test]
+    fn active_set_control_prunes_and_rejects_unknown_handles() {
+        let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
+        let id_start = FIXED_HEADER_BYTES + 2;
+        let id: KeyId = response[id_start..id_start + KEY_ID_BYTES].try_into().unwrap();
+        let mut control = Vec::new();
+        control.extend_from_slice(STORE_CONTROL_MAGIC);
+        control.push(STORE_CONTROL_VERSION);
+        control.push(STORE_ACTION_RETAIN);
+        control.extend_from_slice(&1u16.to_be_bytes());
+        control.extend_from_slice(&id);
+        assert_eq!(parse_and_encode(control).unwrap(), b"ok");
+
+        let mut unknown = Vec::new();
+        unknown.extend_from_slice(STORE_CONTROL_MAGIC);
+        unknown.push(STORE_CONTROL_VERSION);
+        unknown.push(STORE_ACTION_RETAIN);
+        unknown.extend_from_slice(&1u16.to_be_bytes());
+        unknown.extend_from_slice(&[0xa5; KEY_ID_BYTES]);
+        assert!(parse_and_encode(unknown).is_err());
     }
 
     #[test]

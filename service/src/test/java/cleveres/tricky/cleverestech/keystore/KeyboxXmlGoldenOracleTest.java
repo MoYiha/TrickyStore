@@ -26,7 +26,7 @@ public class KeyboxXmlGoldenOracleTest {
         });
 
         String xml = readFixture();
-        List<CertHack.KeyBox> parsed = CertHack.parseKeyboxXml(new StringReader(xml), "valid_ec.xml");
+        List<CertHack.KeyBox> parsed = ManagedKeyboxOracle.parse(new StringReader(xml), "valid_ec.xml");
 
         assertEquals(1, parsed.size());
         CertHack.KeyBox keybox = parsed.get(0);

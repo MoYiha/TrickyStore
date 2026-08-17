@@ -1,10 +1,10 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![forbid(unsafe_code)]
 
-use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey};
+use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey};
 use p256::SecretKey as P256SecretKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::RsaPrivateKey;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -38,6 +38,32 @@ pub fn normalize_private_key_pkcs8(
         normalize_ec_private_key(private_key_pem)
     } else if algorithm.eq_ignore_ascii_case("RSA") {
         normalize_rsa_private_key(private_key_pem)
+    } else {
+        Err(KeyboxError::UnsupportedAlgorithm)
+    }
+}
+
+pub fn public_key_spki_from_pkcs8(
+    algorithm: &str,
+    private_key_pkcs8: &[u8],
+) -> Result<Vec<u8>, KeyboxError> {
+    if private_key_pkcs8.is_empty() {
+        return Err(KeyboxError::InvalidPrivateKey);
+    }
+    if algorithm.eq_ignore_ascii_case("EC") || algorithm.eq_ignore_ascii_case("ECDSA") {
+        let key = P256SecretKey::from_pkcs8_der(private_key_pkcs8)
+            .map_err(|_| KeyboxError::InvalidPrivateKey)?;
+        key.public_key()
+            .to_public_key_der()
+            .map(|document| document.as_bytes().to_vec())
+            .map_err(|_| KeyboxError::EncodingFailed)
+    } else if algorithm.eq_ignore_ascii_case("RSA") {
+        let key = RsaPrivateKey::from_pkcs8_der(private_key_pkcs8)
+            .map_err(|_| KeyboxError::InvalidPrivateKey)?;
+        RsaPublicKey::from(&key)
+            .to_public_key_der()
+            .map(|document| document.as_bytes().to_vec())
+            .map_err(|_| KeyboxError::EncodingFailed)
     } else {
         Err(KeyboxError::UnsupportedAlgorithm)
     }
@@ -102,6 +128,8 @@ mod tests {
         let normalized = normalize_private_key_pkcs8(&key.algorithm, &key.private_key_pem).unwrap();
         assert!(!normalized.is_empty());
         P256SecretKey::from_pkcs8_der(normalized.as_slice()).unwrap();
+        let spki = public_key_spki_from_pkcs8(&key.algorithm, normalized.as_slice()).unwrap();
+        assert!(!spki.is_empty());
     }
 
     #[test]
@@ -137,6 +165,10 @@ mod tests {
         );
         assert_eq!(
             normalize_private_key_pkcs8("RSA", "not a key").unwrap_err(),
+            KeyboxError::InvalidPrivateKey
+        );
+        assert_eq!(
+            public_key_spki_from_pkcs8("EC", b"not a key").unwrap_err(),
             KeyboxError::InvalidPrivateKey
         );
     }

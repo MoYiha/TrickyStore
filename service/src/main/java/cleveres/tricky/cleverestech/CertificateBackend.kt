@@ -30,8 +30,7 @@ object CertificateBackend {
     @VisibleForTesting
     internal data class RewriteRequest(
         val genuineLeafDer: ByteArray,
-        val issuerCertificateDer: ByteArray,
-        val issuerPrivateKeyPkcs8: ByteArray,
+        val keyId: ByteArray,
         val signingAlgorithm: Int,
         val systemDisposition: Int,
         val systemValue: Int,
@@ -70,8 +69,7 @@ object CertificateBackend {
     @JvmStatic
     fun rewrite(
         genuineLeafDer: ByteArray,
-        issuerCertificateDer: ByteArray,
-        issuerPrivateKeyPkcs8: ByteArray,
+        keyId: ByteArray,
         signingAlgorithm: Int,
         systemDisposition: Int,
         systemValue: Int,
@@ -85,8 +83,7 @@ object CertificateBackend {
         verifiedBootHash: ByteArray,
     ): ByteArray? {
         if (genuineLeafDer.isEmpty() || genuineLeafDer.size > MAX_CERTIFICATE_DER_BYTES ||
-            issuerCertificateDer.isEmpty() || issuerCertificateDer.size > MAX_CERTIFICATE_DER_BYTES ||
-            issuerPrivateKeyPkcs8.isEmpty() || issuerPrivateKeyPkcs8.size > MAX_PRIVATE_KEY_DER_BYTES ||
+            keyId.size != KEY_ID_BYTES || keyId.all { it == 0.toByte() } ||
             signingAlgorithm !in SIGNING_EC_P256_SHA256..SIGNING_RSA_PKCS1_SHA256 ||
             !validPatch(systemDisposition, systemValue) ||
             !validPatch(vendorDisposition, vendorValue) ||
@@ -115,8 +112,6 @@ object CertificateBackend {
                 idWireBytes,
                 moduleHash?.size ?: 0,
                 genuineLeafDer.size,
-                issuerCertificateDer.size,
-                issuerPrivateKeyPkcs8.size,
             ) ?: return null
         if (payloadLength > MAX_REWRITE_REQUEST_BYTES) return null
 
@@ -124,8 +119,7 @@ object CertificateBackend {
             return override(
                 RewriteRequest(
                     genuineLeafDer = genuineLeafDer,
-                    issuerCertificateDer = issuerCertificateDer,
-                    issuerPrivateKeyPkcs8 = issuerPrivateKeyPkcs8,
+                    keyId = keyId,
                     signingAlgorithm = signingAlgorithm,
                     systemDisposition = systemDisposition,
                     systemValue = systemValue,
@@ -147,7 +141,7 @@ object CertificateBackend {
             MAX_CERTIFICATE_DER_BYTES,
             propagateTransportFailure = true,
         ) { output ->
-            output.write(WIRE_VERSION)
+            output.write(REWRITE_WIRE_VERSION)
             output.write(signingAlgorithm)
             writePatch(output, systemDisposition, systemValue)
             writePatch(output, vendorDisposition, vendorValue)
@@ -155,8 +149,7 @@ object CertificateBackend {
             output.write(orderedIds.size)
             writeU16(output, moduleHash?.size ?: 0)
             writeI32(output, genuineLeafDer.size)
-            writeI32(output, issuerCertificateDer.size)
-            writeI32(output, issuerPrivateKeyPkcs8.size)
+            output.write(keyId)
             output.write(verifiedBootKey)
             output.write(verifiedBootHash)
             for ((tag, value) in orderedIds) {
@@ -166,8 +159,6 @@ object CertificateBackend {
             }
             if (moduleHash != null) output.write(moduleHash)
             output.write(genuineLeafDer)
-            output.write(issuerCertificateDer)
-            output.write(issuerPrivateKeyPkcs8)
         }
     }
 
@@ -179,7 +170,9 @@ object CertificateBackend {
 
     internal fun decodeInspection(response: ByteArray): Inspection {
         try {
-            if (response.size != INSPECT_RESPONSE_BYTES || (response[0].toInt() and 0xff) != WIRE_VERSION) {
+            if (response.size != INSPECT_RESPONSE_BYTES ||
+                (response[0].toInt() and 0xff) != INSPECT_WIRE_VERSION
+            ) {
                 throw RustBackendUnavailableException(IOException("Invalid certificate inspection response"))
             }
             val flags = response[1].toInt() and 0xff
@@ -217,7 +210,9 @@ object CertificateBackend {
         val value = readI32(bytes, offset + 1)
         return when (present) {
             0 -> {
-                if (value != 0) throw RustBackendUnavailableException(IOException("Non-canonical certificate patch field"))
+                if (value != 0) {
+                    throw RustBackendUnavailableException(IOException("Non-canonical certificate patch field"))
+                }
                 null
             }
             1 -> value
@@ -313,27 +308,27 @@ object CertificateBackend {
 
     private const val OP_CERTIFICATE_INSPECT = 25
     private const val OP_CERTIFICATE_REWRITE = 26
-    private const val WIRE_VERSION = 1
+    private const val INSPECT_WIRE_VERSION = 1
+    private const val REWRITE_WIRE_VERSION = 2
     private const val INSPECT_RESPONSE_BYTES = 83
     private const val FLAG_MODULE_HASH_SUPPORTED = 1
     private const val FLAG_BOOT_KEY_PRESENT = 1 shl 1
     private const val FLAG_BOOT_HASH_PRESENT = 1 shl 2
     private const val INSPECT_RESERVED_FLAGS = 0xf8
     private const val PRESENT_ID_RESERVED_MASK = 0xfe00
+    private const val KEY_ID_BYTES = 16
     private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
-    private const val MAX_PRIVATE_KEY_DER_BYTES = 3 * MAX_CERTIFICATE_DER_BYTES
     private const val MAX_ATTESTATION_ID_BYTES = 4 * 1024
     private const val MAX_MODULE_HASH_BYTES = 1024
     private const val MAX_ID_OVERRIDES = 9
     private const val BOOT_DIGEST_BYTES = 32
     private const val ID_HEADER_BYTES = 4
-    private const val REWRITE_FIXED_BYTES = 96
+    private const val REWRITE_FIXED_BYTES = 104
     private const val MAX_ID_WIRE_BYTES = MAX_ID_OVERRIDES * (ID_HEADER_BYTES + MAX_ATTESTATION_ID_BYTES)
     private const val MAX_REWRITE_REQUEST_BYTES =
         REWRITE_FIXED_BYTES +
             MAX_ID_WIRE_BYTES +
             MAX_MODULE_HASH_BYTES +
-            MAX_CERTIFICATE_DER_BYTES * 2 +
-            MAX_PRIVATE_KEY_DER_BYTES
+            MAX_CERTIFICATE_DER_BYTES
     private val ATTESTATION_ID_TAGS = setOf(710, 711, 712, 713, 714, 715, 716, 717, 723)
 }

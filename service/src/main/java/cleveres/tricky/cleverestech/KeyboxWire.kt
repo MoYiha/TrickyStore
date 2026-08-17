@@ -4,34 +4,25 @@ import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 
-/** Strict decoder for the bounded Rust keybox response. Private key bytes stay mutable. */
+/** Strict decoder for public keybox metadata. Private key material never crosses this wire. */
 internal object KeyboxWire {
     data class RawKey(
         val algorithm: String,
-        val privateKeyPkcs8: ByteArray,
-        val certificatesPem: List<String>,
-    ) {
-        fun wipePrivateKey() {
-            privateKeyPkcs8.fill(0)
-        }
-    }
+        val keyId: ByteArray,
+        val certificatesDer: List<ByteArray>,
+    )
 
     data class Document(
         val declaredKeyboxes: Int,
         val keyboxCount: Int,
         val keys: List<RawKey>,
-    ) {
-        fun wipePrivateKeys() {
-            keys.forEach(RawKey::wipePrivateKey)
-        }
-    }
+    )
 
     fun decode(response: ByteArray): Document? {
         if (response.size !in MIN_RESPONSE_BYTES..MAX_RESPONSE_BYTES) {
             response.fill(0)
             return null
         }
-        val decodedKeys = ArrayList<RawKey>()
         return try {
             val cursor = Cursor(response)
             requireWire(cursor.readU8() == WIRE_VERSION)
@@ -42,50 +33,36 @@ internal object KeyboxWire {
             requireWire(keyboxCount == declaredKeyboxes)
             requireWire(keyCount in keyboxCount..keyboxCount * MAX_KEYS_PER_KEYBOX)
 
+            val decodedKeys = ArrayList<RawKey>(keyCount)
             repeat(keyCount) {
                 val algorithmLength = cursor.readU8()
                 val certificateCount = cursor.readU8()
-                val privateKeyLength = cursor.readU32AsInt()
                 requireWire(algorithmLength > 0)
                 requireWire(certificateCount in 1..MAX_CERTIFICATES_PER_CHAIN)
-                requireWire(privateKeyLength in 1..MAX_PRIVATE_KEY_DER_BYTES)
 
+                val keyId = cursor.readBytes(KEY_ID_BYTES)
+                requireWire(keyId.any { byte -> byte != 0.toByte() })
                 val algorithm = cursor.readUtf8(algorithmLength)
                 requireWire(
                     algorithm.equals("EC", ignoreCase = true) ||
-                        algorithm.equals("ECDSA", ignoreCase = true) ||
                         algorithm.equals("RSA", ignoreCase = true),
                 )
-                val privateKey = cursor.readBytes(privateKeyLength)
-                try {
-                    val certificates = ArrayList<String>(certificateCount)
-                    repeat(certificateCount) {
-                        val certificateLength = cursor.readU32AsInt()
-                        requireWire(certificateLength in 1..MAX_PEM_UTF8_BYTES)
-                        val certificate = cursor.readUtf8(certificateLength)
-                        requireWire(certificate.length in 1..MAX_PEM_UTF16_UNITS)
-                        certificates += certificate
-                    }
-                    decodedKeys += RawKey(algorithm, privateKey, certificates)
-                } catch (error: Throwable) {
-                    privateKey.fill(0)
-                    throw error
+                val certificates = ArrayList<ByteArray>(certificateCount)
+                repeat(certificateCount) {
+                    val certificateLength = cursor.readU32AsInt()
+                    requireWire(certificateLength in 1..MAX_CERTIFICATE_DER_BYTES)
+                    certificates += cursor.readBytes(certificateLength)
                 }
+                decodedKeys += RawKey(algorithm, keyId, certificates)
             }
             requireWire(cursor.isAtEnd())
             Document(declaredKeyboxes, keyboxCount, decodedKeys)
         } catch (_: WireFormatException) {
-            decodedKeys.forEach(RawKey::wipePrivateKey)
             null
         } catch (_: CharacterCodingException) {
-            decodedKeys.forEach(RawKey::wipePrivateKey)
             null
         } catch (_: ArithmeticException) {
-            decodedKeys.forEach(RawKey::wipePrivateKey)
             null
-        } catch (error: Throwable) {
-            decodedKeys.forEach(RawKey::wipePrivateKey)
-            throw error
         } finally {
             response.fill(0)
         }
@@ -158,19 +135,18 @@ internal object KeyboxWire {
         if (!condition) throw WireFormatException()
     }
 
-    private const val WIRE_VERSION = 2
+    private const val WIRE_VERSION = 3
+    private const val KEY_ID_BYTES = 16
     private const val MIN_RESPONSE_BYTES = 5
     private const val MAX_KEYBOXES_PER_FILE = 64
     private const val MAX_KEYS_PER_KEYBOX = 4
     private const val MAX_CERTIFICATES_PER_CHAIN = 16
-    private const val MAX_PEM_UTF16_UNITS = 256 * 1024
-    private const val MAX_PEM_UTF8_BYTES = 3 * MAX_PEM_UTF16_UNITS
-    private const val MAX_PRIVATE_KEY_DER_BYTES = MAX_PEM_UTF8_BYTES
+    private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
     private const val MAX_KEYBOX_XML_BYTES = 10 * 1024 * 1024
     private const val MAX_TOTAL_KEYS = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX
     private const val MAX_TOTAL_CERTIFICATES = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN
     private const val FIXED_HEADER_BYTES = 5
-    private const val KEY_HEADER_BYTES = 6
+    private const val KEY_HEADER_BYTES = 2 + KEY_ID_BYTES
     private const val CERTIFICATE_HEADER_BYTES = 4
     private const val MAX_WIRE_OVERHEAD_BYTES =
         FIXED_HEADER_BYTES +

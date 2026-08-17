@@ -113,10 +113,11 @@ kotlin {
 dependencies {
     compileOnly(project(":stub"))
     implementation(libs.annotation)
-    implementation(libs.bcpkix.jdk18on)
-    implementation(libs.bcprov.jdk18on)
-    implementation(libs.bcutil.jdk18on)
     implementation(libs.coroutines.android)
+    implementation(libs.nanohttpd)
+    testImplementation(libs.bcpkix.jdk18on)
+    testImplementation(libs.bcprov.jdk18on)
+    testImplementation(libs.bcutil.jdk18on)
     testImplementation(libs.junit)
     testImplementation(project(":stub"))
     testImplementation(libs.kxml)
@@ -125,7 +126,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.androidx.test.runner)
-    implementation(libs.nanohttpd)
 }
 
 afterEvaluate {

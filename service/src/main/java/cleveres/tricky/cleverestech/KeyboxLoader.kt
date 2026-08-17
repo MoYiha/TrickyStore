@@ -11,12 +11,9 @@ internal class RustBackendUnavailableException(
 ) : IOException("Rust backend is unavailable", cause)
 
 /**
- * One managed boundary for keybox material. XML is parsed and private keys are normalized by the
- * unprivileged Rust backend; this layer only materializes Android/JCA provider objects.
- *
- * Ownership of [xml] transfers to [parse] and its contents are wiped before return. Filesystem-backed
- * XML is opened descriptor-relatively by the privileged Rust broker and parsed only after the file
- * descriptor reaches the unprivileged Rust backend.
+ * One managed boundary for keybox material. XML is parsed and private keys are normalized and
+ * retained by the unprivileged Rust backend; this layer materializes only public Android/JCA
+ * objects plus opaque key handles.
  */
 internal object KeyboxLoader {
     internal enum class FileScope(
@@ -26,13 +23,16 @@ internal object KeyboxLoader {
         KEYBOX_DIRECTORY(1),
     }
 
-    private val fileBackendOutageObserved = AtomicBoolean(false)
+    private val backendOutageObserved = AtomicBoolean(false)
 
     @VisibleForTesting
     internal var parserOverride: ((ByteArray, String) -> List<CertHack.KeyBox>)? = null
 
     @VisibleForTesting
     internal var fileParserOverride: ((FileScope, String) -> List<CertHack.KeyBox>)? = null
+
+    @VisibleForTesting
+    internal var activeSetOverride: ((List<ByteArray>) -> Boolean)? = null
 
     fun parse(
         xml: ByteArray,
@@ -46,6 +46,9 @@ internal object KeyboxLoader {
                 val document = NativeBackend.parseKeybox(xml)
                 if (document == null) emptyList() else KeyboxJcaAdapter.materialize(document, filename)
             }
+        } catch (error: RustBackendUnavailableException) {
+            backendOutageObserved.set(true)
+            throw error
         } finally {
             xml.fill(0)
         }
@@ -63,16 +66,80 @@ internal object KeyboxLoader {
                 if (document == null) emptyList() else KeyboxJcaAdapter.materialize(document, filename)
             }
         } catch (error: RustBackendUnavailableException) {
-            fileBackendOutageObserved.set(true)
+            backendOutageObserved.set(true)
             throw error
         }
 
-    internal fun consumeFileBackendOutage(): Boolean = fileBackendOutageObserved.getAndSet(false)
+    /**
+     * Replaces the Rust backend's secret-key store with exactly the handles referenced by the
+     * validated immutable managed snapshot. Unknown handles fail closed, which detects backend
+     * restart before stale managed state becomes active.
+     */
+    fun commitActive(keyboxes: List<CertHack.KeyBox>): Boolean {
+        if (keyboxes.size > MAX_ACTIVE_KEYS) return false
+        val ids = ArrayList<ByteArray>(keyboxes.size)
+        try {
+            for (keybox in keyboxes) {
+                val privateKey = keybox.keyPair().private
+                if (privateKey.format != BACKEND_KEY_FORMAT) return false
+                val id = privateKey.encoded ?: return false
+                if (id.size != KEY_ID_BYTES || id.all { it == 0.toByte() }) {
+                    id.fill(0)
+                    return false
+                }
+                if (ids.any { existing -> existing.contentEquals(id) }) {
+                    id.fill(0)
+                    continue
+                }
+                ids += id
+            }
+            activeSetOverride?.let { return it(ids.map(ByteArray::copyOf)) }
+            val payloadLength = STORE_CONTROL_HEADER_BYTES + ids.size * KEY_ID_BYTES
+            val response =
+                NativeBackend.transact(
+                    OP_KEYBOX_PARSE,
+                    payloadLength,
+                    MAX_STORE_CONTROL_RESPONSE_BYTES,
+                    propagateTransportFailure = true,
+                ) { output ->
+                    output.write(STORE_CONTROL_MAGIC)
+                    output.write(STORE_CONTROL_VERSION)
+                    output.write(STORE_ACTION_RETAIN)
+                    output.write((ids.size ushr 8) and 0xff)
+                    output.write(ids.size and 0xff)
+                    ids.forEach(output::write)
+                } ?: return false
+            return try {
+                response.contentEquals(OK_BYTES)
+            } finally {
+                response.fill(0)
+            }
+        } catch (error: RustBackendUnavailableException) {
+            backendOutageObserved.set(true)
+            throw error
+        } finally {
+            ids.forEach { it.fill(0) }
+        }
+    }
+
+    internal fun consumeBackendOutage(): Boolean = backendOutageObserved.getAndSet(false)
 
     @VisibleForTesting
     internal fun resetForTesting() {
         parserOverride = null
         fileParserOverride = null
-        fileBackendOutageObserved.set(false)
+        activeSetOverride = null
+        backendOutageObserved.set(false)
     }
+
+    private const val OP_KEYBOX_PARSE = 23
+    private const val MAX_ACTIVE_KEYS = 256
+    private const val KEY_ID_BYTES = 16
+    private const val STORE_CONTROL_HEADER_BYTES = 8
+    private const val STORE_CONTROL_VERSION = 1
+    private const val STORE_ACTION_RETAIN = 1
+    private const val MAX_STORE_CONTROL_RESPONSE_BYTES = 16
+    private const val BACKEND_KEY_FORMAT = "CleveresTricky-KeyId-v1"
+    private val STORE_CONTROL_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'K'.code.toByte(), 'S'.code.toByte())
+    private val OK_BYTES = byteArrayOf('o'.code.toByte(), 'k'.code.toByte())
 }
