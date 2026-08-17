@@ -1,5 +1,5 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use aes_gcm::aead::{AeadInPlace, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -323,7 +323,11 @@ fn throw_native_failure(env: &mut JNIEnv<'_>) {
     );
 }
 
-#[no_mangle]
+// JNI requires stable exported symbol names. The unsafe attribute is confined to
+// the symbol export itself; these functions contain no unsafe block and every
+// panic is contained before returning through the JNI ABI.
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_validateKeyboxXml(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
@@ -341,7 +345,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_validateKeybo
     }
 }
 
-#[no_mangle]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
@@ -378,7 +383,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSav
     }
 }
 
-#[no_mangle]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
@@ -395,7 +401,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault(
     }
 }
 
-#[no_mangle]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypted(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
@@ -416,7 +423,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypte
     }
 }
 
-#[no_mangle]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
@@ -438,7 +446,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted
     }
 }
 
-#[no_mangle]
+#[allow(unsafe_code)]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_deleteEncrypted(
     mut env: JNIEnv<'_>,
     _this: JObject<'_>,
