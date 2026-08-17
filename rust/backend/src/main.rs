@@ -730,6 +730,8 @@ mod tests {
 
     const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
     const CBOX_V2: &str = "Q0JPWAAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqYmlPfNbKQEZdEZacWRvO3";
+    // Deterministic CBOX v2 containing the shared valid EC keybox fixture.
+    const BACKEND_VALID_CBOX_V2: &str = "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";
     const VALID_EC: &[u8] =
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
 
@@ -821,7 +823,9 @@ mod tests {
 
     #[test]
     fn cbox_unlock_and_recovery_paths_return_identical_public_metadata() {
-        let encrypted = decode(CBOX_V2);
+        let _sequence = keybox_wire::isolate_store_sequence();
+        keybox_wire::key_store::reset_for_testing();
+        let encrypted = decode(BACKEND_VALID_CBOX_V2);
         let unlock = handle_request(
             OP_CBOX_UNLOCK,
             encode_cbox_request(test_password().as_str(), "", &encrypted),
@@ -851,6 +855,8 @@ mod tests {
 
     #[test]
     fn fused_cbox_payload_returns_only_public_keybox_metadata() {
+        let _sequence = keybox_wire::isolate_store_sequence();
+        keybox_wire::key_store::reset_for_testing();
         let payload = CboxPayload {
             author: "fixture author".to_string(),
             xml_content: String::from_utf8(VALID_EC.to_vec()).unwrap(),
@@ -892,6 +898,8 @@ mod tests {
 
     #[test]
     fn keybox_parse_operation_uses_legacy_loader_bound_and_public_wire() {
+        let _sequence = keybox_wire::isolate_store_sequence();
+        keybox_wire::key_store::reset_for_testing();
         assert_eq!(
             opcode_request_limit(OP_KEYBOX_PARSE),
             Some(10 * 1024 * 1024)

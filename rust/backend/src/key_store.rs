@@ -40,6 +40,18 @@ struct KeyStore {
 
 static STORE: OnceLock<Mutex<KeyStore>> = OnceLock::new();
 
+#[cfg(test)]
+pub(crate) fn reset_for_testing() {
+    let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+    let mut guard = match store.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    *guard = KeyStore::default();
+    drop(guard);
+    store.clear_poison();
+}
+
 pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecord>, &'static str> {
     if document.keys.is_empty() || document.keys.len() > MAX_STORED_KEYS {
         return Err("keybox key count exceeds store bound");
@@ -281,12 +293,6 @@ mod tests {
 
     const VALID_EC: &[u8] =
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    fn reset_store() {
-        let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
-        *store.lock().unwrap() = KeyStore::default();
-    }
 
     fn synthetic_key(id: KeyId) -> StoredKey {
         StoredKey {
@@ -308,8 +314,8 @@ mod tests {
 
     #[test]
     fn registration_returns_only_opaque_id_and_certificate_der() {
-        let _serial = TEST_LOCK.lock().unwrap();
-        reset_store();
+        let _sequence = super::super::isolate_store_sequence();
+        reset_for_testing();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let records = register_document(&document).unwrap();
         assert_eq!(records.len(), 1);
@@ -327,8 +333,8 @@ mod tests {
 
     #[test]
     fn deterministic_identifier_requires_activation_before_signing() {
-        let _serial = TEST_LOCK.lock().unwrap();
-        reset_store();
+        let _sequence = super::super::isolate_store_sequence();
+        reset_for_testing();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let first = register_document(&document).unwrap()[0].id;
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
@@ -347,8 +353,8 @@ mod tests {
 
     #[test]
     fn replaced_deleted_and_empty_active_sets_prune_old_secrets() {
-        let _serial = TEST_LOCK.lock().unwrap();
-        reset_store();
+        let _sequence = super::super::isolate_store_sequence();
+        reset_for_testing();
         let first = [1; KEY_ID_BYTES];
         let second = [2; KEY_ID_BYTES];
         insert_transient(first);
@@ -369,8 +375,8 @@ mod tests {
 
     #[test]
     fn rejected_transient_flood_cannot_exhaust_future_legitimate_activation() {
-        let _serial = TEST_LOCK.lock().unwrap();
-        reset_store();
+        let _sequence = super::super::isolate_store_sequence();
+        reset_for_testing();
         let active = [1; KEY_ID_BYTES];
         insert_transient(active);
         retain_only(&[active]).unwrap();
@@ -401,8 +407,8 @@ mod tests {
 
     #[test]
     fn long_crypto_operation_does_not_hold_store_mutex() {
-        let _serial = TEST_LOCK.lock().unwrap();
-        reset_store();
+        let _sequence = super::super::isolate_store_sequence();
+        reset_for_testing();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let id = register_document(&document).unwrap()[0].id;
         retain_only(&[id]).unwrap();

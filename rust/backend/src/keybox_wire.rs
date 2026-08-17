@@ -28,6 +28,17 @@ const INSTANCE_RESPONSE_MAGIC: &[u8; 4] = b"CTBI";
 const INSTANCE_EPOCH_BYTES: usize = 16;
 const INSTANCE_RESPONSE_BYTES: usize = 4 + 2 + INSTANCE_EPOCH_BYTES;
 static INSTANCE_EPOCH: OnceLock<Result<[u8; INSTANCE_EPOCH_BYTES], ()>> = OnceLock::new();
+
+#[cfg(test)]
+static TEST_STORE_SEQUENCE: OnceLock<std::sync::Mutex<()>> = OnceLock::new();
+
+#[cfg(test)]
+pub(crate) fn isolate_store_sequence() -> std::sync::MutexGuard<'static, ()> {
+    TEST_STORE_SEQUENCE
+        .get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 pub const MAX_KEYBOX_WIRE_OVERHEAD_BYTES: usize = FIXED_HEADER_BYTES
     + MAX_TOTAL_KEYS * KEY_HEADER_BYTES
     + MAX_TOTAL_CERTIFICATES * CERTIFICATE_HEADER_BYTES;
@@ -234,6 +245,8 @@ mod tests {
 
     #[test]
     fn shared_ec_fixture_encodes_opaque_id_and_certificate_der_only() {
+        let _sequence = isolate_store_sequence();
+        key_store::reset_for_testing();
         let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
         assert_eq!(response[0], WIRE_VERSION);
         assert_eq!(response[1], 1);
@@ -268,6 +281,8 @@ mod tests {
 
     #[test]
     fn active_set_control_prunes_and_rejects_unknown_handles() {
+        let _sequence = isolate_store_sequence();
+        key_store::reset_for_testing();
         let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
         let id_start = FIXED_HEADER_BYTES + 2;
         let id: KeyId = response[id_start..id_start + KEY_ID_BYTES]
