@@ -11,6 +11,12 @@ internal object CrlBackend {
     @VisibleForTesting
     internal var queryOverride: ((Long, List<CrlWire.Query>) -> CrlWire.Result?)? = null
 
+    @Volatile
+    private var activeGeneration = 0L
+
+    @Volatile
+    private var activeIdentity: NativeBackend.BackendIdentity? = null
+
     fun refresh(crl: ByteArray): CrlWire.Handle? {
         refreshOverride?.let { return it(crl) }
         val payloadLength = CrlWire.refreshLength(crl.size) ?: return null
@@ -23,8 +29,12 @@ internal object CrlBackend {
             ) { output ->
                 CrlWire.writeRefresh(output, crl)
             } ?: return null
-        return CrlWire.decodeRefresh(response)
-            ?: throw RustBackendUnavailableException(IOException("Invalid CRL refresh response"))
+        val handle =
+            CrlWire.decodeRefresh(response)
+                ?: throw RustBackendUnavailableException(IOException("Invalid CRL refresh response"))
+        activeGeneration = handle.generation
+        activeIdentity = NativeBackend.currentBackendIdentity()
+        return handle
     }
 
     fun check(
@@ -32,6 +42,10 @@ internal object CrlBackend {
         queries: List<CrlWire.Query>,
     ): CrlWire.Result? {
         queryOverride?.let { return it(generation, queries) }
+        val identity = activeIdentity
+        if (generation != activeGeneration || identity == null || !NativeBackend.isCurrentBackendIdentity(identity)) {
+            throw RustBackendStateException(BackendStatus.STALE_GENERATION)
+        }
         val payloadLength = CrlWire.queryLength(queries) ?: return null
         val response =
             NativeBackend.transact(
@@ -50,6 +64,8 @@ internal object CrlBackend {
     internal fun resetForTesting() {
         refreshOverride = null
         queryOverride = null
+        activeGeneration = 0
+        activeIdentity = null
     }
 
     private const val OP_CRL = 27
