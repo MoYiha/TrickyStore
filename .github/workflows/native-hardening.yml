@@ -8,6 +8,7 @@ on:
       - "module/**"
       - "service/**"
       - "stub/**"
+      - "encryptor-app/**"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - "gradle/**"
@@ -50,8 +51,8 @@ jobs:
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
-      - name: Build release module
-        run: ./gradlew zipRelease --warning-mode=fail --console=plain
+      - name: Build release artifacts
+        run: ./gradlew zipRelease :encryptor-app:assembleRelease --warning-mode=fail --console=plain
 
       - name: Verify all native ELF hardening
         shell: bash
@@ -64,6 +65,26 @@ jobs:
             exit 1
           }
 
+          verify_elf() {
+            binary=$1
+            test -s "$binary" || fail "$binary" "Native artifact is missing or empty"
+            elf_header=$(readelf -W -h "$binary")
+            program_headers=$(readelf -W -l "$binary")
+            dynamic_section=$(readelf -W -d "$binary")
+            grep -E 'Type:[[:space:]]+DYN' <<<"$elf_header" >/dev/null || \
+              fail "$binary" "ELF is not position independent (ET_DYN)"
+            grep -F 'GNU_RELRO' <<<"$program_headers" >/dev/null || \
+              fail "$binary" "GNU_RELRO segment is missing"
+            grep -F 'BIND_NOW' <<<"$dynamic_section" >/dev/null || \
+              fail "$binary" "Immediate binding (BIND_NOW) is missing"
+            if ! awk '
+              $1 == "GNU_STACK" { found = 1; if ($0 ~ /RWE/) exit 2 }
+              END { if (!found) exit 1 }
+            ' <<<"$program_headers"; then
+              fail "$binary" "GNU_STACK is missing or executable"
+            fi
+          }
+
           module_root=module/build/outputs/module/release/lib
           for abi in arm64-v8a x86_64; do
             injector="$module_root/$abi/inject"
@@ -73,22 +94,7 @@ jobs:
             backend="$module_root/$abi/cleverestricky_backend"
 
             for binary in "$injector" "$webui_bridge" "$library" "$daemon" "$backend"; do
-              test -s "$binary" || fail "$binary" "Native artifact is missing or empty"
-              elf_header=$(readelf -W -h "$binary")
-              program_headers=$(readelf -W -l "$binary")
-              dynamic_section=$(readelf -W -d "$binary")
-              grep -E 'Type:[[:space:]]+DYN' <<<"$elf_header" >/dev/null || \
-                fail "$binary" "ELF is not position independent (ET_DYN)"
-              grep -F 'GNU_RELRO' <<<"$program_headers" >/dev/null || \
-                fail "$binary" "GNU_RELRO segment is missing"
-              grep -F 'BIND_NOW' <<<"$dynamic_section" >/dev/null || \
-                fail "$binary" "Immediate binding (BIND_NOW) is missing"
-              if ! awk '
-                $1 == "GNU_STACK" { found = 1; if ($0 ~ /RWE/) exit 2 }
-                END { if (!found) exit 1 }
-              ' <<<"$program_headers"; then
-                fail "$binary" "GNU_STACK is missing or executable"
-              fi
+              verify_elf "$binary"
             done
 
             for executable in "$injector" "$webui_bridge" "$daemon" "$backend"; do
@@ -104,5 +110,23 @@ jobs:
             if [ "$exports" != "$expected_exports" ]; then
               actual=$(printf '%s\n' "$exports" | paste -sd ',' -)
               fail "$library" "Unexpected exported symbols: ${actual:-<none>} (expected: entry,resume)"
+            fi
+          done
+
+          apk=encryptor-app/build/outputs/apk/release/encryptor-app-release.apk
+          test -s "$apk" || fail "$apk" "Release companion APK is missing or empty"
+          apk_dir=$(mktemp -d)
+          trap 'rm -rf "$apk_dir"' EXIT
+          unzip -q "$apk" 'lib/*/libcleveres_encryptor_crypto.so' -d "$apk_dir"
+          expected_jni_export='Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave'
+          for abi in arm64-v8a x86_64; do
+            library="$apk_dir/lib/$abi/libcleveres_encryptor_crypto.so"
+            verify_elf "$library"
+            dyn_symbols=$(readelf -W --dyn-syms "$library")
+            exports=$(awk '$5 == "GLOBAL" && $7 != "UND" && $8 != "" { print $8 }' \
+              <<<"$dyn_symbols" | sort -u)
+            if [ "$exports" != "$expected_jni_export" ]; then
+              actual=$(printf '%s\n' "$exports" | paste -sd ',' -)
+              fail "$library" "Unexpected JNI exports: ${actual:-<none>}"
             fi
           done
