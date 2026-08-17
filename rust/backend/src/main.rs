@@ -5,6 +5,9 @@ mod crl_wire;
 mod keybox_fd;
 mod keybox_wire;
 
+use cleverestricky_cbox_recovery_core::{
+    decrypt_cbox_with_recovery_key, derive_recovery_key, RECOVERY_KEY_BYTES,
+};
 use cleverestricky_crypto_core::{
     decrypt_backup, decrypt_cbox, encrypt_backup_owned, verify_cbox_signature, CboxPayload,
 };
@@ -20,7 +23,7 @@ use std::os::fd::{FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process;
 use std::time::Duration;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const BACKEND_SOCKET_NAME: &[u8] = b"cleverestricky-backend.v1";
 const ANDROID_AID_NOBODY: libc::uid_t = 9999;
@@ -35,6 +38,8 @@ const MAX_KEYBOX_FILE_REQUEST_BYTES: usize = 1 + 255;
 const BACKUP_ENCRYPTION_RESERVE_BYTES: usize = 64;
 const MAX_CBOX_REQUEST_BYTES: usize =
     2 + MAX_PASSWORD_BYTES + 2 + MAX_PUBLIC_KEY_BYTES + MAX_CBOX_BYTES;
+const MAX_CBOX_RECOVERY_REQUEST_BYTES: usize =
+    2 + MAX_PUBLIC_KEY_BYTES + RECOVERY_KEY_BYTES + MAX_CBOX_BYTES;
 const MAX_BACKUP_REQUEST_BYTES: usize = 2 + MAX_PASSWORD_BYTES + MAX_BACKUP_BYTES + 64;
 const MAX_BACKEND_FRAME_BYTES: usize = MAX_BACKUP_REQUEST_BYTES;
 const MAX_BACKUP_RESPONSE_BYTES: usize = MAX_BACKUP_BYTES + 64;
@@ -44,13 +49,17 @@ const MAX_CBOX_AUTHOR_BYTES: usize = 1024;
 const CBOX_RESPONSE_PREFIX_BYTES: usize = 7;
 const MAX_CBOX_RESPONSE_BYTES: usize =
     CBOX_RESPONSE_PREFIX_BYTES + MAX_CBOX_AUTHOR_BYTES + MAX_KEYBOX_RESPONSE_BYTES;
+const MAX_CBOX_UNLOCK_RESPONSE_BYTES: usize = RECOVERY_KEY_BYTES + MAX_CBOX_RESPONSE_BYTES;
 const MAX_ERROR_BYTES: usize = 256;
+const BACKEND_STATUS_REJECTED: u8 = 1;
 const BACKEND_BROKER_FD: RawFd = 9;
 const OP_KEYBOX_FILE_PARSE: u16 = 24;
 const OP_CERTIFICATE_INSPECT: u16 = 25;
 const OP_CERTIFICATE_REWRITE: u16 = 26;
 const OP_CRL_CHECK_BATCH: u16 = 27;
+const OP_CBOX_UNLOCK: u16 = 29;
 const OP_KEYBOX_BROKER_OPEN: u16 = 30;
+const OP_CBOX_RECOVER: u16 = 31;
 const SCOPE_CONFIG_ROOT: u8 = 0;
 const SCOPE_KEYBOX_DIRECTORY: u8 = 1;
 
@@ -300,7 +309,8 @@ fn serve_connection(stream: &mut UnixStream, broker: &mut UnixStream) -> io::Res
 
 fn opcode_request_limit(opcode: u16) -> Option<usize> {
     match opcode {
-        OP_CRYPTO_CBOX_OPEN => Some(MAX_CBOX_REQUEST_BYTES),
+        OP_CRYPTO_CBOX_OPEN | OP_CBOX_UNLOCK => Some(MAX_CBOX_REQUEST_BYTES),
+        OP_CBOX_RECOVER => Some(MAX_CBOX_RECOVERY_REQUEST_BYTES),
         OP_CRYPTO_BACKUP_ENCRYPT | OP_CRYPTO_BACKUP_DECRYPT => Some(MAX_BACKUP_REQUEST_BYTES),
         OP_KEYBOX_PARSE => Some(MAX_KEYBOX_REQUEST_BYTES),
         OP_KEYBOX_FILE_PARSE => Some(MAX_KEYBOX_FILE_REQUEST_BYTES),
@@ -314,7 +324,8 @@ fn opcode_request_limit(opcode: u16) -> Option<usize> {
 
 fn opcode_response_limit(opcode: u16) -> Option<usize> {
     match opcode {
-        OP_CRYPTO_CBOX_OPEN => Some(MAX_CBOX_RESPONSE_BYTES),
+        OP_CRYPTO_CBOX_OPEN | OP_CBOX_RECOVER => Some(MAX_CBOX_RESPONSE_BYTES),
+        OP_CBOX_UNLOCK => Some(MAX_CBOX_UNLOCK_RESPONSE_BYTES),
         OP_CRYPTO_BACKUP_ENCRYPT | OP_CRYPTO_BACKUP_DECRYPT => Some(MAX_BACKUP_RESPONSE_BYTES),
         OP_KEYBOX_PARSE | OP_KEYBOX_FILE_PARSE => Some(MAX_KEYBOX_RESPONSE_BYTES),
         OP_CERTIFICATE_INSPECT => Some(certificate_wire::INSPECT_RESPONSE_BYTES),
@@ -397,6 +408,8 @@ fn broker_protocol(message: &'static str) -> io::Error {
 fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     match opcode {
         OP_CRYPTO_CBOX_OPEN => open_cbox(request),
+        OP_CBOX_UNLOCK => unlock_cbox(request),
+        OP_CBOX_RECOVER => recover_cbox(request),
         OP_CRYPTO_BACKUP_ENCRYPT => transform_backup(request, true),
         OP_CRYPTO_BACKUP_DECRYPT => transform_backup(request, false),
         OP_KEYBOX_PARSE => keybox_wire::parse_and_encode(request),
@@ -431,6 +444,57 @@ fn open_cbox(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
         Ok(payload) => payload,
         Err(_) => return Err("CBOX rejected"),
     };
+    fuse_cbox_payload(payload, &public_key)
+}
+
+fn unlock_cbox(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    let parsed = match parse_cbox_prefix(&request) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            request.zeroize();
+            return Err(error);
+        }
+    };
+    let public_key = parsed.public_key.to_owned();
+    let data_offset = parsed.data_offset;
+    let recovery_key = match derive_recovery_key(&request[data_offset..], parsed.password) {
+        Ok(key) => key,
+        Err(_) => {
+            request.zeroize();
+            return Err("CBOX rejected");
+        }
+    };
+    request.copy_within(data_offset.., 0);
+    request.truncate(request.len() - data_offset);
+    let payload = match decrypt_cbox_with_recovery_key(request, recovery_key.as_slice()) {
+        Ok(payload) => payload,
+        Err(_) => return Err("CBOX rejected"),
+    };
+    let mut metadata = fuse_cbox_payload(payload, &public_key)?;
+    let mut response = Vec::new();
+    response
+        .try_reserve_exact(RECOVERY_KEY_BYTES + metadata.len())
+        .map_err(|_| "CBOX response allocation failed")?;
+    response.extend_from_slice(recovery_key.as_slice());
+    response.append(&mut metadata);
+    Ok(response)
+}
+
+fn recover_cbox(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    let parsed = match parse_cbox_recovery_prefix(&request) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            request.zeroize();
+            return Err(error);
+        }
+    };
+    let public_key = parsed.public_key.to_owned();
+    let recovery_key = Zeroizing::new(request[parsed.key_start..parsed.data_offset].to_vec());
+    let data_offset = parsed.data_offset;
+    request.copy_within(data_offset.., 0);
+    request.truncate(request.len() - data_offset);
+    let payload = decrypt_cbox_with_recovery_key(request, recovery_key.as_slice())
+        .map_err(|_| "CBOX rejected")?;
     fuse_cbox_payload(payload, &public_key)
 }
 
@@ -536,6 +600,47 @@ fn parse_cbox_prefix(request: &[u8]) -> Result<ParsedCboxPrefix<'_>, &'static st
     })
 }
 
+struct ParsedCboxRecoveryPrefix<'a> {
+    public_key: &'a str,
+    key_start: usize,
+    data_offset: usize,
+}
+
+fn parse_cbox_recovery_prefix(request: &[u8]) -> Result<ParsedCboxRecoveryPrefix<'_>, &'static str> {
+    let public_key_len = read_u16(request, 0)?;
+    if public_key_len > MAX_PUBLIC_KEY_BYTES {
+        return Err("invalid CBOX public key field");
+    }
+    let public_key_start = 2usize;
+    let key_start = public_key_start
+        .checked_add(public_key_len)
+        .ok_or("invalid CBOX public key field")?;
+    let data_offset = key_start
+        .checked_add(RECOVERY_KEY_BYTES)
+        .ok_or("invalid CBOX recovery field")?;
+    let public_key = std::str::from_utf8(
+        request
+            .get(public_key_start..key_start)
+            .ok_or("truncated CBOX public key field")?,
+    )
+    .map_err(|_| "invalid CBOX public key encoding")?;
+    let key = request
+        .get(key_start..data_offset)
+        .ok_or("truncated CBOX recovery field")?;
+    if key.iter().all(|byte| *byte == 0) {
+        return Err("invalid CBOX recovery field");
+    }
+    let cbox_len = request.len().saturating_sub(data_offset);
+    if cbox_len == 0 || cbox_len > MAX_CBOX_BYTES {
+        return Err("invalid CBOX payload size");
+    }
+    Ok(ParsedCboxRecoveryPrefix {
+        public_key,
+        key_start,
+        data_offset,
+    })
+}
+
 struct ParsedBackupPrefix<'a> {
     password: &'a str,
     data_offset: usize,
@@ -602,15 +707,9 @@ fn read_u16(input: &[u8], offset: usize) -> Result<usize, &'static str> {
     Ok(u16::from_be_bytes(bytes) as usize)
 }
 
-fn reply_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::Result<()> {
-    let bytes = message.as_bytes();
-    write_frame_bounded(
-        stream,
-        opcode.max(1),
-        FLAG_ERROR,
-        &bytes[..bytes.len().min(MAX_ERROR_BYTES)],
-        MAX_ERROR_BYTES,
-    )?;
+fn reply_error(stream: &mut UnixStream, opcode: u16, _message: &str) -> io::Result<()> {
+    let status = [BACKEND_STATUS_REJECTED];
+    write_frame_bounded(stream, opcode.max(1), FLAG_ERROR, &status, status.len())?;
     stream.flush()
 }
 
@@ -628,6 +727,7 @@ mod tests {
     }
 
     const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
+    const CBOX_V2: &str = "Q0JPWAAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqYmlPfNbKQEZdEZacWRvO3";
     const VALID_EC: &[u8] =
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
 
@@ -648,6 +748,16 @@ mod tests {
         output.extend_from_slice(password);
         output.extend_from_slice(&(public_key.len() as u16).to_be_bytes());
         output.extend_from_slice(public_key);
+        output.extend_from_slice(body);
+        output
+    }
+
+    fn encode_cbox_recovery_request(public_key: &str, key: &[u8], body: &[u8]) -> Vec<u8> {
+        let public_key = public_key.as_bytes();
+        let mut output = Vec::with_capacity(2 + public_key.len() + key.len() + body.len());
+        output.extend_from_slice(&(public_key.len() as u16).to_be_bytes());
+        output.extend_from_slice(public_key);
+        output.extend_from_slice(key);
         output.extend_from_slice(body);
         output
     }
@@ -705,6 +815,36 @@ mod tests {
         assert_eq!(parsed.password, "");
         assert_eq!(parsed.public_key, "");
         assert_eq!(&request[parsed.data_offset..], b"body");
+    }
+
+    #[test]
+    fn cbox_unlock_and_recovery_paths_return_identical_public_metadata() {
+        let encrypted = decode(CBOX_V2);
+        let unlock = handle_request(
+            OP_CBOX_UNLOCK,
+            encode_cbox_request(test_password().as_str(), "", &encrypted),
+        )
+        .unwrap();
+        assert!(unlock.len() > RECOVERY_KEY_BYTES);
+        let key = &unlock[..RECOVERY_KEY_BYTES];
+        assert!(key.iter().any(|byte| *byte != 0));
+        let recovered = handle_request(
+            OP_CBOX_RECOVER,
+            encode_cbox_recovery_request("", key, &encrypted),
+        )
+        .unwrap();
+        assert_eq!(&unlock[RECOVERY_KEY_BYTES..], recovered.as_slice());
+    }
+
+    #[test]
+    fn cbox_recovery_rejects_wrong_key() {
+        let encrypted = decode(CBOX_V2);
+        let key = [0x55u8; RECOVERY_KEY_BYTES];
+        assert!(handle_request(
+            OP_CBOX_RECOVER,
+            encode_cbox_recovery_request("", &key, &encrypted),
+        )
+        .is_err());
     }
 
     #[test]
@@ -821,6 +961,23 @@ mod tests {
     }
 
     #[test]
+    fn cbox_recovery_operations_use_dedicated_bounds() {
+        assert_eq!(opcode_request_limit(OP_CBOX_UNLOCK), Some(MAX_CBOX_REQUEST_BYTES));
+        assert_eq!(
+            opcode_response_limit(OP_CBOX_UNLOCK),
+            Some(MAX_CBOX_UNLOCK_RESPONSE_BYTES)
+        );
+        assert_eq!(
+            opcode_request_limit(OP_CBOX_RECOVER),
+            Some(MAX_CBOX_RECOVERY_REQUEST_BYTES)
+        );
+        assert_eq!(
+            opcode_response_limit(OP_CBOX_RECOVER),
+            Some(MAX_CBOX_RESPONSE_BYTES)
+        );
+    }
+
+    #[test]
     fn keybox_file_request_policy_is_scope_bounded_and_component_only() {
         let mut legacy = vec![SCOPE_CONFIG_ROOT];
         legacy.extend_from_slice(b"keybox.xml");
@@ -844,6 +1001,8 @@ mod tests {
     #[test]
     fn malformed_truncated_and_oversized_prefixes_fail_closed() {
         assert!(handle_request(OP_CRYPTO_CBOX_OPEN, vec![0]).is_err());
+        assert!(handle_request(OP_CBOX_UNLOCK, vec![0]).is_err());
+        assert!(handle_request(OP_CBOX_RECOVER, vec![0]).is_err());
         assert!(handle_request(OP_CRYPTO_BACKUP_DECRYPT, vec![0, 3, b'a']).is_err());
 
         let mut oversized = vec![0, 1, b'p'];
