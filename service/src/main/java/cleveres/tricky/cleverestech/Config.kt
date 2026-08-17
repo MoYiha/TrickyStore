@@ -118,8 +118,6 @@ object Config {
 
     private data class CachedValue<T>(val value: T, val timestamp: Long)
 
-    // Keep the ruleset and its lookup cache in one state holder so readers
-    // never observe cached results for an older ruleset.
     private class TargetState(
         val hackPackages: PackageTrie<Boolean>,
     ) {
@@ -135,15 +133,10 @@ object Config {
     var isGlobalMode = false
         private set
 
-    /**
-     * Opt-in identity gate. Core Keystore/TEE interception and boot protection
-     * remain active independently of this switch.
-     */
     @Volatile
     var isSpoofEnabled = false
         private set
 
-    /** Applies the selected template to Android's app-visible build identity at boot. */
     @Volatile
     var isBuildIdentityEnabled = false
         private set
@@ -162,16 +155,10 @@ object Config {
     var isCameraVisibilityEnabled = false
         private set
 
-    /**
-     * Legacy compatibility marker retained for older backups and configurations.
-     * RKP infrastructure protection is always active and generated-key handling
-     * no longer branches on this value.
-     */
     @Volatile
     var isRkpPassthroughEnabled = false
         private set
 
-    /** Leaves configured DRM-sensitive package UIDs on the genuine keystore path. */
     @Volatile
     var isDrmPassthroughEnabled = false
         private set
@@ -188,8 +175,6 @@ object Config {
     @Volatile
     private var moduleHashFromVars: ByteArray? = null
 
-    // Optimization: Cache results of getAppConfig to avoid repeated Trie lookups.
-    // The cache is bundled with the Trie in a state object to ensure consistency during updates.
     private class AppConfigState(
         val configs: PackageTrie<AppSpoofConfig>,
         val hasPrivacyRules: Boolean = false,
@@ -258,7 +243,6 @@ object Config {
     val shouldInterceptDrm: Boolean
         get() = (isSpoofEnabled && appConfigState.hasPrivacyRules) || PolicyState.hasDrmProfileWork()
 
-    /** Subscription visibility reuses the opt-in telephony runtime and never starts it by itself. */
     val shouldInterceptSubscriptionVisibility: Boolean
         get() = identityOverrides.visibleSimCount != null && shouldInterceptTelephony
 
@@ -299,31 +283,26 @@ object Config {
                             }
                             val trimmed = line.trim()
                             if (trimmed.isEmpty()) return@forEach
-
                             val len = trimmed.length
                             var idx = 0
                             var start = idx
                             while (idx < len && !trimmed[idx].isWhitespace()) idx++
                             val pkg = trimmed.substring(start, idx)
-
                             var template: String? = null
                             var keybox: String? = null
                             var privacyMode = AppPrivacyMode.INHERIT
-
                             while (idx < len && trimmed[idx].isWhitespace()) idx++
                             if (idx < len) {
                                 start = idx
                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
                                 val tStr = trimmed.substring(start, idx)
                                 if (tStr != "null") template = tStr.lowercase()
-
                                 while (idx < len && trimmed[idx].isWhitespace()) idx++
                                 if (idx < len) {
                                     start = idx
                                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
                                     val kStr = trimmed.substring(start, idx)
                                     if (kStr != "null") keybox = kStr
-
                                     while (idx < len && trimmed[idx].isWhitespace()) idx++
                                     if (idx < len) {
                                         start = idx
@@ -334,7 +313,6 @@ object Config {
                                     }
                                 }
                             }
-
                             while (idx < len && trimmed[idx].isWhitespace()) idx++
                             require(idx == len) { "app_config contains too many columns" }
                             require(APP_PACKAGE_PATTERN.matches(pkg)) { "app_config contains an invalid package" }
@@ -383,13 +361,11 @@ object Config {
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
             require(++ruleCount <= maxRules) { "target.txt contains too many rules" }
-
             val packageName = trimmed.removeSuffix("!").trim()
             val valid =
                 packageName.isNotEmpty() &&
                     packageName.all { character ->
-                        character.isLetterOrDigit() || character == '_' ||
-                            character == '.' || character == '*'
+                        character.isLetterOrDigit() || character == '_' || character == '.' || character == '*'
                     }
             if (valid) {
                 hackPackages.add(packageName, true)
@@ -452,11 +428,17 @@ object Config {
         }
 
     fun updateKeyBoxesSync() {
-        updateKeyBoxesSyncWith(revocationProvider = { KeyboxVerifier.fetchCrl() })
+        updateKeyBoxesSyncWith(
+            revocationProvider = { KeyboxVerifier.fetchCrl() },
+            verifier = { keybox, crl -> KeyboxVerifier.verifyKeybox(keybox, crl) },
+        )
     }
 
     fun updateKeyBoxesSync(revokedSerials: Set<String>?) {
-        updateKeyBoxesSyncWith(revocationProvider = { revokedSerials })
+        updateKeyBoxesSyncWith(
+            revocationProvider = { revokedSerials },
+            verifier = { keybox, revoked -> KeyboxVerifier.verifyKeybox(keybox, revoked) },
+        )
     }
 
     @androidx.annotation.VisibleForTesting
@@ -467,18 +449,32 @@ object Config {
         updateKeyBoxesSyncWith({ revokedSerials }, verifier)
     }
 
-    private fun updateKeyBoxesSyncWith(
-        revocationProvider: () -> Set<String>?,
-        verifier: (CertHack.KeyBox, Set<String>) -> KeyboxVerifier.Status = KeyboxVerifier::verifyKeybox,
-    ) {
-        runCatching {
+    internal fun rebuildBackendKeyboxesAfterRestart(crl: CrlWire.Handle): Boolean {
+        cachedLegacyKeyboxes = emptyList()
+        lastKeyboxModified = 0
+        lastKeyboxLength = 0
+        directoryKeyboxCache.clear()
+        return updateKeyBoxesSyncWith(
+            revocationProvider = { crl },
+            verifier = { keybox, handle -> KeyboxVerifier.verifyKeybox(keybox, handle) },
+            allowRecovery = false,
+            refreshExternalSources = false,
+        )
+    }
+
+    private fun <R> updateKeyBoxesSyncWith(
+        revocationProvider: () -> R?,
+        verifier: (CertHack.KeyBox, R) -> KeyboxVerifier.Status,
+        allowRecovery: Boolean = true,
+        refreshExternalSources: Boolean = true,
+    ): Boolean {
+        return runCatching {
             Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
-            // 1. Legacy keybox.xml
             val legacyFile = File(root, KEYBOX_FILE)
             Logger.d("updateKeyBoxes: checking legacy ${legacyFile.absolutePath} (exists=${legacyFile.exists()})")
-            if (Files.isRegularFile(legacyFile.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+            if (Files.isRegularFile(legacyFile.toPath(), LinkOption.NOFOLLOW_LINKS) &&
                 legacyFile.length() in 1..MAX_KEYBOX_XML_BYTES
             ) {
                 val currentModified = legacyFile.lastModified()
@@ -497,7 +493,6 @@ object Config {
                 lastKeyboxLength = 0
             }
 
-            // 2. Directory files (Plain XML)
             if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                 val files = ArrayList<File>(MAX_KEYBOX_FILES)
                 Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
@@ -514,7 +509,7 @@ object Config {
                 files.forEach { file ->
                     val filename = file.name
                     currentFiles.add(filename)
-                    if (!Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
+                    if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) ||
                         file.length() !in 1..MAX_KEYBOX_XML_BYTES
                     ) {
                         directoryKeyboxCache.remove(filename)
@@ -523,7 +518,6 @@ object Config {
                     }
                     val lastMod = file.lastModified()
                     val length = file.length()
-
                     val cached = directoryKeyboxCache[filename]
                     if (cached != null && cached.lastModified == lastMod && cached.length == length) {
                         allKeyboxes.addAll(cached.keyboxes)
@@ -538,38 +532,28 @@ object Config {
                         }
                     }
                 }
-
-                // Cleanup removed files from cache
                 val iterator = directoryKeyboxCache.keys.iterator()
                 while (iterator.hasNext()) {
-                    if (!currentFiles.contains(iterator.next())) {
-                        iterator.remove()
-                    }
+                    if (!currentFiles.contains(iterator.next())) iterator.remove()
                 }
             } else {
                 directoryKeyboxCache.clear()
             }
 
-            // 3. Local CBOX files
-            CboxManager.refresh()
+            if (refreshExternalSources) CboxManager.refresh()
             allKeyboxes.addAll(CboxManager.getUnlockedKeyboxes())
-
-            // 4. Remote Server Keyboxes
             allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
 
             val verifiedKeyboxes: List<CertHack.KeyBox> =
                 if (allKeyboxes.isEmpty()) {
                     emptyList()
                 } else {
-                    val revokedSerials = revocationProvider()
-                    if (revokedSerials == null) {
+                    val revocation = revocationProvider()
+                    if (revocation == null) {
                         Logger.e("Keyboxes remain inactive because the revocation list is unavailable")
                         emptyList()
                     } else {
-                        val statuses =
-                            allKeyboxes.map { keybox ->
-                                verifier(keybox, revokedSerials)
-                            }
+                        val statuses = allKeyboxes.map { keybox -> verifier(keybox, revocation) }
                         if (statuses.all { it == KeyboxVerifier.Status.VALID }) {
                             allKeyboxes.toList()
                         } else {
@@ -578,13 +562,32 @@ object Config {
                         }
                     }
                 }
+
+            if (KeyboxLoader.consumeBackendOutage() || NativeBackend.consumeBackendStateReset()) {
+                Logger.e("Backend state changed while preparing the keybox snapshot")
+                return@runCatching if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
+            }
+
+            val committed = KeyboxLoader.commitActive(verifiedKeyboxes)
+            if (!committed) {
+                Logger.e("Rust backend rejected the active keybox set; managed snapshot not published")
+                return@runCatching if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
+            }
+
             CertHack.setKeyboxes(verifiedKeyboxes)
             Logger.i(
                 "updateKeyBoxes: ${verifiedKeyboxes.size}/${allKeyboxes.size} verified keyboxes active",
             )
-
-        }.onFailure {
-            Logger.e("failed to update keyboxes", it)
+            true
+        }.getOrElse { error ->
+            Logger.e("failed to update keyboxes", error)
+            if (allowRecovery &&
+                (error is RustBackendUnavailableException || error is RustBackendStateException || NativeBackend.consumeBackendStateReset())
+            ) {
+                BackendRecovery.recoverOnce(force = error is RustBackendStateException)
+            } else {
+                false
+            }
         }
     }
 
@@ -650,7 +653,6 @@ object Config {
         Logger.i("DRM passthrough is ${if (isDrmPassthroughEnabled) "enabled" else "disabled"}")
     }
 
-    /** Keeps WebUI writes and the runtime controller in the same state without waiting for FileObserver delivery. */
     internal fun refreshRuntimeSetting(name: String) {
         val candidate = File(root, name)
         val file = candidate.takeIf { isRegularFlagFile(it) }
@@ -691,7 +693,6 @@ object Config {
                 val file = File(root, name)
                 return file.takeIf { Files.exists(it.toPath(), LinkOption.NOFOLLOW_LINKS) }
             }
-
             updateDrmPackages(restoredFile(DRM_PACKAGES_FILE)).getOrThrow()
             updateCustomTemplates(restoredFile(CUSTOM_TEMPLATES_FILE)).getOrThrow()
             updateBuildVars(restoredFile(SPOOF_BUILD_VARS_FILE)).getOrThrow()
@@ -703,12 +704,10 @@ object Config {
             updateTargetPackages(restoredFile(TARGET_FILE)).getOrThrow()
         }
 
-    /** Wakes the event-driven interceptor controller without accumulating unbounded permits. */
     internal fun signalRuntimeController() {
         if (runtimeControllerSignal.availablePermits() == 0) runtimeControllerSignal.release()
     }
 
-    /** Sleeps without polling until a lifecycle setting changes or a health-check timeout expires. */
     @Throws(InterruptedException::class)
     internal fun awaitRuntimeController(timeoutMs: Long) {
         require(timeoutMs > 0) { "Runtime controller timeout must be positive" }
@@ -727,9 +726,7 @@ object Config {
                     packageName.all { character ->
                         character.isLetterOrDigit() || character == '_' || character == '.' || character == '*'
                     },
-            ) {
-                "Invalid DRM package rule"
-            }
+            ) { "Invalid DRM package rule" }
             require(++ruleCount <= MAX_DRM_PACKAGE_RULES) { "Too many DRM package rules" }
             packages.add(packageName, true)
         }
@@ -740,11 +737,11 @@ object Config {
         runCatching {
             val packages =
                 if (f?.exists() == true) {
-                    require(Files.isRegularFile(f.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                    require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         "drm_packages.txt must be a regular file"
                     }
                     require(f.length() in 0..MAX_DRM_PACKAGES_BYTES) { "drm_packages.txt has an invalid size" }
-                    f.useLines { lines -> parseDrmPackages(lines) }
+                    f.useLines { lines -> parseDrmPackages(lines, MAX_DRM_PACKAGE_RULES) }
                 } else {
                     PackageTrie()
                 }
@@ -752,9 +749,7 @@ object Config {
             targetState.hackCache.clear()
             Logger.i { "Updated DRM passthrough packages: ${packages.size}" }
         }.onFailure { failure ->
-            if (failure !is IllegalArgumentException) {
-                Logger.e("failed to update DRM passthrough packages", failure)
-            }
+            if (failure !is IllegalArgumentException) Logger.e("failed to update DRM passthrough packages", failure)
         }
 
     @Volatile
@@ -787,7 +782,6 @@ object Config {
     private const val MAX_BUILD_VAR_ENTRIES = 512
     private const val MAX_BUILD_VAR_VALUE_LENGTH = 512
 
-    // Cache string to ByteArray conversions to prevent massive allocations during attestation requests
     private val stringToBytesCache = ConcurrentHashMap<String, ByteArray>()
 
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
@@ -812,11 +806,8 @@ object Config {
             }
             AppPrivacyMode.INHERIT -> Unit
         }
-        // Explicit attestation-ID overrides take precedence over template values.
         val global = attestationIds[tag]
         if (global != null) return global
-
-        // Template/global values are limited to fields consumed by the KeyMint interceptor.
         val value = getBuildVar(tag, uid) ?: return null
         return stringToBytesCache.getOrPut(value) { value.toByteArray(Charsets.UTF_8) }
     }
@@ -850,27 +841,23 @@ object Config {
             DeviceTemplateManager.listTemplates().forEach {
                 newTemplates[it.id.lowercase()] = it.toPropMap()
             }
-
             if (f != null && f.exists()) {
-                require(Files.isRegularFile(f.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "custom_templates must be a regular file"
                 }
                 require(f.length() in 1..MAX_CUSTOM_TEMPLATE_BYTES) { "custom_templates has an invalid size" }
                 var currentTemplate: String? = null
                 var currentProps: MutableMap<String, String>? = null
                 var sectionCount = 0
-
                 fun commitCurrent() {
                     val name = currentTemplate ?: return
                     val properties = currentProps ?: return
                     newTemplates[name] = properties.toMap()
                 }
-
                 f.useLines { lines ->
                     lines.forEach { line ->
                         val value = line.trim()
                         if (value.isEmpty() || value.startsWith("#")) return@forEach
-
                         if (value.startsWith("[") && value.endsWith("]")) {
                             commitCurrent()
                             val name = value.substring(1, value.length - 1).trim().lowercase()
@@ -904,26 +891,17 @@ object Config {
             stringToBytesCache.clear()
             CertHack.clearCertificateCache()
             Logger.i("Updated templates: ${templates.keys}")
-        }.onFailure {
-            Logger.e("failed to update custom templates", it)
-        }
+        }.onFailure { Logger.e("failed to update custom templates", it) }
 
-    fun getTemplateNames(): Set<String> {
-        return templates.keys
-    }
+    fun getTemplateNames(): Set<String> = templates.keys
 
-    fun getTemplate(name: String): Map<String, String>? {
-        return templates[name.lowercase()]
-    }
+    fun getTemplate(name: String): Map<String, String>? = templates[name.lowercase()]
 
     fun getBuildVar(key: String): String? = buildVars[key]
 
-    /** Returns one immutable snapshot for the boot-property transaction. */
     internal fun getBuildIdentity(): Map<String, String> {
         val snapshot = buildVars
-        return supportedTemplateProperties.mapNotNull { key ->
-            snapshot[key]?.let { value -> key to value }
-        }.toMap()
+        return supportedTemplateProperties.mapNotNull { key -> snapshot[key]?.let { value -> key to value } }.toMap()
     }
 
     internal fun getIdentityOverrides(): IdentityOverrides = identityOverrides
@@ -940,9 +918,7 @@ object Config {
         val state = appConfigState
         getCachedValue(state.identityCache, uid)?.let { return it.value }
         val context = if (packages.isEmpty()) "uid:$uid" else packages.joinToString("\u0000")
-
         fun derived(field: String): ByteArray = derivePrivacyBytes(context, field)
-
         val identity =
             IdentityOverrides(
                 template = getAppConfig(uid)?.template,
@@ -962,10 +938,7 @@ object Config {
         return identity
     }
 
-    private fun derivePrivacyBytes(
-        context: String,
-        field: String,
-    ): ByteArray {
+    private fun derivePrivacyBytes(context: String, field: String): ByteArray {
         val seed = getPrivacySeed()
         return try {
             val mac = Mac.getInstance("HmacSHA256")
@@ -980,11 +953,7 @@ object Config {
         }
     }
 
-    private fun deterministicDigits(
-        length: Int,
-        prefix: String,
-        entropy: ByteArray,
-    ): String {
+    private fun deterministicDigits(length: Int, prefix: String, entropy: ByteArray): String {
         require(prefix.length <= length)
         val output = StringBuilder(length).append(prefix)
         var index = 0
@@ -996,11 +965,7 @@ object Config {
         return output.toString()
     }
 
-    private fun deterministicLuhn(
-        length: Int,
-        prefix: String,
-        entropy: ByteArray,
-    ): String {
+    private fun deterministicLuhn(length: Int, prefix: String, entropy: ByteArray): String {
         val partial = deterministicDigits(length - 1, prefix, entropy)
         var sum = 0
         var doubleDigit = true
@@ -1016,10 +981,7 @@ object Config {
         return partial + ((10 - sum % 10) % 10)
     }
 
-    private fun deterministicHex(
-        length: Int,
-        entropy: ByteArray,
-    ): String {
+    private fun deterministicHex(length: Int, entropy: ByteArray): String {
         val alphabet = "0123456789ABCDEF"
         val output = StringBuilder(length)
         for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % 16])
@@ -1027,10 +989,7 @@ object Config {
         return output.toString()
     }
 
-    private fun deterministicSerial(
-        length: Int,
-        entropy: ByteArray,
-    ): String {
+    private fun deterministicSerial(length: Int, entropy: ByteArray): String {
         val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         val output = StringBuilder(length)
         for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % alphabet.length])
@@ -1075,7 +1034,6 @@ object Config {
                     }
                     return@synchronized
                 }
-
                 if (Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     val loaded = readPrivacySeed(file)
                     val previous = privacySeed
@@ -1104,9 +1062,7 @@ object Config {
     private fun loadPrivacySeed(createIfMissing: Boolean): ByteArray? {
         val file = File(root, PRIVACY_SEED_FILE)
         val path = file.toPath()
-        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-            return readPrivacySeed(file)
-        }
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return readPrivacySeed(file)
         if (!createIfMissing) return null
         val generated = generatePrivacySeed()
         try {
@@ -1143,10 +1099,7 @@ object Config {
 
     private fun generatePrivacySeed(): ByteArray = ByteArray(PRIVACY_SEED_BYTES).also { SecureRandom().nextBytes(it) }
 
-    private fun writePrivacySeed(
-        file: File,
-        seed: ByteArray,
-    ) {
+    private fun writePrivacySeed(file: File, seed: ByteArray) {
         val encoded = encodePrivacySeed(seed)
         try {
             SecureFile.writeStream(file, ByteArrayInputStream(encoded), encoded.size.toLong())
@@ -1155,10 +1108,7 @@ object Config {
         }
     }
 
-    private fun decodePrivacySeed(
-        value: ByteArray,
-        length: Int,
-    ): ByteArray? {
+    private fun decodePrivacySeed(value: ByteArray, length: Int): ByteArray? {
         var start = 0
         var end = length
         while (start < end && (value[start].toInt() and 0xff) <= 0x20) start++
@@ -1198,69 +1148,39 @@ object Config {
         return output
     }
 
-    fun getBuildVar(
-        key: String,
-        uid: Int,
-    ): String? {
+    fun getBuildVar(key: String, uid: Int): String? {
         val appConfig = getAppConfig(uid)
         val template = if (appConfig?.template != null) templates[appConfig.template] else null
-
         return template?.get(key) ?: buildVars[key]
     }
 
     private val supportedBuildVarKeys =
         supportedTemplateProperties +
             setOf(
-                "TEMPLATE",
-                "SERIAL",
-                "IMEI",
-                "MEID",
-                "MODULE_HASH",
-                "ATTESTATION_ID_BRAND",
-                "ATTESTATION_ID_DEVICE",
-                "ATTESTATION_ID_PRODUCT",
-                "ATTESTATION_ID_SERIAL",
-                "ATTESTATION_ID_IMEI",
-                "ATTESTATION_ID_IMEI2",
-                "ATTESTATION_ID_IMSI",
-                "ATTESTATION_ID_IMSI2",
-                "ATTESTATION_ID_ICCID",
-                "ATTESTATION_ID_ICCID2",
-                "ATTESTATION_ID_MEID",
-                "ATTESTATION_ID_MEID2",
-                "ATTESTATION_ID_MANUFACTURER",
-                "ATTESTATION_ID_MODEL",
-                "ATTESTATION_ID_PHONE_NUMBER",
-                "ATTESTATION_ID_PHONE_NUMBER2",
-                "VISIBLE_SIM_COUNT",
-                "VISIBLE_CAMERA_COUNT",
+                "TEMPLATE", "SERIAL", "IMEI", "MEID", "MODULE_HASH",
+                "ATTESTATION_ID_BRAND", "ATTESTATION_ID_DEVICE", "ATTESTATION_ID_PRODUCT",
+                "ATTESTATION_ID_SERIAL", "ATTESTATION_ID_IMEI", "ATTESTATION_ID_IMEI2",
+                "ATTESTATION_ID_IMSI", "ATTESTATION_ID_IMSI2", "ATTESTATION_ID_ICCID",
+                "ATTESTATION_ID_ICCID2", "ATTESTATION_ID_MEID", "ATTESTATION_ID_MEID2",
+                "ATTESTATION_ID_MANUFACTURER", "ATTESTATION_ID_MODEL", "ATTESTATION_ID_PHONE_NUMBER",
+                "ATTESTATION_ID_PHONE_NUMBER2", "VISIBLE_SIM_COUNT", "VISIBLE_CAMERA_COUNT",
             )
 
-    internal fun isValidBuildVarEntry(
-        key: String,
-        value: String,
-    ): Boolean {
-        if (key !in supportedBuildVarKeys || value.isEmpty() || value.length > MAX_BUILD_VAR_VALUE_LENGTH) {
-            return false
-        }
+    internal fun isValidBuildVarEntry(key: String, value: String): Boolean {
+        if (key !in supportedBuildVarKeys || value.isEmpty() || value.length > MAX_BUILD_VAR_VALUE_LENGTH) return false
         if (value.any(Char::isISOControl)) return false
         if (key == "TEMPLATE") return value.length <= 64 && templates.containsKey(value.lowercase())
         if (key == "MODULE_HASH") return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
         if (key == "VISIBLE_SIM_COUNT") return value.length == 1 && value[0] in '0'..'8'
         if (key == "VISIBLE_CAMERA_COUNT") return value.toIntOrNull()?.let { it in 0..16 } == true
         when (key) {
-            "FINGERPRINT" ->
-                return value.all { it.isLetterOrDigit() || it in "._:/+-" }
-            "RELEASE" ->
-                return value.length <= 64 && value.all { it.isLetterOrDigit() || it in "._-" }
-            "BUILD_ID", "INCREMENTAL" ->
-                return value.length <= 128 && value.all { it.isLetterOrDigit() || it in "._+-" }
+            "FINGERPRINT" -> return value.all { it.isLetterOrDigit() || it in "._:/+-" }
+            "RELEASE" -> return value.length <= 64 && value.all { it.isLetterOrDigit() || it in "._-" }
+            "BUILD_ID", "INCREMENTAL" -> return value.length <= 128 && value.all { it.isLetterOrDigit() || it in "._+-" }
             "TYPE" -> return value in setOf("user", "userdebug", "eng")
-            "TAGS" ->
-                return value.length <= 128 && value.all { it.isLetterOrDigit() || it in "._,-" }
+            "TAGS" -> return value.length <= 128 && value.all { it.isLetterOrDigit() || it in "._,-" }
             "SECURITY_PATCH" -> return runCatching { value.convertPatchLevel(false) }.isSuccess
         }
-
         val identifier = key.removePrefix("ATTESTATION_ID_")
         return when (identifier) {
             "IMEI", "IMEI2" -> value.length == 15 && value.all(Char::isDigit) && isValidLuhn(value)
@@ -1294,15 +1214,11 @@ object Config {
     @OptIn(ExperimentalStdlibApi::class)
     internal fun updateBuildVars(f: File?) =
         runCatching {
-            if (f == null || f.absoluteFile == File(root, SPOOF_BUILD_VARS_FILE).absoluteFile) {
-                discardStagedRandomization()
-            }
+            if (f == null || f.absoluteFile == File(root, SPOOF_BUILD_VARS_FILE).absoluteFile) discardStagedRandomization()
             val newVars = mutableMapOf<String, String>()
             val newIds = mutableMapOf<String, ByteArray>()
             if (f?.exists() == true) {
-                require(Files.isRegularFile(f.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                    "spoof_build_vars must be a regular file"
-                }
+                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) { "spoof_build_vars must be a regular file" }
                 require(f.length() in 0..MAX_BUILD_VARS_BYTES) { "spoof_build_vars has an invalid size" }
             }
             f?.takeIf(File::exists)?.useLines { lines ->
@@ -1313,13 +1229,9 @@ object Config {
                             val key = line.substring(0, eqIdx).trim()
                             val value = line.substring(eqIdx + 1).trim()
                             require(isValidBuildVarEntry(key, value)) { "Unsupported or invalid build variable" }
-                            require(newVars.size < MAX_BUILD_VAR_ENTRIES || newVars.containsKey(key)) {
-                                "Too many build variables"
-                            }
+                            require(newVars.size < MAX_BUILD_VAR_ENTRIES || newVars.containsKey(key)) { "Too many build variables" }
                             if (key == "TEMPLATE") {
-                                val template =
-                                    templates[value.lowercase()]
-                                        ?: throw IllegalArgumentException("Unknown template")
+                                val template = templates[value.lowercase()] ?: throw IllegalArgumentException("Unknown template")
                                 newVars[key] = value.lowercase()
                                 newVars.putAll(template.filterKeys { it in supportedTemplateProperties })
                             } else {
@@ -1342,18 +1254,12 @@ object Config {
             val previousVisibleCameraCount = identityOverrides.visibleCameraCount
             val newIdentityOverrides =
                 IdentityOverrides(
-                    template = newVars["TEMPLATE"],
-                    imei = newVars["ATTESTATION_ID_IMEI"],
-                    imei2 = newVars["ATTESTATION_ID_IMEI2"],
-                    imsi = newVars["ATTESTATION_ID_IMSI"],
-                    imsi2 = newVars["ATTESTATION_ID_IMSI2"],
-                    iccid = newVars["ATTESTATION_ID_ICCID"],
-                    iccid2 = newVars["ATTESTATION_ID_ICCID2"],
-                    meid = newVars["ATTESTATION_ID_MEID"],
-                    meid2 = newVars["ATTESTATION_ID_MEID2"],
-                    phoneNumber = newVars["ATTESTATION_ID_PHONE_NUMBER"],
-                    phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"],
-                    serial = newVars["ATTESTATION_ID_SERIAL"],
+                    template = newVars["TEMPLATE"], imei = newVars["ATTESTATION_ID_IMEI"],
+                    imei2 = newVars["ATTESTATION_ID_IMEI2"], imsi = newVars["ATTESTATION_ID_IMSI"],
+                    imsi2 = newVars["ATTESTATION_ID_IMSI2"], iccid = newVars["ATTESTATION_ID_ICCID"],
+                    iccid2 = newVars["ATTESTATION_ID_ICCID2"], meid = newVars["ATTESTATION_ID_MEID"],
+                    meid2 = newVars["ATTESTATION_ID_MEID2"], phoneNumber = newVars["ATTESTATION_ID_PHONE_NUMBER"],
+                    phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"], serial = newVars["ATTESTATION_ID_SERIAL"],
                     visibleSimCount = newVars["VISIBLE_SIM_COUNT"]?.toInt(),
                     visibleCameraCount = newVars["VISIBLE_CAMERA_COUNT"]?.toInt(),
                 )
@@ -1362,47 +1268,29 @@ object Config {
             identityOverrides = newIdentityOverrides
             moduleHashFromVars = parsedModuleHash
             stringToBytesCache.clear()
-            if (
-                previousVisibleSimCount != newIdentityOverrides.visibleSimCount ||
+            if (previousVisibleSimCount != newIdentityOverrides.visibleSimCount ||
                 previousVisibleCameraCount != newIdentityOverrides.visibleCameraCount
-            ) {
-                signalRuntimeController()
-            }
-
+            ) signalRuntimeController()
             CertHack.clearCertificateCache()
             updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
             Logger.i { "update build vars (keys): ${buildVars.keys}, attestation ids: ${attestationIds.keys}" }
-        }.onFailure {
-            Logger.e("failed to update build vars", it)
-        }
+        }.onFailure { Logger.e("failed to update build vars", it) }
 
-    private class SecurityPatchState(
-        val patches: Map<String, Any>,
-        val defaultPatch: Any?,
-    ) {
+    private class SecurityPatchState(val patches: Map<String, Any>, val defaultPatch: Any?) {
         val cache = ConcurrentHashMap<Int, Any>()
         var legacyRules = PackageTrie<Any>()
         var globalRules = PatchRules()
         var packageRules = PackageTrie<PatchRules>()
     }
 
-    private data class PatchRules(
-        val all: Any? = null,
-        val system: Any? = null,
-        val vendor: Any? = null,
-        val boot: Any? = null,
-    )
+    private data class PatchRules(val all: Any? = null, val system: Any? = null, val vendor: Any? = null, val boot: Any? = null)
 
     private class MutablePatchRules {
         var all: Any? = null
         var system: Any? = null
         var vendor: Any? = null
         var boot: Any? = null
-
-        fun set(
-            key: String,
-            value: Any,
-        ) {
+        fun set(key: String, value: Any) {
             when (key) {
                 "all" -> all = value
                 "system" -> system = value
@@ -1411,20 +1299,12 @@ object Config {
                 else -> throw IllegalArgumentException("Unsupported patch component")
             }
         }
-
         fun freeze() = PatchRules(all, system, vendor, boot)
     }
 
-    enum class PatchDisposition {
-        KEEP,
-        OMIT,
-        REPLACE,
-    }
+    enum class PatchDisposition { KEEP, OMIT, REPLACE }
 
-    data class AttestationPatchComponent(
-        val disposition: PatchDisposition,
-        val value: Int = 0,
-    )
+    data class AttestationPatchComponent(val disposition: PatchDisposition, val value: Int = 0)
 
     data class AttestationPatchLevels(
         val system: AttestationPatchComponent,
@@ -1440,10 +1320,8 @@ object Config {
     @Volatile
     private var securityPatchState = SecurityPatchState(emptyMap(), null)
 
-    // Cache for dynamic patch levels (e.g. "today", "YYYY-MM-DD")
-    // Key: Template String, Value: Pair(Timestamp, CalculatedLevel)
     private val dynamicPatchCache = ConcurrentHashMap<String, Pair<Long, Int>>()
-    private const val DYNAMIC_PATCH_TTL = 3600 * 1000L // 1 hour
+    private const val DYNAMIC_PATCH_TTL = 3600 * 1000L
     private const val MAX_SECURITY_PATCH_BYTES = 1024 * 1024L
     private const val MAX_SECURITY_PATCH_RULES = 512
     private val validSecurityPatchTarget = Regex("[A-Za-z0-9_.*]{1,255}")
@@ -1455,9 +1333,7 @@ object Config {
             val sample = value.replace("YYYY", "2024").replace("MM", "06").replace("DD", "15")
             return runCatching { sample.convertPatchLevel(false) }.map { value }.getOrNull()
         }
-        return runCatching { value.convertPatchLevel(false) }
-            .onFailure { Logger.w("Ignoring invalid security patch setting") }
-            .getOrNull()
+        return runCatching { value.convertPatchLevel(false) }.onFailure { Logger.w("Ignoring invalid security patch setting") }.getOrNull()
     }
 
     private fun parseComponentPatchSetting(value: String): Any? =
@@ -1470,44 +1346,26 @@ object Config {
                 val sample = value.replace("YYYY", "2024").replace("MM", "06").replace("DD", "15")
                 runCatching { sample.convertPatchLevel(false) }.map { value }.getOrNull()
             }
-            else ->
-                runCatching {
-                    value.convertPatchLevel(false)
-                    value
-                }.getOrNull()
+            else -> runCatching { value.convertPatchLevel(false); value }.getOrNull()
         }
 
-    private fun resolvePatchValue(
-        value: String,
-        long: Boolean,
-    ): Int {
+    private fun resolvePatchValue(value: String, long: Boolean): Int {
         val cacheKey = "${if (long) "long" else "short"}:$value"
         val nowMs = clockSource()
         val cachedDyn = dynamicPatchCache[cacheKey]
-        if (cachedDyn != null && (nowMs - cachedDyn.first) < DYNAMIC_PATCH_TTL) {
-            return cachedDyn.second
-        }
-
+        if (cachedDyn != null && (nowMs - cachedDyn.first) < DYNAMIC_PATCH_TTL) return cachedDyn.second
         val now = Instant.ofEpochMilli(nowMs).atZone(ZoneId.systemDefault()).toLocalDate()
         val effectiveDate =
-            if (value.equals("today", ignoreCase = true)) {
-                now.toString()
-            } else {
-                value
-                    .replace("YYYY", String.format(Locale.ROOT, "%04d", now.year))
+            if (value.equals("today", ignoreCase = true)) now.toString() else
+                value.replace("YYYY", String.format(Locale.ROOT, "%04d", now.year))
                     .replace("MM", String.format(Locale.ROOT, "%02d", now.monthValue))
                     .replace("DD", String.format(Locale.ROOT, "%02d", now.dayOfMonth))
-            }
-
         val result = effectiveDate.convertPatchLevel(long)
         dynamicPatchCache[cacheKey] = nowMs to result
         return result
     }
 
-    private fun findLegacyPatch(
-        state: SecurityPatchState,
-        callingUid: Int,
-    ): Any? {
+    private fun findLegacyPatch(state: SecurityPatchState, callingUid: Int): Any? {
         if (state.patches.isEmpty()) return null
         val packages = getPackages(callingUid)
         for (packageName in packages) {
@@ -1521,7 +1379,6 @@ object Config {
         val defaultLevel = patchLevel
         val state = securityPatchState
         val cached = state.cache[callingUid]
-
         val patchVal =
             if (cached != null) {
                 if (cached === NULL_PATCH) null else cached
@@ -1530,21 +1387,14 @@ object Config {
                 putBoundedUidCache(state.cache, callingUid, found ?: NULL_PATCH)
                 found
             }
-
         if (patchVal == null) return defaultLevel
-
         if (patchVal is Int) return patchVal
-
         return runCatching { resolvePatchValue(patchVal as String, false) }
             .onFailure { Logger.e("Could not resolve configured security patch", it) }
             .getOrDefault(defaultLevel)
     }
 
-    private fun resolveAttestationPatch(
-        setting: Any?,
-        long: Boolean,
-        propertyName: String,
-    ): AttestationPatchComponent =
+    private fun resolveAttestationPatch(setting: Any?, long: Boolean, propertyName: String): AttestationPatchComponent =
         when (setting) {
             null, PATCH_DEVICE_DEFAULT -> AttestationPatchComponent(PatchDisposition.KEEP)
             PATCH_OMIT -> AttestationPatchComponent(PatchDisposition.OMIT)
@@ -1554,32 +1404,21 @@ object Config {
                 if (value == null) {
                     Logger.w("Could not resolve security patch from $propertyName")
                     AttestationPatchComponent(PatchDisposition.KEEP)
-                } else {
-                    AttestationPatchComponent(PatchDisposition.REPLACE, value)
-                }
+                } else AttestationPatchComponent(PatchDisposition.REPLACE, value)
             }
             is Int -> {
                 val value = if (long && setting in 100_000..999_999) setting * 100 + 1 else setting
                 AttestationPatchComponent(PatchDisposition.REPLACE, value)
             }
-            is String ->
-                runCatching {
-                    AttestationPatchComponent(PatchDisposition.REPLACE, resolvePatchValue(setting, long))
-                }.onFailure {
-                    Logger.e("Could not resolve dynamic attestation patch", it)
-                }.getOrDefault(AttestationPatchComponent(PatchDisposition.KEEP))
+            is String -> runCatching { AttestationPatchComponent(PatchDisposition.REPLACE, resolvePatchValue(setting, long)) }
+                .onFailure { Logger.e("Could not resolve dynamic attestation patch", it) }
+                .getOrDefault(AttestationPatchComponent(PatchDisposition.KEEP))
             else -> AttestationPatchComponent(PatchDisposition.KEEP)
         }
 
-    private fun findComponentRules(
-        state: SecurityPatchState,
-        callingUid: Int,
-    ): PatchRules? {
+    private fun findComponentRules(state: SecurityPatchState, callingUid: Int): PatchRules? {
         val packages = getPackages(callingUid)
-        for (packageName in packages) {
-            val rule = state.packageRules.get(packageName)
-            if (rule != null) return rule
-        }
+        for (packageName in packages) state.packageRules.get(packageName)?.let { return it }
         return null
     }
 
@@ -1587,39 +1426,19 @@ object Config {
         val state = securityPatchState
         val global = state.globalRules
         val app = findComponentRules(state, callingUid)
-
         fun selected(component: (PatchRules) -> Any?): Any? {
-            val appValue = app?.let { rules -> component(rules) } ?: app?.all
+            val appValue = app?.let { component(it) } ?: app?.all
             if (appValue != null) return appValue
             return component(global) ?: global.all
         }
-
-        val systemSetting =
-            if (app == null) {
-                findLegacyPatch(state, callingUid) ?: selected { rules -> rules.system }
-            } else {
-                selected { rules -> rules.system }
-            }
+        val systemSetting = if (app == null) findLegacyPatch(state, callingUid) ?: selected { it.system } else selected { it.system }
         val system =
-            if (systemSetting == null) {
-                AttestationPatchComponent(PatchDisposition.REPLACE, getPatchLevel(callingUid))
-            } else {
+            if (systemSetting == null) AttestationPatchComponent(PatchDisposition.REPLACE, getPatchLevel(callingUid)) else
                 resolveAttestationPatch(systemSetting, false, "ro.build.version.security_patch")
-            }
         return AttestationPatchLevels(
             system = system,
-            vendor =
-                resolveAttestationPatch(
-                    selected { rules -> rules.vendor },
-                    true,
-                    "ro.vendor.build.security_patch",
-                ),
-            boot =
-                resolveAttestationPatch(
-                    selected { rules -> rules.boot },
-                    true,
-                    "ro.bootimage.build.version.security_patch",
-                ),
+            vendor = resolveAttestationPatch(selected { it.vendor }, true, "ro.vendor.build.security_patch"),
+            boot = resolveAttestationPatch(selected { it.boot }, true, "ro.bootimage.build.version.security_patch"),
         )
     }
 
@@ -1634,34 +1453,24 @@ object Config {
             var currentRules = globalRules
             var sectionCount = 0
             var ruleCount = 0
-
             fun commitSection() {
                 val packageName = currentPackage ?: return
                 packageRules.add(packageName, currentRules.freeze())
             }
-
             if (f != null) {
-                require(Files.isRegularFile(f.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
-                    "security_patch.txt must be a regular file"
-                }
+                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) { "security_patch.txt must be a regular file" }
                 require(f.length() in 0..MAX_SECURITY_PATCH_BYTES) { "security_patch.txt has an invalid size" }
             }
             f?.useLines { lines ->
                 lines.forEach { line ->
                     val trimmed = line.trim()
                     if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
-                        require(++ruleCount <= MAX_SECURITY_PATCH_RULES) {
-                            "Too many security patch rules"
-                        }
+                        require(++ruleCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch rules" }
                         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
                             commitSection()
                             val packageName = trimmed.substring(1, trimmed.lastIndex).trim()
-                            require(validSecurityPatchTarget.matches(packageName)) {
-                                "Invalid security patch package section"
-                            }
-                            require(++sectionCount <= MAX_SECURITY_PATCH_RULES) {
-                                "Too many security patch package sections"
-                            }
+                            require(validSecurityPatchTarget.matches(packageName)) { "Invalid security patch package section" }
+                            require(++sectionCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch package sections" }
                             currentPackage = packageName
                             currentRules = MutablePatchRules()
                             return@forEach
@@ -1671,32 +1480,20 @@ object Config {
                             val key = trimmed.substring(0, eqIdx).trim()
                             val value = trimmed.substring(eqIdx + 1).trim()
                             if (key in patchComponentNames) {
-                                val parsed =
-                                    parseComponentPatchSetting(value)
-                                        ?: throw IllegalArgumentException("Invalid component security patch setting")
+                                val parsed = parseComponentPatchSetting(value) ?: throw IllegalArgumentException("Invalid component security patch setting")
                                 currentRules.set(key, parsed)
-                                if (currentPackage == null && key in setOf("all", "system")) {
-                                    newDefault = parsePatchSetting(value)
-                                }
+                                if (currentPackage == null && key in setOf("all", "system")) newDefault = parsePatchSetting(value)
                             } else {
-                                require(currentPackage == null) {
-                                    "Only all/system/vendor/boot are valid inside package sections"
-                                }
+                                require(currentPackage == null) { "Only all/system/vendor/boot are valid inside package sections" }
                                 require(validSecurityPatchTarget.matches(key)) { "Invalid security patch target" }
-                                val parsed =
-                                    parsePatchSetting(value)
-                                        ?: throw IllegalArgumentException("Invalid security patch setting")
+                                val parsed = parsePatchSetting(value) ?: throw IllegalArgumentException("Invalid security patch setting")
                                 newPatch[key] = parsed
                                 legacyRules.add(key, parsed)
                             }
                         } else {
-                            val parsed =
-                                parseComponentPatchSetting(trimmed)
-                                    ?: throw IllegalArgumentException("Invalid default security patch setting")
+                            val parsed = parseComponentPatchSetting(trimmed) ?: throw IllegalArgumentException("Invalid default security patch setting")
                             currentRules.set("all", parsed)
-                            if (currentPackage == null) {
-                                newDefault = parsePatchSetting(trimmed)
-                            }
+                            if (currentPackage == null) newDefault = parsePatchSetting(trimmed)
                         }
                     }
                 }
@@ -1710,12 +1507,8 @@ object Config {
             PolicyState.onLegacySettingsChanged()
             dynamicPatchCache.clear()
             CertHack.clearCertificateCache()
-            Logger.i {
-                "update security patch: default=$newDefault, legacy=${newPatch.size}, sections=$sectionCount"
-            }
-        }.onFailure {
-            Logger.e("failed to update security patch", it)
-        }
+            Logger.i { "update security patch: default=$newDefault, legacy=${newPatch.size}, sections=$sectionCount" }
+        }.onFailure { Logger.e("failed to update security patch", it) }
 
     @OptIn(ExperimentalStdlibApi::class)
     private val hexFormat = HexFormat { upperCase = false }
@@ -1796,8 +1589,7 @@ object Config {
 
     private fun isValidAppKeybox(value: String): Boolean {
         val lowered = value.lowercase()
-        return APP_KEYBOX_PATTERN.matches(value) &&
-            !value.startsWith('.') &&
+        return APP_KEYBOX_PATTERN.matches(value) && !value.startsWith('.') &&
             (lowered.endsWith(".xml") || lowered.endsWith(".cbox"))
     }
 
@@ -1831,19 +1623,13 @@ object Config {
 
     @Volatile
     private var lastPackageFetchTime: Long = 0
-    private const val PACKAGE_CACHE_TTL = 30_000L // 30 seconds
+    private const val PACKAGE_CACHE_TTL = 30_000L
 
-    /**
-     * Retrieves the complete list of installed packages, using a TTL cache to avoid
-     * frequent, costly IPC and serialization overhead from IPackageManager.
-     */
     fun getInstalledPackages(): List<String> {
         val now = clockSource()
         val cached = cachedPackageList
         val cachedAge = now - lastPackageFetchTime
-        if (cached != null && cachedAge >= 0 && cachedAge < PACKAGE_CACHE_TTL) {
-            return cached
-        }
+        if (cached != null && cachedAge >= 0 && cachedAge < PACKAGE_CACHE_TTL) return cached
         return synchronized(packageListLock) {
             val doubleCheck = cachedPackageList
             val doubleCheckAge = now - lastPackageFetchTime
@@ -1863,21 +1649,10 @@ object Config {
                             Logger.e("Failed to list packages via IPC", t)
                             emptyList()
                         }
-                    } else {
-                        emptyList()
-                    }
-
-                if (packages.size > MAX_INSTALLED_PACKAGES) {
-                    Logger.w("PackageManager returned too many installed packages; truncating")
-                }
-                val sortedPackages =
-                    packages
-                        .asSequence()
-                        .filter(INSTALLED_PACKAGE_PATTERN::matches)
-                        .distinct()
-                        .take(MAX_INSTALLED_PACKAGES)
-                        .sorted()
-                        .toList()
+                    } else emptyList()
+                if (packages.size > MAX_INSTALLED_PACKAGES) Logger.w("PackageManager returned too many installed packages; truncating")
+                val sortedPackages = packages.asSequence().filter(INSTALLED_PACKAGE_PATTERN::matches).distinct()
+                    .take(MAX_INSTALLED_PACKAGES).sorted().toList()
                 cachedPackageList = sortedPackages
                 lastPackageFetchTime = now
                 sortedPackages
@@ -1897,26 +1672,21 @@ object Config {
                     Files.move(f.toPath(), tmp.toPath())
                 }
                 if (tmp.length() !in 1..64) throw IOException("Invalid profile request size")
-                val profileName =
-                    tmp.bufferedReader().use { reader ->
-                        val firstLine = reader.readLine().orEmpty().trim()
-                        if (reader.readLine() != null) throw IOException("Invalid profile request")
-                        firstLine
-                    }
+                val profileName = tmp.bufferedReader().use { reader ->
+                    val firstLine = reader.readLine().orEmpty().trim()
+                    if (reader.readLine() != null) throw IOException("Invalid profile request")
+                    firstLine
+                }
                 applyProfile(profileName)
             } finally {
                 if (tmp.exists() && !tmp.delete()) Logger.w("Could not remove processed profile request")
             }
-        }.onFailure {
-            Logger.e("failed to apply profile from file", it)
-        }
+        }.onFailure { Logger.e("failed to apply profile from file", it) }
 
     private fun removeConfigFiles(vararg names: String) {
         names.forEach { name ->
             val file = File(root, name)
-            if (Files.isSymbolicLink(file.toPath())) {
-                throw IOException("Refusing to delete symbolic-link configuration: $name")
-            }
+            if (Files.isSymbolicLink(file.toPath())) throw IOException("Refusing to delete symbolic-link configuration: $name")
             Files.deleteIfExists(file.toPath())
         }
     }
@@ -1932,19 +1702,13 @@ object Config {
                 else -> throw IllegalArgumentException("Unknown profile")
             }
         Logger.i("Applying profile: $profile")
-        // Hardware-visibility interceptors remain explicitly opt-in in every built-in profile.
         removeConfigFiles(CAMERA_VISIBILITY_FILE)
         when (profile) {
             "maximum" -> {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
                 SecureFile.touch(File(root, BUILD_IDENTITY_FILE), 384)
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
-                removeConfigFiles(
-                    TEE_BROKEN_MODE_FILE,
-                    BootLogic.FILE_HIDE_PROPS,
-                    BootLogic.FILE_SPOOF_CN,
-                    DRM_PASSTHROUGH_FILE,
-                )
+                removeConfigFiles(TEE_BROKEN_MODE_FILE, BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, DRM_PASSTHROUGH_FILE)
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
@@ -1952,50 +1716,25 @@ object Config {
             }
             "daily" -> {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
-                removeConfigFiles(
-                    GLOBAL_MODE_FILE,
-                    TEE_BROKEN_MODE_FILE,
-                    RANDOM_ON_BOOT_FILE,
-                    BootLogic.FILE_HIDE_PROPS,
-                    BootLogic.FILE_SPOOF_CN,
-                    TELEPHONY_FILE,
-                    BUILD_IDENTITY_FILE,
-                )
+                removeConfigFiles(GLOBAL_MODE_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE, BootLogic.FILE_HIDE_PROPS,
+                    BootLogic.FILE_SPOOF_CN, TELEPHONY_FILE, BUILD_IDENTITY_FILE)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "minimal" -> {
-                removeConfigFiles(
-                    SPOOF_ENABLED_FILE,
-                    BUILD_IDENTITY_FILE,
-                    GLOBAL_MODE_FILE,
-                    TEE_BROKEN_MODE_FILE,
-                    RANDOM_ON_BOOT_FILE,
-                    BootLogic.FILE_HIDE_PROPS,
-                    BootLogic.FILE_SPOOF_CN,
-                    AUTO_KEYBOX_CHECK_FILE,
-                    TELEPHONY_FILE,
-                )
+                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, GLOBAL_MODE_FILE, TEE_BROKEN_MODE_FILE,
+                    RANDOM_ON_BOOT_FILE, BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, AUTO_KEYBOX_CHECK_FILE,
+                    TELEPHONY_FILE)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "default" -> {
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
-                removeConfigFiles(
-                    SPOOF_ENABLED_FILE,
-                    BUILD_IDENTITY_FILE,
-                    TEE_BROKEN_MODE_FILE,
-                    RANDOM_ON_BOOT_FILE,
-                    BootLogic.FILE_HIDE_PROPS,
-                    BootLogic.FILE_SPOOF_CN,
-                    TELEPHONY_FILE,
-                    RKP_PASSTHROUGH_FILE,
-                    DRM_PASSTHROUGH_FILE,
-                )
+                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE,
+                    BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, TELEPHONY_FILE, RKP_PASSTHROUGH_FILE, DRM_PASSTHROUGH_FILE)
             }
         }
-
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
@@ -2006,11 +1745,7 @@ object Config {
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateTargetPackages(File(root, TARGET_FILE))
-        if (profile == "default") {
-            PolicyState.applyRecommendedDefaults()
-        } else {
-            PolicyState.synchronizeBuiltInProfile()
-        }
+        if (profile == "default") PolicyState.applyRecommendedDefaults() else PolicyState.synchronizeBuiltInProfile()
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
         KeyboxAutoCleaner.setEnabled(isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
     }
@@ -2019,8 +1754,7 @@ object Config {
         val staged = File(root, STAGED_BUILD_VARS_FILE)
         val path = staged.toPath()
         when {
-            Files.isSymbolicLink(path) || Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) ->
-                Files.deleteIfExists(path)
+            Files.isSymbolicLink(path) || Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) -> Files.deleteIfExists(path)
             staged.exists() -> Logger.w("Refusing to remove non-regular staged identity file")
         }
     }
@@ -2043,23 +1777,17 @@ object Config {
                     "ATTESTATION_ID_PHONE_NUMBER" to "+1${RandomUtils.generateDigits(10)}",
                     "ATTESTATION_ID_PHONE_NUMBER2" to "+1${RandomUtils.generateDigits(10)}",
                     "VISIBLE_SIM_COUNT" to RandomUtils.generateVisibleSimCount(allowZero = false),
-                    "VISIBLE_CAMERA_COUNT" to
-                        (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
+                    "VISIBLE_CAMERA_COUNT" to (RandomUtils.choose(listOf("1", "2", "2", "3", "3", "3", "4", "4", "4", "4")) ?: "2"),
                 )
             val currentTemplate = buildVars["TEMPLATE"]
             val templateCandidates = templates.keys.filterNot { it.equals(currentTemplate, ignoreCase = true) }
             RandomUtils.choose(templateCandidates.ifEmpty { templates.keys.toList() })?.let { templateName ->
                 replacements["TEMPLATE"] = templateName
-                templates[templateName]?.forEach { (key, value) ->
-                    if (key in supportedTemplateProperties) replacements[key] = value
-                }
+                templates[templateName]?.forEach { (key, value) -> if (key in supportedTemplateProperties) replacements[key] = value }
             }
-
             val retainedLines = mutableListOf<String>()
             if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                require(spoofFile.length() in 0..MAX_BUILD_VARS_BYTES) {
-                    "spoof_build_vars has an invalid size"
-                }
+                require(spoofFile.length() in 0..MAX_BUILD_VARS_BYTES) { "spoof_build_vars has an invalid size" }
                 spoofFile.useLines { lines ->
                     lines.forEach { line ->
                         val key = line.substringBefore('=', "").trim()
@@ -2069,7 +1797,6 @@ object Config {
             }
             retainedLines += "# Prepared by random_on_boot"
             replacements.forEach { (key, value) -> retainedLines += "$key=$value" }
-
             SecureFile.writeText(stagedFile, retainedLines.joinToString("\n", postfix = "\n"))
             Logger.i("Prepared a synchronized identity snapshot for the next boot")
         } catch (e: Exception) {
@@ -2079,90 +1806,50 @@ object Config {
 
     @Synchronized
     private fun updateRandomOnBoot(f: File?) {
-        val enabled =
-            if (PolicyState.usesV2()) {
-                PolicyState.isFeatureEnabled(PolicyState.Feature.IDENTITY_REFRESH)
-            } else {
-                isSpoofEnabled && isRegularFlagFile(f)
-            }
+        val enabled = if (PolicyState.usesV2()) PolicyState.isFeatureEnabled(PolicyState.Feature.IDENTITY_REFRESH) else isSpoofEnabled && isRegularFlagFile(f)
         if (!enabled) {
             discardStagedRandomization()
             return
         }
-
         val stagedPath = File(root, STAGED_BUILD_VARS_FILE).toPath()
-        if (Files.isRegularFile(stagedPath, LinkOption.NOFOLLOW_LINKS)) {
-            return
-        }
+        if (Files.isRegularFile(stagedPath, LinkOption.NOFOLLOW_LINKS)) return
         enforceRandomization()
     }
 
     object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
-        override fun onEvent(
-            event: Int,
-            path: String?,
-        ) {
+        override fun onEvent(event: Int, path: String?) {
             path ?: return
-            val f =
-                when (event) {
-                    CLOSE_WRITE, MOVED_TO -> File(root, path)
-                    DELETE, MOVED_FROM -> null
-                    else -> return
-                }
+            val f = when (event) { CLOSE_WRITE, MOVED_TO -> File(root, path); DELETE, MOVED_FROM -> null; else -> return }
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
                 KEYBOX_FILE -> updateKeyBoxes()
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
-                PolicyState.STATE_FILE -> {
-                    PolicyState.reload()
-                    updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
-                }
+                PolicyState.STATE_FILE -> { PolicyState.reload(); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
                 APP_CONFIG_FILE -> updateAppConfigs(f)
                 PRIVACY_SEED_FILE -> refreshPrivacySeed()
                 CUSTOM_TEMPLATES_FILE -> updateCustomTemplates(f)
-                TEMPLATES_JSON_FILE -> {
-                    DeviceTemplateManager.initialize(root)
-                    updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE))
-                }
-                SPOOF_ENABLED_FILE -> {
-                    updateSpoofEnabled(f)
-                    updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
-                }
+                TEMPLATES_JSON_FILE -> { DeviceTemplateManager.initialize(root); updateCustomTemplates(File(root, CUSTOM_TEMPLATES_FILE)) }
+                SPOOF_ENABLED_FILE -> { updateSpoofEnabled(f); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
                 BUILD_IDENTITY_FILE -> updateBuildIdentity(f)
-                GLOBAL_MODE_FILE -> {
-                    updateGlobalMode(f)
-                    updateTargetPackages(File(root, TARGET_FILE))
-                }
-
-                TEE_BROKEN_MODE_FILE -> {
-                    updateTeeBrokenMode(f)
-                    updateTargetPackages(File(root, TARGET_FILE))
-                }
-
+                GLOBAL_MODE_FILE -> { updateGlobalMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
+                TEE_BROKEN_MODE_FILE -> { updateTeeBrokenMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
                 TELEPHONY_FILE -> updateTelephony(f)
                 CAMERA_VISIBILITY_FILE -> updateCameraVisibility(f)
                 RKP_PASSTHROUGH_FILE -> updateRkpPassthrough(f)
                 DRM_PASSTHROUGH_FILE -> updateDrmPassthrough(f)
-                RANDOM_ON_BOOT_FILE -> {
-                    PolicyState.onLegacySettingsChanged()
-                    updateRandomOnBoot(f)
-                }
+                RANDOM_ON_BOOT_FILE -> { PolicyState.onLegacySettingsChanged(); updateRandomOnBoot(f) }
                 BootLogic.FILE_SPOOF_CN -> PolicyState.onLegacySettingsChanged()
                 DRM_PACKAGES_FILE -> updateDrmPackages(f)
                 MODULE_HASH_FILE -> updateModuleHash(f)
                 AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
-
                 APPLY_PROFILE_FILE -> applyProfileFromFile(f)
             }
         }
     }
 
     object KeyboxDirObserver : FileObserver(keyboxDir, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
-        override fun onEvent(
-            event: Int,
-            path: String?,
-        ) {
+        override fun onEvent(event: Int, path: String?) {
             Logger.i("Keybox directory event: $path")
             updateKeyBoxes()
         }
@@ -2170,14 +1857,13 @@ object Config {
 
     fun initialize() {
         Logger.i("Config.initialize: starting (root=${root.absolutePath})")
-        SecureFile.mkdirs(root, 448) // 0700
-        SecureFile.mkdirs(keyboxDir, 448) // 0700
+        SecureFile.mkdirs(root, 448)
+        SecureFile.mkdirs(keyboxDir, 448)
         KeyboxVerifier.configureCacheRoot(root)
         DeviceKeyManager.initialize(root)
         CboxManager.initialize()
         ServerManager.initialize()
         DeviceTemplateManager.initialize(root)
-
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
@@ -2195,24 +1881,16 @@ object Config {
         PolicyState.initialize(root).getOrThrow()
         applyPendingRecommendedDefaults()
         refreshPrivacySeed().getOrThrow()
-
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
-
         if (!isGlobalMode) {
             val scope = File(root, TARGET_FILE)
             Logger.d("Config.initialize: loading target.txt from ${scope.absolutePath} (exists=${scope.exists()})")
-            if (scope.exists()) {
-                updateTargetPackages(scope)
-            } else {
-                Logger.e("target.txt file not found, please put it to $scope !")
-            }
+            if (scope.exists()) updateTargetPackages(scope) else Logger.e("target.txt file not found, please put it to $scope !")
         } else {
             Logger.i("Config.initialize: global mode active; all application UIDs are targeted")
             updateTargetPackages(File(root, TARGET_FILE))
         }
-
         updateKeyBoxesSync()
-
         ConfigObserver.startWatching()
         KeyboxDirObserver.startWatching()
     }
@@ -2226,9 +1904,7 @@ object Config {
             return
         }
         PolicyState.applyRecommendedDefaults()
-        if (!marker.delete()) {
-            Logger.w("Could not remove recommended-defaults marker; defaults may be re-evaluated on restart")
-        }
+        if (!marker.delete()) Logger.w("Could not remove recommended-defaults marker; defaults may be re-evaluated on restart")
     }
 
     @Volatile
@@ -2242,17 +1918,10 @@ object Config {
         return resolved
     }
 
-    internal fun matchesPackage(
-        pkgName: String,
-        rules: PackageTrie<Boolean>,
-    ): Boolean {
-        return rules.matches(pkgName)
-    }
+    internal fun matchesPackage(pkgName: String, rules: PackageTrie<Boolean>): Boolean = rules.matches(pkgName)
 
     internal data class CachedPackage(val value: Array<String>, val timestamp: Long)
 
-    // Cache PackageManager IPC results while using a fixed lock stripe set so isolated-UID
-    // churn cannot grow a second, unbounded lock map.
     private val packageCache = ConcurrentHashMap<Int, CachedPackage>()
     private val uidLocks = Array(64) { Any() }
 
@@ -2263,45 +1932,22 @@ object Config {
     private val INSTALLED_PACKAGE_PATTERN = Regex("[A-Za-z0-9_.]{1,255}")
     private val callerPackageDigest = ThreadLocal.withInitial { MessageDigest.getInstance("SHA-256") }
 
-    /**
-     * Retrieves the list of packages for a given UID, using a cache to avoid frequent IPC calls.
-     * Returns an empty array if the UID has no associated packages or if PackageManager is unavailable.
-     */
     fun getPackages(uid: Int): Array<String> {
         val now = clockSource()
-        // Fast path: optimistic read for valid cache
         val cached = packageCache[uid]
         val cachedAge = cached?.let { now - it.timestamp }
-        if (cached != null && cachedAge != null && cachedAge >= 0 && cachedAge < CACHE_TTL_MS) {
-            return cached.value
-        }
-
-        // Slow path: update atomically to prevent "thundering herd" on IPC
-        // Use a per-UID lock to avoid holding the global map bucket lock during the slow IPC
+        if (cached != null && cachedAge != null && cachedAge >= 0 && cachedAge < CACHE_TTL_MS) return cached.value
         val lock = uidLocks[(uid and Int.MAX_VALUE) % uidLocks.size]
         synchronized(lock) {
             val current = packageCache[uid]
             val currentAge = current?.let { now - it.timestamp }
-            if (current != null && currentAge != null && currentAge >= 0 && currentAge < CACHE_TTL_MS) {
-                return current.value
-            }
-
+            if (current != null && currentAge != null && currentAge >= 0 && currentAge < CACHE_TTL_MS) return current.value
             val pm = getPm()
-            return if (pm == null) {
-                emptyArray()
-            } else {
+            return if (pm == null) emptyArray() else {
                 try {
                     val resolved = pm.getPackagesForUid(uid) ?: emptyArray()
-                    val normalized =
-                        resolved
-                            .asSequence()
-                            .filter(INSTALLED_PACKAGE_PATTERN::matches)
-                            .distinct()
-                            .take(MAX_PACKAGES_PER_UID + 1)
-                            .toList()
-                    if (normalized.size > MAX_PACKAGES_PER_UID) {
-                        Logger.w("PackageManager returned too many packages for one UID; truncating")
-                    }
+                    val normalized = resolved.asSequence().filter(INSTALLED_PACKAGE_PATTERN::matches).distinct().take(MAX_PACKAGES_PER_UID + 1).toList()
+                    if (normalized.size > MAX_PACKAGES_PER_UID) Logger.w("PackageManager returned too many packages for one UID; truncating")
                     val packages = normalized.take(MAX_PACKAGES_PER_UID).sorted().toTypedArray()
                     if (current == null || !current.value.contentEquals(packages)) invalidateUidPolicyCaches(uid)
                     putBoundedUidCache(packageCache, uid, CachedPackage(packages, now))
@@ -2336,18 +1982,12 @@ object Config {
         rkpInfrastructureCache.remove(uid)
     }
 
-    private fun checkPackages(
-        packages: PackageTrie<Boolean>,
-        callingUid: Int,
-    ): Boolean {
+    private fun checkPackages(packages: PackageTrie<Boolean>, callingUid: Int): Boolean {
         try {
             if (packages.isEmpty()) return false
             val ps = getPackages(callingUid)
             if (ps.isEmpty()) return false
-            val len = ps.size
-            for (i in 0 until len) {
-                if (matchesPackage(ps[i], packages)) return true
-            }
+            for (i in ps.indices) if (matchesPackage(ps[i], packages)) return true
             return false
         } catch (e: Exception) {
             Logger.e("failed to get packages", e)
@@ -2355,10 +1995,7 @@ object Config {
         }
     }
 
-    private fun getCachedDecision(
-        cache: ConcurrentHashMap<Int, CachedDecision>,
-        uid: Int,
-    ): Boolean? {
+    private fun getCachedDecision(cache: ConcurrentHashMap<Int, CachedDecision>, uid: Int): Boolean? {
         val cached = cache[uid] ?: return null
         val age = clockSource() - cached.timestamp
         if (age >= 0 && age < UID_DECISION_CACHE_TTL_MS) return cached.value
@@ -2366,10 +2003,7 @@ object Config {
         return null
     }
 
-    private fun <T> getCachedValue(
-        cache: ConcurrentHashMap<Int, CachedValue<T>>,
-        uid: Int,
-    ): CachedValue<T>? {
+    private fun <T> getCachedValue(cache: ConcurrentHashMap<Int, CachedValue<T>>, uid: Int): CachedValue<T>? {
         val cached = cache[uid] ?: return null
         val age = clockSource() - cached.timestamp
         if (age >= 0 && age < UID_DECISION_CACHE_TTL_MS) return cached
@@ -2377,30 +2011,18 @@ object Config {
         return null
     }
 
-    private fun <T> cacheValue(
-        cache: ConcurrentHashMap<Int, CachedValue<T>>,
-        uid: Int,
-        value: T,
-    ) {
+    private fun <T> cacheValue(cache: ConcurrentHashMap<Int, CachedValue<T>>, uid: Int, value: T) {
         putBoundedUidCache(cache, uid, CachedValue(value, clockSource()))
     }
 
-    private fun cacheDecision(
-        cache: ConcurrentHashMap<Int, CachedDecision>,
-        uid: Int,
-        value: Boolean,
-    ) {
+    private fun cacheDecision(cache: ConcurrentHashMap<Int, CachedDecision>, uid: Int, value: Boolean) {
         putBoundedUidCache(cache, uid, CachedDecision(value, clockSource()))
     }
 
     private fun isProtectedInfrastructureUid(callingUid: Int): Boolean {
         val cached = getCachedDecision(rkpInfrastructureCache, callingUid)
         if (cached != null) return cached
-
         val packages = getPackages(callingUid)
-        // Unknown UIDs fail closed. Targeted mode already required a resolved
-        // package, and global mode must not turn a transient PM failure into a
-        // system-service hook.
         val protected = packages.isEmpty() || packages.any(rkpInfrastructurePackages::contains)
         cacheDecision(rkpInfrastructureCache, callingUid, protected)
         return protected
@@ -2412,19 +2034,14 @@ object Config {
         if (isDrmPassthroughEnabled) {
             val state = drmState
             val cachedDrm = getCachedDecision(state.cache, callingUid)
-            val isDrm =
-                cachedDrm ?: checkPackages(state.packages, callingUid).also {
-                    cacheDecision(state.cache, callingUid, it)
-                }
+            val isDrm = cachedDrm ?: checkPackages(state.packages, callingUid).also { cacheDecision(state.cache, callingUid, it) }
             if (isDrm) return false
         }
         if (isGlobalMode) return true
         if (getAppConfig(callingUid) != null) return true
-
         val state = targetState
         val cached = getCachedDecision(state.hackCache, callingUid)
         if (cached != null) return cached
-
         val result = checkPackages(state.hackPackages, callingUid)
         cacheDecision(state.hackCache, callingUid, result)
         return result
@@ -2438,7 +2055,6 @@ object Config {
         KeyboxDirObserver.stopWatching()
         KeyboxAutoCleaner.setEnabled(false)
         scope.coroutineContext.cancelChildren()
-
         root = File(CONFIG_PATH)
         packageCache.clear()
         dynamicPatchCache.clear()
@@ -2473,6 +2089,8 @@ object Config {
         lastKeyboxLength = 0
         directoryKeyboxCache.clear()
         KeyboxLoader.resetForTesting()
+        BackendRecovery.resetForTesting()
+        NativeBackend.resetIdentityForTesting()
         PolicyState.resetForTesting()
     }
 }
