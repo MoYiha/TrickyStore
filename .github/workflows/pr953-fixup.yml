@@ -1,6 +1,7 @@
 name: PR 953 Fixup
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - agent/rust-first-service-redesign
