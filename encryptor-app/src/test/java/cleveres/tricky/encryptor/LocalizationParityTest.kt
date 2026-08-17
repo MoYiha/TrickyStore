@@ -13,17 +13,17 @@ class LocalizationParityTest {
         assertTrue(defaultStrings.isNotEmpty())
 
         val localeDirectories =
-            listOf(
-                "values-tr",
-                "values-zh-rCN",
-                "values-es",
-                "values-de",
-                "values-ru",
-                "values-in",
-                "values-hi",
-                "values-ar",
+            linkedMapOf(
+                "values-tr" to "tr",
+                "values-zh-rCN" to "zh-CN",
+                "values-es" to "es",
+                "values-de" to "de",
+                "values-ru" to "ru",
+                "values-in" to "id",
+                "values-hi" to "hi",
+                "values-ar" to "ar",
             )
-        for (directory in localeDirectories) {
+        for (directory in localeDirectories.keys) {
             val translated = parseStrings(File(resources, "$directory/strings.xml"))
             assertEquals("String keys differ for $directory", defaultStrings.keys, translated.keys)
             for (key in defaultStrings.keys) {
@@ -34,6 +34,14 @@ class LocalizationParityTest {
                 )
             }
         }
+
+        val localeConfig = File(resources, "xml/locales_config.xml").readText()
+        val configured =
+            Regex("android:name=\"([^\"]+)\"")
+                .findAll(localeConfig)
+                .map { it.groupValues[1] }
+                .toSet()
+        assertEquals(setOf("en") + localeDirectories.values, configured)
     }
 
     private fun parseStrings(file: File): Map<String, String> {
