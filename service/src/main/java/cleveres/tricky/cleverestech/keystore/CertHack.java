@@ -146,6 +146,14 @@ public final class CertHack {
         if (!KeyboxLoader.isActiveSetHealthy()) {
             throw new IllegalStateException("Rust keybox backend activation is unavailable");
         }
+        return getPublishedKeyboxCountForTesting();
+    }
+
+    /**
+     * JVM-unit-test seam for inspecting the already-published managed snapshot without
+     * probing backend health or triggering backend recovery.
+     */
+    public static int getPublishedKeyboxCountForTesting() {
         int count = 0;
         for (List<KeyBox> list : state.keyboxes.values()) count += list.size();
         return count;

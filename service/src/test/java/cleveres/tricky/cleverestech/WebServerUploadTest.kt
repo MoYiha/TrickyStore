@@ -169,17 +169,17 @@ class WebServerUploadTest {
     fun testValidUploadDoesNotReportSuccessWhenBackendActivationFails() {
         KeyboxLoader.activeSetOverride = { true }
         assertEquals(200, uploadKeybox("active.xml", TestKeyboxFixtures.validEcKeyboxXml))
-        val activeKeyboxCount = cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount()
+        val activeKeyboxCount = cleveres.tricky.cleverestech.keystore.CertHack.getPublishedKeyboxCountForTesting()
 
         KeyboxLoader.activeSetOverride = { false }
         BackendRecovery.recoveryOverride = { false }
         val responseCode = uploadKeybox("activation_failure.xml", TestKeyboxFixtures.validEcKeyboxXml)
 
         assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, responseCode)
-        // Activation failure intentionally marks backend health false. Reset only the test seam so
-        // getKeyboxCount can inspect the immutable managed snapshot without publishing new keys.
-        KeyboxLoader.resetForTesting()
-        assertEquals(activeKeyboxCount, cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount())
+        assertEquals(
+        activeKeyboxCount,
+        cleveres.tricky.cleverestech.keystore.CertHack.getPublishedKeyboxCountForTesting(),
+    )
         assert(File(configDir, "keyboxes/activation_failure.xml").exists())
     }
 
