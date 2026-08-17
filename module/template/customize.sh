@@ -283,3 +283,88 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
 [ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough"
 [ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props"
 [ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging"
+
+# Remove mutually-exclusive keystore/TEE attestation modules only after the
+# CleveresTricky installation has completed successfully. Upstream module IDs:
+#   Tricky Store / Tricky Store OSS / TEESimulator-RS -> tricky_store
+#   TEESimulator                                      -> teesim
+# Exact normalized names are also recognized so forks that only change the ID
+# cannot silently coexist. User data under /data/adb/tricky_store is preserved.
+normalize_conflicting_module_name() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_.-'
+}
+
+is_conflicting_attestation_module() {
+  conflict_id=$1
+  conflict_name=$2
+
+  case "$conflict_id" in
+    tricky_store|teesim) return 0 ;;
+  esac
+
+  normalized_conflict_name=$(normalize_conflicting_module_name "$conflict_name")
+  case "$normalized_conflict_name" in
+    trickystore|trickystoreoss|teesimulator|teesimulatorrs) return 0 ;;
+  esac
+
+  return 1
+}
+
+remove_conflicting_modules_from_root() {
+  modules_root=$1
+  [ -e "$modules_root" ] || return 0
+  [ -L "$modules_root" ] && abort "! Refusing symlinked modules root: $modules_root"
+  [ -d "$modules_root" ] || abort "! Modules root is not a directory: $modules_root"
+
+  for candidate in "$modules_root"/*; do
+    [ -e "$candidate" ] || [ -L "$candidate" ] || continue
+    candidate_dir=${candidate##*/}
+    [ "$candidate_dir" = "cleverestricky" ] && continue
+
+    if [ -L "$candidate" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          ui_print "- Removing conflicting module link: $candidate_dir"
+          rm -f "$candidate" || abort "! Could not remove conflicting module link: $candidate_dir"
+          ;;
+      esac
+      continue
+    fi
+
+    [ -d "$candidate" ] || continue
+    prop_file="$candidate/module.prop"
+
+    if [ -L "$prop_file" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          abort "! Refusing unsafe conflicting module metadata: $candidate_dir/module.prop"
+          ;;
+      esac
+      continue
+    fi
+
+    if [ ! -f "$prop_file" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          ui_print "- Removing incomplete conflicting module: $candidate_dir"
+          rm -rf "$candidate" || abort "! Could not remove incomplete conflicting module: $candidate_dir"
+          ;;
+      esac
+      continue
+    fi
+
+    conflict_id=$(grep_prop id "$prop_file" 2>/dev/null || true)
+    conflict_name=$(grep_prop name "$prop_file" 2>/dev/null || true)
+    [ "$conflict_id" = "cleverestricky" ] && continue
+
+    if is_conflicting_attestation_module "$conflict_id" "$conflict_name"; then
+      ui_print "- Removing conflicting module: ${conflict_name:-$candidate_dir} (${conflict_id:-unknown})"
+      rm -rf "$candidate" || abort "! Could not remove conflicting module: $candidate_dir"
+      [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || abort "! Conflicting module still exists after removal: $candidate_dir"
+    fi
+  done
+}
+
+remove_conflicting_modules_from_root /data/adb/modules
+remove_conflicting_modules_from_root /data/adb/modules_update
