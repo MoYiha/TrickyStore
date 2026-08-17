@@ -245,6 +245,8 @@ private fun CreateScreen(
     val xmlFailed = stringResource(R.string.xml_use_failed)
     val encryptFailed = stringResource(R.string.encryption_failed)
     val encryptSuccess = stringResource(R.string.encrypted_success)
+    val signingPublicKey = stringResource(R.string.signing_public_key)
+    val publicKeyCopied = stringResource(R.string.public_key_copied)
     var author by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
@@ -377,8 +379,8 @@ private fun CreateScreen(
                     onClick = {
                         val key = publicKey ?: return@IconButton
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.signing_public_key), key))
-                        scope.launch { snackbar.showSnackbar(context.getString(R.string.public_key_copied)) }
+                        clipboard.setPrimaryClip(ClipData.newPlainText(signingPublicKey, key))
+                        scope.launch { snackbar.showSnackbar(publicKeyCopied) }
                     },
                     enabled = publicKey != null,
                 ) {
