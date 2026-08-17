@@ -19,7 +19,7 @@ val useDebugSigningForPullRequest = System.getenv("GITHUB_EVENT_NAME") == "pull_
 val moduleVersionCode = rootProject.extra["verCode"] as Int
 val moduleVersionName = rootProject.extra["verName"] as String
 val encryptorMinSdk = 26
-val generatedRustJni = layout.buildDirectory.dir("generated/rust/jniLibs")
+val generatedRustJni = file("build/generated/rust/jniLibs")
 
 if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
     throw GradleException("Encryptor release signing configuration is incomplete")
@@ -109,8 +109,8 @@ val buildEncryptorRust =
         workingDir = file("../rust")
         environment("RUSTFLAGS", "-D warnings")
         doFirst {
-            generatedRustJni.get().asFile.deleteRecursively()
-            generatedRustJni.get().asFile.mkdirs()
+            generatedRustJni.deleteRecursively()
+            generatedRustJni.mkdirs()
         }
         commandLine(
             "cargo",
@@ -122,7 +122,7 @@ val buildEncryptorRust =
             "-t",
             "x86_64",
             "-o",
-            generatedRustJni.get().asFile.absolutePath,
+            generatedRustJni.absolutePath,
             "build",
             "--release",
             "-p",
