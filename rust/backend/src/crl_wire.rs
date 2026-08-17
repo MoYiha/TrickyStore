@@ -202,6 +202,16 @@ impl<'a> Cursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::MutexGuard;
+
+    static TEST_STORE_SEQUENCE: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn isolate_store_sequence() -> MutexGuard<'static, ()> {
+        TEST_STORE_SEQUENCE
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     fn refresh_request(crl: &[u8]) -> Vec<u8> {
         let mut output = Vec::new();
@@ -237,6 +247,7 @@ mod tests {
 
     #[test]
     fn refresh_once_then_query_without_resending_crl() {
+        let _sequence = isolate_store_sequence();
         let crl = br#"{"entries":{"1":0,"900150983cd24fb0d6963f7d28e17f72":0}}"#;
         let refresh = handle(refresh_request(crl)).unwrap();
         assert_eq!(refresh[0], WIRE_VERSION);
@@ -265,6 +276,7 @@ mod tests {
 
     #[test]
     fn failed_refresh_preserves_previous_generation_and_index() {
+        let _sequence = isolate_store_sequence();
         let first = handle(refresh_request(br#"{"entries":{"1":0}}"#)).unwrap();
         let generation = generation(&first);
         assert!(handle(refresh_request(b"not-json")).is_err());
@@ -274,6 +286,7 @@ mod tests {
 
     #[test]
     fn successful_refresh_advances_generation_and_stale_query_fails_closed() {
+        let _sequence = isolate_store_sequence();
         let first = handle(refresh_request(br#"{"entries":{"1":0}}"#)).unwrap();
         let old = generation(&first);
         let second = handle(refresh_request(br#"{"entries":{"2":0}}"#)).unwrap();
@@ -286,6 +299,7 @@ mod tests {
 
     #[test]
     fn malformed_lengths_and_oversized_fields_fail_closed() {
+        let _sequence = isolate_store_sequence();
         assert!(handle(vec![WIRE_VERSION, ACTION_REFRESH, 0, 0, 0, 0]).is_err());
         let generation = generation(&handle(refresh_request(br#"{"entries":{}}"#)).unwrap());
         let oversized_serial = vec![0u8; MAX_SERIAL_BYTES + 1];
