@@ -17,14 +17,28 @@ internal class BackendKeyHandle(
             else -> throw IllegalArgumentException("Unsupported backend key algorithm")
         }
     private val id = keyId.copyOf().also { require(it.size == KEY_ID_BYTES && it.any { byte -> byte != 0.toByte() }) }
+    private val backendIdentity = NativeBackend.currentBackendIdentity()
 
     override fun getAlgorithm(): String = normalizedAlgorithm
 
     override fun getFormat(): String = FORMAT
 
-    override fun getEncoded(): ByteArray = id.copyOf()
+    override fun getEncoded(): ByteArray {
+        requireCurrentBackend()
+        return id.copyOf()
+    }
 
-    internal fun keyId(): ByteArray = id.copyOf()
+    internal fun keyId(): ByteArray {
+        requireCurrentBackend()
+        return id.copyOf()
+    }
+
+    private fun requireCurrentBackend() {
+        val captured = backendIdentity ?: return
+        if (!NativeBackend.isCurrentBackendIdentity(captured)) {
+            throw RustBackendStateException(BackendStatus.STATE_RESET)
+        }
+    }
 
     private companion object {
         const val KEY_ID_BYTES = 16
