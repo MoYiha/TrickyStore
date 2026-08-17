@@ -11,26 +11,29 @@ internal object BackendStateRecovery {
     private var recovering = false
 
     @Volatile
-    private var recoveredInstanceSerial = 0L
+    private var recoveredIdentity: NativeBackend.BackendIdentity? = null
 
     @androidx.annotation.VisibleForTesting
-    internal var recoveryOverride: ((Long) -> Boolean)? = null
+    internal var recoveryOverride: ((NativeBackend.BackendIdentity) -> Boolean)? = null
 
     fun isRecovering(): Boolean = recovering
 
-    fun recover(instanceSerial: Long): Boolean {
-        if (instanceSerial <= 0 || NativeBackend.currentInstanceSerial() != instanceSerial) return false
+    fun recover(expectedIdentity: NativeBackend.BackendIdentity): Boolean {
         synchronized(recoveryLock) {
-            if (NativeBackend.currentInstanceSerial() != instanceSerial) return false
             if (recovering) return false
-            if (recoveredInstanceSerial == instanceSerial && KeyboxActivation.isCommittedForCurrentInstance()) {
+            val current = NativeBackend.currentBackendIdentity() ?: return false
+            if (current != expectedIdentity) return false
+            if (recoveredIdentity == current && KeyboxActivation.isCommittedForCurrentInstance()) {
                 return true
             }
             recovering = true
             return try {
+                val recoveryIdentity = NativeBackend.beginBackendRecovery()
+                if (recoveryIdentity != expectedIdentity) return@try false
+
                 recoveryOverride?.let { override ->
-                    return@try override(instanceSerial).also { success ->
-                        if (success) recoveredInstanceSerial = instanceSerial
+                    return@try override(recoveryIdentity).also { success ->
+                        if (success) recoveredIdentity = recoveryIdentity
                     }
                 }
 
@@ -42,28 +45,25 @@ internal object BackendStateRecovery {
 
                 val crl = KeyboxVerifier.refreshPersistedCrlForBackendRecovery()
                 if (crl == null) {
-                    // No bounded revocation source is available. Prune the new backend to an empty
-                    // active set and keep certificate rewriting fail-closed rather than performing
-                    // network work from a recovery path.
+                    // Recovery never performs network work. Prune the new backend to an empty active
+                    // set; managed publication remains fail-closed until bounded state can rebuild.
                     KeyboxActivation.commitAndPublish(emptyList())
                     return@try false
                 }
 
-                // Reopen protected CBOX credential caches against the new backend instance. The CRL
-                // handle above is already cached, so refresh does not need network access.
+                // The fresh Rust CRL generation is cached before CBOX/server materialization, so
+                // these recovery steps remain local and bounded rather than recursively fetching.
                 CboxManager.refresh()
-
-                // Reload encrypted remote-server caches. initialize() is idempotent with respect to
-                // scheduler startup and re-materializes their opaque key IDs against this instance.
                 ServerManager.initialize()
 
-                // Force configured XML files through the Rust parser again, validate against the
-                // recovered Rust CRL generation, commitActive(), then publish the managed snapshot.
+                // XML caches were invalidated above, forcing configured files back through Rust.
                 Config.updateKeyBoxesSync(crl) { keybox, _ ->
                     KeyboxVerifier.verifyKeybox(keybox, crl)
                 }
-                val success = KeyboxActivation.isCommittedForCurrentInstance()
-                if (success) recoveredInstanceSerial = instanceSerial
+                val success =
+                    NativeBackend.isCurrentBackendIdentity(recoveryIdentity) &&
+                        KeyboxActivation.isCommittedForCurrentInstance()
+                if (success) recoveredIdentity = recoveryIdentity
                 success
             } catch (error: Exception) {
                 Logger.e("Rust backend state recovery failed: ${error.javaClass.simpleName}")
@@ -78,7 +78,7 @@ internal object BackendStateRecovery {
     internal fun resetForTesting() {
         synchronized(recoveryLock) {
             recovering = false
-            recoveredInstanceSerial = 0
+            recoveredIdentity = null
             recoveryOverride = null
         }
     }
