@@ -5,7 +5,6 @@ import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,9 +54,7 @@ class ConfigKeyboxActivationTest {
             Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.VALID }
 
             assertEquals(1, commits)
-            assertThrows(IllegalStateException::class.java) {
-                CertHack.getKeyboxCount()
-            }
+            assertEquals(0, CertHack.getKeyboxCount())
         }
     }
 
