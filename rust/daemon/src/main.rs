@@ -2,6 +2,7 @@
 mod config_file_broker;
 mod keybox_file_broker;
 
+use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
     read_header_bounded, relay_exact, write_frame, write_header, FrameHeader, FLAG_ERROR,
     MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
@@ -12,6 +13,7 @@ use cleverestricky_service_core::unix_socket::{
     bind_abstract, peer_credentials, DAEMON_SOCKET_NAME,
 };
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
@@ -111,6 +113,24 @@ fn require_regular_file(path: &Path, name: &str) -> io::Result<()> {
     Ok(())
 }
 
+fn valid_backend_auth_value(value: &str) -> bool {
+    value.len() == BACKEND_AUTH_HEX_BYTES
+        && value.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        && value.bytes().any(|byte| byte != b'0')
+}
+
+fn backend_auth_env() -> io::Result<OsString> {
+    let value = env::var_os(BACKEND_AUTH_ENV)
+        .ok_or_else(|| io::Error::other("backend capability is unavailable"))?;
+    let encoded = value
+        .to_str()
+        .ok_or_else(|| io::Error::other("backend capability is invalid"))?;
+    if !valid_backend_auth_value(encoded) {
+        return Err(io::Error::other("backend capability is invalid"));
+    }
+    Ok(value)
+}
+
 fn harden_process() -> io::Result<()> {
     // SAFETY: `umask` takes a value argument only, has process-global semantics intended for this
     // single-purpose daemon, and retains no pointers or references.
@@ -125,12 +145,14 @@ fn harden_process() -> io::Result<()> {
 
 fn spawn_android_adapter(module_dir: &Path) -> io::Result<Child> {
     let classpath = module_dir.join("service.apk");
+    let backend_auth = backend_auth_env()?;
     let mut command = Command::new("/system/bin/app_process");
     command
         .arg("/")
         .arg("--nice-name=CleveresTricky")
         .arg("cleveres.tricky.cleverestech.MainKt")
         .env("CLASSPATH", classpath)
+        .env(BACKEND_AUTH_ENV, backend_auth)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -156,6 +178,7 @@ fn spawn_android_adapter(module_dir: &Path) -> io::Result<Child> {
 fn spawn_backend(module_dir: &Path, adapter_pid: u32) -> io::Result<(Child, UnixStream)> {
     let path = module_dir.join("cleverestricky_backend");
     require_regular_file(&path, "cleverestricky_backend")?;
+    let backend_auth = backend_auth_env()?;
     let (daemon_broker, child_broker) = UnixStream::pair()?;
     set_cloexec(daemon_broker.as_raw_fd())?;
     set_cloexec(child_broker.as_raw_fd())?;
@@ -165,6 +188,7 @@ fn spawn_backend(module_dir: &Path, adapter_pid: u32) -> io::Result<(Child, Unix
     command
         .arg(adapter_pid.to_string())
         .env_clear()
+        .env(BACKEND_AUTH_ENV, backend_auth)
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
@@ -601,6 +625,17 @@ mod tests {
         adapter_thread.join().unwrap();
         file_thread.join().unwrap();
         assert!(test.path.join(path).is_file());
+    }
+
+    #[test]
+    fn backend_capability_encoding_is_exact_and_canonical() {
+        assert!(valid_backend_auth_value(&"5a".repeat(32)));
+        assert!(!valid_backend_auth_value(""));
+        assert!(!valid_backend_auth_value(&"5a".repeat(31)));
+        assert!(!valid_backend_auth_value(&"5a".repeat(33)));
+        assert!(!valid_backend_auth_value(&"5A".repeat(32)));
+        assert!(!valid_backend_auth_value(&"00".repeat(32)));
+        assert!(!valid_backend_auth_value(&format!("{}gg", "5a".repeat(31))));
     }
 
     #[test]
