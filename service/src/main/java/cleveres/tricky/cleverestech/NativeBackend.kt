@@ -2,15 +2,12 @@ package cleveres.tricky.cleverestech
 
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
-import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 internal enum class BackendStatus(val wireValue: Int) {
     REJECTED(1),
@@ -293,6 +290,7 @@ object NativeBackend {
         check(!Thread.holdsLock(this)) { "Backend recovery must not run while the backend IPC lock is held" }
         return BackendStateRecovery.recover(identity)
     }
+
     private fun transactOnce(
         opcode: Int,
         payloadLength: Int,
@@ -351,11 +349,7 @@ object NativeBackend {
         try {
             connected.connect(LocalSocketAddress(SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
             val peer = connected.peerCredentials
-            if (peer.uid != ANDROID_AID_NOBODY ||
-                peer.gid != ANDROID_GID_NOBODY ||
-                peer.pid <= 1 ||
-                !isExpectedBackendExecutable(peer.pid)
-            ) {
+            if (peer.uid != ANDROID_AID_NOBODY || peer.gid != ANDROID_GID_NOBODY || peer.pid <= 1) {
                 throw IOException("Unexpected Rust backend peer credentials")
             }
             connected.setSoTimeout(IO_TIMEOUT_MS)
@@ -375,9 +369,15 @@ object NativeBackend {
     ): BackendIdentity {
         val output = connected.outputStream
         val input = connected.inputStream
-        writeHeader(output, OP_BACKEND_PING, BACKEND_PING_REQUEST_BYTES)
-        output.write(BACKEND_HANDSHAKE_VERSION)
-        output.flush()
+        val capability = BackendAuth.fromEnvironment() ?: throw IOException("Backend capability unavailable")
+        try {
+            writeHeader(output, OP_BACKEND_PING, BACKEND_PING_REQUEST_BYTES)
+            output.write(BACKEND_HANDSHAKE_VERSION)
+            output.write(capability)
+            output.flush()
+        } finally {
+            capability.fill(0)
+        }
         val header = readHeader(input, OP_BACKEND_PING, BACKEND_PING_RESPONSE_BYTES)
         if (header.flags != 0 || header.payloadLength != BACKEND_PING_RESPONSE_BYTES) {
             throw IOException("Invalid backend identity frame")
@@ -405,17 +405,6 @@ object NativeBackend {
             backendStateResetPending = true
         }
         backendIdentity = identity
-    }
-
-    private fun isExpectedBackendExecutable(pid: Int): Boolean {
-        val classpath = System.getenv("CLASSPATH") ?: return false
-        if (classpath.indexOf(File.pathSeparatorChar) >= 0) return false
-        val serviceApk = File(classpath)
-        val moduleDir = serviceApk.parentFile ?: return false
-        val backend = File(moduleDir, BACKEND_FILENAME)
-        val backendPath = backend.toPath()
-        if (!Files.isRegularFile(backendPath, LinkOption.NOFOLLOW_LINKS)) return false
-        return runCatching { Files.isSameFile(backendPath, File("/proc/$pid/exe").toPath()) }.getOrDefault(false)
     }
 
     private fun closeSocket() {
@@ -596,7 +585,6 @@ object NativeBackend {
     }
 
     private const val SOCKET_NAME = "cleverestricky-backend.v1"
-    private const val BACKEND_FILENAME = "cleverestricky_backend"
     private const val IPC_VERSION = 1
     private const val HEADER_BYTES = 16
     private const val FLAG_ERROR = 1
@@ -607,7 +595,7 @@ object NativeBackend {
     private const val OP_KEYBOX_FILE_PARSE = 24
     private const val OP_BACKEND_PING = 28
     private const val BACKEND_HANDSHAKE_VERSION = 1
-    private const val BACKEND_PING_REQUEST_BYTES = 1
+    private const val BACKEND_PING_REQUEST_BYTES = 1 + BackendAuth.TOKEN_BYTES
     private const val BACKEND_PING_RESPONSE_BYTES = 19
     private const val BACKEND_STATUS_BYTES = 1
     private const val MAX_BACKEND_ERROR_BYTES = 256
