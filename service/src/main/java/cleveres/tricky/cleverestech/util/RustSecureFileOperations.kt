@@ -2,11 +2,11 @@ package cleveres.tricky.cleverestech.util
 
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
-import cleveres.tricky.cleverestech.Logger
-import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
@@ -29,7 +29,9 @@ internal class RustSecureFileOperations : SecureFileOperations {
         content: ByteArray,
     ) {
         require(content.size <= MAX_FILE_BYTES) { "File exceeds the Rust broker size limit" }
-        transact(ACTION_WRITE, file, content)
+        ByteArrayInputStream(content).use { input ->
+            transactStream(file, input, content.size)
+        }
     }
 
     override fun writeStream(
@@ -37,35 +39,10 @@ internal class RustSecureFileOperations : SecureFileOperations {
         inputStream: InputStream,
         limit: Long,
     ) {
-        require(limit in -1L..MAX_FILE_BYTES.toLong()) { "Invalid Rust broker stream limit" }
-        val effectiveLimit = if (limit < 0) MAX_FILE_BYTES else limit.toInt()
-        val output = ByteArrayOutputStream(minOf(effectiveLimit, DEFAULT_BUFFER_SIZE))
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        var bytes: ByteArray? = null
-        try {
-            var total = 0
-            var emptyReads = 0
-            while (true) {
-                val count = inputStream.read(buffer)
-                if (count < 0) break
-                if (count == 0) {
-                    if (++emptyReads > MAX_EMPTY_READS) throw IOException("Input stream stalled")
-                    continue
-                }
-                emptyReads = 0
-                total = Math.addExact(total, count)
-                if (total > effectiveLimit) throw IOException("File exceeds the configured stream limit")
-                output.write(buffer, 0, count)
-            }
-            bytes = output.toByteArray()
-            writeBytes(file, bytes)
-        } catch (error: ArithmeticException) {
-            throw IOException("File size overflow", error)
-        } finally {
-            buffer.fill(0)
-            bytes?.fill(0)
-            output.reset()
+        require(limit in 0L..MAX_FILE_BYTES.toLong()) {
+            "Rust broker streaming writes require an exact declared length"
         }
+        transactStream(file, inputStream, limit.toInt())
     }
 
     override fun mkdirs(
@@ -74,10 +51,10 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(mode == DIRECTORY_MODE) { "Rust broker only accepts private config directories" }
         if (file.absolutePath == CONFIG_ROOT) {
-            transactEncoded(ACTION_ROOT_VALIDATE, EMPTY_BYTES, EMPTY_BYTES)
+            transactControl(ACTION_ROOT_VALIDATE, EMPTY_BYTES)
             return
         }
-        transact(ACTION_MKDIR, file, EMPTY_BYTES)
+        transactControl(ACTION_MKDIR, relativePathBytes(file))
     }
 
     override fun touch(
@@ -85,64 +62,102 @@ internal class RustSecureFileOperations : SecureFileOperations {
         mode: Int,
     ) {
         require(mode == FILE_MODE) { "Rust broker only accepts private config files" }
-        transact(ACTION_TOUCH, file, EMPTY_BYTES)
+        transactControl(ACTION_TOUCH, relativePathBytes(file))
     }
 
-    private fun transact(
-        action: Int,
+    private fun transactStream(
         file: File,
-        content: ByteArray,
+        input: InputStream,
+        declaredBodyLength: Int,
     ) {
-        val path = relativePath(file)
-        val pathBytes = path.toByteArray(Charsets.UTF_8)
+        val pathBytes = relativePath(file).toByteArray(Charsets.UTF_8)
+        val scratch = ByteArray(STREAM_BUFFER_BYTES)
         try {
-            transactEncoded(action, pathBytes, content)
+            require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
+            val payloadLength =
+                Math.addExact(
+                    Math.addExact(REQUEST_PREFIX_BYTES, pathBytes.size),
+                    Math.addExact(declaredBodyLength, WRITE_COMMIT_BYTES),
+                )
+            require(payloadLength <= MAX_REQUEST_BYTES)
+            LocalSocket().use { socket ->
+                connectVerified(socket)
+                val output = socket.outputStream
+                writeHeader(output, payloadLength)
+                writeRequestPrefix(output, ACTION_WRITE, pathBytes.size, declaredBodyLength)
+                output.write(pathBytes)
+                copyDeclaredBody(input, output, declaredBodyLength, scratch)
+                output.write(WRITE_COMMIT_MARKER)
+                output.flush()
+                readSuccessResponse(socket.inputStream)
+            }
+        } catch (error: ArithmeticException) {
+            throw IOException("Rust file request size overflow", error)
+        } finally {
+            pathBytes.fill(0)
+            scratch.fill(0)
+        }
+    }
+
+    private fun transactControl(
+        action: Int,
+        pathBytes: ByteArray,
+    ) {
+        try {
+            require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
+            require(action == ACTION_ROOT_VALIDATE || pathBytes.isNotEmpty())
+            require(action != ACTION_ROOT_VALIDATE || pathBytes.isEmpty())
+            val payloadLength = Math.addExact(REQUEST_PREFIX_BYTES, pathBytes.size)
+            LocalSocket().use { socket ->
+                connectVerified(socket)
+                val output = socket.outputStream
+                writeHeader(output, payloadLength)
+                writeRequestPrefix(output, action, pathBytes.size, 0)
+                if (pathBytes.isNotEmpty()) output.write(pathBytes)
+                output.flush()
+                readSuccessResponse(socket.inputStream)
+            }
         } finally {
             pathBytes.fill(0)
         }
     }
 
-    private fun transactEncoded(
-        action: Int,
-        pathBytes: ByteArray,
-        content: ByteArray,
-    ) {
-        require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
-        require(action == ACTION_ROOT_VALIDATE || pathBytes.isNotEmpty())
-        require(action != ACTION_ROOT_VALIDATE || pathBytes.isEmpty())
-        val payloadLength = Math.addExact(Math.addExact(3, pathBytes.size), content.size)
-        require(payloadLength <= MAX_REQUEST_BYTES)
-        LocalSocket().use { socket ->
-            connectVerified(socket)
-            val output = socket.outputStream
-            writeHeader(output, payloadLength)
-            output.write(action)
-            output.write((pathBytes.size ushr 8) and 0xff)
-            output.write(pathBytes.size and 0xff)
-            if (pathBytes.isNotEmpty()) output.write(pathBytes)
-            if (content.isNotEmpty()) output.write(content)
-            output.flush()
-
-            val input = socket.inputStream
-            val header = ByteArray(HEADER_BYTES)
+    private fun readSuccessResponse(input: InputStream) {
+        val header = ByteArray(HEADER_BYTES)
+        try {
+            readFully(input, header)
+            validateResponseHeader(header)
+            val responseLength = readU32(header, 12)
+            if (responseLength > MAX_RESPONSE_BYTES) throw IOException("Rust file response exceeds bound")
+            val response = ByteArray(responseLength.toInt())
             try {
-                readFully(input, header)
-                validateResponseHeader(header)
-                val responseLength = readU32(header, 12)
-                if (responseLength > MAX_RESPONSE_BYTES) throw IOException("Rust file response exceeds bound")
-                val response = ByteArray(responseLength.toInt())
-                try {
-                    readFully(input, response)
-                    if (readI32(header, 8) != 0 || !response.contentEquals(OK_BYTES)) {
-                        throw IOException("Rust file operation was rejected")
-                    }
-                } finally {
-                    response.fill(0)
+                readFully(input, response)
+                if (readI32(header, 8) != 0 || !response.contentEquals(OK_BYTES)) {
+                    throw IOException("Rust file operation was rejected")
                 }
             } finally {
-                header.fill(0)
+                response.fill(0)
             }
+        } finally {
+            header.fill(0)
         }
+    }
+
+    private fun writeRequestPrefix(
+        output: OutputStream,
+        action: Int,
+        pathLength: Int,
+        bodyLength: Int,
+    ) {
+        require(pathLength in 0..MAX_RELATIVE_PATH_BYTES)
+        require(bodyLength in 0..MAX_FILE_BYTES)
+        output.write(action)
+        output.write((pathLength ushr 8) and 0xff)
+        output.write(pathLength and 0xff)
+        output.write((bodyLength ushr 24) and 0xff)
+        output.write((bodyLength ushr 16) and 0xff)
+        output.write((bodyLength ushr 8) and 0xff)
+        output.write(bodyLength and 0xff)
     }
 
     private fun connectVerified(socket: LocalSocket) {
@@ -163,6 +178,8 @@ internal class RustSecureFileOperations : SecureFileOperations {
         if (!Files.isRegularFile(daemon, LinkOption.NOFOLLOW_LINKS)) return false
         return runCatching { Files.isSameFile(daemon, File("/proc/$pid/exe").toPath()) }.getOrDefault(false)
     }
+
+    private fun relativePathBytes(file: File): ByteArray = relativePath(file).toByteArray(Charsets.UTF_8)
 
     private fun relativePath(file: File): String {
         val absolute = file.absolutePath
@@ -187,7 +204,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
     }
 
     private fun writeHeader(
-        output: java.io.OutputStream,
+        output: OutputStream,
         payloadLength: Int,
     ) {
         val header = ByteArray(HEADER_BYTES)
@@ -283,18 +300,53 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val ACTION_MKDIR = 1
         const val ACTION_TOUCH = 2
         const val ACTION_ROOT_VALIDATE = 3
+        const val WRITE_COMMIT_MARKER = 0xa5
         const val HEADER_BYTES = 16
+        const val REQUEST_PREFIX_BYTES = 7
+        const val WRITE_COMMIT_BYTES = 1
         const val FILE_MODE = 384
         const val DIRECTORY_MODE = 448
         const val MAX_FILE_BYTES = 20 * 1024 * 1024
         const val MAX_RELATIVE_PATH_BYTES = 511
         const val MAX_COMPONENT_BYTES = 255
-        const val MAX_REQUEST_BYTES = 1 + 2 + MAX_RELATIVE_PATH_BYTES + MAX_FILE_BYTES
+        const val MAX_REQUEST_BYTES = REQUEST_PREFIX_BYTES + MAX_RELATIVE_PATH_BYTES + MAX_FILE_BYTES + WRITE_COMMIT_BYTES
         const val MAX_RESPONSE_BYTES = 512L
         const val IO_TIMEOUT_MS = 30_000
         const val MAX_EMPTY_READS = 16
+        const val STREAM_BUFFER_BYTES = 64 * 1024
         val IPC_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'I'.code.toByte(), 'P'.code.toByte())
         val OK_BYTES = byteArrayOf('o'.code.toByte(), 'k'.code.toByte())
         val EMPTY_BYTES = ByteArray(0)
+    }
+}
+
+@Throws(IOException::class)
+internal fun copyDeclaredBody(
+    input: InputStream,
+    output: OutputStream,
+    declaredBodyLength: Int,
+    scratch: ByteArray,
+) {
+    require(declaredBodyLength >= 0)
+    require(scratch.isNotEmpty())
+    var remaining = declaredBodyLength
+    var emptyReads = 0
+    try {
+        while (remaining > 0) {
+            val count = input.read(scratch, 0, minOf(remaining, scratch.size))
+            if (count < 0) throw IOException("Input stream ended before declared length")
+            if (count == 0) {
+                if (++emptyReads > 16) throw IOException("Input stream stalled")
+                continue
+            }
+            emptyReads = 0
+            output.write(scratch, 0, count)
+            scratch.fill(0, 0, count)
+            remaining -= count
+        }
+        val trailing = input.read()
+        if (trailing >= 0) throw IOException("Input stream exceeds declared length")
+    } finally {
+        scratch.fill(0)
     }
 }
