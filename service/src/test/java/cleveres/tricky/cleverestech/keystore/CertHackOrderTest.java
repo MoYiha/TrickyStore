@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech.keystore;
 
 import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.ManagedCertificateBackendOracle;
+import cleveres.tricky.cleverestech.ManagedOpaqueKeyOracle;
 
 import org.bouncycastle.asn1.ASN1Boolean;
 import org.bouncycastle.asn1.ASN1Encodable;
@@ -138,7 +139,8 @@ public class CertHackOrderTest {
         kpg.initialize(2048);
         KeyPair kp = kpg.generateKeyPair();
         X509Certificate cert = generateCertWithIdentityAndPatchLevels(kp);
-        CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert), "test.xml");
+        CertHack.KeyBox keyBox = ManagedOpaqueKeyOracle.wrap(
+                kp, Collections.singletonList(cert), "test.xml");
 
         Map<String, List<CertHack.KeyBox>> newKeyboxes = new HashMap<>();
         newKeyboxes.put("RSA", Collections.singletonList(keyBox));
