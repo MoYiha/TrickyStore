@@ -6,13 +6,14 @@ use cleverestricky_keybox_core::{normalize_private_key_pkcs8, public_key_spki_fr
 use cleverestricky_xml_core::{KeyboxDocument, MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX};
 use der::{Decode, Encode};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
 pub const KEY_ID_BYTES: usize = 16;
 pub const MAX_STORED_KEYS: usize = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX;
+const MAX_STAGED_KEYS: usize = MAX_STORED_KEYS * 2;
 pub type KeyId = [u8; KEY_ID_BYTES];
 
 #[derive(Debug)]
@@ -33,6 +34,8 @@ struct StoredKey {
 #[derive(Default)]
 struct KeyStore {
     keys: BTreeMap<KeyId, Arc<StoredKey>>,
+    active_ids: BTreeSet<KeyId>,
+    transient_order: VecDeque<KeyId>,
 }
 
 static STORE: OnceLock<Mutex<KeyStore>> = OnceLock::new();
@@ -56,14 +59,6 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
 
     let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
     let mut guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
-    let additional = pending
-        .iter()
-        .filter(|candidate| !guard.keys.contains_key(&candidate.id))
-        .count();
-    if guard.keys.len().saturating_add(additional) > MAX_STORED_KEYS {
-        return Err("keybox store capacity exceeded");
-    }
-
     for candidate in &pending {
         if let Some(existing) = guard.keys.get(&candidate.id) {
             if !same_key(existing.as_ref(), candidate) {
@@ -82,7 +77,14 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
             algorithm: key.algorithm_name.clone(),
             certificates_der: key.certificates_der.clone(),
         });
-        guard.keys.insert(key.id, Arc::new(key));
+        if guard.keys.contains_key(&key.id) {
+            touch_transient(&mut guard, key.id);
+            continue;
+        }
+        make_room_for_transient(&mut guard)?;
+        let id = key.id;
+        guard.keys.insert(id, Arc::new(key));
+        guard.transient_order.push_back(id);
     }
     Ok(public)
 }
@@ -94,6 +96,9 @@ pub fn with_key<T>(
     let key = {
         let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
         let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
+        if !guard.active_ids.contains(id) {
+            return Err("opaque key identifier is not active");
+        }
         Arc::clone(
             guard
                 .keys
@@ -114,11 +119,35 @@ pub fn retain_only(ids: &[KeyId]) -> Result<(), &'static str> {
     }
     let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
     let mut guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
-    if ids.iter().any(|id| !guard.keys.contains_key(id)) {
+    let active: BTreeSet<KeyId> = ids.iter().copied().collect();
+    if active.len() != ids.len() || active.iter().any(|id| !guard.keys.contains_key(id)) {
         return Err("active key set contains an unregistered identifier");
     }
-    guard.keys.retain(|id, _| ids.contains(id));
+    guard.keys.retain(|id, _| active.contains(id));
+    guard.active_ids = active;
+    guard.transient_order.clear();
     Ok(())
+}
+
+fn make_room_for_transient(store: &mut KeyStore) -> Result<(), &'static str> {
+    while store.keys.len() >= MAX_STAGED_KEYS {
+        let Some(candidate) = store.transient_order.pop_front() else {
+            return Err("keybox store capacity exceeded");
+        };
+        if store.active_ids.contains(&candidate) {
+            continue;
+        }
+        store.keys.remove(&candidate);
+    }
+    Ok(())
+}
+
+fn touch_transient(store: &mut KeyStore, id: KeyId) {
+    if store.active_ids.contains(&id) {
+        return;
+    }
+    store.transient_order.retain(|candidate| candidate != &id);
+    store.transient_order.push_back(id);
 }
 
 fn build_stored_key(
@@ -256,7 +285,25 @@ mod tests {
 
     fn reset_store() {
         let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
-        store.lock().unwrap().keys.clear();
+        *store.lock().unwrap() = KeyStore::default();
+    }
+
+    fn synthetic_key(id: KeyId) -> StoredKey {
+        StoredKey {
+            id,
+            algorithm: SigningAlgorithm::EcP256Sha256,
+            algorithm_name: "EC".to_string(),
+            private_key_pkcs8: Zeroizing::new(vec![id[0].max(1)]),
+            certificates_der: vec![vec![0x30, id[0]]],
+        }
+    }
+
+    fn insert_transient(id: KeyId) {
+        let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+        let mut guard = store.lock().unwrap();
+        make_room_for_transient(&mut guard).unwrap();
+        guard.keys.insert(id, Arc::new(synthetic_key(id)));
+        guard.transient_order.push_back(id);
     }
 
     #[test]
@@ -279,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn deterministic_identifier_survives_reregistration() {
+    fn deterministic_identifier_requires_activation_before_signing() {
         let _serial = TEST_LOCK.lock().unwrap();
         reset_store();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
@@ -287,6 +334,8 @@ mod tests {
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let second = register_document(&document).unwrap()[0].id;
         assert_eq!(first, second);
+        assert!(with_key(&first, |_, _, _| Ok(())).is_err());
+        retain_only(&[first]).unwrap();
         with_key(&first, |algorithm, private, issuer| {
             assert_eq!(algorithm, SigningAlgorithm::EcP256Sha256);
             assert!(!private.is_empty());
@@ -297,16 +346,57 @@ mod tests {
     }
 
     #[test]
-    fn active_set_prunes_unreferenced_secret_material() {
+    fn replaced_deleted_and_empty_active_sets_prune_old_secrets() {
         let _serial = TEST_LOCK.lock().unwrap();
         reset_store();
-        let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
-        let id = register_document(&document).unwrap()[0].id;
-        retain_only(&[id]).unwrap();
-        assert!(with_key(&id, |_, _, _| Ok(())).is_ok());
+        let first = [1; KEY_ID_BYTES];
+        let second = [2; KEY_ID_BYTES];
+        insert_transient(first);
+        insert_transient(second);
+        retain_only(&[first]).unwrap();
+        assert!(with_key(&first, |_, _, _| Ok(())).is_ok());
+        assert!(with_key(&second, |_, _, _| Ok(())).is_err());
+
+        let replacement = [3; KEY_ID_BYTES];
+        insert_transient(replacement);
+        retain_only(&[replacement]).unwrap();
+        assert!(with_key(&first, |_, _, _| Ok(())).is_err());
+        assert!(with_key(&replacement, |_, _, _| Ok(())).is_ok());
+
         retain_only(&[]).unwrap();
-        assert!(with_key(&id, |_, _, _| Ok(())).is_err());
-        assert!(retain_only(&[[0x55; KEY_ID_BYTES]]).is_err());
+        assert!(with_key(&replacement, |_, _, _| Ok(())).is_err());
+    }
+
+    #[test]
+    fn rejected_transient_flood_cannot_exhaust_future_legitimate_activation() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        reset_store();
+        let active = [1; KEY_ID_BYTES];
+        insert_transient(active);
+        retain_only(&[active]).unwrap();
+
+        for index in 0..(MAX_STAGED_KEYS + MAX_STORED_KEYS + 32) {
+            let mut id = [0u8; KEY_ID_BYTES];
+            id[0] = 2;
+            id[8..].copy_from_slice(&(index as u64).to_be_bytes());
+            if id == active {
+                continue;
+            }
+            insert_transient(id);
+        }
+
+        let future = [0xee; KEY_ID_BYTES];
+        insert_transient(future);
+        {
+            let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+            let guard = store.lock().unwrap();
+            assert!(guard.keys.len() <= MAX_STAGED_KEYS);
+            assert!(guard.keys.contains_key(&active));
+            assert!(guard.keys.contains_key(&future));
+        }
+        retain_only(&[future]).unwrap();
+        assert!(with_key(&active, |_, _, _| Ok(())).is_err());
+        assert!(with_key(&future, |_, _, _| Ok(())).is_ok());
     }
 
     #[test]
