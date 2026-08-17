@@ -205,13 +205,28 @@ impl TrustedDir {
         mode: u32,
         scratch: &mut [u8],
     ) -> io::Result<()> {
+        self.atomic_write_from_confirmed(name, source, expected_bytes, mode, scratch, |_| Ok(()))
+    }
+
+    pub fn atomic_write_from_confirmed<R: Read, C>(
+        &self,
+        name: &str,
+        source: &mut R,
+        expected_bytes: usize,
+        mode: u32,
+        scratch: &mut [u8],
+        confirm: C,
+    ) -> io::Result<()>
+    where
+        C: FnOnce(&mut R) -> io::Result<()>,
+    {
         if scratch.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "stream scratch buffer is empty",
             ));
         }
-        self.atomic_replace_with(name, mode, |file| {
+        let (target, temporary_name) = self.prepare_atomic_replace(name, mode, |file| {
             let mut remaining = expected_bytes;
             while remaining != 0 {
                 let limit = remaining.min(scratch.len());
@@ -240,10 +255,31 @@ impl TrustedDir {
                 remaining -= count;
             }
             Ok(())
-        })
+        })?;
+
+        if let Err(error) = confirm(source) {
+            scratch.fill(0);
+            self.unlink_component(&temporary_name);
+            return Err(error);
+        }
+        scratch.fill(0);
+        self.commit_temporary(&target, &temporary_name)
     }
 
     fn atomic_replace_with<F>(&self, name: &str, mode: u32, writer: F) -> io::Result<()>
+    where
+        F: FnOnce(&mut File) -> io::Result<()>,
+    {
+        let (target, temporary_name) = self.prepare_atomic_replace(name, mode, writer)?;
+        self.commit_temporary(&target, &temporary_name)
+    }
+
+    fn prepare_atomic_replace<F>(
+        &self,
+        name: &str,
+        mode: u32,
+        writer: F,
+    ) -> io::Result<(CString, CString)>
     where
         F: FnOnce(&mut File) -> io::Result<()>,
     {
@@ -270,7 +306,10 @@ impl TrustedDir {
             self.unlink_component(&temporary_name);
             return Err(error);
         }
+        Ok((target, temporary_name))
+    }
 
+    fn commit_temporary(&self, target: &CStr, temporary_name: &CStr) -> io::Result<()> {
         // SAFETY: both names are valid single-component C strings. The source and destination
         // directory descriptors are the same live trusted directory and no argument is retained.
         let renamed = unsafe {
@@ -283,7 +322,7 @@ impl TrustedDir {
         };
         if renamed != 0 {
             let error = io::Error::last_os_error();
-            self.unlink_component(&temporary_name);
+            self.unlink_component(temporary_name);
             return Err(error);
         }
         self.sync()
@@ -522,6 +561,38 @@ mod tests {
         assert!(!names
             .iter()
             .any(|name| name.to_string_lossy().starts_with(".ct.")));
+    }
+
+    #[test]
+    fn confirmation_failure_preserves_existing_destination_and_cleans_temporary() {
+        let root = TestDir::new();
+        let dir = TrustedDir::open(&root.path).unwrap();
+        dir.atomic_write("state.bin", b"old", 0o600).unwrap();
+        let mut source = io::Cursor::new(b"new!".as_slice());
+        let mut scratch = [0u8; 2];
+        let result = dir.atomic_write_from_confirmed(
+            "state.bin",
+            &mut source,
+            3,
+            0o600,
+            &mut scratch,
+            |reader| {
+                let mut trailing = [0u8; 1];
+                reader.read_exact(&mut trailing)?;
+                if trailing[0] != 0xa5 {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "commit marker rejected"));
+                }
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(fs::read(root.path.join("state.bin")).unwrap(), b"old");
+        assert!(scratch.iter().all(|byte| *byte == 0));
+        let names: Vec<_> = fs::read_dir(&root.path)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("state.bin")]);
     }
 
     #[test]
