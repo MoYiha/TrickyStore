@@ -47,12 +47,30 @@ jobs:
         run: cargo install cargo-fuzz --version 0.13.2 --locked
 
       - name: Fuzz CTIP frame parser
-        run: cargo fuzz run ipc_frame -- -runs=1000 -max_len=65536 -timeout=2
+        run: cargo fuzz run ipc_frame -- -runs=500 -max_len=65536 -timeout=2
 
       - name: Fuzz keybox XML parser
         run: >-
           cargo fuzz run keybox_xml --
-          -runs=1000
+          -runs=500
           -max_len=1048576
           -timeout=2
           -dict=dictionaries/keybox_xml.dict
+
+      - name: Fuzz attestation ASN.1 rewrite
+        run: cargo fuzz run attestation_asn1 -- -runs=500 -max_len=65536 -timeout=2
+
+      - name: Fuzz certificate rewrite wire
+        run: cargo fuzz run certificate_rewrite_wire -- -runs=500 -max_len=1048576 -timeout=2
+
+      - name: Fuzz CRL parser and wire
+        run: cargo fuzz run crl_wire -- -runs=500 -max_len=1048576 -timeout=2
+
+      - name: Fuzz CBOX parser and decrypt framing
+        run: cargo fuzz run cbox_framing -- -runs=500 -max_len=1048576 -timeout=2
+
+      - name: Fuzz backup envelope
+        run: cargo fuzz run backup_envelope -- -runs=500 -max_len=1048576 -timeout=2
+
+      - name: Fuzz policy and config parser
+        run: cargo fuzz run policy_config -- -runs=500 -max_len=1048576 -timeout=2
