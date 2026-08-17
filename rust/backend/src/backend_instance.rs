@@ -55,7 +55,9 @@ pub fn handle(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     if !valid {
         return Err("backend handshake request rejected");
     }
-    let instance = INSTANCE.get().ok_or("backend instance identity is unavailable")?;
+    let instance = INSTANCE
+        .get()
+        .ok_or("backend instance identity is unavailable")?;
     Ok(instance.encode().to_vec())
 }
 
@@ -71,7 +73,10 @@ mod tests {
         let response = first.encode();
         assert_eq!(response.len(), RESPONSE_BYTES);
         assert_eq!(response[0], HANDSHAKE_VERSION);
-        assert_eq!(u16::from_be_bytes([response[1], response[2]]), PROTOCOL_VERSION);
+        assert_eq!(
+            u16::from_be_bytes([response[1], response[2]]),
+            PROTOCOL_VERSION
+        );
         assert!(response[3..].iter().any(|byte| *byte != 0));
     }
 

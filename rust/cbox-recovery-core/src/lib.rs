@@ -50,7 +50,9 @@ impl SignatureVersion {
             Self::Number(value) => *value,
             Self::Text(value) => value.parse::<i64>().ok()?,
         };
-        u8::try_from(value).ok().filter(|value| (1..=2).contains(value))
+        u8::try_from(value)
+            .ok()
+            .filter(|value| (1..=2).contains(value))
     }
 }
 
@@ -66,7 +68,12 @@ pub fn derive_recovery_key(
     }
     let salt = &bytes[8..8 + SALT_BYTES];
     let mut key = Zeroizing::new(vec![0u8; RECOVERY_KEY_BYTES]);
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, key.as_mut_slice());
+    pbkdf2_hmac::<Sha256>(
+        password.as_bytes(),
+        salt,
+        KDF_ITERATIONS,
+        key.as_mut_slice(),
+    );
     Ok(key)
 }
 
@@ -87,7 +94,10 @@ fn decrypt_inner(bytes: &mut [u8], recovery_key: &[u8]) -> Result<CboxPayload, C
         return Err(CryptoError::InvalidInput);
     }
     let version = read_version(bytes)?;
-    let body_end = bytes.len().checked_sub(TAG_BYTES).ok_or(CryptoError::InvalidInput)?;
+    let body_end = bytes
+        .len()
+        .checked_sub(TAG_BYTES)
+        .ok_or(CryptoError::InvalidInput)?;
 
     let mut header = [0u8; HEADER_BYTES];
     header.copy_from_slice(&bytes[..HEADER_BYTES]);
@@ -100,13 +110,13 @@ fn decrypt_inner(bytes: &mut [u8], recovery_key: &[u8]) -> Result<CboxPayload, C
     let cipher = Aes256Gcm::new_from_slice(recovery_key).map_err(|_| CryptoError::InvalidInput)?;
     let nonce = Nonce::from_slice(&iv);
     let tag = Tag::from_slice(&tag_bytes);
-    let aad: &[u8] = if version == VERSION_CURRENT { &header } else { &[] };
-    let decrypted = cipher.decrypt_in_place_detached(
-        nonce,
-        aad,
-        &mut bytes[HEADER_BYTES..body_end],
-        tag,
-    );
+    let aad: &[u8] = if version == VERSION_CURRENT {
+        &header
+    } else {
+        &[]
+    };
+    let decrypted =
+        cipher.decrypt_in_place_detached(nonce, aad, &mut bytes[HEADER_BYTES..body_end], tag);
     iv.zeroize();
     tag_bytes.zeroize();
     header.zeroize();
@@ -169,7 +179,9 @@ mod tests {
     }
 
     fn decode(input: &str) -> Vec<u8> {
-        base64::engine::general_purpose::STANDARD.decode(input).unwrap()
+        base64::engine::general_purpose::STANDARD
+            .decode(input)
+            .unwrap()
     }
 
     #[test]
@@ -177,7 +189,8 @@ mod tests {
         for encoded in [CBOX_V1, CBOX_V2] {
             let encrypted = decode(encoded);
             let key = derive_recovery_key(&encrypted, password().as_str()).unwrap();
-            let recovered = decrypt_cbox_with_recovery_key(encrypted.clone(), key.as_slice()).unwrap();
+            let recovered =
+                decrypt_cbox_with_recovery_key(encrypted.clone(), key.as_slice()).unwrap();
             let normal = decrypt_cbox(encrypted, password().as_str()).unwrap();
             assert_eq!(recovered, normal);
         }

@@ -301,7 +301,10 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.len(), INSTANCE_RESPONSE_BYTES);
         assert_eq!(&first[..4], INSTANCE_RESPONSE_MAGIC);
-        assert_eq!(u16::from_be_bytes(first[4..6].try_into().unwrap()), PROTOCOL_VERSION);
+        assert_eq!(
+            u16::from_be_bytes(first[4..6].try_into().unwrap()),
+            PROTOCOL_VERSION
+        );
         assert!(first[6..].iter().any(|byte| *byte != 0));
     }
 

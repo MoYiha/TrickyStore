@@ -580,7 +580,10 @@ mod tests {
                 let mut trailing = [0u8; 1];
                 reader.read_exact(&mut trailing)?;
                 if trailing[0] != 0xa5 {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "commit marker rejected"));
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "commit marker rejected",
+                    ));
                 }
                 Ok(())
             },

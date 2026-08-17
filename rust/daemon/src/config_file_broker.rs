@@ -81,13 +81,9 @@ pub(crate) fn handle_stream_from<R: Read>(
         let path = std::str::from_utf8(&path_storage[..path_len])
             .map_err(|_| invalid("config file path is not valid UTF-8"))?;
         match action {
-            ACTION_WRITE => atomic_write_relative_from(
-                root,
-                path,
-                reader,
-                declared_body_len,
-                scratch,
-            ),
+            ACTION_WRITE => {
+                atomic_write_relative_from(root, path, reader, declared_body_len, scratch)
+            }
             ACTION_MKDIR => {
                 if path != KEYBOX_DIRECTORY {
                     return Err(invalid("config directory request rejected"));
@@ -262,7 +258,10 @@ mod tests {
         symlink(&outside, &root_path).unwrap();
 
         handle_from(&root, &request(ACTION_WRITE, "settings.json", b"inside")).unwrap();
-        assert_eq!(fs::read(moved_root.join("settings.json")).unwrap(), b"inside");
+        assert_eq!(
+            fs::read(moved_root.join("settings.json")).unwrap(),
+            b"inside"
+        );
         assert!(!outside.join("settings.json").exists());
         assert!(prepare_root_from(&parent_capability).is_err());
     }
@@ -321,7 +320,10 @@ mod tests {
             let mut reader = io::Cursor::new(payload.as_slice());
             let mut scratch = [0u8; 4096];
             handle_stream_from(&root, &mut reader, payload.len(), &mut scratch).unwrap();
-            assert_eq!(fs::metadata(test.path.join("large.bin")).unwrap().len(), size as u64);
+            assert_eq!(
+                fs::metadata(test.path.join("large.bin")).unwrap().len(),
+                size as u64
+            );
             assert!(scratch.iter().all(|byte| *byte == 0));
         }
     }
@@ -332,7 +334,8 @@ mod tests {
         let root = test.trusted();
         fs::write(test.path.join("state.bin"), b"old").unwrap();
 
-        let mut early = request_with_declared(ACTION_WRITE, "state.bin", 4, b"abc", WRITE_COMMIT_MARKER);
+        let mut early =
+            request_with_declared(ACTION_WRITE, "state.bin", 4, b"abc", WRITE_COMMIT_MARKER);
         early.pop();
         let declared_frame_len = REQUEST_PREFIX_BYTES + "state.bin".len() + 4 + WRITE_COMMIT_BYTES;
         let mut reader = io::Cursor::new(early.as_slice());
@@ -344,7 +347,8 @@ mod tests {
         assert!(handle_from(&root, &bad_marker).is_err());
         assert_eq!(fs::read(test.path.join("state.bin")).unwrap(), b"old");
 
-        let mismatch = request_with_declared(ACTION_WRITE, "state.bin", 2, b"new", WRITE_COMMIT_MARKER);
+        let mismatch =
+            request_with_declared(ACTION_WRITE, "state.bin", 2, b"new", WRITE_COMMIT_MARKER);
         assert!(handle_from(&root, &mismatch).is_err());
         assert_eq!(fs::read(test.path.join("state.bin")).unwrap(), b"old");
         assert!(scratch.iter().all(|byte| *byte == 0));
@@ -357,7 +361,10 @@ mod tests {
         let payload = request(ACTION_TOUCH, "spoof_enabled", b"");
         handle_from(&root, &payload).unwrap();
         handle_from(&root, &payload).unwrap();
-        assert_eq!(fs::metadata(test.path.join("spoof_enabled")).unwrap().len(), 0);
+        assert_eq!(
+            fs::metadata(test.path.join("spoof_enabled")).unwrap().len(),
+            0
+        );
         assert!(handle_from(&root, &request(ACTION_TOUCH, "keyboxes/flag", b"")).is_err());
     }
 

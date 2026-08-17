@@ -606,7 +606,9 @@ struct ParsedCboxRecoveryPrefix<'a> {
     data_offset: usize,
 }
 
-fn parse_cbox_recovery_prefix(request: &[u8]) -> Result<ParsedCboxRecoveryPrefix<'_>, &'static str> {
+fn parse_cbox_recovery_prefix(
+    request: &[u8],
+) -> Result<ParsedCboxRecoveryPrefix<'_>, &'static str> {
     let public_key_len = read_u16(request, 0)?;
     if public_key_len > MAX_PUBLIC_KEY_BYTES {
         return Err("invalid CBOX public key field");
@@ -962,7 +964,10 @@ mod tests {
 
     #[test]
     fn cbox_recovery_operations_use_dedicated_bounds() {
-        assert_eq!(opcode_request_limit(OP_CBOX_UNLOCK), Some(MAX_CBOX_REQUEST_BYTES));
+        assert_eq!(
+            opcode_request_limit(OP_CBOX_UNLOCK),
+            Some(MAX_CBOX_REQUEST_BYTES)
+        );
         assert_eq!(
             opcode_response_limit(OP_CBOX_UNLOCK),
             Some(MAX_CBOX_UNLOCK_RESPONSE_BYTES)

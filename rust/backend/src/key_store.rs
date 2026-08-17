@@ -419,7 +419,9 @@ mod tests {
             })
             .unwrap();
         });
-        crypto_started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        crypto_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
 
         let (control_done_tx, control_done_rx) = mpsc::channel();
         let control = std::thread::spawn(move || {
@@ -427,7 +429,9 @@ mod tests {
             control_done_tx.send(result).unwrap();
         });
         assert_eq!(
-            control_done_rx.recv_timeout(Duration::from_millis(250)).unwrap(),
+            control_done_rx
+                .recv_timeout(Duration::from_millis(250))
+                .unwrap(),
             Ok(())
         );
 
