@@ -9,7 +9,16 @@ object CrlWire {
         val generation: Long,
         val rawEntryCount: Int,
         val normalizedEntryCount: Int,
-    )
+        private val backendPid: Int = NativeBackend.currentBackendIdentity()?.pid ?: 0,
+        private val backendEpochHigh: Long = NativeBackend.currentBackendIdentity()?.epochHigh ?: 0L,
+        private val backendEpochLow: Long = NativeBackend.currentBackendIdentity()?.epochLow ?: 0L,
+    ) {
+        internal fun isCurrentBackendInstance(): Boolean {
+            if (backendPid == 0) return true
+            return NativeBackend.currentBackendIdentity() ==
+                NativeBackend.BackendIdentity(backendPid, backendEpochHigh, backendEpochLow)
+        }
+    }
 
     data class Query(
         val serialTwosComplement: ByteArray,
