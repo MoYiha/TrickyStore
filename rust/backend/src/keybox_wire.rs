@@ -2,11 +2,13 @@
 #[path = "key_store.rs"]
 pub(crate) mod key_store;
 
+use cleverestricky_service_core::ipc::PROTOCOL_VERSION;
 use cleverestricky_xml_core::{
     parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_DOCUMENT_UTF8_BYTES,
     MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX,
 };
 use key_store::{KeyId, PublicKeyRecord, KEY_ID_BYTES, MAX_STORED_KEYS};
+use std::sync::OnceLock;
 use zeroize::Zeroize;
 
 pub const MAX_KEYBOX_XML_BYTES: usize = MAX_DOCUMENT_UTF8_BYTES;
@@ -19,7 +21,13 @@ const CERTIFICATE_HEADER_BYTES: usize = 4;
 const STORE_CONTROL_MAGIC: &[u8; 4] = b"CTKS";
 const STORE_CONTROL_VERSION: u8 = 1;
 const STORE_ACTION_RETAIN: u8 = 1;
-const STORE_CONTROL_HEADER_BYTES: usize = 8;
+const STORE_ACTION_HELLO: u8 = 2;
+const STORE_CONTROL_PREFIX_BYTES: usize = 6;
+const STORE_RETAIN_HEADER_BYTES: usize = 8;
+const INSTANCE_RESPONSE_MAGIC: &[u8; 4] = b"CTBI";
+const INSTANCE_EPOCH_BYTES: usize = 16;
+const INSTANCE_RESPONSE_BYTES: usize = 4 + 2 + INSTANCE_EPOCH_BYTES;
+static INSTANCE_EPOCH: OnceLock<Result<[u8; INSTANCE_EPOCH_BYTES], ()>> = OnceLock::new();
 pub const MAX_KEYBOX_WIRE_OVERHEAD_BYTES: usize = FIXED_HEADER_BYTES
     + MAX_TOTAL_KEYS * KEY_HEADER_BYTES
     + MAX_TOTAL_CERTIFICATES * CERTIFICATE_HEADER_BYTES;
@@ -50,44 +58,81 @@ pub fn parse_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
 
 fn handle_store_control(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     let result = (|| {
-        if request.len() < STORE_CONTROL_HEADER_BYTES
+        if request.len() < STORE_CONTROL_PREFIX_BYTES
             || request[0..4] != STORE_CONTROL_MAGIC[..]
             || request[4] != STORE_CONTROL_VERSION
-            || request[5] != STORE_ACTION_RETAIN
         {
             return Err("invalid key store control request");
         }
-        let count = u16::from_be_bytes([request[6], request[7]]) as usize;
-        if count > MAX_STORED_KEYS {
-            return Err("active key set exceeds store bound");
+        match request[5] {
+            STORE_ACTION_RETAIN => retain_active_set(&request),
+            STORE_ACTION_HELLO => instance_handshake(&request),
+            _ => Err("unsupported key store control action"),
         }
-        let expected = STORE_CONTROL_HEADER_BYTES
-            .checked_add(
-                count
-                    .checked_mul(KEY_ID_BYTES)
-                    .ok_or("active key set size overflow")?,
-            )
-            .ok_or("active key set size overflow")?;
-        if request.len() != expected {
-            return Err("invalid active key set length");
-        }
-        let mut ids = Vec::<KeyId>::new();
-        ids.try_reserve_exact(count)
-            .map_err(|_| "active key set allocation failed")?;
-        for chunk in request[STORE_CONTROL_HEADER_BYTES..].chunks_exact(KEY_ID_BYTES) {
-            let id: KeyId = chunk
-                .try_into()
-                .map_err(|_| "invalid opaque key identifier")?;
-            if id.iter().all(|byte| *byte == 0) || ids.contains(&id) {
-                return Err("invalid active key identifier set");
-            }
-            ids.push(id);
-        }
-        key_store::retain_only(&ids)?;
-        Ok(b"ok".to_vec())
     })();
     request.zeroize();
     result
+}
+
+fn retain_active_set(request: &[u8]) -> Result<Vec<u8>, &'static str> {
+    if request.len() < STORE_RETAIN_HEADER_BYTES {
+        return Err("invalid key store retain request");
+    }
+    let count = u16::from_be_bytes([request[6], request[7]]) as usize;
+    if count > MAX_STORED_KEYS {
+        return Err("active key set exceeds store bound");
+    }
+    let expected = STORE_RETAIN_HEADER_BYTES
+        .checked_add(
+            count
+                .checked_mul(KEY_ID_BYTES)
+                .ok_or("active key set size overflow")?,
+        )
+        .ok_or("active key set size overflow")?;
+    if request.len() != expected {
+        return Err("invalid active key set length");
+    }
+    let mut ids = Vec::<KeyId>::new();
+    ids.try_reserve_exact(count)
+        .map_err(|_| "active key set allocation failed")?;
+    for chunk in request[STORE_RETAIN_HEADER_BYTES..].chunks_exact(KEY_ID_BYTES) {
+        let id: KeyId = chunk
+            .try_into()
+            .map_err(|_| "invalid opaque key identifier")?;
+        if id.iter().all(|byte| *byte == 0) || ids.contains(&id) {
+            return Err("invalid active key identifier set");
+        }
+        ids.push(id);
+    }
+    key_store::retain_only(&ids)?;
+    Ok(b"ok".to_vec())
+}
+
+fn instance_handshake(request: &[u8]) -> Result<Vec<u8>, &'static str> {
+    if request.len() != STORE_CONTROL_PREFIX_BYTES {
+        return Err("invalid backend instance handshake");
+    }
+    let epoch = backend_instance_epoch()?;
+    let mut response = Vec::with_capacity(INSTANCE_RESPONSE_BYTES);
+    response.extend_from_slice(INSTANCE_RESPONSE_MAGIC);
+    response.extend_from_slice(&PROTOCOL_VERSION.to_be_bytes());
+    response.extend_from_slice(epoch);
+    Ok(response)
+}
+
+fn backend_instance_epoch() -> Result<&'static [u8; INSTANCE_EPOCH_BYTES], &'static str> {
+    match INSTANCE_EPOCH.get_or_init(|| {
+        let mut epoch = [0u8; INSTANCE_EPOCH_BYTES];
+        if getrandom::getrandom(&mut epoch).is_err() || epoch.iter().all(|byte| *byte == 0) {
+            epoch.zeroize();
+            Err(())
+        } else {
+            Ok(epoch)
+        }
+    }) {
+        Ok(epoch) => Ok(epoch),
+        Err(()) => Err("backend instance entropy unavailable"),
+    }
 }
 
 fn request_size_is_valid(length: usize) -> bool {
@@ -243,6 +288,31 @@ mod tests {
         unknown.extend_from_slice(&1u16.to_be_bytes());
         unknown.extend_from_slice(&[0xa5; KEY_ID_BYTES]);
         assert!(parse_and_encode(unknown).is_err());
+    }
+
+    #[test]
+    fn instance_handshake_is_bounded_stable_and_nonzero() {
+        let mut hello = Vec::new();
+        hello.extend_from_slice(STORE_CONTROL_MAGIC);
+        hello.push(STORE_CONTROL_VERSION);
+        hello.push(STORE_ACTION_HELLO);
+        let first = parse_and_encode(hello.clone()).unwrap();
+        let second = parse_and_encode(hello).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), INSTANCE_RESPONSE_BYTES);
+        assert_eq!(&first[..4], INSTANCE_RESPONSE_MAGIC);
+        assert_eq!(u16::from_be_bytes(first[4..6].try_into().unwrap()), PROTOCOL_VERSION);
+        assert!(first[6..].iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn malformed_instance_handshake_is_rejected() {
+        let mut hello = Vec::new();
+        hello.extend_from_slice(STORE_CONTROL_MAGIC);
+        hello.push(STORE_CONTROL_VERSION);
+        hello.push(STORE_ACTION_HELLO);
+        hello.push(0);
+        assert!(parse_and_encode(hello).is_err());
     }
 
     #[test]
