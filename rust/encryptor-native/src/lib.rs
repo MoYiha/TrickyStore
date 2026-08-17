@@ -90,8 +90,7 @@ fn encrypt_cbox_v2_with_nonce(
         || xml_bytes.is_empty()
         || xml_bytes.len() > MAX_XML_BYTES
         || signature_base64.len() > MAX_SIGNATURE_BYTES
-        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS)
-            .contains(&utf16_units(password))
+        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&utf16_units(password))
     {
         return Err(EncryptError::InvalidInput);
     }
