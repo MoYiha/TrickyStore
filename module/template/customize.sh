@@ -354,8 +354,9 @@ remove_conflicting_modules_from_root() {
     if is_conflicting_attestation_module "$conflict_id" "$conflict_name"; then
       ui_print "- Removing conflicting module: ${conflict_name:-$candidate_dir} (${conflict_id:-unknown})"
       rm -rf "$candidate" || abort "! Could not remove conflicting module: $candidate_dir"
-      [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
-        || abort "! Conflicting module still exists after removal: $candidate_dir"
+      if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+        abort "! Conflicting module still exists after removal: $candidate_dir"
+      fi
     fi
   done
 }
