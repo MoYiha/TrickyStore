@@ -2,7 +2,6 @@
 set -e
 
 MODULE_ID="cleverestricky"
-MODULE_NAME="CleveresTricky"
 MODDIR="/data/adb/modules/$MODULE_ID"
 CONFIG_DIR="/data/adb/$MODULE_ID"
 SHELL_DIR="/data/user_de/0/com.android.shell"
@@ -213,7 +212,9 @@ write_payload_hashes() {
     : > "$hashes_out"
     if [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ]; then
         find "$MODDIR" -type f -name '*.sha256' 2>/dev/null | sort 2>/dev/null | while IFS= read -r hash_file; do
-            [ -f "$hash_file" ] && [ ! -L "$hash_file" ] || continue
+            if [ ! -f "$hash_file" ] || [ -L "$hash_file" ]; then
+                continue
+            fi
             relative_hash=${hash_file#"$MODDIR"/}
             printf '===== %s =====\n' "$relative_hash" >> "$hashes_out"
             cat "$hash_file" >> "$hashes_out" 2>/dev/null || true
@@ -331,7 +332,7 @@ module_state="enabled"
     printf '======== module directory ========\n'
     ls -la "$MODDIR" 2>/dev/null || true
     printf '\n======== process ========\n'
-    ps -A 2>/dev/null | grep -i 'cleverestricky' 2>/dev/null || true
+    ps -A 2>/dev/null | awk 'tolower($0) ~ /cleverestricky/' || true
     printf '\n======== mounts ========\n'
     mount 2>/dev/null | grep -i -e 'cleverestricky' -e '/data/adb/modules' 2>/dev/null || true
 } > "$tmp/runtime.txt"
