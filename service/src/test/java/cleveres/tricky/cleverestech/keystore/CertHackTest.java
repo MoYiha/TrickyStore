@@ -20,7 +20,7 @@ public class CertHackTest {
 
     @After
     public void tearDown() {
-        CertHack.readFromXml(null);
+        ManagedKeyboxStateOracle.readFromXml(null);
     }
 
     private static final String EC_KEY = TestKeyboxFixtures.INSTANCE.getEcPrivateKey();
@@ -49,7 +49,7 @@ public class CertHackTest {
                 "</Keybox>\n" +
                 "</AndroidAttestation>";
 
-        CertHack.readFromXml(new StringReader(xml));
+        ManagedKeyboxStateOracle.readFromXml(new StringReader(xml));
 
         assertTrue("Keybox should be loaded", CertHack.canHack());
     }
@@ -65,7 +65,7 @@ public class CertHackTest {
         String mixedXml = TestKeyboxFixtures.INSTANCE.getValidEcKeyboxXml()
                 .replace("</Keybox>", invalidKey + "</Keybox>");
 
-        assertEquals(0, CertHack.parseKeyboxXml(new StringReader(mixedXml)).size());
+        assertEquals(0, ManagedKeyboxStateOracle.parse(new StringReader(mixedXml), "mixed.xml").size());
     }
 
     @Test

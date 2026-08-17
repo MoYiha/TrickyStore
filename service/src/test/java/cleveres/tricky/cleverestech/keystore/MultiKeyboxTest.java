@@ -11,7 +11,7 @@ public class MultiKeyboxTest {
 
     @After
     public void tearDown() {
-        CertHack.readFromXml(null);
+        ManagedKeyboxStateOracle.readFromXml(null);
     }
 
     private static final String EC_KEY = TestKeyboxFixtures.INSTANCE.getEcPrivateKey();
@@ -49,7 +49,7 @@ public class MultiKeyboxTest {
                 "</Keybox>\n" +
                 "</AndroidAttestation>";
 
-        CertHack.readFromXml(new StringReader(xml));
+        ManagedKeyboxStateOracle.readFromXml(new StringReader(xml));
 
         assertEquals("Should load 2 keys", 2, CertHack.getKeyboxCount());
     }
