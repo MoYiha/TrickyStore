@@ -595,7 +595,13 @@ mod tests {
     use super::*;
     use base64::Engine as _;
 
-    const PASSWORD: &str = "correct horse battery staple";
+    fn test_password() -> String {
+        std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../testdata/crypto-golden-password.txt"
+        ))
+        .expect("crypto golden password fixture")
+    }
     const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
     const CBOX_V2: &str = "Q0JPWAAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqYmlPfNbKQEZdEZacWRvO3";
     const VALID_EC: &[u8] =
@@ -630,7 +636,7 @@ mod tests {
 
     #[test]
     fn backup_decrypt_operation_matches_golden() {
-        let request = encode_backup_request(PASSWORD, &decode(CTSB_V2));
+        let request = encode_backup_request(test_password().as_str(), &decode(CTSB_V2));
         let plaintext = handle_request(OP_CRYPTO_BACKUP_DECRYPT, request).unwrap();
         assert_eq!(
             plaintext,
@@ -641,11 +647,11 @@ mod tests {
     #[test]
     fn backup_encrypt_operation_round_trips_without_json_or_base64_wire_format() {
         let plaintext = b"bounded backup payload";
-        let request = encode_backup_request(PASSWORD, plaintext);
+        let request = encode_backup_request(test_password().as_str(), plaintext);
         let encrypted = handle_request(OP_CRYPTO_BACKUP_ENCRYPT, request).unwrap();
         let decrypted = handle_request(
             OP_CRYPTO_BACKUP_DECRYPT,
-            encode_backup_request(PASSWORD, &encrypted),
+            encode_backup_request(test_password().as_str(), &encrypted),
         )
         .unwrap();
         assert_eq!(decrypted, plaintext);
@@ -653,11 +659,15 @@ mod tests {
 
     #[test]
     fn backup_encrypt_accepts_empty_password_and_plaintext() {
-        let encrypted =
-            handle_request(OP_CRYPTO_BACKUP_ENCRYPT, encode_backup_request("", b"")).unwrap();
+        let empty_password = String::new();
+        let encrypted = handle_request(
+            OP_CRYPTO_BACKUP_ENCRYPT,
+            encode_backup_request(&empty_password, b""),
+        )
+        .unwrap();
         let decrypted = handle_request(
             OP_CRYPTO_BACKUP_DECRYPT,
-            encode_backup_request("", &encrypted),
+            encode_backup_request(&empty_password, &encrypted),
         )
         .unwrap();
         assert!(decrypted.is_empty());
@@ -665,7 +675,8 @@ mod tests {
 
     #[test]
     fn cbox_prefix_accepts_empty_password_like_managed_oracle() {
-        let request = encode_cbox_request("", "", b"body");
+        let empty = String::new();
+        let request = encode_cbox_request(&empty, &empty, b"body");
         let parsed = parse_cbox_prefix(&request).unwrap();
         assert_eq!(parsed.password, "");
         assert_eq!(parsed.public_key, "");
@@ -674,7 +685,7 @@ mod tests {
 
     #[test]
     fn cbox_open_operation_returns_length_delimited_fields() {
-        let request = encode_cbox_request(PASSWORD, "", &decode(CBOX_V2));
+        let request = encode_cbox_request(test_password().as_str(), "", &decode(CBOX_V2));
         let response = handle_request(OP_CRYPTO_CBOX_OPEN, request).unwrap();
         let author_len = u16::from_be_bytes(response[0..2].try_into().unwrap()) as usize;
         let xml_len = u32::from_be_bytes(response[2..6].try_into().unwrap()) as usize;

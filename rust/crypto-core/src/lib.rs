@@ -274,14 +274,13 @@ pub fn encrypt_backup_owned(
         plaintext.zeroize();
         return Err(CryptoError::InvalidInput);
     }
-    let mut salt = [0u8; SALT_BYTES];
-    let mut iv = [0u8; IV_BYTES];
-    if getrandom::getrandom(&mut salt).is_err() || getrandom::getrandom(&mut iv).is_err() {
-        plaintext.zeroize();
-        salt.zeroize();
-        iv.zeroize();
-        return Err(CryptoError::RandomUnavailable);
-    }
+    let (mut salt, mut iv) = match random_salt_and_iv() {
+        Ok(values) => values,
+        Err(error) => {
+            plaintext.zeroize();
+            return Err(error);
+        }
+    };
     let result = encrypt_backup_owned_with_nonce(plaintext, password, &salt, &iv);
     salt.zeroize();
     iv.zeroize();
@@ -296,6 +295,23 @@ fn encrypt_backup_with_nonce(
     iv: &[u8; IV_BYTES],
 ) -> Result<Vec<u8>, CryptoError> {
     encrypt_backup_owned_with_nonce(plaintext.to_vec(), password, salt, iv)
+}
+
+fn random_salt_and_iv() -> Result<([u8; SALT_BYTES], [u8; IV_BYTES]), CryptoError> {
+    let salt_high = getrandom::u64().map_err(|_| CryptoError::RandomUnavailable)?;
+    let salt_low = getrandom::u64().map_err(|_| CryptoError::RandomUnavailable)?;
+    let salt = ((u128::from(salt_high) << 64) | u128::from(salt_low)).to_be_bytes();
+    let iv_high = getrandom::u64()
+        .map_err(|_| CryptoError::RandomUnavailable)?
+        .to_be_bytes();
+    let iv_low = getrandom::u64()
+        .map_err(|_| CryptoError::RandomUnavailable)?
+        .to_be_bytes();
+    let iv = [
+        iv_high[0], iv_high[1], iv_high[2], iv_high[3], iv_high[4], iv_high[5], iv_high[6],
+        iv_high[7], iv_low[0], iv_low[1], iv_low[2], iv_low[3],
+    ];
+    Ok((salt, iv))
 }
 
 fn encrypt_backup_owned_with_nonce(
@@ -375,10 +391,12 @@ fn decrypt_body_in_place(
 
     let mut header = [0u8; HEADER_BYTES];
     header.copy_from_slice(&bytes[..HEADER_BYTES]);
-    let mut salt = [0u8; SALT_BYTES];
-    salt.copy_from_slice(&header[8..8 + SALT_BYTES]);
-    let mut iv = [0u8; IV_BYTES];
-    iv.copy_from_slice(&header[8 + SALT_BYTES..]);
+    let mut salt: [u8; SALT_BYTES] = header[8..8 + SALT_BYTES]
+        .try_into()
+        .expect("validated salt range");
+    let mut iv: [u8; IV_BYTES] = header[8 + SALT_BYTES..]
+        .try_into()
+        .expect("validated IV range");
     let mut tag_bytes = [0u8; TAG_BYTES];
     tag_bytes.copy_from_slice(&bytes[body_end..]);
 
@@ -441,7 +459,13 @@ fn utf16_units(value: &str) -> usize {
 mod tests {
     use super::*;
 
-    const PASSWORD: &str = "correct horse battery staple";
+    fn test_password() -> String {
+        std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../testdata/crypto-golden-password.txt"
+        ))
+        .expect("crypto golden password fixture")
+    }
     const CTSB_V1: &str = "Q1RTQgAAAAEAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5reyWvff34y4iedwVcfVEtlNB";
     const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
     const CBOX_V1: &str = "Q0JPWAAAAAEAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqGa941n5vAlQEX5P77BBTF";
@@ -461,8 +485,14 @@ mod tests {
     #[test]
     fn backup_goldens_match_managed_oracle() {
         let expected = b"{\"version\":1,\"files\":{\"target.txt\":\"com.example.app\\n\"}}";
-        assert_eq!(decrypt_backup(decode(CTSB_V1), PASSWORD).unwrap(), expected);
-        assert_eq!(decrypt_backup(decode(CTSB_V2), PASSWORD).unwrap(), expected);
+        assert_eq!(
+            decrypt_backup(decode(CTSB_V1), test_password().as_str()).unwrap(),
+            expected
+        );
+        assert_eq!(
+            decrypt_backup(decode(CTSB_V2), test_password().as_str()).unwrap(),
+            expected
+        );
         assert_eq!(
             decrypt_backup(decode(UNICODE_CTSB_V2), "pässwörd🔐").unwrap(),
             b"unicode-password"
@@ -474,7 +504,7 @@ mod tests {
         for encoded in [CBOX_V1, CBOX_V2] {
             let bytes = decode(encoded);
             assert!(has_supported_cbox_header(&bytes));
-            let payload = decrypt_cbox(bytes, PASSWORD).unwrap();
+            let payload = decrypt_cbox(bytes, test_password().as_str()).unwrap();
             assert_eq!(payload.author, "CleveresTricky golden");
             assert_eq!(
                 payload.xml_content,
@@ -522,7 +552,8 @@ mod tests {
         let salt: [u8; SALT_BYTES] = core::array::from_fn(|index| index as u8);
         let iv: [u8; IV_BYTES] = core::array::from_fn(|index| (index + 16) as u8);
         let plaintext = b"{\"version\":1,\"files\":{\"target.txt\":\"com.example.app\\n\"}}";
-        let encrypted = encrypt_backup_with_nonce(plaintext, PASSWORD, &salt, &iv).unwrap();
+        let encrypted =
+            encrypt_backup_with_nonce(plaintext, test_password().as_str(), &salt, &iv).unwrap();
         assert_eq!(encrypted, decode(CTSB_V2));
     }
 
@@ -531,10 +562,10 @@ mod tests {
         let mut plaintext = Vec::with_capacity(256);
         plaintext.extend_from_slice(b"small backup payload");
         let pointer = plaintext.as_ptr();
-        let encrypted = encrypt_backup_owned(plaintext, PASSWORD).unwrap();
+        let encrypted = encrypt_backup_owned(plaintext, test_password().as_str()).unwrap();
         assert_eq!(encrypted.as_ptr(), pointer);
         assert_eq!(
-            decrypt_backup(encrypted, PASSWORD).unwrap(),
+            decrypt_backup(encrypted, test_password().as_str()).unwrap(),
             b"small backup payload"
         );
     }
@@ -544,7 +575,7 @@ mod tests {
         let mut backup = decode(CTSB_V2);
         backup[8] ^= 1;
         assert_eq!(
-            decrypt_backup(backup, PASSWORD).unwrap_err(),
+            decrypt_backup(backup, test_password().as_str()).unwrap_err(),
             CryptoError::AuthenticationFailed
         );
 
@@ -552,7 +583,7 @@ mod tests {
         let index = cbox.len() - TAG_BYTES - 1;
         cbox[index] ^= 1;
         assert_eq!(
-            decrypt_cbox(cbox, PASSWORD).unwrap_err(),
+            decrypt_cbox(cbox, test_password().as_str()).unwrap_err(),
             CryptoError::AuthenticationFailed
         );
         assert_eq!(
@@ -562,7 +593,7 @@ mod tests {
         let mut truncated = decode(CBOX_V2);
         truncated.truncate(HEADER_BYTES + TAG_BYTES - 1);
         assert_eq!(
-            decrypt_cbox(truncated, PASSWORD).unwrap_err(),
+            decrypt_cbox(truncated, test_password().as_str()).unwrap_err(),
             CryptoError::InvalidInput
         );
     }
@@ -571,7 +602,11 @@ mod tests {
     fn bounds_are_checked_before_crypto_work() {
         assert!(!has_supported_cbox_header(&[]));
         assert_eq!(
-            decrypt_cbox(vec![0u8; HEADER_BYTES + TAG_BYTES], PASSWORD).unwrap_err(),
+            decrypt_cbox(
+                vec![0u8; HEADER_BYTES + TAG_BYTES],
+                test_password().as_str()
+            )
+            .unwrap_err(),
             CryptoError::InvalidInput
         );
         let huge_password = "🔐".repeat(MAX_PASSWORD_UTF16_UNITS / 2 + 1);
