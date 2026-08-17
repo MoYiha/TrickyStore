@@ -7,7 +7,7 @@ use cleverestricky_xml_core::{KeyboxDocument, MAX_KEYBOXES_PER_FILE, MAX_KEYS_PE
 use der::{Decode, Encode};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
@@ -32,7 +32,7 @@ struct StoredKey {
 
 #[derive(Default)]
 struct KeyStore {
-    keys: BTreeMap<KeyId, StoredKey>,
+    keys: BTreeMap<KeyId, Arc<StoredKey>>,
 }
 
 static STORE: OnceLock<Mutex<KeyStore>> = OnceLock::new();
@@ -66,7 +66,7 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
 
     for candidate in &pending {
         if let Some(existing) = guard.keys.get(&candidate.id) {
-            if !same_key(existing, candidate) {
+            if !same_key(existing.as_ref(), candidate) {
                 return Err("opaque key identifier collision");
             }
         }
@@ -82,7 +82,7 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
             algorithm: key.algorithm_name.clone(),
             certificates_der: key.certificates_der.clone(),
         });
-        guard.keys.insert(key.id, key);
+        guard.keys.insert(key.id, Arc::new(key));
     }
     Ok(public)
 }
@@ -91,12 +91,16 @@ pub fn with_key<T>(
     id: &KeyId,
     operation: impl FnOnce(SigningAlgorithm, &[u8], &[u8]) -> Result<T, &'static str>,
 ) -> Result<T, &'static str> {
-    let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
-    let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
-    let key = guard
-        .keys
-        .get(id)
-        .ok_or("opaque key identifier is not registered")?;
+    let key = {
+        let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+        let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
+        Arc::clone(
+            guard
+                .keys
+                .get(id)
+                .ok_or("opaque key identifier is not registered")?,
+        )
+    };
     let issuer = key
         .certificates_der
         .first()
@@ -243,12 +247,22 @@ fn same_key(left: &StoredKey, right: &StoredKey) -> bool {
 mod tests {
     use super::*;
     use cleverestricky_xml_core::parse_keybox_xml_bytes;
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     const VALID_EC: &[u8] =
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn reset_store() {
+        let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+        store.lock().unwrap().keys.clear();
+    }
 
     #[test]
     fn registration_returns_only_opaque_id_and_certificate_der() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        reset_store();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let records = register_document(&document).unwrap();
         assert_eq!(records.len(), 1);
@@ -266,6 +280,8 @@ mod tests {
 
     #[test]
     fn deterministic_identifier_survives_reregistration() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        reset_store();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let first = register_document(&document).unwrap()[0].id;
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
@@ -282,10 +298,51 @@ mod tests {
 
     #[test]
     fn active_set_prunes_unreferenced_secret_material() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        reset_store();
         let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
         let id = register_document(&document).unwrap()[0].id;
         retain_only(&[id]).unwrap();
         assert!(with_key(&id, |_, _, _| Ok(())).is_ok());
+        retain_only(&[]).unwrap();
+        assert!(with_key(&id, |_, _, _| Ok(())).is_err());
         assert!(retain_only(&[[0x55; KEY_ID_BYTES]]).is_err());
+    }
+
+    #[test]
+    fn long_crypto_operation_does_not_hold_store_mutex() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        reset_store();
+        let document = parse_keybox_xml_bytes(VALID_EC).unwrap();
+        let id = register_document(&document).unwrap()[0].id;
+        retain_only(&[id]).unwrap();
+
+        let (crypto_started_tx, crypto_started_rx) = mpsc::channel();
+        let (release_crypto_tx, release_crypto_rx) = mpsc::channel();
+        let crypto = std::thread::spawn(move || {
+            with_key(&id, |_, private, issuer| {
+                assert!(!private.is_empty());
+                assert!(!issuer.is_empty());
+                crypto_started_tx.send(()).unwrap();
+                release_crypto_rx.recv().unwrap();
+                Ok(())
+            })
+            .unwrap();
+        });
+        crypto_started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+
+        let (control_done_tx, control_done_rx) = mpsc::channel();
+        let control = std::thread::spawn(move || {
+            let result = retain_only(&[id]);
+            control_done_tx.send(result).unwrap();
+        });
+        assert_eq!(
+            control_done_rx.recv_timeout(Duration::from_millis(250)).unwrap(),
+            Ok(())
+        );
+
+        release_crypto_tx.send(()).unwrap();
+        crypto.join().unwrap();
+        control.join().unwrap();
     }
 }
