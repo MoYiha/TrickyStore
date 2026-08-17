@@ -90,7 +90,8 @@ fn encrypt_cbox_v2_with_nonce(
         || xml_bytes.is_empty()
         || xml_bytes.len() > MAX_XML_BYTES
         || signature_base64.len() > MAX_SIGNATURE_BYTES
-        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&utf16_units(password))
+        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS)
+            .contains(&utf16_units(password))
     {
         return Err(EncryptError::InvalidInput);
     }
@@ -256,7 +257,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSav
         let filename = read_string_bounded(&mut env, &filename, 255)?;
         let author = read_bytes_bounded(&mut env, &author, MAX_AUTHOR_UTF8_BYTES)?;
         let xml = read_bytes_bounded(&mut env, &xml, MAX_XML_BYTES)?;
-        let signature_base64 = read_bytes_bounded(&mut env, &signature_base64, MAX_SIGNATURE_BYTES)?;
+        let signature_base64 =
+            read_bytes_bounded(&mut env, &signature_base64, MAX_SIGNATURE_BYTES)?;
         let password = read_password(&mut env, &password)?;
         encrypt_and_save(
             &no_backup_dir,
@@ -315,26 +317,12 @@ mod tests {
             Err(EncryptError::InvalidInput)
         );
         assert_eq!(
-            encrypt_cbox_v2_with_nonce(
-                b"author",
-                &[b'x'; 32],
-                b"",
-                "short",
-                &salt,
-                &iv,
-            ),
+            encrypt_cbox_v2_with_nonce(b"author", &[b'x'; 32], b"", "short", &salt, &iv,),
             Err(EncryptError::InvalidInput)
         );
         let invalid_utf8 = [0xff, 0xfe];
         assert_eq!(
-            encrypt_cbox_v2_with_nonce(
-                b"author",
-                &invalid_utf8,
-                b"",
-                "123456789012",
-                &salt,
-                &iv,
-            ),
+            encrypt_cbox_v2_with_nonce(b"author", &invalid_utf8, b"", "123456789012", &salt, &iv,),
             Err(EncryptError::InvalidInput)
         );
     }
@@ -344,15 +332,8 @@ mod tests {
         let salt = [2u8; SALT_BYTES];
         let iv = [3u8; IV_BYTES];
         let password = "123456789012";
-        let mut output = encrypt_cbox_v2_with_nonce(
-            b"author",
-            b"<x/>",
-            b"",
-            password,
-            &salt,
-            &iv,
-        )
-        .unwrap();
+        let mut output =
+            encrypt_cbox_v2_with_nonce(b"author", b"<x/>", b"", password, &salt, &iv).unwrap();
         output[8] ^= 1;
         assert!(decrypt_cbox(output, password).is_err());
     }
