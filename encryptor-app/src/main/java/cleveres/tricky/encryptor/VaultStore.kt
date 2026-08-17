@@ -53,22 +53,25 @@ internal object VaultStore {
         validName(file.name) &&
             NativeCrypto.deleteEncrypted(context.noBackupFilesDir.absolutePath, file.name)
 
+    fun delete(file: File): Boolean {
+        val root = noBackupRootFor(file) ?: return false
+        return validName(file.name) && NativeCrypto.deleteEncrypted(root.absolutePath, file.name)
+    }
+
     fun export(
         context: Context,
         file: File,
         output: OutputStream,
     ) {
-        require(validName(file.name)) { "Vault entry is invalid" }
-        val encrypted =
-            NativeCrypto.readEncrypted(context.noBackupFilesDir.absolutePath, file.name)
-                ?: throw IOException("Secure vault read failed")
-        try {
-            require(encrypted.size in 1..MAX_CBOX_BYTES) { "Vault entry exceeds the size limit" }
-            output.write(encrypted)
-            output.flush()
-        } finally {
-            encrypted.fill(0)
-        }
+        exportFromRoot(context.noBackupFilesDir, file, output)
+    }
+
+    fun export(
+        file: File,
+        output: OutputStream,
+    ) {
+        val root = noBackupRootFor(file) ?: throw IOException("Vault entry is invalid")
+        exportFromRoot(root, file, output)
     }
 
     /** Imports legacy app-specific external ciphertext only after bounded native validation. */
@@ -111,6 +114,30 @@ internal object VaultStore {
                 }
             }
         }
+    }
+
+    private fun exportFromRoot(
+        root: File,
+        file: File,
+        output: OutputStream,
+    ) {
+        require(validName(file.name)) { "Vault entry is invalid" }
+        val encrypted =
+            NativeCrypto.readEncrypted(root.absolutePath, file.name)
+                ?: throw IOException("Secure vault read failed")
+        try {
+            require(encrypted.size in 1..MAX_CBOX_BYTES) { "Vault entry exceeds the size limit" }
+            output.write(encrypted)
+            output.flush()
+        } finally {
+            encrypted.fill(0)
+        }
+    }
+
+    private fun noBackupRootFor(file: File): File? {
+        val vault = file.parentFile ?: return null
+        if (vault.name != VAULT_DIR) return null
+        return vault.parentFile
     }
 
     private fun validName(name: String): Boolean =
