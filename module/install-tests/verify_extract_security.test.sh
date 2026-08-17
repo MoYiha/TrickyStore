@@ -91,5 +91,6 @@ assert_rejects_symlink payload
 assert_rejects_symlink checksum
 assert_rejects_non_regular_target
 assert_normal_extract_succeeds
+bash "$REPO_ROOT/module/install-tests/customize_bootstrap_security.test.sh"
 
 echo "installer extraction security tests passed"
