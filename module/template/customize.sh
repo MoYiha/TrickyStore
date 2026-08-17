@@ -284,12 +284,6 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
 [ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props"
 [ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging"
 
-# Remove mutually-exclusive keystore/TEE attestation modules only after the
-# CleveresTricky installation has completed successfully. Upstream module IDs:
-#   Tricky Store / Tricky Store OSS / TEESimulator-RS -> tricky_store
-#   TEESimulator                                      -> teesim
-# Exact normalized names are also recognized so forks that only change the ID
-# cannot silently coexist. User data under /data/adb/tricky_store is preserved.
 normalize_conflicting_module_name() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_.-'
 }
