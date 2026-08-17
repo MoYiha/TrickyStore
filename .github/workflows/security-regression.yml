@@ -47,7 +47,7 @@ jobs:
               exit 1
             fi
             url="https://repo.maven.apache.org/maven2/org/bouncycastle/${artifact}/${version}/${artifact}-${version}.pom"
-            echo "Checking org.bouncycastle:${artifact}:${version"
+            echo "Checking org.bouncycastle:${artifact}:${version}"
             curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output /dev/null "$url"
           done
 
