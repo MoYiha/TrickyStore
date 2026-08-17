@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky is a KernelSU and APatch module for Android 12–17. It brings Android keystore and attestation compatibility, Keybox/CBOX management, application targeting, optional identity controls, patch-level controls, and privacy tools into one mobile WebUI.
+CleveresTricky is a KernelSU and APatch module for Android 12-17. It brings Android keystore and attestation compatibility, Keybox/CBOX management, application targeting, optional identity controls, patch-level controls, and privacy tools into one mobile WebUI.
 
 Start with the defaults and enable only the features you actually need.
 
@@ -30,7 +30,7 @@ No usable Keybox or private attestation key is bundled with the project.
 
 ## Supported environment
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** and **x86-64**
 - **KernelSU** and **APatch**
 
@@ -46,12 +46,12 @@ Use only configuration and credentials that you are authorized to use.
 
 ## Learn more
 
-- [Keybox Manager](docs/KeyboxManager.md) — Keybox/CBOX loading, verification, selection, and revocation checks.
-- [Application Scope](docs/ApplicationScope.md) and [Application Rules](docs/ApplicationRules.md) — choose where features apply.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), and [Patch Levels](docs/PatchLevels.md) — optional identity controls.
-- [RKP Protection](docs/RkpProtection.md) and [DRM Privacy](docs/DrmPassthrough.md) — platform compatibility and privacy behavior.
-- [Backup and Restore](docs/BackupRestore.md) — encrypted configuration backup and recovery.
-- [Security Model](docs/SecurityModel.md) and [Installer](docs/Installer.md) — trust boundaries and installation details.
+- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX loading, verification, selection, and revocation checks.
+- [Application Scope](docs/ApplicationScope.md) and [Application Rules](docs/ApplicationRules.md) - choose where features apply.
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), and [Patch Levels](docs/PatchLevels.md) - optional identity controls.
+- [RKP Protection](docs/RkpProtection.md) and [DRM Privacy](docs/DrmPassthrough.md) - platform compatibility and privacy behavior.
+- [Backup and Restore](docs/BackupRestore.md) - encrypted configuration backup and recovery.
+- [Security Model](docs/SecurityModel.md) and [Installer](docs/Installer.md) - trust boundaries and installation details.
 
 ## Need help?
 

@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky Android 12–17 के लिए KernelSU और APatch मॉड्यूल है। यह Android Keystore और attestation compatibility, Keybox/CBOX management, app targeting, optional identity controls, patch-level controls और privacy tools को एक mobile WebUI में लाता है।
+CleveresTricky Android 12-17 के लिए KernelSU और APatch मॉड्यूल है। यह Android Keystore और attestation compatibility, Keybox/CBOX management, app targeting, optional identity controls, patch-level controls और privacy tools को एक mobile WebUI में लाता है।
 
 पहले default settings से शुरू करें और केवल वही features चालू करें जिनकी आपको वास्तव में ज़रूरत है।
 
@@ -30,7 +30,7 @@ Project के साथ कोई usable Keybox या private attestation key 
 
 ## Supported environment
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** और **x86-64**
 - **KernelSU** और **APatch**
 
@@ -46,12 +46,12 @@ CleveresTricky local compatibility path को बेहतर करता ह�
 
 ## और जानकारी
 
-- [Keybox Manager](docs/KeyboxManager.md) — Keybox/CBOX loading, verification, selection और revocation checks।
-- [Application Scope](docs/ApplicationScope.md) और [Application Rules](docs/ApplicationRules.md) — तय करें features किन apps पर लागू हों।
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) और [Patch Levels](docs/PatchLevels.md) — optional identity controls।
-- [RKP Protection](docs/RkpProtection.md) और [DRM Privacy](docs/DrmPassthrough.md) — platform compatibility और privacy behavior।
-- [Backup and Restore](docs/BackupRestore.md) — encrypted configuration backup और recovery।
-- [Security Model](docs/SecurityModel.md) और [Installer](docs/Installer.md) — trust boundaries और installation details।
+- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX loading, verification, selection और revocation checks।
+- [Application Scope](docs/ApplicationScope.md) और [Application Rules](docs/ApplicationRules.md) - तय करें features किन apps पर लागू हों।
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) और [Patch Levels](docs/PatchLevels.md) - optional identity controls।
+- [RKP Protection](docs/RkpProtection.md) और [DRM Privacy](docs/DrmPassthrough.md) - platform compatibility और privacy behavior।
+- [Backup and Restore](docs/BackupRestore.md) - encrypted configuration backup और recovery।
+- [Security Model](docs/SecurityModel.md) और [Installer](docs/Installer.md) - trust boundaries और installation details।
 
 ## मदद चाहिए?
 

@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky هو موديول لـ KernelSU وAPatch على Android 12–17. يجمع توافق Android Keystore وattestation، وإدارة Keybox/CBOX، وتحديد التطبيقات، وخيارات الهوية الاختيارية، ومستويات التصحيح، وأدوات الخصوصية داخل WebUI واحد مناسب للهاتف.
+CleveresTricky هو موديول لـ KernelSU وAPatch على Android 12-17. يجمع توافق Android Keystore وattestation، وإدارة Keybox/CBOX، وتحديد التطبيقات، وخيارات الهوية الاختيارية، ومستويات التصحيح، وأدوات الخصوصية داخل WebUI واحد مناسب للهاتف.
 
 ابدأ بالإعدادات الافتراضية وفعّل فقط الميزات التي تحتاجها فعلاً.
 
@@ -30,7 +30,7 @@ CleveresTricky هو موديول لـ KernelSU وAPatch على Android 12–17. 
 
 ## البيئة المدعومة
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** و **x86-64**
 - **KernelSU** و **APatch**
 
@@ -46,12 +46,12 @@ Magisk والتثبيت من recovery غير مدعومين.
 
 ## المزيد من المعلومات
 
-- [Keybox Manager](docs/KeyboxManager.md) — تحميل Keybox/CBOX والتحقق منها واختيارها وفحص الإلغاء.
-- [Application Scope](docs/ApplicationScope.md) و [Application Rules](docs/ApplicationRules.md) — تحديد التطبيقات التي تنطبق عليها الميزات.
-- [Build Identity](docs/BuildIdentity.md) و [Telephony Identity](docs/TelephonyIdentity.md) و [Patch Levels](docs/PatchLevels.md) — خيارات الهوية الاختيارية.
-- [RKP Protection](docs/RkpProtection.md) و [DRM Privacy](docs/DrmPassthrough.md) — توافق المنصة وسلوك الخصوصية.
-- [Backup and Restore](docs/BackupRestore.md) — نسخ الإعدادات المشفّر واستعادته.
-- [Security Model](docs/SecurityModel.md) و [Installer](docs/Installer.md) — حدود الثقة وتفاصيل التثبيت.
+- [Keybox Manager](docs/KeyboxManager.md) - تحميل Keybox/CBOX والتحقق منها واختيارها وفحص الإلغاء.
+- [Application Scope](docs/ApplicationScope.md) و [Application Rules](docs/ApplicationRules.md) - تحديد التطبيقات التي تنطبق عليها الميزات.
+- [Build Identity](docs/BuildIdentity.md) و [Telephony Identity](docs/TelephonyIdentity.md) و [Patch Levels](docs/PatchLevels.md) - خيارات الهوية الاختيارية.
+- [RKP Protection](docs/RkpProtection.md) و [DRM Privacy](docs/DrmPassthrough.md) - توافق المنصة وسلوك الخصوصية.
+- [Backup and Restore](docs/BackupRestore.md) - نسخ الإعدادات المشفّر واستعادته.
+- [Security Model](docs/SecurityModel.md) و [Installer](docs/Installer.md) - حدود الثقة وتفاصيل التثبيت.
 
 ## تحتاج مساعدة؟
 

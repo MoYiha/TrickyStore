@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky, Android 12–17 için bir KernelSU ve APatch modülüdür. Android Keystore ve attestation uyumluluğunu, Keybox/CBOX yönetimini, uygulama hedeflemeyi, isteğe bağlı kimlik kontrollerini, patch seviyesi ayarlarını ve gizlilik araçlarını tek bir mobil WebUI içinde toplar.
+CleveresTricky, Android 12-17 için bir KernelSU ve APatch modülüdür. Android Keystore ve attestation uyumluluğunu, Keybox/CBOX yönetimini, uygulama hedeflemeyi, isteğe bağlı kimlik kontrollerini, patch seviyesi ayarlarını ve gizlilik araçlarını tek bir mobil WebUI içinde toplar.
 
 Önce varsayılan ayarlarla başlayın; yalnızca gerçekten ihtiyaç duyduğunuz özellikleri açın.
 
@@ -30,7 +30,7 @@ Projeyle birlikte kullanılabilir bir Keybox veya özel attestation anahtarı ve
 
 ## Desteklenen ortam
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** ve **x86-64**
 - **KernelSU** ve **APatch**
 
@@ -46,12 +46,12 @@ Yalnızca kullanmaya yetkili olduğunuz yapılandırma ve kimlik bilgilerini kul
 
 ## Daha fazla bilgi
 
-- [Keybox Manager](docs/KeyboxManager.md) — Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
-- [Application Scope](docs/ApplicationScope.md) ve [Application Rules](docs/ApplicationRules.md) — özelliklerin hangi uygulamalara uygulanacağını seçin.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) ve [Patch Levels](docs/PatchLevels.md) — isteğe bağlı kimlik kontrolleri.
-- [RKP Protection](docs/RkpProtection.md) ve [DRM Privacy](docs/DrmPassthrough.md) — platform uyumluluğu ve gizlilik davranışı.
-- [Backup and Restore](docs/BackupRestore.md) — şifreli yapılandırma yedeği ve geri yükleme.
-- [Security Model](docs/SecurityModel.md) ve [Installer](docs/Installer.md) — güven sınırları ve kurulum ayrıntıları.
+- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
+- [Application Scope](docs/ApplicationScope.md) ve [Application Rules](docs/ApplicationRules.md) - özelliklerin hangi uygulamalara uygulanacağını seçin.
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) ve [Patch Levels](docs/PatchLevels.md) - isteğe bağlı kimlik kontrolleri.
+- [RKP Protection](docs/RkpProtection.md) ve [DRM Privacy](docs/DrmPassthrough.md) - platform uyumluluğu ve gizlilik davranışı.
+- [Backup and Restore](docs/BackupRestore.md) - şifreli yapılandırma yedeği ve geri yükleme.
+- [Security Model](docs/SecurityModel.md) ve [Installer](docs/Installer.md) - güven sınırları ve kurulum ayrıntıları.
 
 ## Yardım mı gerekiyor?
 

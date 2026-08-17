@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky adalah modul KernelSU dan APatch untuk Android 12–17. Modul ini menyatukan kompatibilitas Android Keystore dan attestation, pengelolaan Keybox/CBOX, target aplikasi, kontrol identitas opsional, pengaturan patch level, dan fitur privasi dalam satu WebUI mobile.
+CleveresTricky adalah modul KernelSU dan APatch untuk Android 12-17. Modul ini menyatukan kompatibilitas Android Keystore dan attestation, pengelolaan Keybox/CBOX, target aplikasi, kontrol identitas opsional, pengaturan patch level, dan fitur privasi dalam satu WebUI mobile.
 
 Mulailah dengan pengaturan bawaan dan aktifkan hanya fitur yang benar-benar Anda perlukan.
 
@@ -30,7 +30,7 @@ Proyek ini tidak menyertakan Keybox siap pakai atau private attestation key.
 
 ## Lingkungan yang didukung
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** dan **x86-64**
 - **KernelSU** dan **APatch**
 
@@ -46,12 +46,12 @@ Gunakan hanya konfigurasi dan kredensial yang memang Anda berhak gunakan.
 
 ## Pelajari lebih lanjut
 
-- [Keybox Manager](docs/KeyboxManager.md) — pemuatan, verifikasi, pemilihan, dan pemeriksaan pencabutan Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) dan [Application Rules](docs/ApplicationRules.md) — pilih aplikasi tempat fitur diterapkan.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), dan [Patch Levels](docs/PatchLevels.md) — kontrol identitas opsional.
-- [RKP Protection](docs/RkpProtection.md) dan [DRM Privacy](docs/DrmPassthrough.md) — kompatibilitas platform dan perilaku privasi.
-- [Backup and Restore](docs/BackupRestore.md) — backup dan pemulihan konfigurasi terenkripsi.
-- [Security Model](docs/SecurityModel.md) dan [Installer](docs/Installer.md) — batas kepercayaan dan detail instalasi.
+- [Keybox Manager](docs/KeyboxManager.md) - pemuatan, verifikasi, pemilihan, dan pemeriksaan pencabutan Keybox/CBOX.
+- [Application Scope](docs/ApplicationScope.md) dan [Application Rules](docs/ApplicationRules.md) - pilih aplikasi tempat fitur diterapkan.
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), dan [Patch Levels](docs/PatchLevels.md) - kontrol identitas opsional.
+- [RKP Protection](docs/RkpProtection.md) dan [DRM Privacy](docs/DrmPassthrough.md) - kompatibilitas platform dan perilaku privasi.
+- [Backup and Restore](docs/BackupRestore.md) - backup dan pemulihan konfigurasi terenkripsi.
+- [Security Model](docs/SecurityModel.md) dan [Installer](docs/Installer.md) - batas kepercayaan dan detail instalasi.
 
 ## Perlu bantuan?
 

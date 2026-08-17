@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky 是面向 Android 12–17 的 KernelSU / APatch 模块。它把 Android Keystore 与证明兼容、Keybox/CBOX 管理、应用范围控制、可选身份设置、补丁级别控制和隐私工具整合到一个移动端 WebUI 中。
+CleveresTricky 是面向 Android 12-17 的 KernelSU / APatch 模块。它把 Android Keystore 与证明兼容、Keybox/CBOX 管理、应用范围控制、可选身份设置、补丁级别控制和隐私工具整合到一个移动端 WebUI 中。
 
 建议先使用默认设置，只开启自己真正需要的功能。
 
@@ -30,7 +30,7 @@ CleveresTricky 是面向 Android 12–17 的 KernelSU / APatch 模块。它把 A
 
 ## 支持环境
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** 和 **x86-64**
 - **KernelSU** 和 **APatch**
 
@@ -46,12 +46,12 @@ CleveresTricky 改善的是本地兼容路径。最终远程结果仍取决于�
 
 ## 了解更多
 
-- [Keybox Manager](docs/KeyboxManager.md) — Keybox/CBOX 加载、验证、选择和撤销检查。
-- [Application Scope](docs/ApplicationScope.md) 与 [Application Rules](docs/ApplicationRules.md) — 决定功能作用于哪些应用。
-- [Build Identity](docs/BuildIdentity.md)、[Telephony Identity](docs/TelephonyIdentity.md) 与 [Patch Levels](docs/PatchLevels.md) — 可选身份控制。
-- [RKP Protection](docs/RkpProtection.md) 与 [DRM Privacy](docs/DrmPassthrough.md) — 平台兼容和隐私行为。
-- [Backup and Restore](docs/BackupRestore.md) — 加密配置备份与恢复。
-- [Security Model](docs/SecurityModel.md) 与 [Installer](docs/Installer.md) — 信任边界和安装细节。
+- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX 加载、验证、选择和撤销检查。
+- [Application Scope](docs/ApplicationScope.md) 与 [Application Rules](docs/ApplicationRules.md) - 决定功能作用于哪些应用。
+- [Build Identity](docs/BuildIdentity.md)、[Telephony Identity](docs/TelephonyIdentity.md) 与 [Patch Levels](docs/PatchLevels.md) - 可选身份控制。
+- [RKP Protection](docs/RkpProtection.md) 与 [DRM Privacy](docs/DrmPassthrough.md) - 平台兼容和隐私行为。
+- [Backup and Restore](docs/BackupRestore.md) - 加密配置备份与恢复。
+- [Security Model](docs/SecurityModel.md) 与 [Installer](docs/Installer.md) - 信任边界和安装细节。
 
 ## 需要帮助？
 

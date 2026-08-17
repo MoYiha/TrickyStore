@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky es un módulo para KernelSU y APatch en Android 12–17. Reúne compatibilidad con Android Keystore y attestation, gestión de Keybox/CBOX, selección de aplicaciones, controles opcionales de identidad, niveles de parche y herramientas de privacidad en una sola WebUI móvil.
+CleveresTricky es un módulo para KernelSU y APatch en Android 12-17. Reúne compatibilidad con Android Keystore y attestation, gestión de Keybox/CBOX, selección de aplicaciones, controles opcionales de identidad, niveles de parche y herramientas de privacidad en una sola WebUI móvil.
 
 Empieza con los valores predeterminados y activa únicamente lo que realmente necesites.
 
@@ -30,7 +30,7 @@ El proyecto no incluye ningún Keybox utilizable ni una clave privada de attesta
 
 ## Entorno compatible
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** y **x86-64**
 - **KernelSU** y **APatch**
 
@@ -46,12 +46,12 @@ Utiliza únicamente configuraciones y credenciales para las que tengas autorizac
 
 ## Más información
 
-- [Keybox Manager](docs/KeyboxManager.md) — carga, verificación, selección y comprobaciones de revocación de Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) y [Application Rules](docs/ApplicationRules.md) — elige dónde se aplican las funciones.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) y [Patch Levels](docs/PatchLevels.md) — controles opcionales de identidad.
-- [RKP Protection](docs/RkpProtection.md) y [DRM Privacy](docs/DrmPassthrough.md) — compatibilidad de plataforma y privacidad.
-- [Backup and Restore](docs/BackupRestore.md) — copia y restauración cifrada de la configuración.
-- [Security Model](docs/SecurityModel.md) e [Installer](docs/Installer.md) — límites de confianza y detalles de instalación.
+- [Keybox Manager](docs/KeyboxManager.md) - carga, verificación, selección y comprobaciones de revocación de Keybox/CBOX.
+- [Application Scope](docs/ApplicationScope.md) y [Application Rules](docs/ApplicationRules.md) - elige dónde se aplican las funciones.
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) y [Patch Levels](docs/PatchLevels.md) - controles opcionales de identidad.
+- [RKP Protection](docs/RkpProtection.md) y [DRM Privacy](docs/DrmPassthrough.md) - compatibilidad de plataforma y privacidad.
+- [Backup and Restore](docs/BackupRestore.md) - copia y restauración cifrada de la configuración.
+- [Security Model](docs/SecurityModel.md) e [Installer](docs/Installer.md) - límites de confianza y detalles de instalación.
 
 ## ¿Necesitas ayuda?
 

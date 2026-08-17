@@ -6,7 +6,7 @@
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
-CleveresTricky — модуль для KernelSU и APatch на Android 12–17. Он объединяет совместимость Android Keystore и attestation, управление Keybox/CBOX, выбор приложений, дополнительные настройки идентичности, уровни патчей и инструменты приватности в одном мобильном WebUI.
+CleveresTricky - модуль для KernelSU и APatch на Android 12-17. Он объединяет совместимость Android Keystore и attestation, управление Keybox/CBOX, выбор приложений, дополнительные настройки идентичности, уровни патчей и инструменты приватности в одном мобильном WebUI.
 
 Начните со стандартных настроек и включайте только те функции, которые действительно нужны.
 
@@ -30,7 +30,7 @@ CleveresTricky — модуль для KernelSU и APatch на Android 12–17. 
 
 ## Поддерживаемая среда
 
-- Android **12–17** / API **31–37**
+- Android **12-17** / API **31-37**
 - **ARM64** и **x86-64**
 - **KernelSU** и **APatch**
 
@@ -46,12 +46,12 @@ CleveresTricky улучшает локальный путь совместимо
 
 ## Подробнее
 
-- [Keybox Manager](docs/KeyboxManager.md) — загрузка, проверка, выбор и проверка отзыва Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) и [Application Rules](docs/ApplicationRules.md) — выбор приложений, к которым применяются функции.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) и [Patch Levels](docs/PatchLevels.md) — дополнительные настройки идентичности.
-- [RKP Protection](docs/RkpProtection.md) и [DRM Privacy](docs/DrmPassthrough.md) — совместимость платформы и приватность.
-- [Backup and Restore](docs/BackupRestore.md) — зашифрованное резервное копирование и восстановление конфигурации.
-- [Security Model](docs/SecurityModel.md) и [Installer](docs/Installer.md) — границы доверия и детали установки.
+- [Keybox Manager](docs/KeyboxManager.md) - загрузка, проверка, выбор и проверка отзыва Keybox/CBOX.
+- [Application Scope](docs/ApplicationScope.md) и [Application Rules](docs/ApplicationRules.md) - выбор приложений, к которым применяются функции.
+- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) и [Patch Levels](docs/PatchLevels.md) - дополнительные настройки идентичности.
+- [RKP Protection](docs/RkpProtection.md) и [DRM Privacy](docs/DrmPassthrough.md) - совместимость платформы и приватность.
+- [Backup and Restore](docs/BackupRestore.md) - зашифрованное резервное копирование и восстановление конфигурации.
+- [Security Model](docs/SecurityModel.md) и [Installer](docs/Installer.md) - границы доверия и детали установки.
 
 ## Нужна помощь?
 
