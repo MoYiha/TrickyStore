@@ -7,24 +7,26 @@ pub const MAX_FILE_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_RELATIVE_PATH_BYTES: usize = 511;
 pub const MAX_REQUEST_BYTES: usize = 1 + 2 + MAX_RELATIVE_PATH_BYTES + MAX_FILE_BYTES;
 
-const CONFIG_ROOT: &str = "/data/adb/cleverestricky";
+const CONFIG_PARENT: &str = "/data/adb";
+const CONFIG_ROOT_NAME: &str = "cleverestricky";
 const KEYBOX_DIRECTORY: &str = "keyboxes";
 const ACTION_WRITE: u8 = 0;
 const ACTION_MKDIR: u8 = 1;
 const ACTION_TOUCH: u8 = 2;
+const ACTION_ROOT_VALIDATE: u8 = 3;
 const FILE_MODE: u32 = 0o600;
 const DIRECTORY_MODE: u32 = 0o700;
 
-pub fn handle_stream<R: Read>(
-    reader: &mut R,
-    payload_len: usize,
-    scratch: &mut [u8],
-) -> io::Result<()> {
-    let root = TrustedDir::open(Path::new(CONFIG_ROOT))?;
-    handle_stream_from(&root, reader, payload_len, scratch)
+pub fn prepare_root() -> io::Result<TrustedDir> {
+    let parent = TrustedDir::open(Path::new(CONFIG_PARENT))?;
+    prepare_root_from(&parent)
 }
 
-fn handle_stream_from<R: Read>(
+fn prepare_root_from(parent: &TrustedDir) -> io::Result<TrustedDir> {
+    parent.mkdir_child(CONFIG_ROOT_NAME, DIRECTORY_MODE)
+}
+
+pub(crate) fn handle_stream_from<R: Read>(
     root: &TrustedDir,
     reader: &mut R,
     payload_len: usize,
@@ -37,8 +39,11 @@ fn handle_stream_from<R: Read>(
     reader.read_exact(&mut prefix)?;
     let action = prefix[0];
     let path_len = u16::from_be_bytes([prefix[1], prefix[2]]) as usize;
-    if path_len == 0 || path_len > MAX_RELATIVE_PATH_BYTES || 3 + path_len > payload_len {
+    if path_len > MAX_RELATIVE_PATH_BYTES || 3 + path_len > payload_len {
         return Err(invalid("invalid config file path length"));
+    }
+    if action != ACTION_ROOT_VALIDATE && path_len == 0 {
+        return Err(invalid("config file path is empty"));
     }
     let mut path_storage = [0u8; MAX_RELATIVE_PATH_BYTES];
     reader.read_exact(&mut path_storage[..path_len])?;
@@ -79,6 +84,12 @@ fn handle_stream_from<R: Read>(
                     }
                     Err(error) => Err(error),
                 }
+            }
+            ACTION_ROOT_VALIDATE => {
+                if path_len != 0 || body_len != 0 {
+                    return Err(invalid("config root capability request rejected"));
+                }
+                root.sync()
             }
             _ => Err(invalid("unsupported config file action")),
         }
@@ -175,6 +186,39 @@ mod tests {
         output.extend_from_slice(path);
         output.extend_from_slice(body);
         output
+    }
+
+    #[test]
+    fn initializes_exact_root_capability_and_keeps_children_descriptor_relative() {
+        let parent = TestRoot::new();
+        let parent_capability = parent.trusted();
+        let root = prepare_root_from(&parent_capability).unwrap();
+        let root_path = parent.path.join(CONFIG_ROOT_NAME);
+        assert!(root_path.is_dir());
+        assert_eq!(
+            fs::metadata(&root_path).unwrap().permissions().mode() & 0o777,
+            DIRECTORY_MODE
+        );
+        handle_from(&root, &request(ACTION_ROOT_VALIDATE, "", b"")).unwrap();
+
+        let moved_root = parent.path.join("moved-root");
+        fs::rename(&root_path, &moved_root).unwrap();
+        let outside = parent.path.join("outside");
+        fs::create_dir(&outside).unwrap();
+        symlink(&outside, &root_path).unwrap();
+
+        handle_from(&root, &request(ACTION_WRITE, "settings.json", b"inside")).unwrap();
+        assert_eq!(fs::read(moved_root.join("settings.json")).unwrap(), b"inside");
+        assert!(!outside.join("settings.json").exists());
+        assert!(prepare_root_from(&parent_capability).is_err());
+    }
+
+    #[test]
+    fn root_capability_action_rejects_paths_and_payloads() {
+        let test = TestRoot::new();
+        let root = test.trusted();
+        assert!(handle_from(&root, &request(ACTION_ROOT_VALIDATE, "child", b"")).is_err());
+        assert!(handle_from(&root, &request(ACTION_ROOT_VALIDATE, "", b"x")).is_err());
     }
 
     #[test]

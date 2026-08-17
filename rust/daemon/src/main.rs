@@ -7,6 +7,7 @@ use cleverestricky_service_core::ipc::{
     MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
     STREAM_COPY_BYTES,
 };
+use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_service_core::unix_socket::{
     bind_abstract, peer_credentials, DAEMON_SOCKET_NAME,
 };
@@ -14,10 +15,11 @@ use std::env;
 use std::fs;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Child, Command, Stdio};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -27,7 +29,8 @@ const BACKEND_RESTART_LIMIT: u32 = 5;
 const BACKEND_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BACKEND_MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKEND_BROKER_FD: RawFd = 9;
-const MAX_CLIENT_FRAME_BYTES: usize = config_file_broker::MAX_REQUEST_BYTES;
+const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
+const CAPABILITY_WORKERS: usize = 2;
 
 fn main() {
     if let Err(error) = run() {
@@ -40,18 +43,25 @@ fn run() -> io::Result<()> {
     harden_process()?;
     let module_dir = module_directory()?;
     validate_module_directory(&module_dir)?;
-    let listener = bind_abstract(DAEMON_SOCKET_NAME)?;
+
+    // Establish the trusted config-root directory capability before Android code starts. Every
+    // later child operation is relative to this descriptor; the root pathname is never reopened.
+    let config_root = Arc::new(config_file_broker::prepare_root()?);
+    let web_listener = bind_abstract(DAEMON_SOCKET_NAME)?;
+    let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
     let mut adapter = spawn_android_adapter(&module_dir)?;
     let adapter_pid = adapter.id();
 
     thread::Builder::new()
-        .name("ct-ipc".to_string())
+        .name("ct-web-ipc".to_string())
         .spawn(move || {
-            if let Err(error) = serve(listener, adapter_pid) {
-                eprintln!("cleverestrickyd: IPC service failed: {error}");
+            if let Err(error) = serve_web(web_listener, adapter_pid) {
+                eprintln!("cleverestrickyd: WebUI IPC service failed: {error}");
                 process::exit(1);
             }
         })?;
+
+    spawn_capability_workers(file_listener, adapter_pid, config_root)?;
 
     let backend_dir = module_dir.clone();
     thread::Builder::new()
@@ -253,8 +263,85 @@ fn supervise_backend(module_dir: PathBuf, adapter_pid: u32) {
     }
 }
 
-fn serve(listener: std::os::unix::net::UnixListener, adapter_pid: u32) -> io::Result<()> {
-    let mut adapter: Option<std::os::unix::net::UnixStream> = None;
+fn spawn_capability_workers(
+    listener: UnixListener,
+    adapter_pid: u32,
+    root: Arc<TrustedDir>,
+) -> io::Result<()> {
+    for index in 0..CAPABILITY_WORKERS {
+        let worker_listener = listener.try_clone()?;
+        let worker_root = Arc::clone(&root);
+        thread::Builder::new()
+            .name(format!("ct-file-ipc-{index}"))
+            .spawn(move || {
+                if let Err(error) = serve_capability_worker(worker_listener, adapter_pid, worker_root)
+                {
+                    eprintln!("cleverestrickyd: file IPC worker failed: {error}");
+                    process::exit(1);
+                }
+            })?;
+    }
+    Ok(())
+}
+
+fn serve_capability_worker(
+    listener: UnixListener,
+    adapter_pid: u32,
+    root: Arc<TrustedDir>,
+) -> io::Result<()> {
+    let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+    loop {
+        let (mut client, _) = match listener.accept() {
+            Ok(value) => value,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        let credentials = match peer_credentials(&client) {
+            Ok(value) if value.uid == 0 => value,
+            Ok(_) => continue,
+            Err(_) => continue,
+        };
+        client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
+        client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        let peer_is_adapter = u32::try_from(credentials.pid)
+            .ok()
+            .is_some_and(|pid| pid == adapter_pid);
+        if let Err(error) = handle_capability_request(&mut client, peer_is_adapter, &root, &mut scratch)
+        {
+            let _ = reply_error(&mut client, OP_FILE_WRITE, &error);
+        }
+    }
+}
+
+fn handle_capability_request(
+    client: &mut UnixStream,
+    peer_is_adapter: bool,
+    root: &TrustedDir,
+    scratch: &mut [u8],
+) -> io::Result<()> {
+    let header = read_header_bounded(client, config_file_broker::MAX_REQUEST_BYTES)?;
+    match header.opcode {
+        OP_PING if header.flags == 0 && header.payload_len == 0 => {
+            write_frame(client, OP_PING, 0, b"pong")
+        }
+        OP_FILE_WRITE if peer_is_adapter && header.flags == 0 => {
+            match config_file_broker::handle_stream_from(root, client, header.payload_len, scratch) {
+                Ok(()) => write_frame(client, OP_FILE_WRITE, 0, b"ok"),
+                Err(error) => {
+                    let _ = reply_text_error(client, OP_FILE_WRITE, "file operation rejected");
+                    Err(error)
+                }
+            }
+        }
+        _ => {
+            let _ = reply_text_error(client, header.opcode, "unsupported capability operation");
+            Ok(())
+        }
+    }
+}
+
+fn serve_web(listener: UnixListener, adapter_pid: u32) -> io::Result<()> {
+    let mut adapter: Option<UnixStream> = None;
     let mut relay_buffer = vec![0u8; STREAM_COPY_BYTES];
     loop {
         let (mut client, _) = match listener.accept() {
@@ -269,7 +356,7 @@ fn serve(listener: std::os::unix::net::UnixListener, adapter_pid: u32) -> io::Re
         };
         client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
         client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
-        let header = match read_header_bounded(&mut client, MAX_CLIENT_FRAME_BYTES) {
+        let header = match read_header_bounded(&mut client, MAX_FRAME_BYTES) {
             Ok(value) => value,
             Err(error) => {
                 let _ = reply_error(&mut client, OP_PING, &error);
@@ -296,28 +383,14 @@ fn serve(listener: std::os::unix::net::UnixListener, adapter_pid: u32) -> io::Re
             OP_PING if header.flags == 0 && header.payload_len == 0 => {
                 write_frame(&mut client, OP_PING, 0, b"pong")?;
             }
-            OP_FILE_WRITE if peer_is_adapter && header.flags == 0 => {
-                if header.payload_len > config_file_broker::MAX_REQUEST_BYTES {
-                    let _ =
-                        reply_text_error(&mut client, OP_FILE_WRITE, "file request exceeds bound");
-                    continue;
-                }
-                match config_file_broker::handle_stream(
-                    &mut client,
-                    header.payload_len,
-                    &mut relay_buffer,
-                ) {
-                    Ok(()) => write_frame(&mut client, OP_FILE_WRITE, 0, b"ok")?,
-                    Err(_) => {
-                        let _ =
-                            reply_text_error(&mut client, OP_FILE_WRITE, "file operation rejected");
-                    }
-                }
-            }
             OP_WEB_REQUEST if header.flags == 0 && header.payload_len <= MAX_FRAME_BYTES => {
-                if let Err(error) =
-                    forward_web_request(&mut client, header, &mut adapter, &mut relay_buffer)
-                {
+                if let Err(error) = forward_web_request_with_timeout(
+                    &mut client,
+                    header,
+                    &mut adapter,
+                    &mut relay_buffer,
+                    CLIENT_TIMEOUT,
+                ) {
                     adapter = None;
                     let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
                 }
@@ -329,11 +402,12 @@ fn serve(listener: std::os::unix::net::UnixListener, adapter_pid: u32) -> io::Re
     }
 }
 
-fn forward_web_request(
-    client: &mut std::os::unix::net::UnixStream,
+fn forward_web_request_with_timeout(
+    client: &mut UnixStream,
     request: FrameHeader,
-    adapter: &mut Option<std::os::unix::net::UnixStream>,
+    adapter: &mut Option<UnixStream>,
     scratch: &mut [u8],
+    timeout: Duration,
 ) -> io::Result<()> {
     let target = adapter.as_mut().ok_or_else(|| {
         io::Error::new(
@@ -341,8 +415,8 @@ fn forward_web_request(
             "Android adapter is unavailable",
         )
     })?;
-    target.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-    target.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+    target.set_read_timeout(Some(timeout))?;
+    target.set_write_timeout(Some(timeout))?;
     write_header(target, request)?;
     relay_exact(client, target, request.payload_len, scratch)?;
 
@@ -357,19 +431,11 @@ fn forward_web_request(
     relay_exact(target, client, response.payload_len, scratch)
 }
 
-fn reply_error(
-    stream: &mut std::os::unix::net::UnixStream,
-    opcode: u16,
-    error: &io::Error,
-) -> io::Result<()> {
+fn reply_error(stream: &mut UnixStream, opcode: u16, error: &io::Error) -> io::Result<()> {
     reply_text_error(stream, opcode, &error.to_string())
 }
 
-fn reply_text_error(
-    stream: &mut std::os::unix::net::UnixStream,
-    opcode: u16,
-    message: &str,
-) -> io::Result<()> {
+fn reply_text_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::Result<()> {
     let bytes = message.as_bytes();
     write_frame(
         stream,
@@ -377,4 +443,237 @@ fn reply_text_error(
         FLAG_ERROR,
         &bytes[..bytes.len().min(MAX_ERROR_BYTES)],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::{Read, Write};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    struct TestRoot {
+        path: PathBuf,
+    }
+
+    impl TestRoot {
+        fn new() -> Self {
+            static COUNTER: AtomicU64 = AtomicU64::new(1);
+            let path = std::env::temp_dir().join(format!(
+                "ct-daemon-lanes-{}-{}",
+                std::process::id(),
+                COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self { path }
+        }
+
+        fn trusted(&self) -> TrustedDir {
+            TrustedDir::open(&self.path).unwrap()
+        }
+    }
+
+    impl Drop for TestRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn config_payload(path: &str, body: &[u8]) -> Vec<u8> {
+        let path = path.as_bytes();
+        let mut payload = Vec::with_capacity(3 + path.len() + body.len());
+        payload.push(0);
+        payload.extend_from_slice(&(path.len() as u16).to_be_bytes());
+        payload.extend_from_slice(path);
+        payload.extend_from_slice(body);
+        payload
+    }
+
+    fn read_payload(stream: &mut UnixStream, max: usize) -> (FrameHeader, Vec<u8>) {
+        let header = read_header_bounded(stream, max).unwrap();
+        let mut body = vec![0u8; header.payload_len];
+        stream.read_exact(&mut body).unwrap();
+        (header, body)
+    }
+
+    fn exercise_reentrant_web_write(path: &str, body: Vec<u8>) {
+        let test = TestRoot::new();
+        let root = Arc::new(test.trusted());
+        if path.starts_with("keyboxes/") {
+            root.mkdir_child("keyboxes", 0o700).unwrap();
+        }
+
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, mut adapter) = UnixStream::pair().unwrap();
+        let (mut file_client, mut file_server) = UnixStream::pair().unwrap();
+
+        let file_root = Arc::clone(&root);
+        let file_thread = thread::spawn(move || {
+            let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+            handle_capability_request(&mut file_server, true, &file_root, &mut scratch).unwrap();
+        });
+
+        let path_owned = path.to_string();
+        let adapter_thread = thread::spawn(move || {
+            let (request, request_body) = read_payload(&mut adapter, MAX_FRAME_BYTES);
+            assert_eq!(request.opcode, OP_WEB_REQUEST);
+            assert_eq!(request_body, b"request");
+
+            let payload = config_payload(&path_owned, &body);
+            write_header(
+                &mut file_client,
+                FrameHeader {
+                    opcode: OP_FILE_WRITE,
+                    flags: 0,
+                    payload_len: payload.len(),
+                },
+            )
+            .unwrap();
+            file_client.write_all(&payload).unwrap();
+            let (file_response, file_body) = read_payload(&mut file_client, 512);
+            assert_eq!(file_response.opcode, OP_FILE_WRITE);
+            assert_eq!(file_response.flags, 0);
+            assert_eq!(file_body, b"ok");
+
+            write_frame(&mut adapter, OP_WEB_REQUEST, 0, b"ok").unwrap();
+        });
+
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"request").unwrap();
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut adapter_slot = Some(daemon_adapter);
+        let mut relay_scratch = vec![0u8; STREAM_COPY_BYTES];
+        forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut adapter_slot,
+            &mut relay_scratch,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let (response, response_body) = read_payload(&mut bridge, MAX_FRAME_BYTES);
+        assert_eq!(response.opcode, OP_WEB_REQUEST);
+        assert_eq!(response_body, b"ok");
+
+        adapter_thread.join().unwrap();
+        file_thread.join().unwrap();
+        assert!(test.path.join(path).is_file());
+    }
+
+    #[test]
+    fn webui_request_can_write_configuration_without_reentrancy_deadlock() {
+        exercise_reentrant_web_write("settings.json", b"{\"enabled\":true}".to_vec());
+    }
+
+    #[test]
+    fn upload_import_can_write_keybox_without_reentrancy_deadlock() {
+        exercise_reentrant_web_write("keyboxes/import.xml", b"<AndroidAttestation/>".to_vec());
+    }
+
+    #[test]
+    fn large_webui_staged_output_uses_independent_file_lane() {
+        exercise_reentrant_web_write("webui-stage.bin", vec![0xa5; 512 * 1024]);
+    }
+
+    #[test]
+    fn ping_file_and_web_operations_progress_concurrently() {
+        assert!(CAPABILITY_WORKERS >= 2);
+        let test = TestRoot::new();
+        let root = Arc::new(test.trusted());
+        let (mut file_client, mut file_server) = UnixStream::pair().unwrap();
+        let (mut ping_client, mut ping_server) = UnixStream::pair().unwrap();
+        let file_root = Arc::clone(&root);
+        let ping_root = Arc::clone(&root);
+
+        let file_worker = thread::spawn(move || {
+            let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+            handle_capability_request(&mut file_server, true, &file_root, &mut scratch).unwrap();
+        });
+        let ping_worker = thread::spawn(move || {
+            let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+            handle_capability_request(&mut ping_server, false, &ping_root, &mut scratch).unwrap();
+        });
+
+        let file_payload = config_payload("concurrent.bin", &vec![0x5a; 256 * 1024]);
+        let file_client_thread = thread::spawn(move || {
+            write_header(
+                &mut file_client,
+                FrameHeader {
+                    opcode: OP_FILE_WRITE,
+                    flags: 0,
+                    payload_len: file_payload.len(),
+                },
+            )
+            .unwrap();
+            file_client.write_all(&file_payload).unwrap();
+            let (header, body) = read_payload(&mut file_client, 512);
+            assert_eq!(header.flags, 0);
+            assert_eq!(body, b"ok");
+        });
+
+        write_frame(&mut ping_client, OP_PING, 0, b"").unwrap();
+        let (ping_header, ping_body) = read_payload(&mut ping_client, 512);
+        assert_eq!(ping_header.opcode, OP_PING);
+        assert_eq!(ping_body, b"pong");
+
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, mut adapter) = UnixStream::pair().unwrap();
+        let adapter_thread = thread::spawn(move || {
+            let (_, body) = read_payload(&mut adapter, MAX_FRAME_BYTES);
+            assert_eq!(body, b"parallel");
+            write_frame(&mut adapter, OP_WEB_REQUEST, 0, b"web-ok").unwrap();
+        });
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"parallel").unwrap();
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(daemon_adapter);
+        let mut relay_scratch = vec![0u8; STREAM_COPY_BYTES];
+        forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut relay_scratch,
+            Duration::from_secs(2),
+        )
+        .unwrap();
+        let (_, web_body) = read_payload(&mut bridge, MAX_FRAME_BYTES);
+        assert_eq!(web_body, b"web-ok");
+
+        file_client_thread.join().unwrap();
+        file_worker.join().unwrap();
+        ping_worker.join().unwrap();
+        adapter_thread.join().unwrap();
+        assert_eq!(fs::metadata(test.path.join("concurrent.bin")).unwrap().len(), 256 * 1024);
+    }
+
+    #[test]
+    fn web_relay_disconnect_and_timeout_fail_closed() {
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, adapter) = UnixStream::pair().unwrap();
+        drop(adapter);
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"disconnect").unwrap();
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(daemon_adapter);
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        assert!(forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_millis(25),
+        )
+        .is_err());
+
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, _adapter) = UnixStream::pair().unwrap();
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"timeout").unwrap();
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(daemon_adapter);
+        assert!(forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_millis(25),
+        )
+        .is_err());
+    }
 }

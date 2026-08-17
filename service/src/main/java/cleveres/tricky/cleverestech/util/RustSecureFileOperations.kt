@@ -73,6 +73,10 @@ internal class RustSecureFileOperations : SecureFileOperations {
         mode: Int,
     ) {
         require(mode == DIRECTORY_MODE) { "Rust broker only accepts private config directories" }
+        if (file.absolutePath == CONFIG_ROOT) {
+            transactEncoded(ACTION_ROOT_VALIDATE, EMPTY_BYTES, EMPTY_BYTES)
+            return
+        }
         transact(ACTION_MKDIR, file, EMPTY_BYTES)
     }
 
@@ -92,47 +96,57 @@ internal class RustSecureFileOperations : SecureFileOperations {
         val path = relativePath(file)
         val pathBytes = path.toByteArray(Charsets.UTF_8)
         try {
-            require(pathBytes.size in 1..MAX_RELATIVE_PATH_BYTES)
-            val payloadLength = Math.addExact(Math.addExact(3, pathBytes.size), content.size)
-            require(payloadLength <= MAX_REQUEST_BYTES)
-            LocalSocket().use { socket ->
-                connectVerified(socket)
-                val output = socket.outputStream
-                writeHeader(output, payloadLength)
-                output.write(action)
-                output.write((pathBytes.size ushr 8) and 0xff)
-                output.write(pathBytes.size and 0xff)
-                output.write(pathBytes)
-                if (content.isNotEmpty()) output.write(content)
-                output.flush()
-
-                val input = socket.inputStream
-                val header = ByteArray(HEADER_BYTES)
-                try {
-                    readFully(input, header)
-                    validateResponseHeader(header)
-                    val responseLength = readU32(header, 12)
-                    if (responseLength > MAX_RESPONSE_BYTES) throw IOException("Rust file response exceeds bound")
-                    val response = ByteArray(responseLength.toInt())
-                    try {
-                        readFully(input, response)
-                        if (readI32(header, 8) != 0 || !response.contentEquals(OK_BYTES)) {
-                            throw IOException("Rust file operation was rejected")
-                        }
-                    } finally {
-                        response.fill(0)
-                    }
-                } finally {
-                    header.fill(0)
-                }
-            }
+            transactEncoded(action, pathBytes, content)
         } finally {
             pathBytes.fill(0)
         }
     }
 
+    private fun transactEncoded(
+        action: Int,
+        pathBytes: ByteArray,
+        content: ByteArray,
+    ) {
+        require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
+        require(action == ACTION_ROOT_VALIDATE || pathBytes.isNotEmpty())
+        require(action != ACTION_ROOT_VALIDATE || pathBytes.isEmpty())
+        val payloadLength = Math.addExact(Math.addExact(3, pathBytes.size), content.size)
+        require(payloadLength <= MAX_REQUEST_BYTES)
+        LocalSocket().use { socket ->
+            connectVerified(socket)
+            val output = socket.outputStream
+            writeHeader(output, payloadLength)
+            output.write(action)
+            output.write((pathBytes.size ushr 8) and 0xff)
+            output.write(pathBytes.size and 0xff)
+            if (pathBytes.isNotEmpty()) output.write(pathBytes)
+            if (content.isNotEmpty()) output.write(content)
+            output.flush()
+
+            val input = socket.inputStream
+            val header = ByteArray(HEADER_BYTES)
+            try {
+                readFully(input, header)
+                validateResponseHeader(header)
+                val responseLength = readU32(header, 12)
+                if (responseLength > MAX_RESPONSE_BYTES) throw IOException("Rust file response exceeds bound")
+                val response = ByteArray(responseLength.toInt())
+                try {
+                    readFully(input, response)
+                    if (readI32(header, 8) != 0 || !response.contentEquals(OK_BYTES)) {
+                        throw IOException("Rust file operation was rejected")
+                    }
+                } finally {
+                    response.fill(0)
+                }
+            } finally {
+                header.fill(0)
+            }
+        }
+    }
+
     private fun connectVerified(socket: LocalSocket) {
-        socket.connect(LocalSocketAddress(SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
+        socket.connect(LocalSocketAddress(FILE_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
         val peer = socket.peerCredentials
         if (peer.uid != 0 || peer.gid != 0 || peer.pid <= 1 || !isExpectedDaemonExecutable(peer.pid)) {
             throw IOException("Unexpected privileged Rust daemon peer")
@@ -260,7 +274,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
     private companion object {
         const val CONFIG_ROOT = "/data/adb/cleverestricky"
         const val KEYBOX_DIRECTORY = "keyboxes"
-        const val SOCKET_NAME = "cleverestrickyd.v1"
+        const val FILE_SOCKET_NAME = "cleverestrickyd.files.v1"
         const val DAEMON_FILENAME = "cleverestrickyd"
         const val IPC_VERSION = 1
         const val OP_FILE_WRITE = 10
@@ -268,6 +282,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val ACTION_WRITE = 0
         const val ACTION_MKDIR = 1
         const val ACTION_TOUCH = 2
+        const val ACTION_ROOT_VALIDATE = 3
         const val HEADER_BYTES = 16
         const val FILE_MODE = 384
         const val DIRECTORY_MODE = 448
