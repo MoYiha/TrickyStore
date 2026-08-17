@@ -97,8 +97,7 @@ fn encrypt_cbox_v2_with_nonce(
         || xml_bytes.is_empty()
         || xml_bytes.len() > MAX_XML_BYTES
         || signature_base64.len() > MAX_SIGNATURE_BYTES
-        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS)
-            .contains(&utf16_units(password))
+        || !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&utf16_units(password))
     {
         return Err(EncryptError::InvalidInput);
     }
@@ -249,7 +248,10 @@ fn has_supported_cbox_header(bytes: &[u8]) -> bool {
     bytes.len() >= HEADER_BYTES + TAG_BYTES
         && bytes.len() <= MAX_CBOX_WIRE_BYTES
         && bytes[..4] == CBOX_MAGIC
-        && matches!(read_u32_be(bytes, 4), Some(CBOX_VERSION_LEGACY | CBOX_VERSION))
+        && matches!(
+            read_u32_be(bytes, 4),
+            Some(CBOX_VERSION_LEGACY | CBOX_VERSION)
+        )
 }
 
 fn read_u32_be(bytes: &[u8], offset: usize) -> Option<u32> {
@@ -358,7 +360,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSav
     password: JCharArray<'_>,
 ) -> jboolean {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir = read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+        let no_backup_dir =
+            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
         let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
         let author = read_bytes_bounded(&mut env, &author, MAX_AUTHOR_UTF8_BYTES)?;
         let xml = read_bytes_bounded(&mut env, &xml, MAX_XML_BYTES)?;
@@ -391,7 +394,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault(
     no_backup_dir: JString<'_>,
 ) -> jboolean {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir = read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+        let no_backup_dir =
+            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
         ensure_vault(&no_backup_dir)
     }));
     if matches!(result, Ok(Ok(()))) {
@@ -411,7 +415,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypte
     ciphertext: JByteArray<'_>,
 ) -> jboolean {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir = read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+        let no_backup_dir =
+            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
         let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
         let ciphertext = read_bytes_bounded(&mut env, &ciphertext, MAX_CBOX_WIRE_BYTES)?;
         store_encrypted(&no_backup_dir, &filename, &ciphertext)
@@ -432,7 +437,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted
     filename: JString<'_>,
 ) -> jbyteArray {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir = read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+        let no_backup_dir =
+            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
         let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
         let bytes = read_encrypted(&no_backup_dir, &filename)?;
         let output = env
@@ -455,7 +461,8 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_deleteEncrypt
     filename: JString<'_>,
 ) -> jboolean {
     let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir = read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+        let no_backup_dir =
+            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
         let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
         delete_encrypted(&no_backup_dir, &filename)
     }));
