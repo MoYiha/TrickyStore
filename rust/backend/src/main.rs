@@ -1,4 +1,5 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+mod backend_instance;
 mod certificate_wire;
 mod crl_wire;
 mod keybox_fd;
@@ -62,6 +63,7 @@ fn main() {
 
 fn run() -> io::Result<()> {
     let adapter_pid = parse_adapter_pid()?;
+    backend_instance::initialize()?;
     let mut broker = take_broker_stream()?;
     let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
     harden_process()?;
@@ -305,6 +307,7 @@ fn opcode_request_limit(opcode: u16) -> Option<usize> {
         OP_CERTIFICATE_INSPECT => Some(certificate_wire::MAX_INSPECT_REQUEST_BYTES),
         OP_CERTIFICATE_REWRITE => Some(certificate_wire::MAX_REWRITE_REQUEST_BYTES),
         OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_REQUEST_BYTES),
+        backend_instance::OP_BACKEND_PING => Some(backend_instance::REQUEST_BYTES),
         _ => None,
     }
 }
@@ -317,6 +320,7 @@ fn opcode_response_limit(opcode: u16) -> Option<usize> {
         OP_CERTIFICATE_INSPECT => Some(certificate_wire::INSPECT_RESPONSE_BYTES),
         OP_CERTIFICATE_REWRITE => Some(certificate_wire::MAX_REWRITE_RESPONSE_BYTES),
         OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_RESPONSE_BYTES),
+        backend_instance::OP_BACKEND_PING => Some(backend_instance::RESPONSE_BYTES),
         _ => None,
     }
 }
@@ -399,6 +403,7 @@ fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static
         OP_CERTIFICATE_INSPECT => certificate_wire::inspect_and_encode(request),
         OP_CERTIFICATE_REWRITE => certificate_wire::rewrite_and_encode(request),
         OP_CRL_CHECK_BATCH => crl_wire::handle(request),
+        backend_instance::OP_BACKEND_PING => backend_instance::handle(request),
         _ => {
             request.zeroize();
             Err("unsupported backend operation")
@@ -794,6 +799,25 @@ mod tests {
             Some(crl_wire::MAX_RESPONSE_BYTES)
         );
         assert!(handle_request(OP_CRL_CHECK_BATCH, vec![1]).is_err());
+    }
+
+    #[test]
+    fn backend_ping_uses_fixed_request_and_response_bounds() {
+        backend_instance::initialize().unwrap();
+        assert_eq!(
+            opcode_request_limit(backend_instance::OP_BACKEND_PING),
+            Some(backend_instance::REQUEST_BYTES)
+        );
+        assert_eq!(
+            opcode_response_limit(backend_instance::OP_BACKEND_PING),
+            Some(backend_instance::RESPONSE_BYTES)
+        );
+        let response = handle_request(
+            backend_instance::OP_BACKEND_PING,
+            vec![backend_instance::HANDSHAKE_VERSION],
+        )
+        .unwrap();
+        assert_eq!(response.len(), backend_instance::RESPONSE_BYTES);
     }
 
     #[test]
