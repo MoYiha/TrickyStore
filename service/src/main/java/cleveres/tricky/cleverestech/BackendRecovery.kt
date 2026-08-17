@@ -2,6 +2,8 @@ package cleveres.tricky.cleverestech
 
 import androidx.annotation.VisibleForTesting
 
+internal typealias RustBackendStateException = BackendStateException
+
 /** Compatibility entry point; all recovery work is owned by [BackendStateRecovery]. */
 internal object BackendRecovery {
     @VisibleForTesting
@@ -10,7 +12,7 @@ internal object BackendRecovery {
     fun <T> withOneRetry(operation: () -> T): T {
         try {
             return operation()
-        } catch (error: RustBackendStateException) {
+        } catch (error: BackendStateException) {
             if (!recoverOnce(force = true)) throw error
         } catch (error: RustBackendUnavailableException) {
             if (!recoverOnce(force = false)) throw error
@@ -22,11 +24,9 @@ internal object BackendRecovery {
     fun recoverOnce(force: Boolean): Boolean {
         recoveryOverride?.let { return it() }
         val identity = NativeBackend.currentBackendIdentity() ?: return false
-        return if (force || NativeBackend.consumeBackendStateReset()) {
-            BackendStateRecovery.recover(identity)
-        } else {
-            BackendStateRecovery.recover(identity)
-        }
+        // Identity changes are already detected by NativeBackend's mandatory PING handshake. The
+        // single-flight coordinator deduplicates concurrent callers for the same PID+epoch.
+        return BackendStateRecovery.recover(identity)
     }
 
     @VisibleForTesting
@@ -35,3 +35,9 @@ internal object BackendRecovery {
         BackendStateRecovery.resetForTesting()
     }
 }
+
+/**
+ * Older Config activation code calls this after parsing. NativeBackend now performs the restart
+ * detection synchronously on every newly opened socket and does not keep a second pending-reset bit.
+ */
+internal fun NativeBackend.consumeBackendStateReset(): Boolean = false
