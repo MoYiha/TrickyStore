@@ -3,10 +3,10 @@ package cleveres.tricky.encryptor
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.ProviderException
 import java.security.Signature
 
 /** Android-only key adapter. Portable CBOX/KDF/AEAD/storage logic lives in Rust. */
@@ -29,8 +29,8 @@ internal object MobileCrypto {
             try {
                 generateKey(strongBox = true)
                 return
-            } catch (_: StrongBoxUnavailableException) {
-                // Preserve behavior on devices that expose Android Keystore without StrongBox RSA.
+            } catch (_: ProviderException) {
+                // StrongBox is optional. Fall back to the platform-backed Android Keystore.
             }
         }
         generateKey(strongBox = false)
@@ -96,7 +96,7 @@ internal object MobileCrypto {
                 KEY_ALIAS,
                 KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
             )
-                .setKeySize(2048)
+                .setKeySize(3072)
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1)
                 .setUserAuthenticationRequired(false)
