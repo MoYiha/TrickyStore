@@ -57,9 +57,16 @@ fun main(args: Array<String>) {
             }
         }
 
-        if (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
-            Logger.e("Rust backend did not become ready; exiting without touching persisted keybox caches")
-            return@runBlocking
+        while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
+            if (Thread.currentThread().isInterrupted) {
+                Logger.i("Main: Interrupted while waiting for Rust backend")
+                return@runBlocking
+            }
+            // The daemon supervises and restarts the backend independently. A transient backend
+            // failure must not terminate the Android adapter, because the daemon intentionally
+            // treats adapter death as a full-stack failure and would otherwise churn the WebUI
+            // control socket into EPIPE/Broken-pipe errors.
+            Logger.e("Rust backend is not ready; waiting for backend supervisor recovery")
         }
 
         try {
