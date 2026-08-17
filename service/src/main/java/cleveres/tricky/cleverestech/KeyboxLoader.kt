@@ -25,6 +25,7 @@ internal object KeyboxLoader {
 
     private val backendOutageObserved = AtomicBoolean(false)
     private val activeSetHealthy = AtomicBoolean(true)
+    private val activeSetAttemptResult = ThreadLocal<Boolean?>()
 
     @VisibleForTesting
     internal var parserOverride: ((ByteArray, String) -> List<CertHack.KeyBox>)? = null
@@ -116,7 +117,7 @@ internal object KeyboxLoader {
                 response.fill(0)
             }
         } catch (error: RustBackendUnavailableException) {
-            activeSetHealthy.set(false)
+            recordActiveSetResult(false)
             backendOutageObserved.set(true)
             throw error
         } finally {
@@ -126,6 +127,22 @@ internal object KeyboxLoader {
 
     private fun recordActiveSetResult(success: Boolean): Boolean {
         activeSetHealthy.set(success)
+        activeSetAttemptResult.set(success)
+        return success
+    }
+
+    /** Starts one synchronous activation observation on the current thread. */
+    internal fun beginActiveSetAttempt() {
+        activeSetAttemptResult.remove()
+    }
+
+    /**
+     * Returns true only when this thread observed a successful active-set commit after
+     * [beginActiveSetAttempt]. No commit (for example an early parse/recovery failure) fails closed.
+     */
+    internal fun consumeActiveSetAttemptResult(): Boolean {
+        val success = activeSetAttemptResult.get() == true
+        activeSetAttemptResult.remove()
         return success
     }
 
@@ -141,6 +158,7 @@ internal object KeyboxLoader {
         activeSetOverride = null
         backendOutageObserved.set(false)
         activeSetHealthy.set(true)
+        activeSetAttemptResult.remove()
     }
 
     private const val OP_KEYBOX_PARSE = 23
