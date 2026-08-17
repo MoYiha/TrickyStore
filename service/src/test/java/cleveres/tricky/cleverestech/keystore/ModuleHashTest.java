@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech.keystore;
 
 import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.ManagedCertificateBackendOracle;
+import cleveres.tricky.cleverestech.ManagedOpaqueKeyOracle;
 
 import org.bouncycastle.asn1.ASN1Boolean;
 import org.bouncycastle.asn1.ASN1Encodable;
@@ -128,7 +129,8 @@ public class ModuleHashTest {
             kpg.initialize(2048);
             KeyPair kp = kpg.generateKeyPair();
             X509Certificate cert = generateSelfSignedCert(kp);
-            CertHack.KeyBox keyBox = new CertHack.KeyBox(kp, Collections.singletonList(cert), "test.xml");
+            CertHack.KeyBox keyBox = ManagedOpaqueKeyOracle.wrap(
+                    kp, Collections.singletonList(cert), "test.xml");
 
             Map<String, List<CertHack.KeyBox>> newKeyboxes = new HashMap<>();
             newKeyboxes.put("RSA", Collections.singletonList(keyBox));
@@ -206,13 +208,15 @@ public class ModuleHashTest {
             X509Certificate originalLeaf = generateSelfSignedCert(originalPair);
             KeyPair firstKeyboxPair = generator.generateKeyPair();
             KeyPair secondKeyboxPair = generator.generateKeyPair();
-            CertHack.KeyBox firstKeybox = new CertHack.KeyBox(
+            X509Certificate firstKeyboxCertificate = generateSelfSignedCert(firstKeyboxPair);
+            X509Certificate secondKeyboxCertificate = generateSelfSignedCert(secondKeyboxPair);
+            CertHack.KeyBox firstKeybox = ManagedOpaqueKeyOracle.wrap(
                     firstKeyboxPair,
-                    Collections.singletonList(generateSelfSignedCert(firstKeyboxPair)),
+                    Collections.singletonList(firstKeyboxCertificate),
                     "first.xml");
-            CertHack.KeyBox secondKeybox = new CertHack.KeyBox(
+            CertHack.KeyBox secondKeybox = ManagedOpaqueKeyOracle.wrap(
                     secondKeyboxPair,
-                    Collections.singletonList(generateSelfSignedCert(secondKeyboxPair)),
+                    Collections.singletonList(secondKeyboxCertificate),
                     "second.xml");
 
             List<CertHack.KeyBox> pool = List.of(firstKeybox, secondKeybox);
@@ -274,7 +278,7 @@ public class ModuleHashTest {
             ecGenerator.initialize(256);
             KeyPair ecPair = ecGenerator.generateKeyPair();
             X509Certificate keyboxCertificate = generateSelfSignedCert(ecPair);
-            CertHack.KeyBox keyBox = new CertHack.KeyBox(
+            CertHack.KeyBox keyBox = ManagedOpaqueKeyOracle.wrap(
                     ecPair, Collections.singletonList(keyboxCertificate), "ec-only.xml");
 
             Map<String, List<CertHack.KeyBox>> newKeyboxes = new HashMap<>();
