@@ -6,7 +6,7 @@ import java.io.File
 import java.security.KeyPair
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -56,7 +56,9 @@ class ConfigKeyboxActivationTest {
             Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.VALID }
 
             assertEquals(1, commits)
-            assertEquals(0, CertHack.getKeyboxCount())
+            assertThrows(IllegalStateException::class.java) {
+                CertHack.getKeyboxCount()
+            }
         }
     }
 
