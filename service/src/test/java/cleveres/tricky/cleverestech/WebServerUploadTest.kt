@@ -95,6 +95,8 @@ class WebServerUploadTest {
 
     @After
     fun tearDown() {
+        KeyboxLoader.activeSetOverride = null
+        BackendRecovery.recoveryOverride = null
         ManagedKeyboxParserOracle.reset()
         SecureFile.impl = originalSecureFileImpl
         server.stop()
@@ -161,6 +163,18 @@ class WebServerUploadTest {
 
         val f = File(configDir, "keyboxes/valid_keybox.xml")
         assert(f.exists())
+    }
+
+    @Test
+    fun testValidUploadDoesNotReportSuccessWhenBackendActivationFails() {
+        KeyboxLoader.activeSetOverride = { false }
+        BackendRecovery.recoveryOverride = { false }
+
+        val responseCode = uploadKeybox("activation_failure.xml", TestKeyboxFixtures.validEcKeyboxXml)
+
+        assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, responseCode)
+        assertEquals(0, cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount())
+        assert(File(configDir, "keyboxes/activation_failure.xml").exists())
     }
 
     @Test
