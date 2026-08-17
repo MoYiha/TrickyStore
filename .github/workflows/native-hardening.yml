@@ -118,15 +118,22 @@ jobs:
           apk_dir=$(mktemp -d)
           trap 'rm -rf "$apk_dir"' EXIT
           unzip -q "$apk" 'lib/*/libcleveres_encryptor_crypto.so' -d "$apk_dir"
-          expected_jni_export='Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave'
+          expected_jni_exports=$(printf '%s\n' \
+            Java_cleveres_tricky_encryptor_NativeCrypto_deleteEncrypted \
+            Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave \
+            Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault \
+            Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted \
+            Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypted \
+            Java_cleveres_tricky_encryptor_NativeCrypto_validateKeyboxXml | sort -u)
           for abi in arm64-v8a x86_64; do
             library="$apk_dir/lib/$abi/libcleveres_encryptor_crypto.so"
             verify_elf "$library"
             dyn_symbols=$(readelf -W --dyn-syms "$library")
             exports=$(awk '$5 == "GLOBAL" && $7 != "UND" && $8 != "" { print $8 }' \
               <<<"$dyn_symbols" | sort -u)
-            if [ "$exports" != "$expected_jni_export" ]; then
+            if [ "$exports" != "$expected_jni_exports" ]; then
               actual=$(printf '%s\n' "$exports" | paste -sd ',' -)
-              fail "$library" "Unexpected JNI exports: ${actual:-<none>}"
+              expected=$(printf '%s\n' "$expected_jni_exports" | paste -sd ',' -)
+              fail "$library" "Unexpected JNI exports: ${actual:-<none>} (expected: $expected)"
             fi
           done
