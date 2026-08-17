@@ -522,11 +522,14 @@ mod tests {
 
     fn config_payload(path: &str, body: &[u8]) -> Vec<u8> {
         let path = path.as_bytes();
-        let mut payload = Vec::with_capacity(3 + path.len() + body.len());
+        let body_len = u32::try_from(body.len()).unwrap();
+        let mut payload = Vec::with_capacity(1 + 2 + 4 + path.len() + body.len() + 1);
         payload.push(0);
         payload.extend_from_slice(&(path.len() as u16).to_be_bytes());
+        payload.extend_from_slice(&body_len.to_be_bytes());
         payload.extend_from_slice(path);
         payload.extend_from_slice(body);
+        payload.push(0xa5);
         payload
     }
 
