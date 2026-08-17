@@ -28,14 +28,14 @@ internal object BackendStateRecovery {
             }
             recovering = true
             return try {
-                val recoveryIdentity = NativeBackend.beginBackendRecovery()
-                if (recoveryIdentity != expectedIdentity) return@try false
-
                 recoveryOverride?.let { override ->
-                    return@try override(recoveryIdentity).also { success ->
-                        if (success) recoveredIdentity = recoveryIdentity
+                    return@try override(current).also { success ->
+                        if (success) recoveredIdentity = current
                     }
                 }
+
+                val recoveryIdentity = NativeBackend.beginBackendRecovery()
+                if (recoveryIdentity != expectedIdentity) return@try false
 
                 KeyboxActivation.invalidateBackendInstance()
                 CboxManager.invalidateBackendHandles()
