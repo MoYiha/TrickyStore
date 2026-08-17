@@ -32,15 +32,10 @@
     <string name="copy_public_key">Copy public key</string>
     <string name="choose_xml">Choose XML file</string>
     <string name="xml_limit">UTF-8 XML · up to 10 MiB</string>
-    <string name="change">Change</string>
-    <string name="protection">Protection</string>
-    <string name="protection_subtitle">Use a unique password. Cleveres does not store or recover it.</string>
     <string name="password">Password</string>
     <string name="hide_password">Hide password</string>
     <string name="show_password">Show password</string>
     <string name="confirm_password">Confirm password</string>
-    <string name="passwords_match">Passwords match</string>
-    <string name="encrypting">Encrypting…</string>
     <string name="encrypt_save">Encrypt &amp; save</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · Android Keystore signature</string>
     <string name="replace_keybox_title">Replace existing keybox?</string>
@@ -48,9 +43,4 @@
     <string name="replace">Replace</string>
     <string name="security_title">Local-first, hardened encryption</string>
     <string name="security_body">The XML never leaves this app. CBOX encryption and atomic private-vault writes run in the bounded Rust layer.</string>
-    <string name="complete">Complete</string>
-    <string name="password_strength_basic">Password strength: basic</string>
-    <string name="password_strength_good">Password strength: good</string>
-    <string name="password_strength_strong">Password strength: strong</string>
-    <string name="password_strength_excellent">Password strength: excellent</string>
 </resources>

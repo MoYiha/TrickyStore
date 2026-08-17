@@ -32,15 +32,10 @@
     <string name="copy_public_key">Öffentlichen Schlüssel kopieren</string>
     <string name="choose_xml">XML-Datei auswählen</string>
     <string name="xml_limit">UTF-8 XML · bis 10 MiB</string>
-    <string name="change">Ändern</string>
-    <string name="protection">Schutz</string>
-    <string name="protection_subtitle">Verwende ein einzigartiges Passwort. Cleveres speichert es nicht und kann es nicht wiederherstellen.</string>
     <string name="password">Passwort</string>
     <string name="hide_password">Passwort ausblenden</string>
     <string name="show_password">Passwort anzeigen</string>
     <string name="confirm_password">Passwort bestätigen</string>
-    <string name="passwords_match">Passwörter stimmen überein</string>
-    <string name="encrypting">Verschlüsseln…</string>
     <string name="encrypt_save">Verschlüsseln und speichern</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · Android-Keystore-Signatur</string>
     <string name="replace_keybox_title">Vorhandene Keybox ersetzen?</string>
@@ -48,9 +43,4 @@
     <string name="replace">Ersetzen</string>
     <string name="security_title">Lokal zuerst, gehärtete Verschlüsselung</string>
     <string name="security_body">Die XML verlässt diese App nicht. CBOX-Verschlüsselung und atomare Schreibvorgänge in den privaten Tresor laufen in der begrenzten Rust-Schicht.</string>
-    <string name="complete">Abgeschlossen</string>
-    <string name="password_strength_basic">Passwortstärke: einfach</string>
-    <string name="password_strength_good">Passwortstärke: gut</string>
-    <string name="password_strength_strong">Passwortstärke: stark</string>
-    <string name="password_strength_excellent">Passwortstärke: ausgezeichnet</string>
 </resources>
