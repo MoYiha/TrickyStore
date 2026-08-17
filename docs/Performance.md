@@ -38,37 +38,9 @@ The WebUI resource view reads bounded procfs lines only when opened. Its CPU par
 
 Encrypted and backup operations enforce expanded size before retaining input. Sensitive temporary byte arrays are cleared where the managed runtime permits.
 
-## Measured migration artifacts
+## Reproducible artifact measurements
 
-Release artifact sizes below are measured from successful GitHub Actions Build artifacts. The base is commit `f62f8a3b`; the validated Rust-first code head is `f02ec754`. The final code artifact is `CleveresTricky-V2.5.8-2624-1e6bfd9a-release.zip` from Build run `32002942562`, artifact id `9279263341`. Its size is **2,861,922 B** and its SHA-256 is `1258b3505d923a142cd08c2c28817764622937ed0889b862e96adae0249ae4f7`.
-
-| Artifact | Base `f62f8a3b` | Final code `f02ec754` | Final vs base |
-| --- | ---: | ---: | ---: |
-| Release ZIP | 3,954,171 B | 2,861,922 B | -1,092,249 B (-27.62%) |
-| arm64 `inject` | 333,624 B | 333,624 B | 0 B |
-| arm64 `libcleverestricky.so` | 577,512 B | 577,512 B | 0 B |
-| arm64 `webui_bridge` | 327,952 B | 328,216 B | +264 B |
-| arm64 `cleverestrickyd` | not present | 371,088 B | +371,088 B |
-| arm64 `cleverestricky_backend` | not present | 747,912 B | +747,912 B |
-| x86_64 `inject` | 368,768 B | 368,768 B | 0 B |
-| x86_64 `libcleverestricky.so` | 595,248 B | 595,248 B | 0 B |
-| x86_64 `webui_bridge` | 359,944 B | 359,816 B | -128 B |
-| x86_64 `cleverestrickyd` | not present | 404,504 B | +404,504 B |
-| x86_64 `cleverestricky_backend` | not present | 860,632 B | +860,632 B |
-
-The final `service.apk` is 486,817 B. The injected Binder library and injector remain exactly unchanged in size from the base artifact. The new daemon/backend account for the intentional native growth, while the overall release archive is smaller than the base artifact because portable parser/crypto/provider payload was removed from the production managed package.
-
-Physical-device memory is intentionally not estimated in CI. Capture real idle and exercised process memory on a representative Android device with the same build under test:
-
-```sh
-adb shell pidof cleverestrickyd
-adb shell pidof cleverestricky_backend
-adb shell dumpsys meminfo "$(adb shell pidof cleverestrickyd | tr -d '\r')"
-adb shell dumpsys meminfo "$(adb shell pidof cleverestricky_backend | tr -d '\r')"
-adb shell sh -c 'for p in $(pidof cleverestrickyd cleverestricky_backend); do echo "== $p =="; grep -E "^(VmRSS|VmHWM):" /proc/$p/status; done'
-```
-
-For before/after device comparisons, use the same device, boot state, feature configuration, keybox fixture, workload, and sampling interval. Record the commands, build commit, Android build fingerprint, sample count, and raw PSS/RSS values with the result instead of substituting host-process numbers.
+Artifact sizes and hashes are intentionally not pinned to an intermediate PR head. For a release candidate, use the artifact from the Build run attached to the exact commit being reviewed and record the run ID, artifact ID, archive SHA-256, and per-binary sizes together.
 
 ## Build choices
 

@@ -31,9 +31,84 @@ const BACKEND_CIRCUIT_FAILURES: u32 = 5;
 const BACKEND_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BACKEND_MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKEND_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(60);
+const ADAPTER_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
+const ADAPTER_MAX_BACKOFF: Duration = Duration::from_secs(30);
+const ADAPTER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_BROKER_FD: RawFd = 9;
 const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
 const CAPABILITY_WORKERS: usize = 2;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AdapterLease {
+    pid: u32,
+    generation: u32,
+}
+
+#[derive(Debug, Default)]
+struct AdapterIdentity {
+    state: std::sync::atomic::AtomicU64,
+}
+
+impl AdapterIdentity {
+    fn pack(lease: AdapterLease) -> u64 {
+        ((lease.generation as u64) << 32) | u64::from(lease.pid)
+    }
+
+    fn unpack(state: u64) -> Option<AdapterLease> {
+        let pid = state as u32;
+        (pid != 0).then_some(AdapterLease {
+            pid,
+            generation: (state >> 32) as u32,
+        })
+    }
+
+    fn current(&self) -> Option<AdapterLease> {
+        Self::unpack(self.state.load(std::sync::atomic::Ordering::Acquire))
+    }
+
+    fn publish(&self, pid: u32) -> AdapterLease {
+        assert_ne!(pid, 0);
+        loop {
+            let current = self.state.load(std::sync::atomic::Ordering::Acquire);
+            let lease = AdapterLease {
+                pid,
+                generation: ((current >> 32) as u32).wrapping_add(1),
+            };
+            if self
+                .state
+                .compare_exchange(
+                    current,
+                    Self::pack(lease),
+                    std::sync::atomic::Ordering::AcqRel,
+                    std::sync::atomic::Ordering::Acquire,
+                )
+                .is_ok()
+            {
+                return lease;
+            }
+        }
+    }
+
+    fn invalidate(&self, lease: AdapterLease) {
+        let invalid = (u64::from(lease.generation.wrapping_add(1))) << 32;
+        let _ = self.state.compare_exchange(
+            Self::pack(lease),
+            invalid,
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire,
+        );
+    }
+
+    fn matches(&self, lease: AdapterLease) -> bool {
+        self.current() == Some(lease)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AdapterRetryPlan {
+    rapid_failures: u32,
+    delay: Duration,
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -47,37 +122,67 @@ fn run() -> io::Result<()> {
     let module_dir = module_directory()?;
     validate_module_directory(&module_dir)?;
 
-    // Establish the trusted config-root directory capability before Android code starts. Every
-    // later child operation is relative to this descriptor; the root pathname is never reopened.
     let config_root = Arc::new(config_file_broker::prepare_root()?);
     let web_listener = bind_abstract(DAEMON_SOCKET_NAME)?;
     let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
-    let mut adapter = spawn_android_adapter(&module_dir)?;
-    let adapter_pid = adapter.id();
+    let adapter_identity = Arc::new(AdapterIdentity::default());
 
+    let web_identity = Arc::clone(&adapter_identity);
     thread::Builder::new()
         .name("ct-web-ipc".to_string())
         .spawn(move || {
-            if let Err(error) = serve_web(web_listener, adapter_pid) {
+            if let Err(error) = serve_web(web_listener, web_identity) {
                 eprintln!("cleverestrickyd: WebUI IPC service failed: {error}");
                 process::exit(1);
             }
         })?;
 
-    spawn_capability_workers(file_listener, adapter_pid, Arc::clone(&config_root))?;
+    spawn_capability_workers(
+        file_listener,
+        Arc::clone(&adapter_identity),
+        Arc::clone(&config_root),
+    )?;
 
     let backend_dir = module_dir.clone();
     let backend_root = Arc::clone(&config_root);
+    let backend_identity = Arc::clone(&adapter_identity);
     thread::Builder::new()
         .name("ct-backend".to_string())
-        .spawn(move || supervise_backend(backend_dir, adapter_pid, backend_root))?;
+        .spawn(move || supervise_backend(backend_dir, backend_identity, backend_root))?;
 
-    let status = adapter.wait()?;
-    eprintln!("cleverestrickyd: Android adapter exited with {status}");
-    Err(io::Error::new(
-        io::ErrorKind::BrokenPipe,
-        "Android adapter exited",
-    ))
+    let mut rapid_failures = 0u32;
+    loop {
+        let started = Instant::now();
+        match spawn_android_adapter(&module_dir) {
+            Ok(mut adapter) => {
+                let lease = adapter_identity.publish(adapter.id());
+                eprintln!(
+                    "cleverestrickyd: Android adapter generation {} started as pid {}",
+                    lease.generation, lease.pid
+                );
+                match adapter.wait() {
+                    Ok(status) => eprintln!(
+                        "cleverestrickyd: Android adapter generation {} exited with {status}",
+                        lease.generation
+                    ),
+                    Err(error) => eprintln!(
+                        "cleverestrickyd: Android adapter generation {} wait failed: {error}",
+                        lease.generation
+                    ),
+                }
+                adapter_identity.invalidate(lease);
+            }
+            Err(error) => eprintln!("cleverestrickyd: Android adapter launch failed: {error}"),
+        }
+
+        let plan = adapter_retry_plan(rapid_failures, started.elapsed());
+        rapid_failures = plan.rapid_failures;
+        eprintln!(
+            "cleverestrickyd: restarting Android adapter after {}s",
+            plan.delay.as_secs()
+        );
+        thread::sleep(plan.delay);
+    }
 }
 
 fn module_directory() -> io::Result<PathBuf> {
@@ -237,20 +342,25 @@ fn inherit_broker_fd(source: RawFd) -> io::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum BackendRunOutcome {
+    Exited(String),
+    AdapterChanged,
+}
+
 fn run_backend_once(
     module_dir: &Path,
-    adapter_pid: u32,
+    lease: AdapterLease,
+    adapter_identity: &AdapterIdentity,
     root: Arc<TrustedDir>,
-) -> io::Result<String> {
-    let (mut child, broker) = spawn_backend(module_dir, adapter_pid)?;
+) -> io::Result<BackendRunOutcome> {
+    let (mut child, broker) = spawn_backend(module_dir, lease.pid)?;
     let backend_pid = child.id();
     let broker_thread = match thread::Builder::new()
         .name("ct-keybox-broker".to_string())
         .spawn(move || {
             if let Err(error) = keybox_file_broker::serve(broker, &root) {
                 eprintln!("cleverestrickyd: keybox broker failed: {error}");
-                // SAFETY: backend_pid came from the live Child. SIGTERM is a scalar process signal
-                // used only to force a clean supervised restart after private broker failure.
                 let _ = unsafe { libc::kill(backend_pid as libc::pid_t, libc::SIGTERM) };
             }
         }) {
@@ -262,11 +372,21 @@ fn run_backend_once(
         }
     };
 
-    let status = child.wait()?;
+    let outcome = loop {
+        if !adapter_identity.matches(lease) {
+            let _ = child.kill();
+            let _ = child.wait();
+            break BackendRunOutcome::AdapterChanged;
+        }
+        if let Some(status) = child.try_wait()? {
+            break BackendRunOutcome::Exited(format!("backend exited with {status}"));
+        }
+        thread::sleep(ADAPTER_POLL_INTERVAL);
+    };
     broker_thread
         .join()
         .map_err(|_| io::Error::other("keybox broker thread panicked"))?;
-    Ok(format!("backend exited with {status}"))
+    Ok(outcome)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -302,13 +422,40 @@ fn backend_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> Backen
     }
 }
 
-fn supervise_backend(module_dir: PathBuf, adapter_pid: u32, root: Arc<TrustedDir>) {
+fn adapter_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> AdapterRetryPlan {
+    if runtime >= ADAPTER_STABLE_INTERVAL {
+        return AdapterRetryPlan {
+            rapid_failures: 0,
+            delay: Duration::from_secs(1),
+        };
+    }
+    let rapid_failures = previous_rapid_failures.saturating_add(1);
+    let backoff_seconds = 1u64 << rapid_failures.min(5);
+    AdapterRetryPlan {
+        rapid_failures,
+        delay: Duration::from_secs(backoff_seconds).min(ADAPTER_MAX_BACKOFF),
+    }
+}
+
+fn supervise_backend(
+    module_dir: PathBuf,
+    adapter_identity: Arc<AdapterIdentity>,
+    root: Arc<TrustedDir>,
+) {
     let mut rapid_failures = 0u32;
     loop {
+        let Some(lease) = adapter_identity.current() else {
+            thread::sleep(ADAPTER_POLL_INTERVAL);
+            continue;
+        };
         let started = Instant::now();
-        let outcome = run_backend_once(&module_dir, adapter_pid, Arc::clone(&root));
+        let outcome = run_backend_once(&module_dir, lease, &adapter_identity, Arc::clone(&root));
         match outcome {
-            Ok(message) => eprintln!("cleverestrickyd: {message}"),
+            Ok(BackendRunOutcome::AdapterChanged) => {
+                rapid_failures = 0;
+                continue;
+            }
+            Ok(BackendRunOutcome::Exited(message)) => eprintln!("cleverestrickyd: {message}"),
             Err(error) => eprintln!("cleverestrickyd: backend launch/wait failed: {error}"),
         }
 
@@ -326,17 +473,18 @@ fn supervise_backend(module_dir: PathBuf, adapter_pid: u32, root: Arc<TrustedDir
 
 fn spawn_capability_workers(
     listener: UnixListener,
-    adapter_pid: u32,
+    adapter_identity: Arc<AdapterIdentity>,
     root: Arc<TrustedDir>,
 ) -> io::Result<()> {
     for index in 0..CAPABILITY_WORKERS {
         let worker_listener = listener.try_clone()?;
         let worker_root = Arc::clone(&root);
+        let worker_identity = Arc::clone(&adapter_identity);
         thread::Builder::new()
             .name(format!("ct-file-ipc-{index}"))
             .spawn(move || {
                 if let Err(error) =
-                    serve_capability_worker(worker_listener, adapter_pid, worker_root)
+                    serve_capability_worker(worker_listener, worker_identity, worker_root)
                 {
                     eprintln!("cleverestrickyd: file IPC worker failed: {error}");
                     process::exit(1);
@@ -348,7 +496,7 @@ fn spawn_capability_workers(
 
 fn serve_capability_worker(
     listener: UnixListener,
-    adapter_pid: u32,
+    adapter_identity: Arc<AdapterIdentity>,
     root: Arc<TrustedDir>,
 ) -> io::Result<()> {
     let mut scratch = vec![0u8; STREAM_COPY_BYTES];
@@ -365,9 +513,10 @@ fn serve_capability_worker(
         };
         client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
         client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
-        let peer_is_adapter = u32::try_from(credentials.pid)
-            .ok()
-            .is_some_and(|pid| pid == adapter_pid);
+        let peer_pid = u32::try_from(credentials.pid).ok();
+        let peer_is_adapter = adapter_identity
+            .current()
+            .is_some_and(|lease| peer_pid == Some(lease.pid));
         if let Err(error) =
             handle_capability_request(&mut client, peer_is_adapter, &root, &mut scratch)
         {
@@ -407,8 +556,13 @@ fn handle_capability_request(
     }
 }
 
-fn serve_web(listener: UnixListener, adapter_pid: u32) -> io::Result<()> {
-    let mut adapter: Option<UnixStream> = None;
+struct RegisteredAdapter {
+    stream: UnixStream,
+    lease: AdapterLease,
+}
+
+fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> io::Result<()> {
+    let mut adapter: Option<RegisteredAdapter> = None;
     let mut relay_buffer = vec![0u8; STREAM_COPY_BYTES];
     loop {
         let (mut client, _) = match listener.accept() {
@@ -430,13 +584,28 @@ fn serve_web(listener: UnixListener, adapter_pid: u32) -> io::Result<()> {
                 continue;
             }
         };
-        let peer_is_adapter = u32::try_from(credentials.pid)
-            .ok()
-            .is_some_and(|pid| pid == adapter_pid);
+        if adapter
+            .as_ref()
+            .is_some_and(|registered| !adapter_identity.matches(registered.lease))
+        {
+            adapter = None;
+        }
+        let peer_pid = u32::try_from(credentials.pid).ok();
+        let peer_lease = adapter_identity
+            .current()
+            .filter(|lease| peer_pid == Some(lease.pid));
 
         match header.opcode {
             OP_ADAPTER_REGISTER => {
-                if !peer_is_adapter || header.flags != 0 || header.payload_len != 0 {
+                let Some(lease) = peer_lease else {
+                    let _ = reply_text_error(
+                        &mut client,
+                        OP_ADAPTER_REGISTER,
+                        "invalid adapter registration",
+                    );
+                    continue;
+                };
+                if header.flags != 0 || header.payload_len != 0 {
                     let _ = reply_text_error(
                         &mut client,
                         OP_ADAPTER_REGISTER,
@@ -445,7 +614,10 @@ fn serve_web(listener: UnixListener, adapter_pid: u32) -> io::Result<()> {
                     continue;
                 }
                 write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok")?;
-                adapter = Some(client);
+                adapter = Some(RegisteredAdapter {
+                    stream: client,
+                    lease,
+                });
             }
             OP_PING if header.flags == 0 && header.payload_len == 0 => {
                 write_frame(&mut client, OP_PING, 0, b"pong")?;
@@ -472,16 +644,19 @@ fn serve_web(listener: UnixListener, adapter_pid: u32) -> io::Result<()> {
 fn forward_web_request_with_timeout(
     client: &mut UnixStream,
     request: FrameHeader,
-    adapter: &mut Option<UnixStream>,
+    adapter: &mut Option<RegisteredAdapter>,
     scratch: &mut [u8],
     timeout: Duration,
 ) -> io::Result<()> {
-    let target = adapter.as_mut().ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::NotConnected,
-            "Android adapter is unavailable",
-        )
-    })?;
+    let target = &mut adapter
+        .as_mut()
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Android adapter is unavailable",
+            )
+        })?
+        .stream;
     target.set_read_timeout(Some(timeout))?;
     target.set_write_timeout(Some(timeout))?;
     write_header(target, request)?;
@@ -610,7 +785,13 @@ mod tests {
 
         write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"request").unwrap();
         let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
-        let mut adapter_slot = Some(daemon_adapter);
+        let mut adapter_slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
         let mut relay_scratch = vec![0u8; STREAM_COPY_BYTES];
         forward_web_request_with_timeout(
             &mut daemon_web,
@@ -704,7 +885,13 @@ mod tests {
         });
         write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"parallel").unwrap();
         let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
-        let mut slot = Some(daemon_adapter);
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
         let mut relay_scratch = vec![0u8; STREAM_COPY_BYTES];
         forward_web_request_with_timeout(
             &mut daemon_web,
@@ -793,7 +980,13 @@ mod tests {
         drop(adapter);
         write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"disconnect").unwrap();
         let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
-        let mut slot = Some(daemon_adapter);
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
         let mut scratch = vec![0u8; STREAM_COPY_BYTES];
         assert!(forward_web_request_with_timeout(
             &mut daemon_web,
@@ -808,7 +1001,13 @@ mod tests {
         let (daemon_adapter, _adapter) = UnixStream::pair().unwrap();
         write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"timeout").unwrap();
         let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
-        let mut slot = Some(daemon_adapter);
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
         assert!(forward_web_request_with_timeout(
             &mut daemon_web,
             request,
@@ -817,5 +1016,31 @@ mod tests {
             Duration::from_millis(25),
         )
         .is_err());
+    }
+
+    #[test]
+    fn adapter_identity_rejects_stale_generation() {
+        let identity = AdapterIdentity::default();
+        let first = identity.publish(101);
+        assert!(identity.matches(first));
+        identity.invalidate(first);
+        assert!(!identity.matches(first));
+        let second = identity.publish(101);
+        assert_ne!(first.generation, second.generation);
+        assert!(!identity.matches(first));
+        assert!(identity.matches(second));
+    }
+
+    #[test]
+    fn adapter_restart_backoff_is_bounded_and_resets_after_stability() {
+        let mut failures = 0;
+        for _ in 0..16 {
+            let plan = adapter_retry_plan(failures, Duration::from_secs(1));
+            assert!(plan.delay <= ADAPTER_MAX_BACKOFF);
+            failures = plan.rapid_failures;
+        }
+        let stable = adapter_retry_plan(failures, ADAPTER_STABLE_INTERVAL);
+        assert_eq!(stable.rapid_failures, 0);
+        assert_eq!(stable.delay, Duration::from_secs(1));
     }
 }

@@ -89,7 +89,8 @@ fi
 ui_print "- Extracting module files"
 extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
-extract "$ZIPFILE" 'service.sh'      "$MODPATH"
+extract "$ZIPFILE" 'service.sh' "$MODPATH"
+extract "$ZIPFILE" 'action.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
@@ -111,7 +112,6 @@ if [ -L "$MODPATH/webroot" ] || [ ! -d "$MODPATH/webroot" ] || \
   [ -L "$MODPATH/webroot/ux.js" ] || [ ! -f "$MODPATH/webroot/ux.js" ]; then
   abort "! Native WebUI files are unsafe"
 fi
-rm -f "$MODPATH/action.sh" "$MODPATH/action.sh.sha256" || abort "! Could not remove legacy WebUI launcher"
 
 case "$ARCH" in
   "x64")
@@ -135,7 +135,7 @@ case "$ARCH" in
     ;;
 esac
 
-for module_payload in module.prop post-fs-data.sh service.sh service.apk sepolicy.rule daemon \
+for module_payload in module.prop post-fs-data.sh service.sh action.sh service.apk sepolicy.rule daemon \
   "lib$SONAME.so" inject webui_bridge cleverestrickyd cleverestricky_backend; do
   payload_path="$MODPATH/$module_payload"
   if [ -L "$payload_path" ] || [ ! -f "$payload_path" ]; then
@@ -144,7 +144,7 @@ for module_payload in module.prop post-fs-data.sh service.sh service.apk sepolic
 done
 
 chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
-  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/post-fs-data.sh" \
+  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/post-fs-data.sh" \
   || abort "! Could not set module executable permissions"
 
 CONFIG_DIR=/data/adb/cleverestricky
@@ -315,3 +315,83 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   || abort "! Could not set sensitive-property switch ownership"
 [ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging" \
   || abort "! Could not set debug logging switch ownership"
+
+normalize_conflicting_module_name() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_.-'
+}
+
+is_conflicting_attestation_module() {
+  conflict_id=$1
+  conflict_name=$2
+
+  case "$conflict_id" in
+    tricky_store|teesim) return 0 ;;
+  esac
+
+  normalized_conflict_name=$(normalize_conflicting_module_name "$conflict_name")
+  case "$normalized_conflict_name" in
+    trickystore|trickystoreoss|teesimulator|teesimulatorrs) return 0 ;;
+  esac
+
+  return 1
+}
+
+remove_conflicting_modules_from_root() {
+  modules_root=$1
+  [ -e "$modules_root" ] || return 0
+  [ -L "$modules_root" ] && abort "! Refusing symlinked modules root: $modules_root"
+  [ -d "$modules_root" ] || abort "! Modules root is not a directory: $modules_root"
+
+  for candidate in "$modules_root"/*; do
+    [ -e "$candidate" ] || [ -L "$candidate" ] || continue
+    candidate_dir=${candidate##*/}
+    [ "$candidate_dir" = "cleverestricky" ] && continue
+
+    if [ -L "$candidate" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          ui_print "- Removing conflicting module link: $candidate_dir"
+          rm -f "$candidate" || abort "! Could not remove conflicting module link: $candidate_dir"
+          ;;
+      esac
+      continue
+    fi
+
+    [ -d "$candidate" ] || continue
+    prop_file="$candidate/module.prop"
+
+    if [ -L "$prop_file" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          abort "! Refusing unsafe conflicting module metadata: $candidate_dir/module.prop"
+          ;;
+      esac
+      continue
+    fi
+
+    if [ ! -f "$prop_file" ]; then
+      case "$candidate_dir" in
+        tricky_store|teesim)
+          ui_print "- Removing incomplete conflicting module: $candidate_dir"
+          rm -rf "$candidate" || abort "! Could not remove incomplete conflicting module: $candidate_dir"
+          ;;
+      esac
+      continue
+    fi
+
+    conflict_id=$(grep_prop id "$prop_file" 2>/dev/null || true)
+    conflict_name=$(grep_prop name "$prop_file" 2>/dev/null || true)
+    [ "$conflict_id" = "cleverestricky" ] && continue
+
+    if is_conflicting_attestation_module "$conflict_id" "$conflict_name"; then
+      ui_print "- Removing conflicting module: ${conflict_name:-$candidate_dir} (${conflict_id:-unknown})"
+      rm -rf "$candidate" || abort "! Could not remove conflicting module: $candidate_dir"
+      if [ -e "$candidate" ] || [ -L "$candidate" ]; then
+        abort "! Conflicting module still exists after removal: $candidate_dir"
+      fi
+    fi
+  done
+}
+
+remove_conflicting_modules_from_root /data/adb/modules
+remove_conflicting_modules_from_root /data/adb/modules_update

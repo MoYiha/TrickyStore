@@ -5,7 +5,6 @@ import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -168,15 +167,19 @@ class WebServerUploadTest {
 
     @Test
     fun testValidUploadDoesNotReportSuccessWhenBackendActivationFails() {
+        KeyboxLoader.activeSetOverride = { true }
+        assertEquals(200, uploadKeybox("active.xml", TestKeyboxFixtures.validEcKeyboxXml))
+        val activeKeyboxCount = cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount()
+
         KeyboxLoader.activeSetOverride = { false }
         BackendRecovery.recoveryOverride = { false }
-
         val responseCode = uploadKeybox("activation_failure.xml", TestKeyboxFixtures.validEcKeyboxXml)
 
-        assertEquals(HttpURLConnection.HTTP_INTERNAL_ERROR, responseCode)
-        assertThrows(IllegalStateException::class.java) {
-            cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount()
-        }
+        assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, responseCode)
+        // Activation failure intentionally marks backend health false. Reset only the test seam so
+        // getKeyboxCount can inspect the immutable managed snapshot without publishing new keys.
+        KeyboxLoader.resetForTesting()
+        assertEquals(activeKeyboxCount, cleveres.tricky.cleverestech.keystore.CertHack.getKeyboxCount())
         assert(File(configDir, "keyboxes/activation_failure.xml").exists())
     }
 

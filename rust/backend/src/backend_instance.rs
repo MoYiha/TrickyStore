@@ -61,6 +61,23 @@ pub fn initialize() -> io::Result<()> {
         .map_err(|_| io::Error::other("backend instance identity initialized twice"))
 }
 
+#[cfg(test)]
+pub fn initialize_for_test(auth: [u8; BACKEND_AUTH_BYTES]) -> io::Result<()> {
+    if auth.iter().all(|byte| *byte == 0) {
+        return Err(io::Error::other("backend capability is invalid"));
+    }
+    if let Some(existing) = INSTANCE.get() {
+        return if matches(&existing.auth, &auth) {
+            Ok(())
+        } else {
+            Err(io::Error::other("backend instance already initialized"))
+        };
+    }
+    INSTANCE
+        .set(BackendInstance::generate(auth)?)
+        .map_err(|_| io::Error::other("backend instance already initialized"))
+}
+
 pub fn handle(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     let instance = INSTANCE
         .get()

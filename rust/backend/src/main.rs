@@ -953,7 +953,8 @@ mod tests {
 
     #[test]
     fn backend_ping_uses_fixed_request_and_response_bounds() {
-        backend_instance::initialize().unwrap();
+        let auth = std::array::from_fn(|index| (index as u8).wrapping_add(1));
+        backend_instance::initialize_for_test(auth).unwrap();
         assert_eq!(
             opcode_request_limit(backend_instance::OP_BACKEND_PING),
             Some(backend_instance::REQUEST_BYTES)
@@ -962,11 +963,10 @@ mod tests {
             opcode_response_limit(backend_instance::OP_BACKEND_PING),
             Some(backend_instance::RESPONSE_BYTES)
         );
-        let response = handle_request(
-            backend_instance::OP_BACKEND_PING,
-            vec![backend_instance::HANDSHAKE_VERSION],
-        )
-        .unwrap();
+        let mut request = Vec::with_capacity(backend_instance::REQUEST_BYTES);
+        request.push(backend_instance::HANDSHAKE_VERSION);
+        request.extend_from_slice(&auth);
+        let response = handle_request(backend_instance::OP_BACKEND_PING, request).unwrap();
         assert_eq!(response.len(), backend_instance::RESPONSE_BYTES);
     }
 

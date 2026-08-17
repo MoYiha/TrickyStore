@@ -427,27 +427,23 @@ object Config {
             updateKeyBoxesSync()
         }
 
-    fun updateKeyBoxesSync() {
+    fun updateKeyBoxesSync(): Boolean =
         updateKeyBoxesSyncWith(
             revocationProvider = { KeyboxVerifier.fetchCrl() },
             verifier = { keybox, crl -> KeyboxVerifier.verifyKeybox(keybox, crl) },
         )
-    }
 
-    fun updateKeyBoxesSync(revokedSerials: Set<String>?) {
+    fun updateKeyBoxesSync(revokedSerials: Set<String>?): Boolean =
         updateKeyBoxesSyncWith(
             revocationProvider = { revokedSerials },
             verifier = { keybox, revoked -> KeyboxVerifier.verifyKeyboxLegacy(keybox, revoked) },
         )
-    }
 
     @androidx.annotation.VisibleForTesting
     internal fun updateKeyBoxesSync(
         revokedSerials: Set<String>?,
         verifier: (CertHack.KeyBox, Set<String>) -> KeyboxVerifier.Status,
-    ) {
-        updateKeyBoxesSyncWith({ revokedSerials }, verifier)
-    }
+    ): Boolean = updateKeyBoxesSyncWith({ revokedSerials }, verifier)
 
     internal fun rebuildBackendKeyboxesAfterRestart(crl: CrlWire.Handle): Boolean {
         cachedLegacyKeyboxes = emptyList()

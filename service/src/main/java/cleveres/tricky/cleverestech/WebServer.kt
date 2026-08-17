@@ -215,14 +215,15 @@ class WebServer(
 
     private val fileLock = Any()
 
-    private fun updateKeyboxesFromConfiguredRevocationSource() {
-        val legacyFetcher = crlFetcher
-        if (legacyFetcher == null) {
-            Config.updateKeyBoxesSync()
-        } else {
-            Config.updateKeyBoxesSync(legacyFetcher())
-        }
-    }
+    private fun updateKeyboxesFromConfiguredRevocationSource(): Boolean =
+        crlFetcher?.let { Config.updateKeyBoxesSync(it()) } ?: Config.updateKeyBoxesSync()
+
+    private fun keyboxActivationFailureResponse(): Response =
+        secureResponse(
+            Response.Status.SERVICE_UNAVAILABLE,
+            "text/plain",
+            "Keybox activation unavailable; previous active snapshot preserved",
+        )
 
     @Suppress("DEPRECATION")
     private fun getParam(
@@ -1126,7 +1127,9 @@ class WebServer(
 
             if (filename != null && password != null) {
                 if (CboxManager.unlock(filename, password, pubKey)) {
-                    updateKeyboxesFromConfiguredRevocationSource()
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
                 } else {
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
@@ -1200,7 +1203,9 @@ class WebServer(
             val id = getParam(session, "id")
             if (id != null) {
                 if (ServerManager.removeServer(id)) {
-                    updateKeyboxesFromConfiguredRevocationSource()
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                 }
                 return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Server not found")
@@ -1220,7 +1225,9 @@ class WebServer(
                 val s = ServerManager.findServer(id)
                 if (s != null) {
                     val refreshed = ServerManager.fetchFromServer(s)
-                    updateKeyboxesFromConfiguredRevocationSource()
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     if (refreshed) {
                         return secureResponse(Response.Status.OK, "text/plain", "Refreshed")
                     } else {
@@ -1605,7 +1612,9 @@ class WebServer(
                             keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
-                        updateKeyboxesFromConfiguredRevocationSource()
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     }
@@ -1631,7 +1640,9 @@ class WebServer(
                     }
                     try {
                         SecureFile.writeText(file, content)
-                        updateKeyboxesFromConfiguredRevocationSource()
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     } catch (e: Exception) {
@@ -1664,7 +1675,9 @@ class WebServer(
                                 }
                                 CboxManager.refresh()
                             }
-                            updateKeyboxesFromConfiguredRevocationSource()
+                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                return keyboxActivationFailureResponse()
+                            }
                             return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                         } else {
                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
@@ -1770,7 +1783,9 @@ class WebServer(
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         target.setLastModified(System.currentTimeMillis())
                     }
-                    updateKeyboxesFromConfiguredRevocationSource()
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Environment Reset")
                 }
             } catch (e: Exception) {
@@ -1935,7 +1950,9 @@ class WebServer(
                             WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
                             DeviceTemplateManager.initialize(configDir)
                             Config.refreshRestoredConfiguration().getOrThrow()
-                            updateKeyboxesFromConfiguredRevocationSource()
+                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                return keyboxActivationFailureResponse()
+                            }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
                     } finally {

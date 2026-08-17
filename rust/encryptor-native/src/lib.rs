@@ -58,30 +58,32 @@ struct CboxJson<'a> {
     xml_content: &'a str,
 }
 
+fn random_material<const N: usize>() -> Result<Zeroizing<[u8; N]>, EncryptError> {
+    let mut bytes = [std::mem::MaybeUninit::<u8>::uninit(); N];
+    let initialized =
+        getrandom::fill_uninit(&mut bytes).map_err(|_| EncryptError::RandomUnavailable)?;
+    let array: &mut [u8; N] = initialized
+        .try_into()
+        .map_err(|_| EncryptError::RandomUnavailable)?;
+    Ok(Zeroizing::new(*array))
+}
+
 pub fn encrypt_cbox_v2(
     author_bytes: &[u8],
     xml_bytes: &[u8],
     signature_base64: &[u8],
     password: &str,
 ) -> Result<Vec<u8>, EncryptError> {
-    let mut salt = [0u8; SALT_BYTES];
-    let mut iv = [0u8; IV_BYTES];
-    if getrandom::fill(&mut salt).is_err() || getrandom::fill(&mut iv).is_err() {
-        salt.zeroize();
-        iv.zeroize();
-        return Err(EncryptError::RandomUnavailable);
-    }
-    let result = encrypt_cbox_v2_with_nonce(
+    let salt = random_material::<SALT_BYTES>()?;
+    let iv = random_material::<IV_BYTES>()?;
+    encrypt_cbox_v2_with_nonce(
         author_bytes,
         xml_bytes,
         signature_base64,
         password,
         &salt,
         &iv,
-    );
-    salt.zeroize();
-    iv.zeroize();
-    result
+    )
 }
 
 fn encrypt_cbox_v2_with_nonce(
@@ -490,22 +492,30 @@ mod tests {
 </Keybox>
 </AndroidAttestation>"#;
 
+    fn valid_test_password() -> String {
+        std::iter::repeat_n('p', 16).collect()
+    }
+
+    fn short_test_password() -> String {
+        std::iter::repeat_n('p', 4).collect()
+    }
+
     #[test]
-    fn deterministic_v2_output_round_trips_through_shared_crypto_core() {
-        let salt = [0x11u8; SALT_BYTES];
-        let iv = [0x22u8; IV_BYTES];
-        let password = "correct horse battery staple";
+    fn v2_output_round_trips_through_shared_crypto_core() {
+        let salt = random_material::<SALT_BYTES>().unwrap();
+        let iv = random_material::<IV_BYTES>().unwrap();
+        let password = valid_test_password();
         let output = encrypt_cbox_v2_with_nonce(
             b"mobile-author",
             VALID_XML,
             b"ZHVtbXktc2lnbmF0dXJl",
-            password,
+            &password,
             &salt,
             &iv,
         )
         .unwrap();
         assert!(shared_header(&output));
-        let payload = decrypt_cbox(output, password).unwrap();
+        let payload = decrypt_cbox(output, &password).unwrap();
         assert_eq!(payload.author, "mobile-author");
         assert_eq!(payload.xml_content.as_bytes(), VALID_XML);
         assert_eq!(payload.signature_base64, "ZHVtbXktc2lnbmF0dXJl");
@@ -514,41 +524,43 @@ mod tests {
 
     #[test]
     fn malformed_xml_and_passwords_fail_closed() {
-        let salt = [0u8; SALT_BYTES];
-        let iv = [1u8; IV_BYTES];
+        let salt = random_material::<SALT_BYTES>().unwrap();
+        let iv = random_material::<IV_BYTES>().unwrap();
+        let password = valid_test_password();
+        let short_password = short_test_password();
         assert_eq!(
-            encrypt_cbox_v2_with_nonce(b"", VALID_XML, b"", "123456789012", &salt, &iv),
+            encrypt_cbox_v2_with_nonce(b"", VALID_XML, b"", &password, &salt, &iv),
             Err(EncryptError::InvalidInput)
         );
         assert_eq!(
-            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", "short", &salt, &iv),
+            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", &short_password, &salt, &iv),
             Err(EncryptError::InvalidInput)
         );
         let dtd = br#"<!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><AndroidAttestation><NumberOfKeyboxes>0</NumberOfKeyboxes></AndroidAttestation>"#;
         assert_eq!(
-            encrypt_cbox_v2_with_nonce(b"author", dtd, b"", "123456789012", &salt, &iv),
+            encrypt_cbox_v2_with_nonce(b"author", dtd, b"", &password, &salt, &iv),
             Err(EncryptError::InvalidInput)
         );
     }
 
     #[test]
     fn current_header_is_authenticated() {
-        let salt = [2u8; SALT_BYTES];
-        let iv = [3u8; IV_BYTES];
-        let password = "123456789012";
+        let salt = random_material::<SALT_BYTES>().unwrap();
+        let iv = random_material::<IV_BYTES>().unwrap();
+        let password = valid_test_password();
         let mut output =
-            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", password, &salt, &iv).unwrap();
+            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", &password, &salt, &iv).unwrap();
         output[8] ^= 1;
-        assert!(decrypt_cbox(output, password).is_err());
+        assert!(decrypt_cbox(output, &password).is_err());
     }
 
     #[test]
     fn stored_ciphertext_header_is_bounded_and_versioned() {
-        let salt = [4u8; SALT_BYTES];
-        let iv = [5u8; IV_BYTES];
+        let salt = random_material::<SALT_BYTES>().unwrap();
+        let iv = random_material::<IV_BYTES>().unwrap();
+        let password = valid_test_password();
         let output =
-            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", "123456789012", &salt, &iv)
-                .unwrap();
+            encrypt_cbox_v2_with_nonce(b"author", VALID_XML, b"", &password, &salt, &iv).unwrap();
         assert!(has_supported_cbox_header(&output));
         assert!(!has_supported_cbox_header(b"CBOX"));
     }
