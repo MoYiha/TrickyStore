@@ -2,6 +2,7 @@
 members = [
     "attestation-core",
     "backend",
+    "cbox-recovery-core",
     "certificate-core",
     "crl-core",
     "crypto-core",
