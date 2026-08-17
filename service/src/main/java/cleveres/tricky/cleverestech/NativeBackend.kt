@@ -307,13 +307,16 @@ object NativeBackend {
         try {
             readFully(input, response)
             if (header.flags == FLAG_ERROR) {
-                if (response.size != BACKEND_STATUS_BYTES) {
-                    throw IOException("Invalid typed backend error response")
-                }
-                val status = BackendStatus.fromWire(response[0].toInt() and 0xff)
-                    ?: throw IOException("Unknown typed backend status")
+                val status =
+                    if (response.size == BACKEND_STATUS_BYTES) {
+                        BackendStatus.fromWire(response[0].toInt() and 0xff)
+                    } else {
+                        null
+                    }
                 response.fill(0)
-                if (status == BackendStatus.REJECTED) return null
+                // Human-readable legacy error payloads are intentionally opaque to managed code.
+                // Only a fixed one-byte typed status can influence recovery behavior.
+                if (status == null || status == BackendStatus.REJECTED) return null
                 throw RustBackendStateException(status)
             }
             return response
@@ -433,7 +436,7 @@ object NativeBackend {
         val flags = readI32(readHeaderBuffer, 8)
         if (flags != 0 && flags != FLAG_ERROR) throw IOException("Unsupported backend IPC flags")
         val payloadLength = readU32(readHeaderBuffer, 12)
-        val limit = if (flags == FLAG_ERROR) BACKEND_STATUS_BYTES else responseLimit
+        val limit = if (flags == FLAG_ERROR) MAX_BACKEND_ERROR_BYTES else responseLimit
         if (payloadLength > limit.toLong()) throw IOException("Backend response exceeds operation bound")
         return FrameHeader(flags, payloadLength.toInt())
     }
@@ -600,6 +603,7 @@ object NativeBackend {
     private const val BACKEND_PING_REQUEST_BYTES = 1
     private const val BACKEND_PING_RESPONSE_BYTES = 19
     private const val BACKEND_STATUS_BYTES = 1
+    private const val MAX_BACKEND_ERROR_BYTES = 256
     private const val IO_TIMEOUT_MS = 60_000
     private const val MAX_STARTUP_WAIT_MS = 30_000L
     private const val STARTUP_RETRY_INITIAL_MS = 25L
