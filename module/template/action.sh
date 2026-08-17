@@ -1,0 +1,393 @@
+#!/system/bin/sh
+set -e
+
+MODULE_ID="cleverestricky"
+MODULE_NAME="CleveresTricky"
+MODDIR="/data/adb/modules/$MODULE_ID"
+CONFIG_DIR="/data/adb/$MODULE_ID"
+SHELL_DIR="/data/user_de/0/com.android.shell"
+FROM_WEBUI="${FROM_WEBUI:-0}"
+LANG_CODE="en"
+RAW_LOCALE=""
+tmp=""
+
+umask 077
+
+cleanup() {
+    if [ -n "$tmp" ] && [ -e "$tmp" ]; then
+        rm -rf "$tmp" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+detect_language() {
+    RAW_LOCALE=""
+
+    for locale_candidate in \
+        "$(getprop persist.sys.locale 2>/dev/null || true)" \
+        "$(settings get system system_locales 2>/dev/null | cut -d, -f1 || true)" \
+        "$(getprop ro.product.locale 2>/dev/null || true)" \
+        "$(getprop persist.sys.language 2>/dev/null || true)"; do
+        case "$locale_candidate" in
+            ""|null|NULL) ;;
+            *)
+                RAW_LOCALE="$locale_candidate"
+                break
+                ;;
+        esac
+    done
+
+    normalized_locale=$(printf '%s' "$RAW_LOCALE" | tr '_' '-' | tr '[:upper:]' '[:lower:]' 2>/dev/null || true)
+    case "$normalized_locale" in
+        tr|tr-*) LANG_CODE="tr" ;;
+        zh|zh-*) LANG_CODE="zh" ;;
+        es|es-*) LANG_CODE="es" ;;
+        de|de-*) LANG_CODE="de" ;;
+        ru|ru-*) LANG_CODE="ru" ;;
+        id|id-*|in|in-*) LANG_CODE="id" ;;
+        hi|hi-*) LANG_CODE="hi" ;;
+        ar|ar-*) LANG_CODE="ar" ;;
+        *) LANG_CODE="en" ;;
+    esac
+}
+
+message() {
+    case "$LANG_CODE:$1" in
+        tr:GENERATING) printf '%s\n' "Acil durum raporu oluşturuluyor ..." ;;
+        tr:BASIC) printf '%s\n' "Temel bilgiler toplanıyor ..." ;;
+        tr:ADDING) printf '%s\n' "Ekleniyor:" ;;
+        tr:LOGS) printf '%s\n' "Sistem günlükleri toplanıyor ..." ;;
+        tr:ROOT_LOGS) printf '%s\n' "Root ortamı günlükleri toplanıyor ..." ;;
+        tr:COMPRESSING) printf '%s\n' "Rapor sıkıştırılıyor ..." ;;
+        tr:GENERATED) printf '%s\n' "Rapor oluşturuldu:" ;;
+        tr:SHARING) printf '%s\n' "Rapor paylaşılmaya çalışılıyor ..." ;;
+        tr:SHARE_FAILED) printf '%s\n' "Paylaşım kullanılamıyor; rapor yerel olarak kaydedildi." ;;
+        tr:ARCHIVE_FAILED) printf '%s\n' "Rapor arşivi oluşturulamadı." ;;
+        tr:REPORT_INFO) printf '%s\n' "CleveresTricky acil durum raporu. Bu arşiv, sorun gidermek için cihaz/modül durumunu ve tanılama günlüklerini içerir." ;;
+        tr:REPORT_LANGUAGE) printf '%s\n' "Rapor dili:" ;;
+        tr:NOTICE) printf '%s\n' "Bu arşiv hassas sistem günlükleri içerebilir. Paylaşmadan önce inceleyin. CleveresTricky keybox XML/CBOX dosyaları bilerek toplanmaz." ;;
+
+        zh:GENERATING) printf '%s\n' "正在生成紧急诊断报告 ..." ;;
+        zh:BASIC) printf '%s\n' "正在收集基本信息 ..." ;;
+        zh:ADDING) printf '%s\n' "正在添加：" ;;
+        zh:LOGS) printf '%s\n' "正在收集系统日志 ..." ;;
+        zh:ROOT_LOGS) printf '%s\n' "正在收集 Root 环境日志 ..." ;;
+        zh:COMPRESSING) printf '%s\n' "正在压缩报告 ..." ;;
+        zh:GENERATED) printf '%s\n' "报告已生成：" ;;
+        zh:SHARING) printf '%s\n' "正在尝试分享报告 ..." ;;
+        zh:SHARE_FAILED) printf '%s\n' "无法使用分享功能；报告已保存在本地。" ;;
+        zh:ARCHIVE_FAILED) printf '%s\n' "无法创建报告压缩包。" ;;
+        zh:REPORT_INFO) printf '%s\n' "CleveresTricky 紧急诊断报告。此压缩包包含用于故障排查的设备/模块状态和诊断日志。" ;;
+        zh:REPORT_LANGUAGE) printf '%s\n' "报告语言：" ;;
+        zh:NOTICE) printf '%s\n' "此压缩包可能包含敏感的系统日志。分享前请先检查。CleveresTricky keybox XML/CBOX 文件不会被主动收集。" ;;
+
+        es:GENERATING) printf '%s\n' "Generando informe de emergencia ..." ;;
+        es:BASIC) printf '%s\n' "Recopilando información básica ..." ;;
+        es:ADDING) printf '%s\n' "Añadiendo:" ;;
+        es:LOGS) printf '%s\n' "Recopilando registros del sistema ..." ;;
+        es:ROOT_LOGS) printf '%s\n' "Recopilando registros del entorno root ..." ;;
+        es:COMPRESSING) printf '%s\n' "Comprimiendo el informe ..." ;;
+        es:GENERATED) printf '%s\n' "Informe generado en:" ;;
+        es:SHARING) printf '%s\n' "Intentando compartir el informe ..." ;;
+        es:SHARE_FAILED) printf '%s\n' "No se pudo compartir; el informe se guardó localmente." ;;
+        es:ARCHIVE_FAILED) printf '%s\n' "No se pudo crear el archivo del informe." ;;
+        es:REPORT_INFO) printf '%s\n' "Informe de emergencia de CleveresTricky. Este archivo contiene el estado del dispositivo/módulo y registros de diagnóstico para solucionar problemas." ;;
+        es:REPORT_LANGUAGE) printf '%s\n' "Idioma del informe:" ;;
+        es:NOTICE) printf '%s\n' "Este archivo puede contener registros sensibles del sistema. Revísalo antes de compartirlo. Los archivos keybox XML/CBOX de CleveresTricky se excluyen deliberadamente." ;;
+
+        de:GENERATING) printf '%s\n' "Notfallbericht wird erstellt ..." ;;
+        de:BASIC) printf '%s\n' "Grundlegende Informationen werden gesammelt ..." ;;
+        de:ADDING) printf '%s\n' "Wird hinzugefügt:" ;;
+        de:LOGS) printf '%s\n' "Systemprotokolle werden gesammelt ..." ;;
+        de:ROOT_LOGS) printf '%s\n' "Root-Umgebungsprotokolle werden gesammelt ..." ;;
+        de:COMPRESSING) printf '%s\n' "Bericht wird komprimiert ..." ;;
+        de:GENERATED) printf '%s\n' "Bericht erstellt unter:" ;;
+        de:SHARING) printf '%s\n' "Bericht wird zum Teilen geöffnet ..." ;;
+        de:SHARE_FAILED) printf '%s\n' "Teilen ist nicht verfügbar; der Bericht wurde lokal gespeichert." ;;
+        de:ARCHIVE_FAILED) printf '%s\n' "Das Berichtsarchiv konnte nicht erstellt werden." ;;
+        de:REPORT_INFO) printf '%s\n' "CleveresTricky-Notfallbericht. Dieses Archiv enthält Geräte-/Modulstatus und Diagnoseprotokolle zur Fehleranalyse." ;;
+        de:REPORT_LANGUAGE) printf '%s\n' "Berichtssprache:" ;;
+        de:NOTICE) printf '%s\n' "Dieses Archiv kann sensible Systemprotokolle enthalten. Vor dem Teilen prüfen. CleveresTricky-Keybox-Dateien im XML/CBOX-Format werden bewusst nicht gesammelt." ;;
+
+        ru:GENERATING) printf '%s\n' "Создаётся аварийный диагностический отчёт ..." ;;
+        ru:BASIC) printf '%s\n' "Сбор основной информации ..." ;;
+        ru:ADDING) printf '%s\n' "Добавляется:" ;;
+        ru:LOGS) printf '%s\n' "Сбор системных журналов ..." ;;
+        ru:ROOT_LOGS) printf '%s\n' "Сбор журналов root-среды ..." ;;
+        ru:COMPRESSING) printf '%s\n' "Сжатие отчёта ..." ;;
+        ru:GENERATED) printf '%s\n' "Отчёт создан:" ;;
+        ru:SHARING) printf '%s\n' "Попытка открыть отчёт для отправки ..." ;;
+        ru:SHARE_FAILED) printf '%s\n' "Отправка недоступна; отчёт сохранён локально." ;;
+        ru:ARCHIVE_FAILED) printf '%s\n' "Не удалось создать архив отчёта." ;;
+        ru:REPORT_INFO) printf '%s\n' "Аварийный отчёт CleveresTricky. Архив содержит состояние устройства/модуля и диагностические журналы для поиска неисправностей." ;;
+        ru:REPORT_LANGUAGE) printf '%s\n' "Язык отчёта:" ;;
+        ru:NOTICE) printf '%s\n' "Архив может содержать чувствительные системные журналы. Проверьте его перед отправкой. Файлы keybox CleveresTricky XML/CBOX намеренно не собираются." ;;
+
+        id:GENERATING) printf '%s\n' "Membuat laporan darurat ..." ;;
+        id:BASIC) printf '%s\n' "Mengumpulkan informasi dasar ..." ;;
+        id:ADDING) printf '%s\n' "Menambahkan:" ;;
+        id:LOGS) printf '%s\n' "Mengumpulkan log sistem ..." ;;
+        id:ROOT_LOGS) printf '%s\n' "Mengumpulkan log lingkungan root ..." ;;
+        id:COMPRESSING) printf '%s\n' "Mengompresi laporan ..." ;;
+        id:GENERATED) printf '%s\n' "Laporan dibuat di:" ;;
+        id:SHARING) printf '%s\n' "Mencoba membagikan laporan ..." ;;
+        id:SHARE_FAILED) printf '%s\n' "Berbagi tidak tersedia; laporan disimpan secara lokal." ;;
+        id:ARCHIVE_FAILED) printf '%s\n' "Arsip laporan tidak dapat dibuat." ;;
+        id:REPORT_INFO) printf '%s\n' "Laporan darurat CleveresTricky. Arsip ini berisi status perangkat/modul dan log diagnostik untuk pemecahan masalah." ;;
+        id:REPORT_LANGUAGE) printf '%s\n' "Bahasa laporan:" ;;
+        id:NOTICE) printf '%s\n' "Arsip ini dapat berisi log sistem sensitif. Tinjau sebelum membagikan. File keybox XML/CBOX CleveresTricky sengaja tidak dikumpulkan." ;;
+
+        hi:GENERATING) printf '%s\n' "आपातकालीन रिपोर्ट बनाई जा रही है ..." ;;
+        hi:BASIC) printf '%s\n' "मूल जानकारी एकत्र की जा रही है ..." ;;
+        hi:ADDING) printf '%s\n' "जोड़ा जा रहा है:" ;;
+        hi:LOGS) printf '%s\n' "सिस्टम लॉग एकत्र किए जा रहे हैं ..." ;;
+        hi:ROOT_LOGS) printf '%s\n' "रूट वातावरण के लॉग एकत्र किए जा रहे हैं ..." ;;
+        hi:COMPRESSING) printf '%s\n' "रिपोर्ट संपीड़ित की जा रही है ..." ;;
+        hi:GENERATED) printf '%s\n' "रिपोर्ट बनाई गई:" ;;
+        hi:SHARING) printf '%s\n' "रिपोर्ट साझा करने का प्रयास किया जा रहा है ..." ;;
+        hi:SHARE_FAILED) printf '%s\n' "साझा करना उपलब्ध नहीं है; रिपोर्ट स्थानीय रूप से सहेजी गई है।" ;;
+        hi:ARCHIVE_FAILED) printf '%s\n' "रिपोर्ट आर्काइव नहीं बनाया जा सका।" ;;
+        hi:REPORT_INFO) printf '%s\n' "CleveresTricky आपातकालीन रिपोर्ट। इस आर्काइव में समस्या निवारण के लिए डिवाइस/मॉड्यूल स्थिति और डायग्नोस्टिक लॉग शामिल हैं।" ;;
+        hi:REPORT_LANGUAGE) printf '%s\n' "रिपोर्ट भाषा:" ;;
+        hi:NOTICE) printf '%s\n' "इस आर्काइव में संवेदनशील सिस्टम लॉग हो सकते हैं। साझा करने से पहले इसकी समीक्षा करें। CleveresTricky keybox XML/CBOX फ़ाइलें जानबूझकर एकत्र नहीं की जातीं।" ;;
+
+        ar:GENERATING) printf '%s\n' "جارٍ إنشاء تقرير طوارئ ..." ;;
+        ar:BASIC) printf '%s\n' "جارٍ جمع المعلومات الأساسية ..." ;;
+        ar:ADDING) printf '%s\n' "جارٍ إضافة:" ;;
+        ar:LOGS) printf '%s\n' "جارٍ جمع سجلات النظام ..." ;;
+        ar:ROOT_LOGS) printf '%s\n' "جارٍ جمع سجلات بيئة الروت ..." ;;
+        ar:COMPRESSING) printf '%s\n' "جارٍ ضغط التقرير ..." ;;
+        ar:GENERATED) printf '%s\n' "تم إنشاء التقرير في:" ;;
+        ar:SHARING) printf '%s\n' "جارٍ محاولة مشاركة التقرير ..." ;;
+        ar:SHARE_FAILED) printf '%s\n' "المشاركة غير متاحة؛ تم حفظ التقرير محليًا." ;;
+        ar:ARCHIVE_FAILED) printf '%s\n' "تعذر إنشاء أرشيف التقرير." ;;
+        ar:REPORT_INFO) printf '%s\n' "تقرير طوارئ CleveresTricky. يحتوي هذا الأرشيف على حالة الجهاز/الوحدة وسجلات التشخيص لاستكشاف المشكلات." ;;
+        ar:REPORT_LANGUAGE) printf '%s\n' "لغة التقرير:" ;;
+        ar:NOTICE) printf '%s\n' "قد يحتوي هذا الأرشيف على سجلات نظام حساسة. راجعه قبل المشاركة. لا يتم جمع ملفات CleveresTricky keybox بصيغة XML/CBOX عمدًا." ;;
+
+        en:GENERATING|*:GENERATING) printf '%s\n' "Generating emergency report ..." ;;
+        en:BASIC|*:BASIC) printf '%s\n' "Collecting basic information ..." ;;
+        en:ADDING|*:ADDING) printf '%s\n' "Adding:" ;;
+        en:LOGS|*:LOGS) printf '%s\n' "Collecting system logs ..." ;;
+        en:ROOT_LOGS|*:ROOT_LOGS) printf '%s\n' "Collecting root environment logs ..." ;;
+        en:COMPRESSING|*:COMPRESSING) printf '%s\n' "Compressing report ..." ;;
+        en:GENERATED|*:GENERATED) printf '%s\n' "Report generated at:" ;;
+        en:SHARING|*:SHARING) printf '%s\n' "Trying to share the report ..." ;;
+        en:SHARE_FAILED|*:SHARE_FAILED) printf '%s\n' "Sharing is unavailable; the report was saved locally." ;;
+        en:ARCHIVE_FAILED|*:ARCHIVE_FAILED) printf '%s\n' "Could not create the report archive." ;;
+        en:REPORT_INFO|*:REPORT_INFO) printf '%s\n' "CleveresTricky emergency report. This archive contains device/module status and diagnostic logs for troubleshooting." ;;
+        en:REPORT_LANGUAGE|*:REPORT_LANGUAGE) printf '%s\n' "Report language:" ;;
+        en:NOTICE|*:NOTICE) printf '%s\n' "This archive may contain sensitive system logs. Review it before sharing. CleveresTricky keybox XML/CBOX files are intentionally not collected." ;;
+    esac
+}
+
+print_log() {
+    if [ "$FROM_WEBUI" != "1" ]; then
+        printf '%s\n' "$*"
+    fi
+}
+
+send_bugreport() {
+    share_file="$1"
+    case "$share_file" in
+        ""|*[!A-Za-z0-9._-]*) return 2 ;;
+    esac
+    share_path="$SHELL_DIR/files/bugreports/$share_file"
+    [ -f "$share_path" ] && [ ! -L "$share_path" ] || return 1
+
+    su 2000 -c "am start -a android.intent.action.SEND --eu android.intent.extra.STREAM content://com.android.shell/bugreports/$share_file -t '*/*' --grant-read-uri-permission" >/dev/null 2>&1
+}
+
+copy_report_path() {
+    copy_src="$1"
+    copy_group="$2"
+    if [ -e "$copy_src" ] && [ ! -L "$copy_src" ]; then
+        print_log "$(message ADDING) $copy_src"
+        mkdir -p "$tmp/$copy_group"
+        cp -a "$copy_src" "$tmp/$copy_group/" 2>/dev/null || true
+    fi
+}
+
+write_payload_hashes() {
+    hashes_out="$tmp/module-payload-hashes.txt"
+    : > "$hashes_out"
+    if [ -d "$MODDIR" ] && [ ! -L "$MODDIR" ]; then
+        find "$MODDIR" -type f -name '*.sha256' 2>/dev/null | sort 2>/dev/null | while IFS= read -r hash_file; do
+            [ -f "$hash_file" ] && [ ! -L "$hash_file" ] || continue
+            relative_hash=${hash_file#"$MODDIR"/}
+            printf '===== %s =====\n' "$relative_hash" >> "$hashes_out"
+            cat "$hash_file" >> "$hashes_out" 2>/dev/null || true
+            printf '\n' >> "$hashes_out"
+        done
+    fi
+}
+
+create_archive() {
+    archive_out="$1"
+    if [ -x /system/bin/tar ]; then
+        /system/bin/tar -czf "$archive_out" -C "$tmp" .
+        return $?
+    fi
+    if command -v tar >/dev/null 2>&1; then
+        tar -czf "$archive_out" -C "$tmp" .
+        return $?
+    fi
+    if [ -x /system/bin/toybox ]; then
+        /system/bin/toybox tar -czf "$archive_out" -C "$tmp" .
+        return $?
+    fi
+    return 1
+}
+
+detect_language
+
+if [ "$FROM_WEBUI" = "1" ] && [ "${1:-}" = "--send" ]; then
+    send_bugreport "${2:-}"
+    exit $?
+fi
+
+print_log "$(message GENERATING)"
+stamp=$(date +%Y%m%d-%H%M%S)
+tmp="/data/local/tmp/cleverestricky-bugreport-$$"
+
+has_shell=false
+outdir=""
+if [ -d "$SHELL_DIR" ] && [ ! -L "$SHELL_DIR" ]; then
+    shell_outdir="$SHELL_DIR/files/bugreports"
+    if mkdir -p "$shell_outdir" 2>/dev/null; then
+        chown 2000 "$SHELL_DIR/files" "$shell_outdir" 2>/dev/null || true
+        chgrp 2000 "$SHELL_DIR/files" "$shell_outdir" 2>/dev/null || true
+        outdir="$shell_outdir"
+        has_shell=true
+        rm -f "$outdir"/CleveresTricky-bugreport-*.tar.gz 2>/dev/null || true
+    fi
+fi
+
+if [ -z "$outdir" ]; then
+    for download_dir in /sdcard/Download /storage/emulated/0/Download /data/local/tmp; do
+        if mkdir -p "$download_dir" 2>/dev/null; then
+            outdir="$download_dir"
+            break
+        fi
+    done
+fi
+
+[ -n "$outdir" ] || exit 1
+filename="CleveresTricky-bugreport-$stamp.tar.gz"
+out="$outdir/$filename"
+
+rm -rf "$tmp" 2>/dev/null || true
+mkdir -p "$tmp"
+
+print_log "$(message BASIC)"
+root_managers=""
+[ -d /data/adb/ksu ] && root_managers="${root_managers} KernelSU"
+[ -d /data/adb/ap ] && root_managers="${root_managers} APatch"
+[ -d /data/adb/magisk ] && root_managers="${root_managers} Magisk"
+[ -n "$root_managers" ] || root_managers=" Unknown"
+
+daemon_pids=$(pidof CleveresTricky 2>/dev/null || true)
+[ -n "$daemon_pids" ] || daemon_pids="not running"
+module_state="enabled"
+[ -e "$MODDIR/disable" ] && module_state="disabled"
+[ -e "$MODDIR/remove" ] && module_state="pending removal"
+
+{
+    printf 'CleveresTricky Emergency Report\n'
+    printf 'Generated: %s\n' "$(date '+%Y-%m-%d %H:%M:%S %z' 2>/dev/null || date)"
+    printf 'Detected locale: %s\n' "${RAW_LOCALE:-unknown}"
+    printf 'Report language: %s\n\n' "$LANG_CODE"
+    printf 'Kernel: %s\n' "$(uname -r 2>/dev/null || true)"
+    printf 'Architecture: %s\n' "$(uname -m 2>/dev/null || true)"
+    printf 'SDK: %s\n' "$(getprop ro.build.version.sdk 2>/dev/null || true)"
+    printf 'SDK_FULL: %s\n' "$(getprop ro.build.version.sdk_full 2>/dev/null || true)"
+    printf 'Security patch: %s\n' "$(getprop ro.build.version.security_patch 2>/dev/null || true)"
+    printf 'Fingerprint: %s\n' "$(getprop ro.build.fingerprint 2>/dev/null || true)"
+    printf 'Manufacturer: %s\n' "$(getprop ro.product.manufacturer 2>/dev/null || true)"
+    printf 'Model: %s\n' "$(getprop ro.product.model 2>/dev/null || true)"
+    printf 'Device: %s\n' "$(getprop ro.product.device 2>/dev/null || true)"
+    printf 'ABI: %s\n' "$(getprop ro.product.cpu.abi 2>/dev/null || true)"
+    printf 'SELinux: %s\n' "$(getenforce 2>/dev/null || printf unknown)"
+    printf 'Root environment:%s\n' "$root_managers"
+    printf 'Module state: %s\n' "$module_state"
+    printf 'Daemon PID(s): %s\n' "$daemon_pids"
+    printf '\n======== module.prop ========\n'
+    if [ -f "$MODDIR/module.prop" ] && [ ! -L "$MODDIR/module.prop" ]; then
+        cat "$MODDIR/module.prop" 2>/dev/null || true
+    else
+        printf 'module.prop unavailable\n'
+    fi
+    printf '\n======== disk ========\n'
+    df -h /data "$outdir" 2>/dev/null || df /data "$outdir" 2>/dev/null || true
+} > "$tmp/basic.txt"
+
+{
+    message REPORT_INFO
+    printf '%s %s\n' "$(message REPORT_LANGUAGE)" "$LANG_CODE"
+    printf '\n%s\n' "$(message NOTICE)"
+} > "$tmp/REPORT.txt"
+
+{
+    printf '======== module directory ========\n'
+    ls -la "$MODDIR" 2>/dev/null || true
+    printf '\n======== process ========\n'
+    ps -A 2>/dev/null | grep -i 'cleverestricky' 2>/dev/null || true
+    printf '\n======== mounts ========\n'
+    mount 2>/dev/null | grep -i -e 'cleverestricky' -e '/data/adb/modules' 2>/dev/null || true
+} > "$tmp/runtime.txt"
+
+write_payload_hashes
+
+print_log "$(message LOGS)"
+if ! logcat -b all -d -v threadtime -f "$tmp/logcat-all.log" 2>/dev/null; then
+    logcat -d -v threadtime -f "$tmp/logcat-all.log" 2>/dev/null || true
+fi
+if [ -f "$tmp/logcat-all.log" ]; then
+    grep -i 'cleverestricky' "$tmp/logcat-all.log" > "$tmp/logcat-cleverestricky.log" 2>/dev/null || true
+fi
+
+dmesg > "$tmp/dmesg.log" 2>&1 || true
+
+copy_report_path "$CONFIG_DIR/logs" "cleverestricky"
+copy_report_path "$CONFIG_DIR/log" "cleverestricky"
+copy_report_path "$CONFIG_DIR/bugreports" "cleverestricky"
+copy_report_path "$CONFIG_DIR/crash" "cleverestricky"
+copy_report_path "$MODDIR/logs" "cleverestricky-module"
+
+print_log "$(message ROOT_LOGS)"
+copy_report_path "/data/adb/ksu/log" "root-manager/KernelSU"
+copy_report_path "/data/adb/ap/log" "root-manager/APatch"
+copy_report_path "/data/adb/magisk/log" "root-manager/Magisk"
+copy_report_path "/cache/magisk.log" "root-manager/Magisk"
+copy_report_path "/data/tombstones" "android"
+copy_report_path "/data/system/dropbox" "android"
+copy_report_path "/sys/fs/pstore" "android"
+copy_report_path "/data/anr" "android"
+
+print_log "$(message COMPRESSING)"
+rm -f "$out" 2>/dev/null || true
+if ! create_archive "$out"; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+fi
+
+if $has_shell; then
+    chown 2000 "$out" 2>/dev/null || true
+    chgrp 2000 "$out" 2>/dev/null || true
+    chmod 0640 "$out" 2>/dev/null || true
+else
+    chmod 0644 "$out" 2>/dev/null || true
+fi
+
+print_log "$(message GENERATED) $out"
+
+if $has_shell && [ "$FROM_WEBUI" != "1" ]; then
+    print_log "$(message SHARING)"
+    if ! send_bugreport "$filename"; then
+        print_log "$(message SHARE_FAILED)"
+    fi
+fi
+
+if [ "$FROM_WEBUI" = "1" ]; then
+    printf '%s\n' "$out"
+fi
