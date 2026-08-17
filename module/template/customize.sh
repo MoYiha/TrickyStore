@@ -54,18 +54,29 @@ fi
 ui_print "- Device sdk: $API (Supported)"
 
 ui_print "- Extracting verify.sh"
-if [ -L "$TMPDIR/verify.sh" ] || { [ -e "$TMPDIR/verify.sh" ] && [ ! -f "$TMPDIR/verify.sh" ]; }; then
-  abort "! Existing verify.sh target is unsafe"
-fi
-rm -f "$TMPDIR/verify.sh" || abort "! Could not prepare verify.sh extraction target"
-unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2 \
-  || abort "! Unable to extract verify.sh"
-if [ -L "$TMPDIR/verify.sh" ] || [ ! -f "$TMPDIR/verify.sh" ]; then
+for bootstrap_target in "$TMPDIR/verify.sh" "$TMPDIR/verify.sh.sha256"; do
+  if [ -L "$bootstrap_target" ] || { [ -e "$bootstrap_target" ] && [ ! -f "$bootstrap_target" ]; }; then
+    abort "! Existing installer verification target is unsafe"
+  fi
+  rm -f "$bootstrap_target" || abort "! Could not prepare installer verification target"
+done
+unzip -o "$ZIPFILE" 'verify.sh' 'verify.sh.sha256' -d "$TMPDIR" >&2 \
+  || abort "! Unable to extract installer verification files"
+if [ -L "$TMPDIR/verify.sh" ] || [ ! -f "$TMPDIR/verify.sh" ] || \
+  [ -L "$TMPDIR/verify.sh.sha256" ] || [ ! -f "$TMPDIR/verify.sh.sha256" ]; then
   ui_print "*********************************************************"
   ui_print "! Unable to extract verify.sh safely!"
   ui_print "! This zip may be corrupted, please try downloading again"
   abort    "*********************************************************"
 fi
+bootstrap_hash=$(tr -d '[:space:]' < "$TMPDIR/verify.sh.sha256")
+case "$bootstrap_hash" in
+  ''|*[!0-9A-Fa-f]*) abort "! Invalid verify.sh checksum" ;;
+esac
+[ "${#bootstrap_hash}" -eq 64 ] || abort "! Invalid verify.sh checksum length"
+printf '%s  %s\n' "$bootstrap_hash" "$TMPDIR/verify.sh" | sha256sum -c - >/dev/null 2>&1 \
+  || abort "! Failed to verify verify.sh before execution"
+bootstrap_hash=
 # shellcheck disable=SC1091
 . "$TMPDIR/verify.sh"
 extract "$ZIPFILE" 'customize.sh'  "$TMPDIR/.vunzip"
