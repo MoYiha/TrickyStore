@@ -4,26 +4,12 @@ import java.io.OutputStream
 
 /** Thin bounded wire adapter for immutable CRL snapshots owned by the Rust backend. */
 object CrlWire {
-    /**
-     * Opaque Rust CRL generation. The empty [Set] surface is retained only for source compatibility
-     * with managed test seams that historically injected normalized revocation sets. Production
-     * callers are detected by identity/type and never enumerate or populate a managed CRL set.
-     */
+    /** Opaque immutable Rust CRL generation. Production code never models it as a managed set. */
     data class Handle(
         val generation: Long,
         val rawEntryCount: Int,
         val normalizedEntryCount: Int,
-    ) : Set<String> {
-        override val size: Int get() = 0
-
-        override fun contains(element: String): Boolean = false
-
-        override fun containsAll(elements: Collection<String>): Boolean = elements.isEmpty()
-
-        override fun isEmpty(): Boolean = true
-
-        override fun iterator(): Iterator<String> = emptySet<String>().iterator()
-    }
+    )
 
     data class Query(
         val serialTwosComplement: ByteArray,
