@@ -54,11 +54,15 @@ fi
 ui_print "- Device sdk: $API (Supported)"
 
 ui_print "- Extracting verify.sh"
+if [ -L "$TMPDIR/verify.sh" ] || { [ -e "$TMPDIR/verify.sh" ] && [ ! -f "$TMPDIR/verify.sh" ]; }; then
+  abort "! Existing verify.sh target is unsafe"
+fi
+rm -f "$TMPDIR/verify.sh" || abort "! Could not prepare verify.sh extraction target"
 unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2 \
   || abort "! Unable to extract verify.sh"
-if [ ! -f "$TMPDIR/verify.sh" ]; then
+if [ -L "$TMPDIR/verify.sh" ] || [ ! -f "$TMPDIR/verify.sh" ]; then
   ui_print "*********************************************************"
-  ui_print "! Unable to extract verify.sh!"
+  ui_print "! Unable to extract verify.sh safely!"
   ui_print "! This zip may be corrupted, please try downloading again"
   abort    "*********************************************************"
 fi
@@ -119,6 +123,14 @@ case "$ARCH" in
     abort "! Unsupported ARCH: $ARCH"
     ;;
 esac
+
+for module_payload in module.prop post-fs-data.sh service.sh service.apk sepolicy.rule daemon \
+  "lib$SONAME.so" inject webui_bridge cleverestrickyd cleverestricky_backend; do
+  payload_path="$MODPATH/$module_payload"
+  if [ -L "$payload_path" ] || [ ! -f "$payload_path" ]; then
+    abort "! Extracted module payload is unsafe: $module_payload"
+  fi
+done
 
 chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
   "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/post-fs-data.sh" \
@@ -284,7 +296,11 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   || abort "! Could not set policy state ownership"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chown 0:0 "$CONFIG_DIR/spoof_enabled" \
   || abort "! Could not set identity Spoof Engine switch ownership"
-[ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity"
-[ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough"
-[ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props"
-[ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging"
+[ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity" \
+  || abort "! Could not set identity build switch ownership"
+[ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough" \
+  || abort "! Could not set DRM passthrough ownership"
+[ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props" \
+  || abort "! Could not set sensitive-property switch ownership"
+[ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging" \
+  || abort "! Could not set debug logging switch ownership"
