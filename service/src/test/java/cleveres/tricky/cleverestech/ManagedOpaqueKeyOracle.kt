@@ -6,6 +6,7 @@ import java.io.Reader
 import java.security.KeyPair
 import java.security.MessageDigest
 import java.security.PrivateKey
+import java.security.cert.Certificate
 import java.security.cert.X509Certificate
 
 /** Test-only bridge that models Rust-owned key material with deterministic opaque handles. */
@@ -26,40 +27,50 @@ internal object ManagedOpaqueKeyOracle {
         if (legacy.isEmpty()) return emptyList()
         val opaque = ArrayList<CertHack.KeyBox>(legacy.size)
         for (box in legacy) {
-            val certificates = box.certificates()
-            val leaf = certificates.firstOrNull() as? X509Certificate ?: return emptyList()
-            val privateKey = box.keyPair().private
-            val privateDer = privateKey.encoded ?: return emptyList()
-            val leafDer = leaf.encoded
-            val digest = MessageDigest.getInstance("SHA-256")
-            val keyId =
-                try {
-                    digest.update(privateKey.algorithm.toByteArray(Charsets.UTF_8))
-                    digest.update(0.toByte())
-                    digest.update(privateDer)
-                    digest.digest(leafDer).copyOf(KEY_ID_BYTES).also { id ->
-                        if (id.all { it == 0.toByte() }) id[0] = 1
-                    }
-                } finally {
-                    privateDer.fill(0)
-                    leafDer.fill(0)
-                }
-            try {
-                materials[key(keyId)] = Material(privateKey, leaf)
-                opaque +=
-                    CertHack.KeyBox(
-                        KeyPair(
-                            box.keyPair().public,
-                            BackendKeyHandle(privateKey.algorithm, keyId),
-                        ),
-                        certificates,
-                        filename,
-                    )
-            } finally {
-                keyId.fill(0)
-            }
+            opaque += wrap(box.keyPair(), box.certificates(), filename)
         }
         return opaque
+    }
+
+    @JvmStatic
+    @Synchronized
+    fun wrap(
+        keyPair: KeyPair,
+        certificates: List<Certificate>,
+        filename: String,
+    ): CertHack.KeyBox {
+        val leaf = certificates.firstOrNull() as? X509Certificate
+            ?: throw IllegalArgumentException("Opaque key fixture requires an X.509 issuer certificate")
+        val privateKey = keyPair.private
+        val privateDer = privateKey.encoded
+            ?: throw IllegalArgumentException("Opaque key fixture requires encodable test key material")
+        val leafDer = leaf.encoded
+        val digest = MessageDigest.getInstance("SHA-256")
+        val keyId =
+            try {
+                digest.update(privateKey.algorithm.toByteArray(Charsets.UTF_8))
+                digest.update(0.toByte())
+                digest.update(privateDer)
+                digest.digest(leafDer).copyOf(KEY_ID_BYTES).also { id ->
+                    if (id.all { it == 0.toByte() }) id[0] = 1
+                }
+            } finally {
+                privateDer.fill(0)
+                leafDer.fill(0)
+            }
+        return try {
+            materials[key(keyId)] = Material(privateKey, leaf)
+            CertHack.KeyBox(
+                KeyPair(
+                    keyPair.public,
+                    BackendKeyHandle(privateKey.algorithm, keyId),
+                ),
+                certificates,
+                filename,
+            )
+        } finally {
+            keyId.fill(0)
+        }
     }
 
     @Synchronized
