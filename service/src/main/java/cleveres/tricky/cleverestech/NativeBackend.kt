@@ -12,6 +12,22 @@ import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
+internal enum class BackendStatus(val wireValue: Int) {
+    REJECTED(1),
+    UNKNOWN_KEY_ID(2),
+    STALE_GENERATION(3),
+    STATE_RESET(4),
+    ;
+
+    companion object {
+        fun fromWire(value: Int): BackendStatus? = entries.firstOrNull { it.wireValue == value }
+    }
+}
+
+internal class RustBackendStateException(
+    val status: BackendStatus,
+) : IOException("Rust backend state rejected operation: $status")
+
 /** Thin Android LocalSocket adapter for the unprivileged Rust backend. */
 object NativeBackend {
     data class CboxPayload(
@@ -20,7 +36,15 @@ object NativeBackend {
         val hasSignature: Boolean,
     )
 
+    internal data class BackendIdentity(
+        val pid: Int,
+        val epochHigh: Long,
+        val epochLow: Long,
+    )
+
     private var socket: LocalSocket? = null
+    private var backendIdentity: BackendIdentity? = null
+    private var backendStateResetPending = false
     private val readHeaderBuffer = ByteArray(HEADER_BYTES)
     private val writeHeaderBuffer = ByteArray(HEADER_BYTES)
 
@@ -83,9 +107,7 @@ object NativeBackend {
                     xml.size,
                     MAX_KEYBOX_RESPONSE_BYTES,
                     propagateTransportFailure = true,
-                ) { output ->
-                    output.write(xml)
-                }
+                ) { output -> output.write(xml) }
             decodeKeyboxResponse(response)
         } finally {
             xml.fill(0)
@@ -154,6 +176,38 @@ object NativeBackend {
         }
     }
 
+    /**
+     * Recovery owner calls this exactly once after acquiring the single-flight recovery lock.
+     * It connects/handshakes and acknowledges the identity transition so rebuild traffic can flow.
+     */
+    @Synchronized
+    internal fun beginBackendRecovery(): BackendIdentity {
+        connectedSocket()
+        backendStateResetPending = false
+        return requireNotNull(backendIdentity)
+    }
+
+    @Synchronized
+    internal fun consumeBackendStateReset(): Boolean {
+        val changed = backendStateResetPending
+        backendStateResetPending = false
+        return changed
+    }
+
+    @Synchronized
+    @androidx.annotation.VisibleForTesting
+    internal fun observeBackendIdentityForTesting(identity: BackendIdentity) {
+        observeBackendIdentity(identity)
+    }
+
+    @Synchronized
+    @androidx.annotation.VisibleForTesting
+    internal fun resetIdentityForTesting() {
+        closeSocket()
+        backendIdentity = null
+        backendStateResetPending = false
+    }
+
     @Synchronized
     fun close() {
         closeSocket()
@@ -164,8 +218,7 @@ object NativeBackend {
         data: ByteArray,
         password: String,
     ): ByteArray? {
-        val dataLimit =
-            if (opcode == OP_CRYPTO_BACKUP_ENCRYPT) MAX_BACKUP_PLAINTEXT_BYTES else MAX_BACKUP_WIRE_BYTES
+        val dataLimit = if (opcode == OP_CRYPTO_BACKUP_ENCRYPT) MAX_BACKUP_PLAINTEXT_BYTES else MAX_BACKUP_WIRE_BYTES
         if (data.size > dataLimit) return null
         val passwordBytes = password.toByteArray(Charsets.UTF_8)
         try {
@@ -189,8 +242,11 @@ object NativeBackend {
         propagateTransportFailure: Boolean = false,
         writePayload: (OutputStream) -> Unit,
     ): ByteArray? {
-        return try {
+        try {
             val active = connectedSocket()
+            if (backendStateResetPending && opcode != OP_BACKEND_PING) {
+                throw RustBackendStateException(BackendStatus.STATE_RESET)
+            }
             val output = active.outputStream
             val input = active.inputStream
             writeHeader(output, opcode, payloadLength)
@@ -202,22 +258,27 @@ object NativeBackend {
             try {
                 readFully(input, response)
                 if (header.flags == FLAG_ERROR) {
-                    val detail = decodeUtf8Strict(response).take(MAX_LOG_ERROR_CHARS)
-                    Logger.w("Rust backend rejected operation $opcode: $detail")
+                    if (response.size != BACKEND_STATUS_BYTES) {
+                        throw IOException("Invalid typed backend error response")
+                    }
+                    val status = BackendStatus.fromWire(response[0].toInt() and 0xff)
+                        ?: throw IOException("Unknown typed backend status")
                     response.fill(0)
-                    null
-                } else {
-                    response
+                    if (status == BackendStatus.REJECTED) return null
+                    throw RustBackendStateException(status)
                 }
+                return response
             } catch (error: Throwable) {
                 response.fill(0)
                 throw error
             }
+        } catch (error: RustBackendStateException) {
+            throw error
         } catch (error: Exception) {
             closeSocket()
             Logger.e("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
             if (propagateTransportFailure) throw RustBackendUnavailableException(error)
-            null
+            return null
         }
     }
 
@@ -225,9 +286,7 @@ object NativeBackend {
         if (response == null) return null
         return try {
             KeyboxWire.decode(response)
-                ?: throw RustBackendUnavailableException(
-                    IOException("Invalid keybox backend response"),
-                )
+                ?: throw RustBackendUnavailableException(IOException("Invalid keybox backend response"))
         } catch (error: RustBackendUnavailableException) {
             throw error
         } catch (error: Exception) {
@@ -249,12 +308,52 @@ object NativeBackend {
                 throw IOException("Unexpected Rust backend peer credentials")
             }
             connected.setSoTimeout(IO_TIMEOUT_MS)
+            val identity = readBackendIdentity(connected, peer.pid)
+            observeBackendIdentity(identity)
         } catch (error: Throwable) {
             runCatching { connected.close() }
             throw error
         }
         socket = connected
         return connected
+    }
+
+    private fun readBackendIdentity(
+        connected: LocalSocket,
+        pid: Int,
+    ): BackendIdentity {
+        val output = connected.outputStream
+        val input = connected.inputStream
+        writeHeader(output, OP_BACKEND_PING, BACKEND_PING_REQUEST_BYTES)
+        output.write(BACKEND_HANDSHAKE_VERSION)
+        output.flush()
+        val header = readHeader(input, OP_BACKEND_PING, BACKEND_PING_RESPONSE_BYTES)
+        if (header.flags != 0 || header.payloadLength != BACKEND_PING_RESPONSE_BYTES) {
+            throw IOException("Invalid backend identity frame")
+        }
+        val response = ByteArray(BACKEND_PING_RESPONSE_BYTES)
+        try {
+            readFully(input, response)
+            if ((response[0].toInt() and 0xff) != BACKEND_HANDSHAKE_VERSION ||
+                readU16(response, 1) != IPC_VERSION
+            ) {
+                throw IOException("Unsupported backend identity handshake")
+            }
+            val high = readI64(response, 3)
+            val low = readI64(response, 11)
+            if (high == 0L && low == 0L) throw IOException("Invalid zero backend epoch")
+            return BackendIdentity(pid, high, low)
+        } finally {
+            response.fill(0)
+        }
+    }
+
+    private fun observeBackendIdentity(identity: BackendIdentity) {
+        val previous = backendIdentity
+        if (previous != null && previous != identity) {
+            backendStateResetPending = true
+        }
+        backendIdentity = identity
     }
 
     private fun isExpectedBackendExecutable(pid: Int): Boolean {
@@ -265,9 +364,7 @@ object NativeBackend {
         val backend = File(moduleDir, BACKEND_FILENAME)
         val backendPath = backend.toPath()
         if (!Files.isRegularFile(backendPath, LinkOption.NOFOLLOW_LINKS)) return false
-        return runCatching {
-            Files.isSameFile(backendPath, File("/proc/$pid/exe").toPath())
-        }.getOrDefault(false)
+        return runCatching { Files.isSameFile(backendPath, File("/proc/$pid/exe").toPath()) }.getOrDefault(false)
     }
 
     private fun closeSocket() {
@@ -295,7 +392,7 @@ object NativeBackend {
         val flags = readI32(readHeaderBuffer, 8)
         if (flags != 0 && flags != FLAG_ERROR) throw IOException("Unsupported backend IPC flags")
         val payloadLength = readU32(readHeaderBuffer, 12)
-        val limit = if (flags == FLAG_ERROR) MAX_ERROR_BYTES else responseLimit
+        val limit = if (flags == FLAG_ERROR) BACKEND_STATUS_BYTES else responseLimit
         if (payloadLength > limit.toLong()) throw IOException("Backend response exceeds operation bound")
         return FrameHeader(flags, payloadLength.toInt())
     }
@@ -328,9 +425,7 @@ object NativeBackend {
             val authorStart = CBOX_RESPONSE_PREFIX_BYTES
             val authorEnd = Math.addExact(authorStart, authorLength)
             val xmlEnd = Math.addExact(authorEnd, xmlLength.toInt())
-            if (xmlEnd != bytes.size || authorLength > MAX_AUTHOR_BYTES || xmlLength > MAX_CBOX_BYTES) {
-                return null
-            }
+            if (xmlEnd != bytes.size || authorLength > MAX_AUTHOR_BYTES || xmlLength > MAX_CBOX_BYTES) return null
             val author = decodeUtf8Strict(bytes, authorStart, authorLength)
             val xml = bytes.copyOfRange(authorEnd, xmlEnd)
             CboxPayload(author, xml, signatureFlag == 1)
@@ -342,8 +437,6 @@ object NativeBackend {
             bytes.fill(0)
         }
     }
-
-    private fun decodeUtf8Strict(bytes: ByteArray): String = decodeUtf8Strict(bytes, 0, bytes.size)
 
     private fun decodeUtf8Strict(
         bytes: ByteArray,
@@ -413,6 +506,15 @@ object NativeBackend {
             ((buffer[offset + 2].toInt() and 0xff) shl 8) or
             (buffer[offset + 3].toInt() and 0xff)
 
+    private fun readI64(
+        buffer: ByteArray,
+        offset: Int,
+    ): Long {
+        var value = 0L
+        for (index in 0 until 8) value = (value shl 8) or (buffer[offset + index].toLong() and 0xffL)
+        return value
+    }
+
     private fun readU32(
         buffer: ByteArray,
         offset: Int,
@@ -452,14 +554,17 @@ object NativeBackend {
     private const val OP_CRYPTO_BACKUP_DECRYPT = 22
     private const val OP_KEYBOX_PARSE = 23
     private const val OP_KEYBOX_FILE_PARSE = 24
+    private const val OP_BACKEND_PING = 28
+    private const val BACKEND_HANDSHAKE_VERSION = 1
+    private const val BACKEND_PING_REQUEST_BYTES = 1
+    private const val BACKEND_PING_RESPONSE_BYTES = 19
+    private const val BACKEND_STATUS_BYTES = 1
     private const val IO_TIMEOUT_MS = 60_000
     private const val MAX_STARTUP_WAIT_MS = 30_000L
     private const val STARTUP_RETRY_INITIAL_MS = 25L
     private const val STARTUP_RETRY_MAX_MS = 500L
     private const val NANOS_PER_MILLISECOND = 1_000_000L
     private const val MAX_EMPTY_READS = 16
-    private const val MAX_ERROR_BYTES = 256
-    private const val MAX_LOG_ERROR_CHARS = 160
     private const val MAX_PASSWORD_BYTES = 4 * 1024
     private const val MAX_PUBLIC_KEY_BYTES = 16 * 1024
     private const val MAX_AUTHOR_BYTES = 4 * 1024
@@ -481,8 +586,7 @@ object NativeBackend {
     private const val MAX_KEYBOX_WIRE_OVERHEAD_BYTES =
         KEYBOX_FIXED_HEADER_BYTES +
             MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX * KEYBOX_KEY_HEADER_BYTES +
-            MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX * MAX_CERTIFICATES_PER_CHAIN *
-            KEYBOX_CERTIFICATE_HEADER_BYTES
+            MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX * MAX_CERTIFICATES_PER_CHAIN * KEYBOX_CERTIFICATE_HEADER_BYTES
     private const val MAX_KEYBOX_RESPONSE_BYTES = MAX_KEYBOX_XML_BYTES + MAX_KEYBOX_WIRE_OVERHEAD_BYTES
     private const val MAX_BACKEND_REQUEST_BYTES = MAX_BACKUP_WIRE_BYTES + MAX_PASSWORD_BYTES + 2
     private const val CBOX_RESPONSE_PREFIX_BYTES = 7
