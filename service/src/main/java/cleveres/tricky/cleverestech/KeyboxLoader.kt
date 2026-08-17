@@ -24,6 +24,7 @@ internal object KeyboxLoader {
     }
 
     private val backendOutageObserved = AtomicBoolean(false)
+    private val activeSetHealthy = AtomicBoolean(true)
 
     @VisibleForTesting
     internal var parserOverride: ((ByteArray, String) -> List<CertHack.KeyBox>)? = null
@@ -76,16 +77,16 @@ internal object KeyboxLoader {
      * restart before stale managed state becomes active.
      */
     fun commitActive(keyboxes: List<CertHack.KeyBox>): Boolean {
-        if (keyboxes.size > MAX_ACTIVE_KEYS) return false
+        if (keyboxes.size > MAX_ACTIVE_KEYS) return recordActiveSetResult(false)
         val ids = ArrayList<ByteArray>(keyboxes.size)
         try {
             for (keybox in keyboxes) {
                 val privateKey = keybox.keyPair().private
-                if (privateKey.format != BACKEND_KEY_FORMAT) return false
-                val id = privateKey.encoded ?: return false
+                if (privateKey.format != BACKEND_KEY_FORMAT) return recordActiveSetResult(false)
+                val id = privateKey.encoded ?: return recordActiveSetResult(false)
                 if (id.size != KEY_ID_BYTES || id.all { it == 0.toByte() }) {
                     id.fill(0)
-                    return false
+                    return recordActiveSetResult(false)
                 }
                 if (ids.any { existing -> existing.contentEquals(id) }) {
                     id.fill(0)
@@ -93,7 +94,7 @@ internal object KeyboxLoader {
                 }
                 ids += id
             }
-            activeSetOverride?.let { return it(ids.map(ByteArray::copyOf)) }
+            activeSetOverride?.let { return recordActiveSetResult(it(ids.map(ByteArray::copyOf))) }
             val payloadLength = STORE_CONTROL_HEADER_BYTES + ids.size * KEY_ID_BYTES
             val response =
                 NativeBackend.transact(
@@ -108,19 +109,28 @@ internal object KeyboxLoader {
                     output.write((ids.size ushr 8) and 0xff)
                     output.write(ids.size and 0xff)
                     ids.forEach(output::write)
-                } ?: return false
+                } ?: return recordActiveSetResult(false)
             return try {
-                response.contentEquals(OK_BYTES)
+                recordActiveSetResult(response.contentEquals(OK_BYTES))
             } finally {
                 response.fill(0)
             }
         } catch (error: RustBackendUnavailableException) {
+            activeSetHealthy.set(false)
             backendOutageObserved.set(true)
             throw error
         } finally {
             ids.forEach { it.fill(0) }
         }
     }
+
+    private fun recordActiveSetResult(success: Boolean): Boolean {
+        activeSetHealthy.set(success)
+        return success
+    }
+
+    @JvmStatic
+    fun isActiveSetHealthy(): Boolean = activeSetHealthy.get()
 
     internal fun consumeBackendOutage(): Boolean = backendOutageObserved.getAndSet(false)
 
@@ -130,6 +140,7 @@ internal object KeyboxLoader {
         fileParserOverride = null
         activeSetOverride = null
         backendOutageObserved.set(false)
+        activeSetHealthy.set(true)
     }
 
     private const val OP_KEYBOX_PARSE = 23

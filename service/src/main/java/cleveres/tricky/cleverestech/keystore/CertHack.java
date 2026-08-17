@@ -20,6 +20,7 @@ import java.util.Objects;
 
 import cleveres.tricky.cleverestech.CertificateBackend;
 import cleveres.tricky.cleverestech.Config;
+import cleveres.tricky.cleverestech.KeyboxLoader;
 import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.PolicyState;
 import cleveres.tricky.cleverestech.UtilKt;
@@ -142,6 +143,9 @@ public final class CertHack {
     }
 
     public static int getKeyboxCount() {
+        if (!KeyboxLoader.isActiveSetHealthy()) {
+            throw new IllegalStateException("Rust keybox backend activation is unavailable");
+        }
         int count = 0;
         for (List<KeyBox> list : state.keyboxes.values()) count += list.size();
         return count;
