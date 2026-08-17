@@ -20,6 +20,7 @@ serde_json = "1.0"
 sha2 = "0.10"
 zeroize = { version = "1.8", features = ["derive"] }
 cleverestricky-service-core = { path = "../service-core" }
+cleverestricky-xml-core = { path = "../xml-core" }
 
 [dev-dependencies]
 cleverestricky-crypto-core = { path = "../crypto-core" }
