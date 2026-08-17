@@ -62,6 +62,27 @@ assert_rejects_symlink() {
   trap - RETURN
 }
 
+assert_rejects_symlink_parent() {
+  fixture=$(mktemp -d)
+  trap 'rm -rf "$fixture"' RETURN
+  make_fixture "$fixture"
+
+  rm -rf "$fixture/dest"
+  mkdir "$fixture/outside-dir"
+  ln -s "$fixture/outside-dir" "$fixture/dest"
+
+  if run_extract "$fixture" >"$fixture/stdout" 2>"$fixture/stderr"; then
+    fail "extract accepted a symlinked destination root"
+  fi
+  [[ ! -e "$fixture/outside-dir/payload.bin" ]] \
+    || fail "extract wrote payload through a symlinked destination root"
+  [[ ! -e "$fixture/outside-dir/payload.bin.sha256" ]] \
+    || fail "extract wrote checksum through a symlinked destination root"
+
+  rm -rf "$fixture"
+  trap - RETURN
+}
+
 assert_rejects_non_regular_target() {
   fixture=$(mktemp -d)
   trap 'rm -rf "$fixture"' RETURN
@@ -89,6 +110,7 @@ assert_normal_extract_succeeds() {
 
 assert_rejects_symlink payload
 assert_rejects_symlink checksum
+assert_rejects_symlink_parent
 assert_rejects_non_regular_target
 assert_normal_extract_succeeds
 bash "$REPO_ROOT/module/install-tests/customize_bootstrap_security.test.sh"
