@@ -47,7 +47,7 @@ jobs:
               exit 1
             fi
             url="https://repo.maven.apache.org/maven2/org/bouncycastle/${artifact}/${version}/${artifact}-${version}.pom"
-            echo "Checking org.bouncycastle:${artifact}:${version}"
+            echo "Checking org.bouncycastle:${artifact}:${version"
             curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output /dev/null "$url"
           done
 
@@ -87,6 +87,10 @@ jobs:
           enforce_minimum bcprov-jdk18on 1.84 debugUnitTestRuntimeClasspath
           enforce_minimum bcpkix-jdk18on 1.84 debugUnitTestRuntimeClasspath
           enforce_minimum bcutil-jdk18on 1.84 debugUnitTestRuntimeClasspath
+
+      - name: Validate installer extraction security
+        shell: bash
+        run: bash module/install-tests/verify_extract_security.test.sh
 
       - name: Validate all WebUI syntax and behavior
         shell: bash
@@ -168,9 +172,6 @@ jobs:
 
       - name: Setup Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: 21
 
       - name: Submit resolved Gradle dependency graph
         uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
