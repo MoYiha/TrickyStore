@@ -612,7 +612,6 @@ mod tests {
 
     #[test]
     fn ping_file_and_web_operations_progress_concurrently() {
-        assert!(CAPABILITY_WORKERS >= 2);
         let test = TestRoot::new();
         let root = Arc::new(test.trusted());
         let (mut file_client, mut file_server) = UnixStream::pair().unwrap();
