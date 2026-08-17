@@ -75,6 +75,7 @@ ui_print "- Extracting module files"
 extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.sh'      "$MODPATH"
+extract "$ZIPFILE" 'action.sh'       "$MODPATH"
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
@@ -96,7 +97,6 @@ if [ -L "$MODPATH/webroot" ] || [ ! -d "$MODPATH/webroot" ] || \
   [ -L "$MODPATH/webroot/ux.js" ] || [ ! -f "$MODPATH/webroot/ux.js" ]; then
   abort "! Native WebUI files are unsafe"
 fi
-rm -f "$MODPATH/action.sh" "$MODPATH/action.sh.sha256" || abort "! Could not remove legacy WebUI launcher"
 
 case "$ARCH" in
   "x64")
@@ -117,7 +117,7 @@ case "$ARCH" in
 esac
 
 chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/daemon" "$MODPATH/service.sh" \
-  "$MODPATH/post-fs-data.sh" || abort "! Could not set module executable permissions"
+  "$MODPATH/post-fs-data.sh" "$MODPATH/action.sh" || abort "! Could not set module executable permissions"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ -L "$CONFIG_DIR" ]; then
