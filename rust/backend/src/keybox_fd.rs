@@ -77,7 +77,7 @@ mod tests {
         // SAFETY: into_raw_fd transferred the only File ownership into raw and no owner remains.
         let fd = unsafe { OwnedFd::from_raw_fd(raw) };
         let response = parse_received_fd(fd).unwrap();
-        assert_eq!(response[0], 2);
+        assert_eq!(response[0], 3);
         assert_eq!(response[1], 1);
         assert_eq!(response[2], 1);
     }
