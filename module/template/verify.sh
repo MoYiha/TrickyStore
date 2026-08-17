@@ -73,8 +73,12 @@ extract() {
     unzip -o "$zip" "$file.sha256" -d "$dir" >&2 || abort_verify "Checksum missing for $file"
   fi
 
-  [ ! -L "$file_path" ] && [ -f "$file_path" ] || abort_verify "$file does not exist safely"
-  [ ! -L "$hash_path" ] && [ -f "$hash_path" ] || abort_verify "Checksum missing safely for $file"
+  if [ -L "$file_path" ] || [ ! -f "$file_path" ]; then
+    abort_verify "$file does not exist safely"
+  fi
+  if [ -L "$hash_path" ] || [ ! -f "$hash_path" ]; then
+    abort_verify "Checksum missing safely for $file"
+  fi
   verify_hash "$file_path" "$hash_path"
   ui_print "- Verified $file"
 }
