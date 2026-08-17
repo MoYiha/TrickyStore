@@ -18,7 +18,7 @@ verify_hash() {
     *[!0-9A-Fa-f]*|'') abort_verify "Invalid checksum for $(basename "$target")" ;;
   esac
   [ "${#expected}" -eq 64 ] || abort_verify "Invalid checksum length for $(basename "$target")"
-  printf '%s  %s\n' "$expected" "$target" | sha256sum -c -s - \
+  printf '%s  %s\n' "$expected" "$target" | sha256sum -c - >/dev/null 2>&1 \
     || abort_verify "Failed to verify $(basename "$target")"
 }
 
