@@ -1,6 +1,7 @@
 package cleveres.tricky.encryptor
 
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,7 +44,7 @@ class MobileSecurityContractTest {
         assertTrue(vault.contains("NativeCrypto.storeEncrypted"))
 
         val native = File(root, "rust/encryptor-native/src/lib.rs").readText()
-        assertTrue(native.contains("#![forbid(unsafe_code)]"))
+        assertTrue(native.contains("#![deny(unsafe_code)]"))
         assertTrue(native.contains("parse_keybox_xml_bytes"))
         assertTrue(native.contains("TrustedDir::open"))
         assertTrue(native.contains("atomic_write"))
@@ -52,6 +53,19 @@ class MobileSecurityContractTest {
         assertTrue(native.contains("0o700"))
         assertTrue(native.contains("0o600"))
         assertTrue(native.contains("panic::catch_unwind"))
+        assertFalse("Mobile Rust code must not contain unsafe blocks", native.contains("unsafe {"))
+        assertEquals(
+            "Unsafe-code allowances must remain confined to the six JNI symbol exports",
+            6,
+            Regex("#\\[allow\\(unsafe_code\\)]\\s*#\\[unsafe\\(no_mangle\\)]")
+                .findAll(native)
+                .count(),
+        )
+        assertEquals(
+            "Every JNI export must use the explicit Rust 2024 unsafe attribute",
+            6,
+            Regex("#\\[unsafe\\(no_mangle\\)]").findAll(native).count(),
+        )
 
         assertFalse(File(root, "encryptor-app/src/main/java/cleveres/tricky/encryptor/CryptoUtils.kt").exists())
         assertFalse(File(root, "encryptor-app/src/main/java/cleveres/tricky/encryptor/MainActivity.kt").exists())
