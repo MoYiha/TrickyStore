@@ -184,7 +184,8 @@ class WebServer(
     requestedPort: Int,
     private val configDir: File,
     private val isTampered: Boolean = false,
-    private val crlFetcher: () -> Set<String>? = { KeyboxVerifier.fetchCrl() },
+    // JVM test injection only. Production keeps revocation state as an opaque Rust handle.
+    private val crlFetcher: (() -> Set<String>?)? = null,
     private val autoIdentityFetcher: () -> AutoIdentityManager.Result = { AutoIdentityManager.fetchLatest() },
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
@@ -213,6 +214,15 @@ class WebServer(
     private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
 
     private val fileLock = Any()
+
+    private fun updateKeyboxesFromConfiguredRevocationSource() {
+        val legacyFetcher = crlFetcher
+        if (legacyFetcher == null) {
+            Config.updateKeyBoxesSync()
+        } else {
+            Config.updateKeyBoxesSync(legacyFetcher())
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun getParam(
@@ -550,12 +560,16 @@ class WebServer(
         return try {
             val keyboxes = KeyboxLoader.parse(bytes.copyOf(), filename)
             if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
-            val revoked = crlFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
-            if (keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }) {
-                KeyboxUploadValidation.VALID
-            } else {
-                KeyboxUploadValidation.INVALID
-            }
+            val allValid =
+                crlFetcher?.let { legacyFetcher ->
+                    val revoked = legacyFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
+                    keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }
+                } ?: run {
+                    val revoked = KeyboxVerifier.fetchCrl()
+                        ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
+                    keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }
+                }
+            if (allValid) KeyboxUploadValidation.VALID else KeyboxUploadValidation.INVALID
         } catch (_: RustBackendUnavailableException) {
             KeyboxUploadValidation.BACKEND_UNAVAILABLE
         } catch (_: Exception) {
@@ -1112,7 +1126,7 @@ class WebServer(
 
             if (filename != null && password != null) {
                 if (CboxManager.unlock(filename, password, pubKey)) {
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    updateKeyboxesFromConfiguredRevocationSource()
                     return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
                 } else {
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
@@ -1186,7 +1200,7 @@ class WebServer(
             val id = getParam(session, "id")
             if (id != null) {
                 if (ServerManager.removeServer(id)) {
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    updateKeyboxesFromConfiguredRevocationSource()
                     return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                 }
                 return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Server not found")
@@ -1206,7 +1220,7 @@ class WebServer(
                 val s = ServerManager.findServer(id)
                 if (s != null) {
                     val refreshed = ServerManager.fetchFromServer(s)
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    updateKeyboxesFromConfiguredRevocationSource()
                     if (refreshed) {
                         return secureResponse(Response.Status.OK, "text/plain", "Refreshed")
                     } else {
@@ -1591,7 +1605,7 @@ class WebServer(
                             keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
-                        Config.updateKeyBoxesSync(crlFetcher())
+                        updateKeyboxesFromConfiguredRevocationSource()
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     }
@@ -1617,7 +1631,7 @@ class WebServer(
                     }
                     try {
                         SecureFile.writeText(file, content)
-                        Config.updateKeyBoxesSync(crlFetcher())
+                        updateKeyboxesFromConfiguredRevocationSource()
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     } catch (e: Exception) {
@@ -1650,7 +1664,7 @@ class WebServer(
                                 }
                                 CboxManager.refresh()
                             }
-                            Config.updateKeyBoxesSync(crlFetcher())
+                            updateKeyboxesFromConfiguredRevocationSource()
                             return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                         } else {
                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
@@ -1663,9 +1677,9 @@ class WebServer(
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
             try {
-                val crl = crlFetcher()
                 synchronized(fileLock) {
-                    val results = KeyboxVerifier.verify(configDir) { crl }
+                    val results = crlFetcher?.let { KeyboxVerifier.verify(configDir, it) }
+                        ?: KeyboxVerifier.verify(configDir)
                     val json = createKeyboxVerificationJson(results)
                     return secureResponse(Response.Status.OK, "application/json", json)
                 }
@@ -1756,7 +1770,7 @@ class WebServer(
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         target.setLastModified(System.currentTimeMillis())
                     }
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    updateKeyboxesFromConfiguredRevocationSource()
                     return secureResponse(Response.Status.OK, "text/plain", "Environment Reset")
                 }
             } catch (e: Exception) {
@@ -1775,10 +1789,18 @@ class WebServer(
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         target.setLastModified(System.currentTimeMillis())
                     }
-                    val revoked = crlFetcher()
-                    if (revoked != null) {
-                        Config.updateKeyBoxesSync(revoked)
-                    } else {
+                    val legacyFetcher = crlFetcher
+                    val revocationAvailable =
+                        if (legacyFetcher != null) {
+                            val revoked = legacyFetcher()
+                            if (revoked != null) Config.updateKeyBoxesSync(revoked)
+                            revoked != null
+                        } else {
+                            val revoked = KeyboxVerifier.fetchCrl()
+                            if (revoked != null) Config.updateKeyBoxesSync()
+                            revoked != null
+                        }
+                    if (!revocationAvailable) {
                         Logger.w("Runtime reload kept the active keybox pool because revocation data is unavailable")
                     }
                     return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
@@ -1913,7 +1935,7 @@ class WebServer(
                             WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
                             DeviceTemplateManager.initialize(configDir)
                             Config.refreshRestoredConfiguration().getOrThrow()
-                            Config.updateKeyBoxesSync(crlFetcher())
+                            updateKeyboxesFromConfiguredRevocationSource()
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
                     } finally {
