@@ -132,6 +132,12 @@ object KeyboxVerifier {
     fun verify(
         configDir: File,
         crlFetcher: () -> Set<String>?,
+    ): List<Result> = verifyLegacy(configDir, crlFetcher)
+
+    /** Production-source bridge used only when WebServer receives its JVM-test CRL injector. */
+    internal fun verifyLegacy(
+        configDir: File,
+        crlFetcher: () -> Set<String>?,
     ): List<Result> =
         verifyWithSource(configDir) { crlFetcher()?.let(RevocationSource::Legacy) }
 
@@ -356,7 +362,7 @@ object KeyboxVerifier {
                 val status =
                     when (crl) {
                         is RevocationSource.Rust -> verifyKeybox(keybox, crl.handle)
-                        is RevocationSource.Legacy -> verifyKeybox(keybox, crl.entries)
+                        is RevocationSource.Legacy -> verifyKeyboxLegacy(keybox, crl.entries)
                     }
                 when (status) {
                     Status.REVOKED -> {
@@ -409,6 +415,12 @@ object KeyboxVerifier {
     @JvmStatic
     @androidx.annotation.VisibleForTesting
     fun verifyKeybox(
+        keybox: CertHack.KeyBox,
+        revoked: Set<String>,
+    ): Status = verifyKeyboxLegacy(keybox, revoked)
+
+    /** Production-source bridge used only by legacy JVM-test injection paths. */
+    internal fun verifyKeyboxLegacy(
         keybox: CertHack.KeyBox,
         revoked: Set<String>,
     ): Status {

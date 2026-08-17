@@ -437,7 +437,7 @@ object Config {
     fun updateKeyBoxesSync(revokedSerials: Set<String>?) {
         updateKeyBoxesSyncWith(
             revocationProvider = { revokedSerials },
-            verifier = { keybox, revoked -> KeyboxVerifier.verifyKeybox(keybox, revoked) },
+            verifier = { keybox, revoked -> KeyboxVerifier.verifyKeyboxLegacy(keybox, revoked) },
         )
     }
 

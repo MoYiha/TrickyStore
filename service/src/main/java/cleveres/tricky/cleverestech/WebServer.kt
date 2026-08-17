@@ -563,7 +563,7 @@ class WebServer(
             val allValid =
                 crlFetcher?.let { legacyFetcher ->
                     val revoked = legacyFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
-                    keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }
+                    keyboxes.all { KeyboxVerifier.verifyKeyboxLegacy(it, revoked) == KeyboxVerifier.Status.VALID }
                 } ?: run {
                     val revoked = KeyboxVerifier.fetchCrl()
                         ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
@@ -1678,7 +1678,7 @@ class WebServer(
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
             try {
                 synchronized(fileLock) {
-                    val results = crlFetcher?.let { KeyboxVerifier.verify(configDir, it) }
+                    val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
                         ?: KeyboxVerifier.verify(configDir)
                     val json = createKeyboxVerificationJson(results)
                     return secureResponse(Response.Status.OK, "application/json", json)
