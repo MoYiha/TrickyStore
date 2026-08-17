@@ -143,6 +143,8 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
 fi
 
 chcon u:object_r:system_file:s0 "$MODDIR/daemon" 2>/dev/null
+chcon u:object_r:system_file:s0 "$MODDIR/cleverestrickyd" 2>/dev/null
+chcon u:object_r:system_file:s0 "$MODDIR/cleverestricky_backend" 2>/dev/null
 chcon u:object_r:system_file:s0 "$MODDIR/inject" 2>/dev/null
 chcon u:object_r:system_file:s0 "$MODDIR/webui_bridge" 2>/dev/null
 find "$MODDIR" -maxdepth 1 -type f \( -name '*.apk' -o -name '*.so' \) \

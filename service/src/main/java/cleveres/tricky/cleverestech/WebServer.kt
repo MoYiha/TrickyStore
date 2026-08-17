@@ -15,7 +15,6 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
@@ -541,14 +540,15 @@ class WebServer(
         VALID,
         INVALID,
         REVOCATION_UNAVAILABLE,
+        BACKEND_UNAVAILABLE,
     }
 
     private fun validateUploadedKeyboxXml(
-        content: String,
+        bytes: ByteArray,
         filename: String,
     ): KeyboxUploadValidation {
         return try {
-            val keyboxes = CertHack.parseKeyboxXml(StringReader(content), filename)
+            val keyboxes = KeyboxLoader.parse(bytes.copyOf(), filename)
             if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
             val revoked = crlFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
             if (keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }) {
@@ -556,10 +556,18 @@ class WebServer(
             } else {
                 KeyboxUploadValidation.INVALID
             }
-        } catch (error: Exception) {
+        } catch (_: RustBackendUnavailableException) {
+            KeyboxUploadValidation.BACKEND_UNAVAILABLE
+        } catch (_: Exception) {
             KeyboxUploadValidation.INVALID
         }
     }
+
+    private fun validateUploadedKeyboxXml(
+        content: String,
+        filename: String,
+    ): KeyboxUploadValidation =
+        validateUploadedKeyboxXml(content.toByteArray(Charsets.UTF_8), filename)
 
     private fun keyboxValidationError(validation: KeyboxUploadValidation): Response? =
         when (validation) {
@@ -571,6 +579,12 @@ class WebServer(
                     Response.Status.SERVICE_UNAVAILABLE,
                     "text/plain",
                     "Revocation service unavailable; keybox was not saved",
+                )
+            KeyboxUploadValidation.BACKEND_UNAVAILABLE ->
+                secureResponse(
+                    Response.Status.SERVICE_UNAVAILABLE,
+                    "text/plain",
+                    "Rust backend unavailable; keybox was not saved",
                 )
         }
 
@@ -1574,17 +1588,7 @@ class WebServer(
                             SecureFile.writeBytes(dest, bytes)
                             CboxManager.refresh()
                         } else {
-                            val xml =
-                                try {
-                                    Charsets.UTF_8.newDecoder()
-                                        .onMalformedInput(CodingErrorAction.REPORT)
-                                        .onUnmappableCharacter(CodingErrorAction.REPORT)
-                                        .decode(ByteBuffer.wrap(bytes))
-                                        .toString()
-                                } catch (error: Exception) {
-                                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Keybox XML is not valid UTF-8")
-                                }
-                            keyboxValidationError(validateUploadedKeyboxXml(xml, originalName))?.let { return it }
+                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
                         Config.updateKeyBoxesSync(crlFetcher())
@@ -1915,6 +1919,13 @@ class WebServer(
                     } finally {
                         decrypted.fill(0)
                     }
+                } catch (e: RustBackendUnavailableException) {
+                    Logger.e("Rust backend unavailable during backup restore", e)
+                    secureResponse(
+                        Response.Status.SERVICE_UNAVAILABLE,
+                        "text/plain",
+                        "Rust backend unavailable; restore not applied",
+                    )
                 } catch (e: Exception) {
                     Logger.e("Failed to restore backup", e)
                     secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Restore failed")
@@ -2615,11 +2626,7 @@ class WebServer(
                 staged.forEach { (name, bytes) ->
                     val file = requireNotNull(destinations[name])
                     if (name.startsWith("keyboxes/")) SecureFile.mkdirs(keyboxDir, 448)
-                    SecureFile.writeStream(
-                        file,
-                        ByteArrayInputStream(bytes),
-                        backupEntryLimit(name).toLong(),
-                    )
+                    SecureFile.writeBytes(file, bytes)
                 }
                 staleConfigFiles.forEach { Files.deleteIfExists(it.toPath()) }
                 staleKeyboxFiles.forEach { Files.deleteIfExists(it.toPath()) }
@@ -2677,15 +2684,17 @@ class WebServer(
                 }
                 return
             }
+            if (isBackupKeyboxEntry(name)) {
+                if (KeyboxLoader.parse(bytes.copyOf(), name).isEmpty()) {
+                    throw IOException("Backup keybox is empty: $name")
+                }
+                return
+            }
             val content = bytes.toString(Charsets.UTF_8)
             if (!content.toByteArray(Charsets.UTF_8).contentEquals(bytes)) {
                 throw IOException("Backup entry is not valid UTF-8: $name")
             }
-            if (isBackupKeyboxEntry(name)) {
-                if (CertHack.parseKeyboxXml(StringReader(content), name).isEmpty()) {
-                    throw IOException("Backup keybox is empty: $name")
-                }
-            } else if (!validateContent(name, content)) {
+            if (!validateContent(name, content)) {
                 throw IOException("Backup configuration is invalid: $name")
             }
         }

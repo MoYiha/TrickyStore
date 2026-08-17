@@ -8,6 +8,18 @@ The project uses Rust for every native component that can be implemented without
 
 There is no first party C implementation. New portable native logic must be written in Rust.
 
+## Rust service and privilege boundary
+
+The long-lived module service is split into a small privileged Rust supervisor and an unprivileged Rust backend. The privileged daemon owns process supervision, the fixed Android adapter identity, bounded CTIP framing, and descriptor-relative access to the fixed module configuration root. It does not parse keybox XML, CBOX JSON, certificates, private keys, backup plaintext, ZIP payloads, or network content.
+
+Sensitive keybox files are opened relative to trusted directory descriptors with `openat`, `O_NOFOLLOW`, `O_CLOEXEC`, file-type validation, and explicit byte limits. The root daemon passes exactly one validated file descriptor over a private inherited Unix socket using `SCM_RIGHTS`. Ancillary messages are close-on-exec at receive time; truncated, ambiguous, or multi-descriptor messages fail closed and installed descriptors are closed before the error returns.
+
+The backend permanently drops supplementary groups and switches to Android's nobody UID/GID before accepting parser work. It enables `PR_SET_NO_NEW_PRIVS`, disables dumpability, restores a parent-death signal after the credential transition, applies resource limits, and runs from `/`. It revalidates received keybox descriptors, performs bounded reads, parses XML, normalizes private keys to PKCS#8, and emits a bounded binary keybox response. CBOX and backup cryptography also run in this backend.
+
+The Android process is only an adapter for platform APIs that Rust cannot directly replace safely. It connects to the backend over an abstract Unix-domain socket whose peer PID/UID are verified. Keybox private-key bytes remain mutable while crossing the managed boundary and are cleared after JCA materialization. The remaining JCA adapter creates `PrivateKey`, `PublicKey`, and `X509Certificate` provider objects, proves that each private key matches the leaf certificate, verifies the supplied chain, and does not contain the portable XML parser.
+
+WebUI request polling files have been removed from the control path. The native WebUI bridge and Android HTTP adapter use bounded CTIP frames over an abstract Unix-domain socket, with fixed-size streaming relay buffers for request/response forwarding. Large WebUI body staging remains a separate bounded compatibility path rather than expanding the privileged control-frame parser.
+
 ## Rust native core
 
 The native core validates Binder transaction and exchange layouts, parses Binder command streams, classifies live Binder file descriptors, parses Android and kernel versions, validates live probes, performs kernel validated Binder memory copies, checks injector requests, reads bounded target process names, parses control messages, generates secure socket names, and validates library metadata.
@@ -49,6 +61,8 @@ Release binaries expose only the intended library entry points, use position ind
 ## Resource behavior
 
 The injected Binder parser performs no heap allocation. Descriptor classification uses a fixed cache and validates device plus inode identity before trusting a cached result. A second identity check closes the file descriptor reuse race around procfs resolution. Rust release code uses size optimization and full link time optimization. The injector exits after activation, so its orchestration buffers do not remain in the target process.
+
+The service control protocol has explicit operation-specific payload caps. Keybox files and XML are limited to 10 MiB; the keybox wire also has a structural overhead bound. Backup and CBOX operations keep their own compatibility bounds and wipe mutable secret buffers after use. The backend accepts one connection at a time from the exact supervised Android adapter PID rather than creating an unbounded worker pool.
 
 Camera listener state is also bounded. Initial callbacks received before the listener snapshot is known are retained in a fixed-count, fixed-byte queue, replay state is capped, and the listener proxy map has a hard limit. Exceeding the proxy limit while filtering is active fails closed instead of registering an unfiltered listener.
 

@@ -29,6 +29,7 @@ class WebServerBackupTest {
         originalSecureFileImpl = SecureFile.impl
         originalConfigRoot = Config.getConfigRoot()
         Config.setRootForTesting(configDir)
+        ManagedKeyboxParserOracle.install()
 
         // Mock SecureFile to use standard IO
         SecureFile.impl =
@@ -39,6 +40,14 @@ class WebServerBackupTest {
                 ) {
                     file.parentFile?.mkdirs()
                     file.writeText(content)
+                }
+
+                override fun writeBytes(
+                    file: File,
+                    content: ByteArray,
+                ) {
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(content)
                 }
 
                 override fun writeStream(
@@ -80,6 +89,7 @@ class WebServerBackupTest {
 
     @After
     fun tearDown() {
+        ManagedKeyboxParserOracle.reset()
         Config.updateAppConfigs(null).getOrThrow()
         Config.setRootForTesting(originalConfigRoot)
         SecureFile.impl = originalSecureFileImpl

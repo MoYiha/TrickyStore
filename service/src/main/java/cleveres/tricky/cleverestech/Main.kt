@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 
 private const val CONFIG_DIR_MODE = 448
+private const val BACKEND_STARTUP_TIMEOUT_MS = 30_000L
 
 private fun hasConfiguredKeyboxSource(configDir: File): Boolean {
     val roots =
@@ -54,6 +55,11 @@ fun main(args: Array<String>) {
             while (true) {
                 delay(60000)
             }
+        }
+
+        if (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
+            Logger.e("Rust backend did not become ready; exiting without touching persisted keybox caches")
+            return@runBlocking
         }
 
         try {

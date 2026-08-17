@@ -1,0 +1,156 @@
+// Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+use crate::{Error, ANDROID_ATTESTATION_OID, MAX_CERTIFICATE_DER_BYTES};
+use attestation_der::asn1::AnyRef;
+use attestation_der::{Decode as AttestationDecode, Tag, Tagged};
+use cleverestricky_attestation_core::{inspect_captured_patch_levels, CapturedPatchLevels};
+use der::Decode;
+use x509_cert::Certificate;
+
+const SOFTWARE_INDEX: usize = 6;
+const TEE_INDEX: usize = 7;
+const ROOT_OF_TRUST_TAG: u32 = 704;
+const ID_TAGS: [u32; 9] = [710, 711, 712, 713, 714, 715, 716, 717, 723];
+const MAX_FIELDS: usize = 16;
+const MAX_TAGS: usize = 256;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CertificateInspection {
+    pub captured_patch_levels: CapturedPatchLevels,
+    pub present_id_mask: u16,
+    pub supports_module_hash: bool,
+    pub original_boot_key: Option<[u8; 32]>,
+    pub original_boot_hash: Option<[u8; 32]>,
+}
+
+pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Error> {
+    if leaf_der.is_empty() || leaf_der.len() > MAX_CERTIFICATE_DER_BYTES {
+        return Err(Error::Bounds);
+    }
+    let leaf = Certificate::from_der(leaf_der).map_err(|_| Error::InvalidCertificate)?;
+    let extensions = leaf
+        .tbs_certificate
+        .extensions
+        .as_deref()
+        .ok_or(Error::MissingAttestationExtension)?;
+    let mut attestation = None;
+    for extension in extensions {
+        if extension.extn_id == ANDROID_ATTESTATION_OID
+            && attestation
+                .replace(extension.extn_value.as_bytes())
+                .is_some()
+        {
+            return Err(Error::DuplicateAttestationExtension);
+        }
+    }
+    let extension_der = attestation.ok_or(Error::MissingAttestationExtension)?;
+    let captured_patch_levels =
+        inspect_captured_patch_levels(extension_der).map_err(|_| Error::AttestationRewrite)?;
+    let outer = AnyRef::from_der(extension_der).map_err(|_| Error::AttestationRewrite)?;
+    if outer.tag() != Tag::Sequence {
+        return Err(Error::AttestationRewrite);
+    }
+    let fields = split(outer.value(), MAX_FIELDS)?;
+    if fields.len() <= TEE_INDEX {
+        return Err(Error::AttestationRewrite);
+    }
+    let attestation_version = <i32 as attestation_der::Decode>::from_der(&fields[0])
+        .map_err(|_| Error::AttestationRewrite)?;
+    let keymint_version = <i32 as attestation_der::Decode>::from_der(&fields[2])
+        .map_err(|_| Error::AttestationRewrite)?;
+    let list_six = tagged_fields(&fields[SOFTWARE_INDEX])?;
+    let list_seven = tagged_fields(&fields[TEE_INDEX])?;
+    let six_has_root = list_six.iter().any(|field| field.0 == ROOT_OF_TRUST_TAG);
+    let seven_has_root = list_seven.iter().any(|field| field.0 == ROOT_OF_TRUST_TAG);
+    let tee = if six_has_root && !seven_has_root {
+        &list_six
+    } else {
+        &list_seven
+    };
+
+    let mut present_id_mask = 0u16;
+    for (tag, _) in tee {
+        if let Some(index) = ID_TAGS.iter().position(|candidate| candidate == tag) {
+            present_id_mask |= 1u16 << index;
+        }
+    }
+    let root = tee
+        .iter()
+        .find(|(tag, _)| *tag == ROOT_OF_TRUST_TAG)
+        .and_then(|(_, encoded)| parse_root_of_trust(encoded));
+    let (original_boot_key, original_boot_hash) = root
+        .map(|(key, hash)| (Some(key), Some(hash)))
+        .unwrap_or((None, None));
+
+    Ok(CertificateInspection {
+        captured_patch_levels,
+        present_id_mask,
+        supports_module_hash: attestation_version >= 400 && keymint_version >= 400,
+        original_boot_key,
+        original_boot_hash,
+    })
+}
+
+fn tagged_fields(encoded: &[u8]) -> Result<Vec<(u32, Vec<u8>)>, Error> {
+    let sequence = AnyRef::from_der(encoded).map_err(|_| Error::AttestationRewrite)?;
+    if sequence.tag() != Tag::Sequence {
+        return Err(Error::AttestationRewrite);
+    }
+    split(sequence.value(), MAX_TAGS)?
+        .into_iter()
+        .map(|encoded| {
+            let any = AnyRef::from_der(&encoded).map_err(|_| Error::AttestationRewrite)?;
+            let tag = match any.tag() {
+                Tag::ContextSpecific {
+                    constructed: true,
+                    number,
+                } => number.value(),
+                _ => return Err(Error::AttestationRewrite),
+            };
+            Ok((tag, encoded))
+        })
+        .collect()
+}
+
+fn parse_root_of_trust(encoded: &[u8]) -> Option<([u8; 32], [u8; 32])> {
+    let outer = AnyRef::from_der(encoded).ok()?;
+    let sequence = AnyRef::from_der(outer.value()).ok()?;
+    if sequence.tag() != Tag::Sequence {
+        return None;
+    }
+    let fields = split(sequence.value(), 4).ok()?;
+    if fields.len() != 4 {
+        return None;
+    }
+    let key = decode_digest(&fields[0])?;
+    let hash = decode_digest(&fields[3])?;
+    Some((key, hash))
+}
+
+fn decode_digest(encoded: &[u8]) -> Option<[u8; 32]> {
+    let value = AnyRef::from_der(encoded).ok()?;
+    if value.tag() != Tag::OctetString || value.value().len() != 32 {
+        return None;
+    }
+    let digest: [u8; 32] = value.value().try_into().ok()?;
+    (!digest.iter().all(|byte| *byte == 0)).then_some(digest)
+}
+
+fn split(mut encoded: &[u8], max_items: usize) -> Result<Vec<Vec<u8>>, Error> {
+    let mut output = Vec::new();
+    while !encoded.is_empty() {
+        if output.len() >= max_items {
+            return Err(Error::AttestationRewrite);
+        }
+        let (_, rest) = AnyRef::from_der_partial(encoded).map_err(|_| Error::AttestationRewrite)?;
+        let consumed = encoded
+            .len()
+            .checked_sub(rest.len())
+            .ok_or(Error::AttestationRewrite)?;
+        if consumed == 0 {
+            return Err(Error::AttestationRewrite);
+        }
+        output.push(encoded[..consumed].to_vec());
+        encoded = rest;
+    }
+    Ok(output)
+}

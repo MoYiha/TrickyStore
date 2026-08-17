@@ -1,0 +1,32 @@
+# Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+[package]
+name = "cleverestricky-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "GPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+cleverestricky-service-core = { path = "../service-core" }
+cleverestricky-xml-core = { path = "../xml-core" }
+
+[[bin]]
+name = "ipc_frame"
+path = "fuzz_targets/ipc_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keybox_xml"
+path = "fuzz_targets/keybox_xml.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

@@ -1,0 +1,796 @@
+// Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+mod certificate_wire;
+mod crl_wire;
+mod keybox_fd;
+mod keybox_wire;
+
+use cleverestricky_crypto_core::{
+    decrypt_backup, decrypt_cbox, encrypt_backup_owned, verify_cbox_signature, CboxPayload,
+};
+use cleverestricky_service_core::fd_transport::receive_one_fd;
+use cleverestricky_service_core::ipc::{
+    read_header_bounded, write_frame_bounded, FLAG_ERROR, OP_CRYPTO_BACKUP_DECRYPT,
+    OP_CRYPTO_BACKUP_ENCRYPT, OP_CRYPTO_CBOX_OPEN, OP_KEYBOX_PARSE,
+};
+use cleverestricky_service_core::unix_socket::{bind_abstract, peer_credentials};
+use std::env;
+use std::io::{self, Read, Write};
+use std::os::fd::{FromRawFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::process;
+use std::time::Duration;
+use zeroize::Zeroize;
+
+const BACKEND_SOCKET_NAME: &[u8] = b"cleverestricky-backend.v1";
+const ANDROID_AID_NOBODY: libc::uid_t = 9999;
+const ANDROID_GID_NOBODY: libc::gid_t = 9999;
+const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_PASSWORD_BYTES: usize = 4 * 1024;
+const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024;
+const MAX_CBOX_BYTES: usize = 10 * 1024 * 1024 + 36;
+const MAX_BACKUP_BYTES: usize = 32 * 1024 * 1024;
+const MAX_KEYBOX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
+const MAX_KEYBOX_FILE_REQUEST_BYTES: usize = 1 + 255;
+const BACKUP_ENCRYPTION_RESERVE_BYTES: usize = 64;
+const MAX_CBOX_REQUEST_BYTES: usize =
+    2 + MAX_PASSWORD_BYTES + 2 + MAX_PUBLIC_KEY_BYTES + MAX_CBOX_BYTES;
+const MAX_BACKUP_REQUEST_BYTES: usize = 2 + MAX_PASSWORD_BYTES + MAX_BACKUP_BYTES + 64;
+const MAX_BACKEND_FRAME_BYTES: usize = MAX_BACKUP_REQUEST_BYTES;
+const MAX_CBOX_RESPONSE_BYTES: usize = MAX_CBOX_BYTES + 8 * 1024;
+const MAX_BACKUP_RESPONSE_BYTES: usize = MAX_BACKUP_BYTES + 64;
+const MAX_KEYBOX_RESPONSE_BYTES: usize =
+    MAX_KEYBOX_REQUEST_BYTES + keybox_wire::MAX_KEYBOX_WIRE_OVERHEAD_BYTES;
+const MAX_ERROR_BYTES: usize = 256;
+const BACKEND_BROKER_FD: RawFd = 9;
+const OP_KEYBOX_FILE_PARSE: u16 = 24;
+const OP_CERTIFICATE_INSPECT: u16 = 25;
+const OP_CERTIFICATE_REWRITE: u16 = 26;
+const OP_CRL_CHECK_BATCH: u16 = 27;
+const OP_KEYBOX_BROKER_OPEN: u16 = 30;
+const SCOPE_CONFIG_ROOT: u8 = 0;
+const SCOPE_KEYBOX_DIRECTORY: u8 = 1;
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("cleverestricky_backend: {error}");
+        process::exit(1);
+    }
+}
+
+fn run() -> io::Result<()> {
+    let adapter_pid = parse_adapter_pid()?;
+    let mut broker = take_broker_stream()?;
+    let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
+    harden_process()?;
+    serve(listener, adapter_pid, &mut broker)
+}
+
+fn parse_adapter_pid() -> io::Result<u32> {
+    let mut arguments = env::args_os();
+    let _program = arguments.next();
+    let pid = arguments
+        .next()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing adapter PID"))?;
+    if arguments.next().is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "unexpected backend argument",
+        ));
+    }
+    let pid = pid
+        .to_str()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| *value > 1 && *value <= i32::MAX as u32)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid adapter PID"))?;
+    Ok(pid)
+}
+
+fn take_broker_stream() -> io::Result<UnixStream> {
+    // SAFETY: F_GETFD is a scalar validity check for the fixed inherited descriptor.
+    if unsafe { libc::fcntl(BACKEND_BROKER_FD, libc::F_GETFD) } < 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::NotConnected,
+            "missing inherited keybox broker descriptor",
+        ));
+    }
+    // SAFETY: the daemon transfers unique ownership of descriptor 9 across exec. This process has
+    // not wrapped or closed it yet, so UnixStream becomes its sole Rust owner.
+    let stream = unsafe { UnixStream::from_raw_fd(BACKEND_BROKER_FD) };
+    let credentials = peer_credentials(&stream)?;
+    // SAFETY: getppid is pointer-free and used only to authenticate the private socketpair peer.
+    let parent_pid = unsafe { libc::getppid() };
+    if parent_pid <= 1
+        || credentials.uid != 0
+        || credentials.gid != 0
+        || credentials.pid != parent_pid
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "unexpected keybox broker peer",
+        ));
+    }
+    Ok(stream)
+}
+
+fn harden_process() -> io::Result<()> {
+    // SAFETY: `getppid` has no pointer arguments and retains no state. Capturing the original parent
+    // before credential changes lets us close the PR_SET_PDEATHSIG race below.
+    let parent_pid = unsafe { libc::getppid() };
+    if parent_pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "backend supervisor is unavailable",
+        ));
+    }
+
+    // SAFETY: `umask` takes a value only, retains no pointers, and the backend intentionally applies
+    // this process-wide mask before any future file creation could occur.
+    unsafe { libc::umask(0o077) };
+
+    // SAFETY: a zero-length supplementary-group list permits a null pointer. The backend begins as a
+    // privileged child of the supervisor and discards all supplementary groups before setgid/setuid.
+    if unsafe { libc::setgroups(0, std::ptr::null()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `setgid` receives a constant Android nobody GID and retains no pointers. It is called
+    // exactly once before dropping UID privileges.
+    if unsafe { libc::setgid(ANDROID_GID_NOBODY) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `setuid` receives a constant Android nobody UID and retains no pointers. Linux clears
+    // normal root capabilities as part of this permanent credential drop.
+    if unsafe { libc::setuid(ANDROID_AID_NOBODY) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // SAFETY: the credential getters have no pointer arguments and are used only to verify that the
+    // permanent drop above actually took effect.
+    let credentials_dropped = unsafe {
+        libc::getuid() == ANDROID_AID_NOBODY
+            && libc::geteuid() == ANDROID_AID_NOBODY
+            && libc::getgid() == ANDROID_GID_NOBODY
+            && libc::getegid() == ANDROID_GID_NOBODY
+    };
+    if !credentials_dropped {
+        return Err(io::Error::other(
+            "backend privilege drop did not take effect",
+        ));
+    }
+
+    // SAFETY: PR_SET_NO_NEW_PRIVS takes scalar arguments only and makes the privilege drop sticky
+    // across any accidental future exec. No pointer, lifetime, alignment, aliasing, or ownership
+    // assumptions are involved.
+    if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: setuid may reset dumpability; applying PR_SET_DUMPABLE after the credential drop keeps
+    // keybox and backup plaintext out of core/debug dumps. All arguments are scalar.
+    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: credential changes clear an inherited parent-death signal, so the unprivileged process
+    // installs it again after setuid. PR_SET_PDEATHSIG retains no pointers.
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `getppid` is pointer-free. If the parent changed before PR_SET_PDEATHSIG was installed,
+    // the signal may have been missed; fail closed instead of leaving an orphan parser process.
+    if unsafe { libc::getppid() } != parent_pid {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "backend supervisor changed during hardening",
+        ));
+    }
+
+    set_limit(libc::RLIMIT_CORE as libc::c_int, 0)?;
+    set_limit(libc::RLIMIT_NOFILE as libc::c_int, 32)?;
+    env::set_current_dir("/")?;
+    Ok(())
+}
+
+fn set_limit(resource: libc::c_int, value: libc::rlim_t) -> io::Result<()> {
+    let limit = libc::rlimit {
+        rlim_cur: value,
+        rlim_max: value,
+    };
+    // SAFETY: `limit` is a fully initialized, aligned `rlimit` that remains live for the duration of
+    // the call. `setrlimit` copies the structure and retains no pointer or ownership.
+    if unsafe { libc::setrlimit(resource as _, &limit) } != 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+fn serve(listener: UnixListener, adapter_pid: u32, broker: &mut UnixStream) -> io::Result<()> {
+    loop {
+        let (mut stream, _) = match listener.accept() {
+            Ok(value) => value,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        let credentials = match peer_credentials(&stream) {
+            Ok(credentials)
+                if credentials.uid == 0
+                    && u32::try_from(credentials.pid).ok() == Some(adapter_pid) =>
+            {
+                credentials
+            }
+            _ => continue,
+        };
+        debug_assert_eq!(credentials.uid, 0);
+        stream.set_read_timeout(Some(CLIENT_TIMEOUT))?;
+        stream.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        if let Err(error) = serve_connection(&mut stream, broker) {
+            if error.kind() == io::ErrorKind::NotConnected {
+                return Err(error);
+            }
+            if !matches!(
+                error.kind(),
+                io::ErrorKind::UnexpectedEof
+                    | io::ErrorKind::ConnectionReset
+                    | io::ErrorKind::BrokenPipe
+                    | io::ErrorKind::TimedOut
+                    | io::ErrorKind::WouldBlock
+            ) {
+                eprintln!("cleverestricky_backend: adapter connection rejected: {error}");
+            }
+        }
+    }
+}
+
+fn serve_connection(stream: &mut UnixStream, broker: &mut UnixStream) -> io::Result<()> {
+    loop {
+        let header = read_header_bounded(stream, MAX_BACKEND_FRAME_BYTES)?;
+        if header.flags != 0 {
+            reply_error(stream, header.opcode, "invalid backend flags")?;
+            return Ok(());
+        }
+        let request_limit = opcode_request_limit(header.opcode);
+        let Some(request_limit) = request_limit else {
+            reply_error(stream, header.opcode, "unsupported backend operation")?;
+            return Ok(());
+        };
+        if header.payload_len == 0 || header.payload_len > request_limit {
+            reply_error(
+                stream,
+                header.opcode,
+                "backend request exceeds operation bound",
+            )?;
+            return Ok(());
+        }
+
+        let reserve = if header.opcode == OP_CRYPTO_BACKUP_ENCRYPT {
+            BACKUP_ENCRYPTION_RESERVE_BYTES
+        } else {
+            0
+        };
+        let request_capacity = header.payload_len.checked_add(reserve).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "backend request size overflow")
+        })?;
+        let mut request = Vec::new();
+        request
+            .try_reserve_exact(request_capacity)
+            .map_err(|_| io::Error::other("backend request allocation failed"))?;
+        request.resize(header.payload_len, 0);
+        if let Err(error) = stream.read_exact(&mut request) {
+            request.zeroize();
+            return Err(error);
+        }
+        let result = if header.opcode == OP_KEYBOX_FILE_PARSE {
+            parse_keybox_file(broker, request)?
+        } else {
+            handle_request(header.opcode, request)
+        };
+        match result {
+            Ok(mut response) => {
+                let response_limit = opcode_response_limit(header.opcode).expect("known opcode");
+                let write_result =
+                    write_frame_bounded(stream, header.opcode, 0, &response, response_limit)
+                        .and_then(|()| stream.flush());
+                response.zeroize();
+                write_result?;
+            }
+            Err(message) => reply_error(stream, header.opcode, message)?,
+        }
+    }
+}
+
+fn opcode_request_limit(opcode: u16) -> Option<usize> {
+    match opcode {
+        OP_CRYPTO_CBOX_OPEN => Some(MAX_CBOX_REQUEST_BYTES),
+        OP_CRYPTO_BACKUP_ENCRYPT | OP_CRYPTO_BACKUP_DECRYPT => Some(MAX_BACKUP_REQUEST_BYTES),
+        OP_KEYBOX_PARSE => Some(MAX_KEYBOX_REQUEST_BYTES),
+        OP_KEYBOX_FILE_PARSE => Some(MAX_KEYBOX_FILE_REQUEST_BYTES),
+        OP_CERTIFICATE_INSPECT => Some(certificate_wire::MAX_INSPECT_REQUEST_BYTES),
+        OP_CERTIFICATE_REWRITE => Some(certificate_wire::MAX_REWRITE_REQUEST_BYTES),
+        OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_REQUEST_BYTES),
+        _ => None,
+    }
+}
+
+fn opcode_response_limit(opcode: u16) -> Option<usize> {
+    match opcode {
+        OP_CRYPTO_CBOX_OPEN => Some(MAX_CBOX_RESPONSE_BYTES),
+        OP_CRYPTO_BACKUP_ENCRYPT | OP_CRYPTO_BACKUP_DECRYPT => Some(MAX_BACKUP_RESPONSE_BYTES),
+        OP_KEYBOX_PARSE | OP_KEYBOX_FILE_PARSE => Some(MAX_KEYBOX_RESPONSE_BYTES),
+        OP_CERTIFICATE_INSPECT => Some(certificate_wire::INSPECT_RESPONSE_BYTES),
+        OP_CERTIFICATE_REWRITE => Some(certificate_wire::MAX_REWRITE_RESPONSE_BYTES),
+        OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_RESPONSE_BYTES),
+        _ => None,
+    }
+}
+
+fn parse_keybox_file(
+    broker: &mut UnixStream,
+    mut request: Vec<u8>,
+) -> io::Result<Result<Vec<u8>, &'static str>> {
+    if !keybox_file_request_is_valid(&request) {
+        request.zeroize();
+        return Ok(Err("keybox file request rejected"));
+    }
+    let send_result = write_frame_bounded(
+        broker,
+        OP_KEYBOX_BROKER_OPEN,
+        0,
+        &request,
+        MAX_KEYBOX_FILE_REQUEST_BYTES,
+    )
+    .and_then(|()| broker.flush());
+    request.zeroize();
+    send_result.map_err(broker_io)?;
+
+    let header = read_header_bounded(broker, MAX_ERROR_BYTES).map_err(broker_io)?;
+    if header.opcode != OP_KEYBOX_BROKER_OPEN {
+        return Err(broker_protocol("unexpected keybox broker opcode"));
+    }
+    if header.flags == FLAG_ERROR {
+        let mut discard = [0u8; MAX_ERROR_BYTES];
+        broker
+            .read_exact(&mut discard[..header.payload_len])
+            .map_err(broker_io)?;
+        return Ok(Err("keybox file rejected"));
+    }
+    if header.flags != 0 || header.payload_len != 0 {
+        return Err(broker_protocol("invalid keybox broker response"));
+    }
+    let fd = receive_one_fd(broker).map_err(broker_io)?;
+    Ok(keybox_fd::parse_received_fd(fd))
+}
+
+fn keybox_file_request_is_valid(request: &[u8]) -> bool {
+    if request.len() < 2 || request.len() > MAX_KEYBOX_FILE_REQUEST_BYTES {
+        return false;
+    }
+    let scope = request[0];
+    let Ok(name) = std::str::from_utf8(&request[1..]) else {
+        return false;
+    };
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\0') {
+        return false;
+    }
+    match scope {
+        SCOPE_CONFIG_ROOT => name == "keybox.xml",
+        SCOPE_KEYBOX_DIRECTORY => name
+            .get(name.len().saturating_sub(4)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".xml")),
+        _ => false,
+    }
+}
+
+fn broker_io(error: io::Error) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::NotConnected,
+        format!("keybox broker unavailable: {error}"),
+    )
+}
+
+fn broker_protocol(message: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::NotConnected, message)
+}
+
+fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    match opcode {
+        OP_CRYPTO_CBOX_OPEN => open_cbox(request),
+        OP_CRYPTO_BACKUP_ENCRYPT => transform_backup(request, true),
+        OP_CRYPTO_BACKUP_DECRYPT => transform_backup(request, false),
+        OP_KEYBOX_PARSE => keybox_wire::parse_and_encode(request),
+        OP_CERTIFICATE_INSPECT => certificate_wire::inspect_and_encode(request),
+        OP_CERTIFICATE_REWRITE => certificate_wire::rewrite_and_encode(request),
+        OP_CRL_CHECK_BATCH => crl_wire::check_batch(request),
+        _ => {
+            request.zeroize();
+            Err("unsupported backend operation")
+        }
+    }
+}
+
+fn open_cbox(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
+    let parsed = match parse_cbox_prefix(&request) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            request.zeroize();
+            return Err(error);
+        }
+    };
+    let mut password = parsed.password.to_owned();
+    let public_key = parsed.public_key.to_owned();
+    let data_offset = parsed.data_offset;
+    request.copy_within(data_offset.., 0);
+    request.truncate(request.len() - data_offset);
+
+    let decrypted = decrypt_cbox(request, &password);
+    password.zeroize();
+    let mut payload = match decrypted {
+        Ok(payload) => payload,
+        Err(_) => return Err("CBOX rejected"),
+    };
+    if !cbox_signature_policy_accepts(&payload, &public_key) {
+        payload.author.zeroize();
+        payload.xml_content.zeroize();
+        payload.signature_base64.zeroize();
+        return Err("CBOX rejected");
+    }
+    let response = encode_cbox_response(&payload);
+    payload.author.zeroize();
+    payload.xml_content.zeroize();
+    payload.signature_base64.zeroize();
+    response
+}
+
+fn cbox_signature_policy_accepts(payload: &CboxPayload, public_key: &str) -> bool {
+    if public_key.is_empty() {
+        true
+    } else {
+        !payload.signature_base64.is_empty() && verify_cbox_signature(payload, public_key)
+    }
+}
+
+fn transform_backup(mut request: Vec<u8>, encrypt: bool) -> Result<Vec<u8>, &'static str> {
+    let parsed = match parse_backup_prefix(&request) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            request.zeroize();
+            return Err(error);
+        }
+    };
+    let mut password = parsed.password.to_owned();
+    let data_offset = parsed.data_offset;
+    request.copy_within(data_offset.., 0);
+    request.truncate(request.len() - data_offset);
+
+    let result = if encrypt {
+        encrypt_backup_owned(request, &password)
+    } else {
+        decrypt_backup(request, &password)
+    };
+    password.zeroize();
+    result.map_err(|_| "backup rejected")
+}
+
+struct ParsedCboxPrefix<'a> {
+    password: &'a str,
+    public_key: &'a str,
+    data_offset: usize,
+}
+
+fn parse_cbox_prefix(request: &[u8]) -> Result<ParsedCboxPrefix<'_>, &'static str> {
+    let password_len = read_u16(request, 0)?;
+    if password_len > MAX_PASSWORD_BYTES {
+        return Err("invalid CBOX password field");
+    }
+    let password_start = 2usize;
+    let password_end = password_start
+        .checked_add(password_len)
+        .ok_or("invalid CBOX password field")?;
+    let public_key_len = read_u16(request, password_end)?;
+    if public_key_len > MAX_PUBLIC_KEY_BYTES {
+        return Err("invalid CBOX public key field");
+    }
+    let public_key_start = password_end
+        .checked_add(2)
+        .ok_or("invalid CBOX public key field")?;
+    let data_offset = public_key_start
+        .checked_add(public_key_len)
+        .ok_or("invalid CBOX public key field")?;
+    let password = std::str::from_utf8(
+        request
+            .get(password_start..password_end)
+            .ok_or("truncated CBOX password field")?,
+    )
+    .map_err(|_| "invalid CBOX password encoding")?;
+    let public_key = std::str::from_utf8(
+        request
+            .get(public_key_start..data_offset)
+            .ok_or("truncated CBOX public key field")?,
+    )
+    .map_err(|_| "invalid CBOX public key encoding")?;
+    let cbox_len = request.len().saturating_sub(data_offset);
+    if cbox_len == 0 || cbox_len > MAX_CBOX_BYTES {
+        return Err("invalid CBOX payload size");
+    }
+    Ok(ParsedCboxPrefix {
+        password,
+        public_key,
+        data_offset,
+    })
+}
+
+struct ParsedBackupPrefix<'a> {
+    password: &'a str,
+    data_offset: usize,
+}
+
+fn parse_backup_prefix(request: &[u8]) -> Result<ParsedBackupPrefix<'_>, &'static str> {
+    let password_len = read_u16(request, 0)?;
+    if password_len > MAX_PASSWORD_BYTES {
+        return Err("invalid backup password field");
+    }
+    let data_offset = 2usize
+        .checked_add(password_len)
+        .ok_or("invalid backup password field")?;
+    let password = std::str::from_utf8(
+        request
+            .get(2..data_offset)
+            .ok_or("truncated backup password field")?,
+    )
+    .map_err(|_| "invalid backup password encoding")?;
+    let data_len = request.len().saturating_sub(data_offset);
+    if data_len > MAX_BACKUP_BYTES + 64 {
+        return Err("invalid backup payload size");
+    }
+    Ok(ParsedBackupPrefix {
+        password,
+        data_offset,
+    })
+}
+
+fn encode_cbox_response(payload: &CboxPayload) -> Result<Vec<u8>, &'static str> {
+    let author = payload.author.as_bytes();
+    let xml = payload.xml_content.as_bytes();
+    let author_len = u16::try_from(author.len()).map_err(|_| "CBOX author exceeds wire bound")?;
+    let xml_len = u32::try_from(xml.len()).map_err(|_| "CBOX XML exceeds wire bound")?;
+    let total = 2usize
+        .checked_add(4)
+        .and_then(|value| value.checked_add(1))
+        .and_then(|value| value.checked_add(author.len()))
+        .and_then(|value| value.checked_add(xml.len()))
+        .ok_or("CBOX response size overflow")?;
+    if total > MAX_CBOX_RESPONSE_BYTES {
+        return Err("CBOX response exceeds wire bound");
+    }
+    let mut output = Vec::with_capacity(total);
+    output.extend_from_slice(&author_len.to_be_bytes());
+    output.extend_from_slice(&xml_len.to_be_bytes());
+    output.push(u8::from(!payload.signature_base64.is_empty()));
+    output.extend_from_slice(author);
+    output.extend_from_slice(xml);
+    Ok(output)
+}
+
+fn read_u16(input: &[u8], offset: usize) -> Result<usize, &'static str> {
+    let end = offset.checked_add(2).ok_or("wire length overflow")?;
+    let bytes: [u8; 2] = input
+        .get(offset..end)
+        .ok_or("truncated wire length")?
+        .try_into()
+        .map_err(|_| "truncated wire length")?;
+    Ok(u16::from_be_bytes(bytes) as usize)
+}
+
+fn reply_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::Result<()> {
+    let bytes = message.as_bytes();
+    write_frame_bounded(
+        stream,
+        opcode.max(1),
+        FLAG_ERROR,
+        &bytes[..bytes.len().min(MAX_ERROR_BYTES)],
+        MAX_ERROR_BYTES,
+    )?;
+    stream.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::Engine as _;
+
+    const PASSWORD: &str = "correct horse battery staple";
+    const CTSB_V2: &str = "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z";
+    const CBOX_V2: &str = "Q0JPWAAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPWcdbGETfpef7mviy130oMGrIv/EwTlOVOuFIH5qfAaY+XUMc2qXWTgNu7FkkT/w9lEwrpv/iFQNyu/EsamoACXPaOVKKg+oGNsVLwNRNN4Gth46JQOziUU1/B3Fen+4BvKg9VtB9H4xnPi4AX+qMZHYhaW8ysgOQaSFcJy59C9IckzAalbsWXcjdsX8r1kr/KBOEALbqYmlPfNbKQEZdEZacWRvO3";
+    const VALID_EC: &[u8] =
+        include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
+
+    fn encode_backup_request(password: &str, body: &[u8]) -> Vec<u8> {
+        let password = password.as_bytes();
+        let mut output = Vec::with_capacity(2 + password.len() + body.len());
+        output.extend_from_slice(&(password.len() as u16).to_be_bytes());
+        output.extend_from_slice(password);
+        output.extend_from_slice(body);
+        output
+    }
+
+    fn encode_cbox_request(password: &str, public_key: &str, body: &[u8]) -> Vec<u8> {
+        let password = password.as_bytes();
+        let public_key = public_key.as_bytes();
+        let mut output = Vec::with_capacity(4 + password.len() + public_key.len() + body.len());
+        output.extend_from_slice(&(password.len() as u16).to_be_bytes());
+        output.extend_from_slice(password);
+        output.extend_from_slice(&(public_key.len() as u16).to_be_bytes());
+        output.extend_from_slice(public_key);
+        output.extend_from_slice(body);
+        output
+    }
+
+    fn decode(value: &str) -> Vec<u8> {
+        base64::engine::general_purpose::STANDARD
+            .decode(value)
+            .unwrap()
+    }
+
+    #[test]
+    fn backup_decrypt_operation_matches_golden() {
+        let request = encode_backup_request(PASSWORD, &decode(CTSB_V2));
+        let plaintext = handle_request(OP_CRYPTO_BACKUP_DECRYPT, request).unwrap();
+        assert_eq!(
+            plaintext,
+            b"{\"version\":1,\"files\":{\"target.txt\":\"com.example.app\\n\"}}"
+        );
+    }
+
+    #[test]
+    fn backup_encrypt_operation_round_trips_without_json_or_base64_wire_format() {
+        let plaintext = b"bounded backup payload";
+        let request = encode_backup_request(PASSWORD, plaintext);
+        let encrypted = handle_request(OP_CRYPTO_BACKUP_ENCRYPT, request).unwrap();
+        let decrypted = handle_request(
+            OP_CRYPTO_BACKUP_DECRYPT,
+            encode_backup_request(PASSWORD, &encrypted),
+        )
+        .unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn backup_encrypt_accepts_empty_password_and_plaintext() {
+        let encrypted =
+            handle_request(OP_CRYPTO_BACKUP_ENCRYPT, encode_backup_request("", b"")).unwrap();
+        let decrypted = handle_request(
+            OP_CRYPTO_BACKUP_DECRYPT,
+            encode_backup_request("", &encrypted),
+        )
+        .unwrap();
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn cbox_prefix_accepts_empty_password_like_managed_oracle() {
+        let request = encode_cbox_request("", "", b"body");
+        let parsed = parse_cbox_prefix(&request).unwrap();
+        assert_eq!(parsed.password, "");
+        assert_eq!(parsed.public_key, "");
+        assert_eq!(&request[parsed.data_offset..], b"body");
+    }
+
+    #[test]
+    fn cbox_open_operation_returns_length_delimited_fields() {
+        let request = encode_cbox_request(PASSWORD, "", &decode(CBOX_V2));
+        let response = handle_request(OP_CRYPTO_CBOX_OPEN, request).unwrap();
+        let author_len = u16::from_be_bytes(response[0..2].try_into().unwrap()) as usize;
+        let xml_len = u32::from_be_bytes(response[2..6].try_into().unwrap()) as usize;
+        assert_eq!(response[6], 0);
+        assert_eq!(
+            std::str::from_utf8(&response[7..7 + author_len]).unwrap(),
+            "CleveresTricky golden"
+        );
+        assert_eq!(
+            std::str::from_utf8(&response[7 + author_len..7 + author_len + xml_len]).unwrap(),
+            "<AndroidAttestation NumberOfKeyboxes=\"0\"></AndroidAttestation>"
+        );
+    }
+
+    #[test]
+    fn cbox_signature_presence_policy_matches_managed_server_behavior() {
+        let unsigned = CboxPayload {
+            author: "author".to_string(),
+            xml_content: "<xml/>".to_string(),
+            signature_base64: String::new(),
+            signature_version: 2,
+        };
+        assert!(cbox_signature_policy_accepts(&unsigned, ""));
+        assert!(!cbox_signature_policy_accepts(&unsigned, "not-a-key"));
+
+        let signed = CboxPayload {
+            signature_base64: "AA==".to_string(),
+            ..unsigned
+        };
+        assert!(cbox_signature_policy_accepts(&signed, ""));
+        assert!(!cbox_signature_policy_accepts(&signed, "not-a-key"));
+    }
+
+    #[test]
+    fn keybox_parse_operation_uses_legacy_loader_bound_and_der_wire() {
+        assert_eq!(
+            opcode_request_limit(OP_KEYBOX_PARSE),
+            Some(10 * 1024 * 1024)
+        );
+        assert_eq!(
+            opcode_response_limit(OP_KEYBOX_PARSE),
+            Some(MAX_KEYBOX_RESPONSE_BYTES)
+        );
+        let response = handle_request(OP_KEYBOX_PARSE, VALID_EC.to_vec()).unwrap();
+        assert_eq!(response.first().copied(), Some(2));
+        assert!(response.len() <= MAX_KEYBOX_RESPONSE_BYTES);
+    }
+
+    #[test]
+    fn certificate_operations_use_dedicated_bounds() {
+        assert_eq!(
+            opcode_request_limit(OP_CERTIFICATE_INSPECT),
+            Some(certificate_wire::MAX_INSPECT_REQUEST_BYTES)
+        );
+        assert_eq!(
+            opcode_response_limit(OP_CERTIFICATE_INSPECT),
+            Some(certificate_wire::INSPECT_RESPONSE_BYTES)
+        );
+        assert_eq!(
+            opcode_request_limit(OP_CERTIFICATE_REWRITE),
+            Some(certificate_wire::MAX_REWRITE_REQUEST_BYTES)
+        );
+        assert_eq!(
+            opcode_response_limit(OP_CERTIFICATE_REWRITE),
+            Some(certificate_wire::MAX_REWRITE_RESPONSE_BYTES)
+        );
+        assert!(handle_request(OP_CERTIFICATE_INSPECT, vec![1]).is_err());
+        assert!(handle_request(OP_CERTIFICATE_REWRITE, vec![1]).is_err());
+    }
+
+    #[test]
+    fn crl_operation_uses_bounded_batch_wire() {
+        assert_eq!(
+            opcode_request_limit(OP_CRL_CHECK_BATCH),
+            Some(crl_wire::MAX_REQUEST_BYTES)
+        );
+        assert_eq!(
+            opcode_response_limit(OP_CRL_CHECK_BATCH),
+            Some(crl_wire::MAX_RESPONSE_BYTES)
+        );
+        assert!(handle_request(OP_CRL_CHECK_BATCH, vec![1]).is_err());
+    }
+
+    #[test]
+    fn keybox_file_request_policy_is_scope_bounded_and_component_only() {
+        let mut legacy = vec![SCOPE_CONFIG_ROOT];
+        legacy.extend_from_slice(b"keybox.xml");
+        assert!(keybox_file_request_is_valid(&legacy));
+
+        let mut directory = vec![SCOPE_KEYBOX_DIRECTORY];
+        directory.extend_from_slice("A B.XML".as_bytes());
+        assert!(keybox_file_request_is_valid(&directory));
+
+        for name in ["../evil.xml", "sub/evil.xml", "not-xml.txt"] {
+            let mut request = vec![SCOPE_KEYBOX_DIRECTORY];
+            request.extend_from_slice(name.as_bytes());
+            assert!(!keybox_file_request_is_valid(&request));
+        }
+        let mut wrong_root = vec![SCOPE_CONFIG_ROOT];
+        wrong_root.extend_from_slice(b"other.xml");
+        assert!(!keybox_file_request_is_valid(&wrong_root));
+        assert!(!keybox_file_request_is_valid(&[9, b'x']));
+    }
+
+    #[test]
+    fn malformed_truncated_and_oversized_prefixes_fail_closed() {
+        assert!(handle_request(OP_CRYPTO_CBOX_OPEN, vec![0]).is_err());
+        assert!(handle_request(OP_CRYPTO_BACKUP_DECRYPT, vec![0, 3, b'a']).is_err());
+
+        let mut oversized = vec![0, 1, b'p'];
+        oversized.resize(3 + MAX_BACKUP_BYTES + 65, 0);
+        assert!(handle_request(OP_CRYPTO_BACKUP_DECRYPT, oversized).is_err());
+    }
+
+    #[test]
+    fn unknown_operations_are_rejected() {
+        assert!(handle_request(0xffff, vec![1]).is_err());
+    }
+}

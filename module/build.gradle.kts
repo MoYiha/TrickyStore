@@ -106,7 +106,7 @@ tasks.register<Exec>("installRustTargets") {
 
 tasks.register<Exec>("cargoBuild") {
     group = "rust"
-    description = "Builds the Rust native library and injector for all Android targets using cargo-ndk"
+    description = "Builds all Rust native components for Android targets using cargo-ndk"
     workingDir = file("../rust")
 
     doFirst {
@@ -136,6 +136,10 @@ tasks.register<Exec>("cargoBuild") {
         "cleverestricky-injector-core",
         "-p",
         "cleverestricky-webui-bridge",
+        "-p",
+        "cleverestricky-daemon",
+        "-p",
+        "cleverestricky-backend",
     )
 }
 
@@ -227,6 +231,12 @@ afterEvaluate {
                     from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/webui_bridge")) {
                         into("lib/$abi")
                     }
+                    from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/cleverestrickyd")) {
+                        into("lib/$abi")
+                    }
+                    from(rootProject.layout.projectDirectory.file("rust/target/$rustTarget/release/cleverestricky_backend")) {
+                        into("lib/$abi")
+                    }
                 }
 
                 doLast {
@@ -243,6 +253,14 @@ afterEvaluate {
                         val webUiBridgePath = file("${moduleDir.get().asFile}/lib/$abi/webui_bridge")
                         if (!webUiBridgePath.exists()) {
                             throw GradleException("WebUI bridge binary for $abi is missing at $webUiBridgePath")
+                        }
+                        val daemonPath = file("${moduleDir.get().asFile}/lib/$abi/cleverestrickyd")
+                        if (!daemonPath.exists()) {
+                            throw GradleException("Rust daemon binary for $abi is missing at $daemonPath")
+                        }
+                        val backendPath = file("${moduleDir.get().asFile}/lib/$abi/cleverestricky_backend")
+                        if (!backendPath.exists()) {
+                            throw GradleException("Rust backend binary for $abi is missing at $backendPath")
                         }
                     }
 

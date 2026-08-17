@@ -1,0 +1,15 @@
+# Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+[package]
+name = "cleverestricky-daemon"
+version = "0.1.0"
+edition = "2021"
+description = "Privileged Rust service broker for CleveresTricky"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "cleverestrickyd"
+path = "src/main.rs"
+
+[dependencies]
+cleverestricky-service-core = { path = "../service-core" }
+libc = "0.2"

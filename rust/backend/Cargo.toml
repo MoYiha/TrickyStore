@@ -1,0 +1,24 @@
+# Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+[package]
+name = "cleverestricky-backend"
+version = "0.1.0"
+edition = "2021"
+description = "Unprivileged bounded backend process for CleveresTricky"
+license = "GPL-3.0-only"
+
+[[bin]]
+name = "cleverestricky_backend"
+path = "src/main.rs"
+
+[dependencies]
+cleverestricky-certificate-core = { path = "../certificate-core" }
+cleverestricky-crl-core = { path = "../crl-core" }
+cleverestricky-crypto-core = { path = "../crypto-core" }
+cleverestricky-keybox-core = { path = "../keybox-core" }
+cleverestricky-service-core = { path = "../service-core" }
+cleverestricky-xml-core = { path = "../xml-core" }
+libc = "0.2"
+zeroize = "1.8"
+
+[dev-dependencies]
+base64 = "0.22.1"

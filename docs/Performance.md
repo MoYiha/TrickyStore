@@ -38,6 +38,38 @@ The WebUI resource view reads bounded procfs lines only when opened. Its CPU par
 
 Encrypted and backup operations enforce expanded size before retaining input. Sensitive temporary byte arrays are cleared where the managed runtime permits.
 
+## Measured migration artifacts
+
+Release artifact sizes are recorded from successful GitHub Actions Build artifacts for base commit `f62f8a3b`, the validated Rust-first checkpoint `8a864b61`, and current head `61a900a3`. The current-head artifact is `CleveresTricky-V2.5.8-2684-5647af56-release.zip` from Build run `31966457194`. These numbers measure packaged binary size, not process RSS or PSS.
+
+| Artifact | Base `f62f8a3b` | Checkpoint `8a864b61` | Current head `61a900a3` | Current vs base |
+| --- | ---: | ---: | ---: | ---: |
+| Release ZIP | 3,954,171 B | 4,805,835 B | 4,939,500 B | +985,329 B (+24.9%) |
+| arm64 `inject` | 333,624 B | 333,624 B | 333,624 B | 0 B |
+| arm64 `libcleverestricky.so` | 577,512 B | 577,512 B | 577,512 B | 0 B |
+| arm64 `webui_bridge` | 327,952 B | 328,216 B | 328,216 B | +264 B |
+| arm64 `cleverestrickyd` | not present | 346,512 B | 359,304 B | +359,304 B |
+| arm64 `cleverestricky_backend` | not present | 441,288 B | 555,008 B | +555,008 B |
+| x86_64 `inject` | 368,768 B | 368,768 B | 368,768 B | 0 B |
+| x86_64 `libcleverestricky.so` | 595,248 B | 595,248 B | 595,248 B | 0 B |
+| x86_64 `webui_bridge` | 359,944 B | 359,816 B | 359,816 B | -128 B |
+| x86_64 `cleverestrickyd` | not present | 379,264 B | 392,688 B | +392,688 B |
+| x86_64 `cleverestricky_backend` | not present | 495,568 B | 628,712 B | +628,712 B |
+
+The injected Binder library and injector remain byte-for-byte unchanged in size from the base artifact. The archive growth is concentrated in the new privilege-separated Rust daemon and unprivileged backend plus their packaged support code; this is the deliberate binary-size cost of removing portable privileged/JVM backend logic from the trusted Android adapter path.
+
+Physical-device memory is intentionally not estimated in CI. Capture real idle and exercised process memory on a representative Android device with the same build under test:
+
+```sh
+adb shell pidof cleverestrickyd
+adb shell pidof cleverestricky_backend
+adb shell dumpsys meminfo "$(adb shell pidof cleverestrickyd | tr -d '\r')"
+adb shell dumpsys meminfo "$(adb shell pidof cleverestricky_backend | tr -d '\r')"
+adb shell sh -c 'for p in $(pidof cleverestrickyd cleverestricky_backend); do echo "== $p =="; grep -E "^(VmRSS|VmHWM):" /proc/$p/status; done'
+```
+
+For before/after device comparisons, use the same device, boot state, feature configuration, keybox fixture, workload, and sampling interval. Record the commands, build commit, Android build fingerprint, sample count, and raw PSS/RSS values with the result instead of substituting host-process numbers.
+
 ## Build choices
 
 Release Rust uses full link time optimization, one code generation unit, size optimization, symbol stripping, and caught panic unwinding at FFI boundaries. The small unwind cost prevents an unexpected Rust panic from terminating a critical injected process.

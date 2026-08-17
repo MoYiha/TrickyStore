@@ -104,20 +104,25 @@ case "$ARCH" in
     extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
     extract "$ZIPFILE" "lib/x86_64/webui_bridge" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/cleverestrickyd" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/cleverestricky_backend" "$MODPATH" true
     ;;
   "arm64")
     ui_print "- Extracting arm64 libraries"
     extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
     extract "$ZIPFILE" "lib/arm64-v8a/webui_bridge" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/cleverestrickyd" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/cleverestricky_backend" "$MODPATH" true
     ;;
   *)
     abort "! Unsupported ARCH: $ARCH"
     ;;
 esac
 
-chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/daemon" "$MODPATH/service.sh" \
-  "$MODPATH/post-fs-data.sh" || abort "! Could not set module executable permissions"
+chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
+  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/post-fs-data.sh" \
+  || abort "! Could not set module executable permissions"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ -L "$CONFIG_DIR" ]; then

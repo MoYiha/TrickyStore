@@ -1,6 +1,8 @@
 package cleveres.tricky.cleverestech.util
 
+import cleveres.tricky.cleverestech.KeyboxLoader
 import cleveres.tricky.cleverestech.Logger
+import cleveres.tricky.cleverestech.RustBackendUnavailableException
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.io.File
 import java.io.FilterInputStream
@@ -145,7 +147,14 @@ object KeyboxVerifier {
 
         val legacyFile = File(configDir, "keybox.xml")
         if (isSafeKeyboxFile(legacyFile)) {
-            results.add(checkFile(legacyFile, revokedSerials))
+            results.add(
+                checkFile(
+                    legacyFile,
+                    KeyboxLoader.FileScope.CONFIG_ROOT,
+                    "keybox.xml",
+                    revokedSerials,
+                ),
+            )
         }
 
         val keyboxDir = File(configDir, "keyboxes")
@@ -168,7 +177,14 @@ object KeyboxVerifier {
             }
             files.sortBy { it.name }
             for (file in files) {
-                results.add(checkFile(file, revokedSerials))
+                results.add(
+                    checkFile(
+                        file,
+                        KeyboxLoader.FileScope.KEYBOX_DIRECTORY,
+                        file.name,
+                        revokedSerials,
+                    ),
+                )
             }
         }
 
@@ -453,16 +469,15 @@ object KeyboxVerifier {
 
     private fun checkFile(
         file: File,
+        scope: KeyboxLoader.FileScope,
+        filename: String,
         revokedSerials: Set<String>,
     ): Result {
         return try {
             if (!isSafeKeyboxFile(file)) {
                 return Result(file, file.name, Status.ERROR, "Unsafe or oversized keybox file")
             }
-            val keyboxes =
-                file.bufferedReader().use { reader ->
-                    CertHack.parseKeyboxXml(reader)
-                }
+            val keyboxes = KeyboxLoader.parseFile(scope, filename)
 
             if (keyboxes.isEmpty()) {
                 return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
@@ -485,6 +500,8 @@ object KeyboxVerifier {
             }
 
             Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
+        } catch (_: RustBackendUnavailableException) {
+            Result(file, file.name, Status.ERROR, "Rust backend unavailable")
         } catch (e: Exception) {
             Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
         }

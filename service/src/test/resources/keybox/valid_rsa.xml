@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<AndroidAttestation>
+  <NumberOfKeyboxes>1</NumberOfKeyboxes>
+  <Keybox>
+    <Key algorithm="RSA">
+      <PrivateKey>
+        -----BEGIN RSA PRIVATE KEY-----
+        MIIEogIBAAKCAQEApc7ojhsOhc0iFxYsJO98KqpO1n/i+bxMlTIWXmpsayj+SQNJ
+        sMejwPc+r+884FbJCypGVWpnEe4AZpj0QhTb597MzNh6u/v0P1r/8+2T2lPH2+Zp
+        lYLkYinPO/Z1zo7dfDG9DLon2iV8B8cvzLcOrUScdGxosxgO7smcebiVh/0/JLHc
+        cCfdNNn97sluVwSOj8Hjb0W+skZvsK7Kw/38No2bGdQw0olkxFbBVMRJvOb0iN0V
+        1nsu6Tgj3XoRKu9NCTc+XWEm/IHRzJ3b8coR4eoJ0zI1bzCKXdjqVe+jB+2b4jsp
+        rG24MN9C4QWaiONrF0UTbiJL4RF19a8MWBkgEQIDAQABAoIBAAhytOL8r5jop+/W
+        MjSa5nrZXOqimc17UcmY7jksTKQ0cqmvWwirULAgc4IM+087jMMetHZeAAISsX7e
+        FIqYu9BMx/w4nB7035p/cqLFPER3rVYKdN8TIWYmVt0+xFIxxvOGKJQ77ejjAmFL
+        vac9Z9Ld4pIvWIb7gaiaqXgti/eMPh/5nLP2CseVHxmckuM2U+3zj0kaINM/llTH
+        yLyfqRLVuAkstg0rYEgbqaBf1NmHcMPxwn+HGCV4GCyEN2T6F2fpHdbPFklKlwi/
+        NsUqfrJ9ui28WBAfzD8HSSAkwkBWS5mF78J1Dg8YH5GHi3tnkfwltuTjmoO8Nb8S
+        qxgVipsCgYEA4Xxfv1dSJgoNhHdqjh+Pw7WI5NmLhDT8+cgwX68XKlsBJfNLgqZo
+        IAkE4PO6s9n7ECJhVLZvypTneZvIjsBtbNy/9gZfRwL9wBkyEFy/0UnQ7dHpRj84
+        +3gDfl2ZK0/IGy9MPVmWkg8VuPURidKtMQ3Q3ARuTsjxYth3YAXBvFMCgYEAvD8X
+        bNLo2cj3yhnTMNWZ8FvkFOhkgkVXI6stiNXGc591ZCBHjFVk/mRcB41uINqbRK0G
+        3nQQK5DzvDAbZEwPLgcW8hIqxNGYYt05J/lF6KjUbembL8fg1jKS4HTaGSHDTHPL
+        06u/qZOvmbdGd6b9WWBnPnVOK8iHaKoPJHaUxYsCgYBhxW066WEMb3V3B9SjNZo/
+        0To/iPjO5a7/m8cl5iTUT8uKqhkG2KLzqRV9eRFupMkRMOclNUn5/GD2QQ9Qnq2T
+        85Ak3JR5lRl0LzifEah21lwKkudkd0t89ogFRg6BUkHBT9vuCieYw4O2xETLjxdb
+        2tLCZAV0kfrg0l3IvBZKUwKBgEFJ+Ivr0orGYvqbXl4Pl2Z/2GlP+JweBI0Ab7iH
+        vF6ZrZNehrIrY+2/TRPpf4qxhyyYfktlIb6adY6NeNKedp1WJCUtG9xLfXi8lXhB
+        wndhJtxAK2y0/EwOGlby8DnLNfssJkNxy/W6nSrJIA2bwz7earCE6unQkPZCFSJm
+        Zk7lAoGActmCJaYEahpzauu3hFVYkIy+h/2VHQdXK9JKSTF91uDMJFT2NEA3DQRd
+        dwuU7dndxQh8hcf788QSA6Xa8uKBmqrPFm9PQS9u+A9edAyH1qKd0JRHUD4H9Vuk
+        17DiITv8mE+f0Zc8N9sQOpIBQXS+r8c6LZM/8P48AxdscGXh/Qo=
+        -----END RSA PRIVATE KEY-----
+      </PrivateKey>
+      <CertificateChain>
+        <NumberOfCertificates>1</NumberOfCertificates>
+        <Certificate>
+          -----BEGIN CERTIFICATE-----
+          MIIC2zCCAcOgAwIBAgIIASNFZ4mrze8wDQYJKoZIhvcNAQELBQAwIjEgMB4GA1UE
+          AwwXQ2xldmVyZXNUcmlja3kgUlNBIFRlc3QwIBcNMjYwODAxMDAwMDAwWhgPMjEy
+          NjA3MDgwMDAwMDBaMCIxIDAeBgNVBAMMF0NsZXZlcmVzVHJpY2t5IFJTQSBUZXN0
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApc7ojhsOhc0iFxYsJO98
+          KqpO1n/i+bxMlTIWXmpsayj+SQNJsMejwPc+r+884FbJCypGVWpnEe4AZpj0QhTb
+          597MzNh6u/v0P1r/8+2T2lPH2+ZplYLkYinPO/Z1zo7dfDG9DLon2iV8B8cvzLcO
+          rUScdGxosxgO7smcebiVh/0/JLHccCfdNNn97sluVwSOj8Hjb0W+skZvsK7Kw/38
+          No2bGdQw0olkxFbBVMRJvOb0iN0V1nsu6Tgj3XoRKu9NCTc+XWEm/IHRzJ3b8coR
+          4eoJ0zI1bzCKXdjqVe+jB+2b4jsprG24MN9C4QWaiONrF0UTbiJL4RF19a8MWBkg
+          EQIDAQABoxMwETAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB9
+          5k8/gLJEHy8BIv/N1k4T4awXqH57yvUkRETNEk6LN8pq7CWWihKzAwhDBcQ3gHrI
+          ckPPXUb5ud8LTgqlrfHKJNVVjre+uQaY2o1FLEIKDW5XVGzMewEH4lcRvNsPxppa
+          XeKMG6TLwWdOyz9TB7qiKAuAExIbC+X14C0y0JVtfynVX1MuNvTAvWUgbnJylOnY
+          ROgxtErlP3QKKfoZ5OhM52I4ErxW1TkWyNrEol8rPIGfMIfcfjx9qiGl8RJ7Czyp
+          GXR9xuXCs38eXnwvyi11ya+lxkLomQ+nQHlbFHApQw6uqcVBfhCGxLlvEYyO4rQF
+          X2COcMLsg5sw0jgTkSPs
+          -----END CERTIFICATE-----
+        </Certificate>
+      </CertificateChain>
+    </Key>
+  </Keybox>
+</AndroidAttestation>

@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech.keystore;
 
 import cleveres.tricky.cleverestech.Config;
+import cleveres.tricky.cleverestech.ManagedCertificateBackendOracle;
 
 import org.bouncycastle.asn1.ASN1Boolean;
 import org.bouncycastle.asn1.ASN1Encodable;
@@ -22,7 +23,9 @@ import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -49,6 +52,16 @@ public class CertHackOrderTest {
         if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
             Security.addProvider(new BouncyCastleProvider());
         }
+    }
+
+    @Before
+    public void installCertificateBackendOracle() {
+        ManagedCertificateBackendOracle.install();
+    }
+
+    @After
+    public void resetCertificateBackendOracle() {
+        ManagedCertificateBackendOracle.reset();
     }
 
     private void setAttestationId(String tag, byte[] value) throws Exception {

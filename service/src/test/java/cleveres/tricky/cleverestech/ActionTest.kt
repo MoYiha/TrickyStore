@@ -90,6 +90,7 @@ class ActionTest {
         configDir = tempFolder.newFolder("config")
         originalConfigRoot = Config.getConfigRoot()
         Config.setRootForTesting(configDir)
+        ManagedKeyboxParserOracle.install()
 
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl =
@@ -129,6 +130,7 @@ class ActionTest {
         server.stop()
         CertHack.readFromXml(null)
         Config.reset()
+        ManagedKeyboxParserOracle.reset()
         Config.setRootForTesting(originalConfigRoot)
         SecureFile.impl = originalSecureFileImpl
     }
@@ -221,6 +223,20 @@ class ActionTest {
         assertEquals("keybox.xml", result.filename)
         assertEquals(KeyboxVerifier.Status.REVOKED, result.status)
         assertTrue(result.details.contains(revokedSerial))
+    }
+
+    @Test
+    fun `keybox upload reports Rust backend outage without saving input`() {
+        KeyboxLoader.parserOverride = { _, _ -> throw RustBackendUnavailableException() }
+        val (status, body) =
+            postForm(
+                "/api/upload_keybox",
+                mapOf("filename" to "outage.xml", "content" to validXml),
+            )
+
+        assertEquals(503, status)
+        assertTrue(body.contains("backend", ignoreCase = true))
+        assertFalse(File(configDir, "keyboxes/outage.xml").exists())
     }
 
     @Test

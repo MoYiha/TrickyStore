@@ -101,7 +101,46 @@ jobs:
           cargo test -p cleverestricky-native-core platform::tests::fast_binder_cache_keeps_alternating_exchange_sites_hot -- --exact
 
       - name: Run Android JVM unit tests
+        id: android_jvm_tests
+        continue-on-error: true
         run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
+      - name: Show Android JVM test failures
+        if: steps.android_jvm_tests.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=false
+          while IFS= read -r report; do
+            found=true
+            echo "===== $report ====="
+            python3 - "$report" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          path = sys.argv[1]
+          root = ET.parse(path).getroot()
+          for case in root.findall("testcase"):
+              failures = list(case.findall("failure")) + list(case.findall("error"))
+              for failure in failures:
+                  name = case.get("name", "<unnamed>")
+                  cls = case.get("classname", "<unknown>")
+                  message = failure.get("message", "")
+                  text = (failure.text or "").strip()
+                  print(f"FAILED: {cls} > {name}")
+                  if message:
+                      print(message)
+                  if text:
+                      print(text)
+          PY
+          done < <(find service stub encryptor-app -type f -path '*/build/test-results/*/TEST-*.xml' -print | sort)
+          if [[ "$found" != "true" ]]; then
+            echo "::warning::Android JVM tests failed but no XML test report was found"
+          fi
+
+      - name: Enforce Android JVM unit test result
+        if: steps.android_jvm_tests.outcome == 'failure'
+        run: exit 1
 
   dependency-submission:
     name: "📦 Submit Gradle Dependency Graph"

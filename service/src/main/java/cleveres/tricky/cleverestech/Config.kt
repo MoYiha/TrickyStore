@@ -484,9 +484,7 @@ object Config {
                 val currentModified = legacyFile.lastModified()
                 val currentLength = legacyFile.length()
                 if (currentModified != lastKeyboxModified || currentLength != lastKeyboxLength) {
-                    legacyFile.bufferedReader().use { reader ->
-                        cachedLegacyKeyboxes = CertHack.parseKeyboxXml(reader, KEYBOX_FILE)
-                    }
+                    cachedLegacyKeyboxes = KeyboxLoader.parseFile(KeyboxLoader.FileScope.CONFIG_ROOT, KEYBOX_FILE)
                     lastKeyboxModified = currentModified
                     lastKeyboxLength = currentLength
                     Logger.i("Reloaded keybox.xml (modified: $currentModified, keys: ${cachedLegacyKeyboxes.size})")
@@ -531,12 +529,10 @@ object Config {
                         allKeyboxes.addAll(cached.keyboxes)
                     } else {
                         try {
-                            file.bufferedReader().use { reader ->
-                                val parsed = CertHack.parseKeyboxXml(reader, filename)
-                                directoryKeyboxCache[filename] = KeyboxFileCache(lastMod, length, parsed)
-                                allKeyboxes.addAll(parsed)
-                                Logger.i("Reloaded keybox file: $filename")
-                            }
+                            val parsed = KeyboxLoader.parseFile(KeyboxLoader.FileScope.KEYBOX_DIRECTORY, filename)
+                            directoryKeyboxCache[filename] = KeyboxFileCache(lastMod, length, parsed)
+                            allKeyboxes.addAll(parsed)
+                            Logger.i("Reloaded keybox file: $filename")
                         } catch (e: Exception) {
                             Logger.e("Failed to parse keybox file: $filename", e)
                         }
@@ -1815,6 +1811,14 @@ object Config {
         privacySeed?.fill(0)
         privacySeed = null
         root = newRoot
+        KeyboxLoader.fileParserOverride = { scope, filename ->
+            val file =
+                when (scope) {
+                    KeyboxLoader.FileScope.CONFIG_ROOT -> File(newRoot, filename)
+                    KeyboxLoader.FileScope.KEYBOX_DIRECTORY -> File(File(newRoot, KEYBOX_DIR), filename)
+                }
+            file.bufferedReader().use { reader -> CertHack.parseKeyboxXml(reader, filename) }
+        }
         PolicyState.setRootForTesting(newRoot)
     }
 
@@ -1840,7 +1844,6 @@ object Config {
         if (cached != null && cachedAge >= 0 && cachedAge < PACKAGE_CACHE_TTL) {
             return cached
         }
-
         return synchronized(packageListLock) {
             val doubleCheck = cachedPackageList
             val doubleCheckAge = now - lastPackageFetchTime
@@ -2469,6 +2472,7 @@ object Config {
         lastKeyboxModified = 0
         lastKeyboxLength = 0
         directoryKeyboxCache.clear()
+        KeyboxLoader.resetForTesting()
         PolicyState.resetForTesting()
     }
 }

@@ -1,175 +1,170 @@
 package cleveres.tricky.cleverestech
 
-import android.os.FileObserver
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.SecureFile
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.io.SequenceInputStream
-import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.NoSuchFileException
-import java.nio.file.StandardCopyOption
+import java.security.SecureRandom
 import java.util.Base64
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ScheduledFuture
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.system.exitProcess
 
 class WebUiBridge(
     private val server: WebServer,
     configDir: File,
 ) {
     private val bridgeDir = File(configDir, "webui_bridge")
-    private val requestDir = File(bridgeDir, "requests")
-    private val responseDir = File(bridgeDir, "responses")
     private val stagingDir = File(bridgeDir, "staging")
-    private val scanning = AtomicBoolean(false)
-    private val executor: ScheduledExecutorService =
-        Executors.newSingleThreadScheduledExecutor { runnable ->
-            Thread(runnable, "CleveresTricky-WebUI").apply {
-                isDaemon = true
-                priority = Thread.NORM_PRIORITY
-            }
-        }
+    private val secureRandom = SecureRandom()
 
     @Volatile
     private var started = false
-    private var observer: FileObserver? = null
-    private var fallback: ScheduledFuture<*>? = null
+    private var socket: LocalSocket? = null
+    private var worker: Thread? = null
 
     @Synchronized
     fun start() {
         if (started) return
         ensureLayout()
         cleanupStale()
-        val eventMask = FileObserver.CLOSE_WRITE or FileObserver.MOVED_TO or FileObserver.CREATE
 
-        @Suppress("DEPRECATION")
-        val createdObserver =
-            object : FileObserver(requestDir.absolutePath, eventMask) {
-                override fun onEvent(
-                    event: Int,
-                    path: String?,
-                ) {
-                    if (path != null && REQUEST_NAME.matches(path)) executor.execute(::processPendingRequests)
-                }
-            }
-        createdObserver.startWatching()
-        observer = createdObserver
-        fallback =
-            executor.scheduleWithFixedDelay(
-                ::processPendingRequests,
-                0,
-                FALLBACK_INTERVAL_SECONDS,
-                TimeUnit.SECONDS,
+        val connected = LocalSocket()
+        try {
+            connected.connect(LocalSocketAddress(SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
+            connected.setSoTimeout(REGISTER_TIMEOUT_MS)
+            val input = connected.inputStream
+            val output = connected.outputStream
+            val readHeaderBuffer = ByteArray(HEADER_BYTES)
+            val writeHeaderBuffer = ByteArray(HEADER_BYTES)
+            writeFrame(output, OP_ADAPTER_REGISTER, 0, EMPTY_BYTES, writeHeaderBuffer)
+            val acknowledgement = readHeader(input, readHeaderBuffer)
+            require(
+                acknowledgement.opcode == OP_ADAPTER_REGISTER &&
+                    acknowledgement.flags == 0 &&
+                    acknowledgement.payloadLength == REGISTER_ACK.size,
             )
+            val acknowledgementPayload = ByteArray(acknowledgement.payloadLength)
+            try {
+                readFully(input, acknowledgementPayload)
+                require(acknowledgementPayload.contentEquals(REGISTER_ACK))
+            } finally {
+                acknowledgementPayload.fill(0)
+            }
+            connected.setSoTimeout(0)
+        } catch (error: Throwable) {
+            runCatching { connected.close() }
+            throw error
+        }
+
+        socket = connected
         started = true
-        Logger.i("Native WebUI bridge is ready")
+        worker =
+            Thread({ serveLoop(connected) }, "CleveresTricky-WebUI").apply {
+                isDaemon = true
+                priority = Thread.NORM_PRIORITY
+                start()
+            }
+        Logger.i("Native WebUI bridge is ready over bounded UDS IPC")
     }
 
     @Synchronized
     fun stop() {
         if (!started) return
         started = false
-        observer?.stopWatching()
-        observer = null
-        fallback?.cancel(false)
-        fallback = null
-        executor.shutdownNow()
+        val activeSocket = socket
+        socket = null
+        runCatching { activeSocket?.close() }
+        worker?.interrupt()
+        worker = null
     }
 
-    internal fun processPendingRequests() {
-        if (!scanning.compareAndSet(false, true)) return
+    private fun serveLoop(connected: LocalSocket) {
+        val readHeaderBuffer = ByteArray(HEADER_BYTES)
+        val writeHeaderBuffer = ByteArray(HEADER_BYTES)
         try {
-            val requests =
-                requestDir.listFiles()
-                    ?.asSequence()
-                    ?.filter { REQUEST_NAME.matches(it.name) }
-                    ?.sortedBy { it.lastModified() }
-                    ?.take(MAX_PENDING_REQUESTS)
-                    ?.toList()
-                    .orEmpty()
-            requests.mapNotNull(::claimRequest).forEach(::processRequest)
-            cleanupStale()
-        } catch (error: Throwable) {
-            Logger.e("WebUI bridge scan failed", error)
-        } finally {
-            scanning.set(false)
-        }
-    }
+            val input = connected.inputStream
+            val output = connected.outputStream
+            while (started) {
+                val header = readHeader(input, readHeaderBuffer)
+                if (header.opcode != OP_WEB_REQUEST || header.flags != 0) {
+                    throw IOException("Unexpected native WebUI IPC operation")
+                }
+                if (header.payloadLength !in 1..MAX_REQUEST_BYTES) {
+                    throw IOException("Native WebUI request exceeds its size limit")
+                }
 
-    private data class ClaimedRequest(
-        val id: String,
-        val file: File,
-    )
-
-    private fun claimRequest(requestFile: File): ClaimedRequest? {
-        val match = REQUEST_NAME.matchEntire(requestFile.name) ?: return null
-        val requestId = match.groupValues[1]
-        val workingFile = File(requestDir, "$requestId.working")
-        return try {
-            requireRegularFile(requestFile, 1, MAX_REQUEST_BYTES)
-            try {
-                Files.move(requestFile.toPath(), workingFile.toPath(), StandardCopyOption.ATOMIC_MOVE)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(requestFile.toPath(), workingFile.toPath())
-            } catch (_: UnsupportedOperationException) {
-                Files.move(requestFile.toPath(), workingFile.toPath())
-            }
-            ClaimedRequest(requestId, workingFile)
-        } catch (_: NoSuchFileException) {
-            null
-        } catch (error: IllegalArgumentException) {
-            deleteRegularFile(requestFile)
-            writeErrorResponse(
-                File(responseDir, "$requestId.response"),
-                NanoHTTPD.Response.Status.BAD_REQUEST,
-                "Invalid native WebUI request",
-            )
-            null
-        }
-    }
-
-    private fun processRequest(claimed: ClaimedRequest) {
-        val requestId = claimed.id
-        val requestFile = claimed.file
-        val responseFile = File(responseDir, "$requestId.response")
-        var uploadFile: File? = null
-        try {
-            requireRegularFile(requestFile, 1, MAX_REQUEST_BYTES)
-            val requestBytes = readLimited(requestFile, MAX_REQUEST_BYTES.toInt())
-            val request =
+                val requestBytes = ByteArray(header.payloadLength)
+                var responseBytes: ByteArray? = null
                 try {
-                    JSONObject(String(requestBytes, Charsets.UTF_8))
+                    readFully(input, requestBytes)
+                    responseBytes = processRequestBytes(requestBytes)
+                    writeFrame(output, OP_WEB_REQUEST, 0, responseBytes, writeHeaderBuffer)
                 } finally {
                     requestBytes.fill(0)
+                    responseBytes?.fill(0)
                 }
+            }
+        } catch (error: Throwable) {
+            if (started) {
+                Logger.e("Native WebUI UDS transport failed; terminating adapter for supervisor recovery", error)
+                exitProcess(1)
+            }
+        } finally {
+            runCatching { connected.close() }
+        }
+    }
+
+    internal fun processRequestBytes(requestBytes: ByteArray): ByteArray {
+        require(requestBytes.size in 1..MAX_REQUEST_BYTES)
+        var uploadFile: File? = null
+        return try {
+            val request = JSONObject(decodeUtf8Strict(requestBytes))
             uploadFile =
                 nullableString(request, "uploadId")
                     ?.takeIf(ID_PATTERN::matches)
                     ?.let { File(stagingDir, "$it.upload") }
             val parsed = parseRequest(request)
             uploadFile = parsed.uploadFile
-            val response = server.serveBridge(parsed.session)
-            writeResponse(requestId, responseFile, response)
+            encodeResponse(server.serveBridge(parsed.session))
         } catch (error: IllegalArgumentException) {
-            writeErrorResponse(responseFile, NanoHTTPD.Response.Status.BAD_REQUEST, "Invalid native WebUI request")
-            Logger.w("WebUI bridge rejected request $requestId: ${error.message}")
-        } catch (error: Throwable) {
-            writeErrorResponse(responseFile, NanoHTTPD.Response.Status.INTERNAL_ERROR, "Native WebUI request failed")
+            rejectRequest(error)
+        } catch (error: JSONException) {
+            rejectRequest(error)
+        } catch (error: CharacterCodingException) {
+            rejectRequest(error)
+        } catch (error: Exception) {
             Logger.e("WebUI bridge request failed", error)
+            encodeErrorResponse(NanoHTTPD.Response.Status.INTERNAL_ERROR, "Native WebUI request failed")
         } finally {
-            deleteRegularFile(requestFile)
             uploadFile?.let(::deleteRegularFile)
         }
+    }
+
+    private fun decodeUtf8Strict(requestBytes: ByteArray): String =
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(requestBytes))
+            .toString()
+
+    private fun rejectRequest(error: Exception): ByteArray {
+        Logger.w("WebUI bridge rejected a native request: ${error.message}")
+        return encodeErrorResponse(NanoHTTPD.Response.Status.BAD_REQUEST, "Invalid native WebUI request")
     }
 
     private data class ParsedRequest(
@@ -203,9 +198,10 @@ class WebUiBridge(
             val array = parameterObject.get(key) as? JSONArray ?: throw IllegalArgumentException("Invalid parameter values")
             require(array.length() in 1..MAX_PARAMETER_VALUES)
             val values = ArrayList<String>(array.length())
+            val keyBytes = key.toByteArray(Charsets.UTF_8).size
             for (index in 0 until array.length()) {
                 val value = array.get(index) as? String ?: throw IllegalArgumentException("Invalid parameter value")
-                parameterBytes += key.toByteArray(Charsets.UTF_8).size + value.toByteArray(Charsets.UTF_8).size + 2L
+                parameterBytes += keyBytes + value.toByteArray(Charsets.UTF_8).size + 2L
                 require(parameterBytes <= MAX_REQUEST_BYTES)
                 values += value
             }
@@ -222,7 +218,7 @@ class WebUiBridge(
                 null
             }
         val contentLength = parameterBytes + (uploadFile?.length() ?: 0L)
-        require(contentLength <= MAX_REQUEST_BYTES + MAX_UPLOAD_BYTES)
+        require(contentLength <= MAX_REQUEST_BYTES.toLong() + MAX_UPLOAD_BYTES)
         val headers =
             linkedMapOf(
                 "content-length" to contentLength.toString(),
@@ -242,11 +238,7 @@ class WebUiBridge(
         return objectValue.get(name) as? String ?: throw IllegalArgumentException("Invalid $name")
     }
 
-    private fun writeResponse(
-        requestId: String,
-        responseFile: File,
-        response: NanoHTTPD.Response,
-    ) {
+    internal fun encodeResponse(response: NanoHTTPD.Response): ByteArray {
         response.data.use { input ->
             val prefix = readPrefix(input, INLINE_RESPONSE_BYTES + 1)
             var downloadFile: File? = null
@@ -262,7 +254,8 @@ class WebUiBridge(
                         .put("size", prefix.size)
                         .put("body", Base64.getUrlEncoder().withoutPadding().encodeToString(prefix))
                 } else {
-                    val stagedFile = File(stagingDir, "$requestId.download")
+                    val downloadId = randomId()
+                    val stagedFile = File(stagingDir, "$downloadId.download")
                     downloadFile = stagedFile
                     SequenceInputStream(ByteArrayInputStream(prefix), input).use { combined ->
                         SecureFile.writeStream(stagedFile, combined, MAX_RESPONSE_BYTES.toLong())
@@ -270,9 +263,9 @@ class WebUiBridge(
                     requireRegularFile(stagedFile, 1, MAX_RESPONSE_BYTES.toLong())
                     envelope
                         .put("size", stagedFile.length())
-                        .put("downloadId", requestId)
+                        .put("downloadId", downloadId)
                 }
-                SecureFile.writeText(responseFile, envelope.toString())
+                return encodeEnvelope(envelope)
             } catch (error: Throwable) {
                 downloadFile?.let(::deleteRegularFile)
                 throw error
@@ -282,45 +275,60 @@ class WebUiBridge(
         }
     }
 
-    private fun writeErrorResponse(
-        responseFile: File,
+    private fun randomId(): String {
+        val random = ByteArray(16)
+        secureRandom.nextBytes(random)
+        return try {
+            buildString(32) {
+                random.forEach { byte ->
+                    val value = byte.toInt() and 0xff
+                    append(HEX[value ushr 4])
+                    append(HEX[value and 0x0f])
+                }
+            }
+        } finally {
+            random.fill(0)
+        }
+    }
+
+    private fun encodeErrorResponse(
         status: NanoHTTPD.Response.Status,
         message: String,
-    ) {
-        runCatching {
-            val bytes = message.toByteArray(Charsets.UTF_8)
-            try {
-                val envelope =
-                    JSONObject()
-                        .put("version", PROTOCOL_VERSION)
-                        .put("status", status.requestStatus)
-                        .put("statusText", status.description)
-                        .put("mimeType", NanoHTTPD.MIME_PLAINTEXT)
-                        .put("size", bytes.size)
-                        .put("body", Base64.getUrlEncoder().withoutPadding().encodeToString(bytes))
-                SecureFile.writeText(responseFile, envelope.toString())
-            } finally {
-                bytes.fill(0)
-            }
-        }.onFailure { Logger.e("WebUI bridge could not publish an error response", it) }
+    ): ByteArray {
+        val bytes = message.toByteArray(Charsets.UTF_8)
+        return try {
+            encodeEnvelope(
+                JSONObject()
+                    .put("version", PROTOCOL_VERSION)
+                    .put("status", status.requestStatus)
+                    .put("statusText", status.description)
+                    .put("mimeType", NanoHTTPD.MIME_PLAINTEXT)
+                    .put("size", bytes.size)
+                    .put("body", Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)),
+            )
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    private fun encodeEnvelope(envelope: JSONObject): ByteArray {
+        val bytes = envelope.toString().toByteArray(Charsets.UTF_8)
+        require(bytes.size <= MAX_RESPONSE_ENVELOPE_BYTES) { "Native WebUI response envelope is too large" }
+        return bytes
     }
 
     private fun ensureLayout() {
         SecureFile.mkdirs(bridgeDir, DIRECTORY_MODE)
-        SecureFile.mkdirs(requestDir, DIRECTORY_MODE)
-        SecureFile.mkdirs(responseDir, DIRECTORY_MODE)
         SecureFile.mkdirs(stagingDir, DIRECTORY_MODE)
     }
 
     private fun cleanupStale() {
         val cutoff = System.currentTimeMillis() - STALE_AGE_MS
-        listOf(requestDir, responseDir, stagingDir).forEach { directory ->
-            directory.listFiles()
-                ?.asSequence()
-                ?.filter { it.lastModified() in 1 until cutoff }
-                ?.take(MAX_CLEANUP_FILES)
-                ?.forEach(::deleteRegularFile)
-        }
+        stagingDir.listFiles()
+            ?.asSequence()
+            ?.filter { it.lastModified() in 1 until cutoff }
+            ?.take(MAX_CLEANUP_FILES)
+            ?.forEach(::deleteRegularFile)
     }
 
     private fun requireRegularFile(
@@ -330,37 +338,6 @@ class WebUiBridge(
     ) {
         require(Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS))
         require(file.length() in minimumBytes..maximumBytes)
-    }
-
-    private fun readLimited(
-        file: File,
-        maximumBytes: Int,
-    ): ByteArray {
-        val path = file.toPath()
-        val length = Files.size(path)
-        require(length in 1..maximumBytes.toLong())
-        val output = ByteArray(length.toInt())
-        try {
-            Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
-                var total = 0
-                var emptyReads = 0
-                while (total < output.size) {
-                    val count = input.read(output, total, output.size - total)
-                    if (count < 0) throw IOException("Bridge payload ended early")
-                    if (count == 0) {
-                        if (++emptyReads > MAX_EMPTY_READS) throw IOException("Bridge payload stream stalled")
-                        continue
-                    }
-                    emptyReads = 0
-                    total += count
-                }
-                if (input.read() >= 0) throw IOException("Bridge payload exceeds its size limit")
-            }
-            return output
-        } catch (error: Throwable) {
-            output.fill(0)
-            throw error
-        }
     }
 
     private fun readPrefix(
@@ -392,6 +369,111 @@ class WebUiBridge(
         runCatching {
             if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) Files.deleteIfExists(file.toPath())
         }.onFailure { Logger.w("WebUI bridge could not remove ${file.name}") }
+    }
+
+    private data class FrameHeader(
+        val opcode: Int,
+        val flags: Int,
+        val payloadLength: Int,
+    )
+
+    private fun readHeader(
+        input: InputStream,
+        buffer: ByteArray,
+    ): FrameHeader {
+        readFully(input, buffer)
+        for (index in IPC_MAGIC.indices) {
+            if (buffer[index] != IPC_MAGIC[index]) throw IOException("Invalid native WebUI IPC magic")
+        }
+        val version = readU16(buffer, 4)
+        if (version != IPC_VERSION) throw IOException("Unsupported native WebUI IPC version")
+        val opcode = readU16(buffer, 6)
+        if (opcode == 0) throw IOException("Invalid native WebUI IPC opcode")
+        val flags = readI32(buffer, 8)
+        val payloadLength = readU32(buffer, 12)
+        if (payloadLength > MAX_FRAME_BYTES.toLong()) throw IOException("Native WebUI IPC frame is too large")
+        return FrameHeader(opcode, flags, payloadLength.toInt())
+    }
+
+    private fun writeFrame(
+        output: OutputStream,
+        opcode: Int,
+        flags: Int,
+        payload: ByteArray,
+        buffer: ByteArray,
+    ) {
+        require(opcode in 1..0xffff)
+        require(payload.size <= MAX_FRAME_BYTES)
+        buffer.fill(0)
+        IPC_MAGIC.copyInto(buffer, 0)
+        writeU16(buffer, 4, IPC_VERSION)
+        writeU16(buffer, 6, opcode)
+        writeI32(buffer, 8, flags)
+        writeI32(buffer, 12, payload.size)
+        output.write(buffer)
+        if (payload.isNotEmpty()) output.write(payload)
+        output.flush()
+    }
+
+    private fun readFully(
+        input: InputStream,
+        output: ByteArray,
+    ) {
+        var offset = 0
+        var emptyReads = 0
+        while (offset < output.size) {
+            val count = input.read(output, offset, output.size - offset)
+            if (count < 0) throw IOException("Native WebUI IPC frame ended early")
+            if (count == 0) {
+                if (++emptyReads > MAX_EMPTY_READS) throw IOException("Native WebUI IPC stream stalled")
+                continue
+            }
+            emptyReads = 0
+            offset += count
+        }
+    }
+
+    private fun readU16(
+        buffer: ByteArray,
+        offset: Int,
+    ): Int = ((buffer[offset].toInt() and 0xff) shl 8) or (buffer[offset + 1].toInt() and 0xff)
+
+    private fun readI32(
+        buffer: ByteArray,
+        offset: Int,
+    ): Int =
+        ((buffer[offset].toInt() and 0xff) shl 24) or
+            ((buffer[offset + 1].toInt() and 0xff) shl 16) or
+            ((buffer[offset + 2].toInt() and 0xff) shl 8) or
+            (buffer[offset + 3].toInt() and 0xff)
+
+    private fun readU32(
+        buffer: ByteArray,
+        offset: Int,
+    ): Long =
+        ((buffer[offset].toLong() and 0xffL) shl 24) or
+            ((buffer[offset + 1].toLong() and 0xffL) shl 16) or
+            ((buffer[offset + 2].toLong() and 0xffL) shl 8) or
+            (buffer[offset + 3].toLong() and 0xffL)
+
+    private fun writeU16(
+        buffer: ByteArray,
+        offset: Int,
+        value: Int,
+    ) {
+        buffer[offset] = (value ushr 8).toByte()
+        buffer[offset + 1] = value.toByte()
+    }
+
+    private fun writeI32(
+        buffer: ByteArray,
+        offset: Int,
+        value: Int,
+    ) {
+        buffer[offset] = (value ushr 24).toByte()
+        buffer[offset + 1] = (value ushr 16).toByte()
+        buffer[offset + 2] = (value ushr 8).toByte()
+        buffer[offset + 3] = value.toByte()
     }
 
     @Suppress("DEPRECATION")
@@ -438,19 +520,29 @@ class WebUiBridge(
     companion object {
         private const val PROTOCOL_VERSION = 1
         private const val DIRECTORY_MODE = 448
-        private const val MAX_REQUEST_BYTES = 1024 * 1024L
-        private const val MAX_UPLOAD_BYTES = 20 * 1024 * 1024L
+        private const val MAX_REQUEST_BYTES = 1024 * 1024
+        private const val MAX_UPLOAD_BYTES = 20L * 1024 * 1024
         private const val MAX_RESPONSE_BYTES = 20 * 1024 * 1024
         private const val INLINE_RESPONSE_BYTES = 256 * 1024
+        private const val MAX_RESPONSE_ENVELOPE_BYTES = 512 * 1024
         private const val MAX_PARAMETER_KEYS = 128
         private const val MAX_PARAMETER_VALUES = 32
-        private const val MAX_PENDING_REQUESTS = 64
         private const val MAX_CLEANUP_FILES = 1024
         private const val MAX_EMPTY_READS = 16
-        private const val FALLBACK_INTERVAL_SECONDS = 2L
         private const val STALE_AGE_MS = 10 * 60 * 1000L
+
+        private const val SOCKET_NAME = "cleverestrickyd.v1"
+        private const val IPC_VERSION = 1
+        private const val HEADER_BYTES = 16
+        private const val MAX_FRAME_BYTES = MAX_REQUEST_BYTES
+        private const val OP_ADAPTER_REGISTER = 2
+        private const val OP_WEB_REQUEST = 3
+        private const val REGISTER_TIMEOUT_MS = 5_000
+        private const val HEX = "0123456789abcdef"
+        private val IPC_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'I'.code.toByte(), 'P'.code.toByte())
+        private val REGISTER_ACK = byteArrayOf('o'.code.toByte(), 'k'.code.toByte())
+        private val EMPTY_BYTES = ByteArray(0)
         private val REQUEST_FIELDS = setOf("version", "method", "path", "parameters", "uploadId", "uploadField")
-        private val REQUEST_NAME = Regex("([0-9a-f]{32})\\.request")
         private val ID_PATTERN = Regex("[0-9a-f]{32}")
         private val FIELD_PATTERN = Regex("[A-Za-z0-9_.-]{1,64}")
     }

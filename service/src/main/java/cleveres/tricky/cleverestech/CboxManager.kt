@@ -1,17 +1,16 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
-import cleveres.tricky.cleverestech.util.CboxDecryptor
 import cleveres.tricky.cleverestech.util.DeviceKeyManager
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.SecureFile
 import java.io.File
 import java.io.IOException
-import java.io.StringReader
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.security.DigestInputStream
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.util.PriorityQueue
 import java.util.concurrent.ConcurrentHashMap
@@ -44,6 +43,10 @@ object CboxManager {
 
     @Synchronized
     fun refresh() {
+        if (KeyboxLoader.consumeFileBackendOutage()) {
+            throw RustBackendUnavailableException()
+        }
+
         val directory = Config.keyboxDirectory
         if (!Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             unlockedCache.clear()
@@ -109,27 +112,28 @@ object CboxManager {
         val file = File(directory, filename)
         if (!isSafeCbox(file)) return false
 
+        var encryptedBytes: ByteArray? = null
         var sourceDigest: ByteArray? = null
         var verificationDigest: ByteArray? = null
+        var payloadXml: ByteArray? = null
         return try {
-            val digest = MessageDigest.getInstance("SHA-256")
+            encryptedBytes = readCboxBounded(file)
+            val initialDigest = MessageDigest.getInstance("SHA-256").digest(encryptedBytes)
+            sourceDigest = initialDigest
+            val verificationKey = publicKey?.takeUnless { it.isBlank() }
             val payload =
-                Files.newInputStream(file.toPath()).use { raw ->
-                    DigestInputStream(raw, digest).use { input -> CboxDecryptor.decrypt(input, password) }
-                } ?: return false
-            sourceDigest = digest.digest()
-
-            if (payload.signatureBase64.isNotEmpty()) {
-                if (publicKey.isNullOrBlank() || !CboxDecryptor.verifySignature(payload, publicKey)) {
-                    Logger.e("CBOX signature verification failed for $filename")
-                    return false
-                }
-            } else if (!publicKey.isNullOrBlank()) {
-                Logger.e("A verification key was supplied for an unsigned CBOX")
+                NativeBackend.openCbox(encryptedBytes, password, verificationKey)
+                    ?: run {
+                        Logger.e("CBOX decrypt or signature verification failed for $filename")
+                        return false
+                    }
+            payloadXml = payload.xmlContent
+            if (verificationKey == null && payload.hasSignature) {
+                Logger.e("CBOX signature verification failed for $filename")
                 return false
             }
 
-            val parsed = CertHack.parseKeyboxXml(StringReader(payload.xmlContent), filename)
+            val parsed = KeyboxLoader.parse(payload.xmlContent.copyOf(), filename)
             val revoked = KeyboxVerifier.fetchCrl() ?: return false
             val verified =
                 parsed.filter {
@@ -142,19 +146,20 @@ object CboxManager {
 
             val beforeModified = file.lastModified()
             val beforeSize = file.length()
-            verificationDigest = digestFile(file)
+            val currentDigest = digestFile(file)
+            verificationDigest = currentDigest
             val afterModified = file.lastModified()
             val afterSize = file.length()
             if (
                 beforeModified != afterModified ||
                 beforeSize != afterSize ||
-                !MessageDigest.isEqual(sourceDigest, verificationDigest)
+                !MessageDigest.isEqual(initialDigest, currentDigest)
             ) {
                 Logger.e("CBOX source changed while it was being unlocked: $filename")
                 return false
             }
 
-            writeCache(file, payload.xmlContent, sourceDigest)
+            writeCache(file, payload.xmlContent, initialDigest)
             unlockedCache[filename] =
                 UnlockedEntry(afterModified, afterSize, verified.toList())
             lockedFiles.remove(filename)
@@ -163,8 +168,10 @@ object CboxManager {
             Logger.e("Failed to unlock CBOX: $filename", e)
             false
         } finally {
+            encryptedBytes?.fill(0)
             sourceDigest?.fill(0)
             verificationDigest?.fill(0)
+            payloadXml?.fill(0)
         }
     }
 
@@ -234,20 +241,17 @@ object CboxManager {
                 throw SecurityException("CBOX cache does not match its source")
             }
 
-            val xml =
-                String(
-                    decrypted,
-                    secondNewline + 1,
-                    decrypted.size - secondNewline - 1,
-                    StandardCharsets.UTF_8,
-                )
-            val parsed = CertHack.parseKeyboxXml(StringReader(xml), file.name)
+            val xmlBytes = decrypted.copyOfRange(secondNewline + 1, decrypted.size)
+            val parsed = KeyboxLoader.parse(xmlBytes, file.name)
             val verified =
                 parsed.filter {
                     KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID
                 }
             if (verified.isEmpty() || verified.size != parsed.size) return null
             return UnlockedEntry(file.lastModified(), file.length(), verified.toList())
+        } catch (e: RustBackendUnavailableException) {
+            Logger.w("Rust backend unavailable; preserving CBOX cache ${cacheFile.name}")
+            throw e
         } catch (e: Exception) {
             Logger.e("Ignoring invalid CBOX cache for ${file.name}: ${e.javaClass.simpleName}")
             deleteCacheSafely(cacheFile)
@@ -262,12 +266,15 @@ object CboxManager {
 
     private fun writeCache(
         file: File,
-        xml: String,
+        xml: ByteArray,
         sourceDigest: ByteArray,
     ) {
-        val plaintext =
-            (CACHE_VERSION + "\n" + sourceDigest.toHexStringLowercase() + "\n" + xml)
-                .toByteArray(StandardCharsets.UTF_8)
+        val prefix =
+            (CACHE_VERSION + "\n" + sourceDigest.toHexStringLowercase() + "\n")
+                .toByteArray(StandardCharsets.US_ASCII)
+        val plaintext = ByteArray(Math.addExact(prefix.size, xml.size))
+        prefix.copyInto(plaintext)
+        xml.copyInto(plaintext, prefix.size)
         var encrypted: ByteArray? = null
         try {
             encrypted =
@@ -275,8 +282,42 @@ object CboxManager {
                     ?: throw IllegalStateException("Device cache encryption is unavailable")
             SecureFile.writeBytes(cacheFileFor(file), encrypted)
         } finally {
+            prefix.fill(0)
             plaintext.fill(0)
             encrypted?.fill(0)
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun readCboxBounded(file: File): ByteArray {
+        Files.newByteChannel(
+            file.toPath(),
+            StandardOpenOption.READ,
+            LinkOption.NOFOLLOW_LINKS,
+        ).use { channel ->
+            val size = channel.size()
+            if (size !in MIN_CBOX_BYTES..MAX_CBOX_BYTES) {
+                throw IOException("CBOX size is outside the supported range")
+            }
+            val bytes = ByteArray(size.toInt())
+            return try {
+                val target = ByteBuffer.wrap(bytes)
+                var emptyReads = 0
+                while (target.hasRemaining()) {
+                    val count = channel.read(target)
+                    if (count < 0) throw IOException("CBOX ended before its declared size")
+                    if (count == 0) {
+                        if (++emptyReads > MAX_EMPTY_READS) throw IOException("CBOX read stalled")
+                    } else {
+                        emptyReads = 0
+                    }
+                }
+                if (channel.size() != size) throw IOException("CBOX size changed while being read")
+                bytes
+            } catch (error: Throwable) {
+                bytes.fill(0)
+                throw error
+            }
         }
     }
 
@@ -354,4 +395,5 @@ object CboxManager {
     private const val MAX_CACHE_BYTES = 16L * 1024 * 1024
     private const val MAX_CBOX_FILES = 64
     private const val MAX_PASSWORD_CHARS = 1024
+    private const val MAX_EMPTY_READS = 16
 }

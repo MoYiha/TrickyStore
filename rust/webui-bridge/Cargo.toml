@@ -11,3 +11,4 @@ name = "webui_bridge"
 path = "src/main.rs"
 
 [dependencies]
+cleverestricky-service-core = { path = "../service-core" }

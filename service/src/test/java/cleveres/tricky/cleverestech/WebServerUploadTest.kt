@@ -52,6 +52,7 @@ class WebServerUploadTest {
             },
         )
         configDir = tempFolder.newFolder("config")
+        ManagedKeyboxParserOracle.install()
 
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl =
@@ -94,6 +95,7 @@ class WebServerUploadTest {
 
     @After
     fun tearDown() {
+        ManagedKeyboxParserOracle.reset()
         SecureFile.impl = originalSecureFileImpl
         server.stop()
     }

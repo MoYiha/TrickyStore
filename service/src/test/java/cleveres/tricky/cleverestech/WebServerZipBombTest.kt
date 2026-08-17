@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -15,7 +14,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
-import java.io.InputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -25,8 +23,7 @@ class WebServerZipBombTest {
 
     private lateinit var configDir: File
     private lateinit var originalImpl: SecureFileOperations
-    private var writeStreamCalled = false
-    private var limitPassed = -1L
+    private var writeBytesCalled = false
 
     @Before
     fun setUp() {
@@ -39,14 +36,11 @@ class WebServerZipBombTest {
                     content: String,
                 ) = Unit
 
-                override fun writeStream(
+                override fun writeBytes(
                     file: File,
-                    inputStream: InputStream,
-                    limit: Long,
+                    content: ByteArray,
                 ) {
-                    writeStreamCalled = true
-                    limitPassed = limit
-                    inputStream.readBytes()
+                    writeBytesCalled = true
                 }
 
                 override fun mkdirs(
@@ -67,13 +61,12 @@ class WebServerZipBombTest {
     }
 
     @Test
-    fun restorePassesOneMiBBoundToSecureWriter() {
+    fun restoreUsesSecureByteWriterAfterBoundedStaging() {
         val zip = zipOf("target.txt", "com.example.app".toByteArray())
 
         WebServer.restoreBackupZip(configDir, ByteArrayInputStream(zip))
 
-        assertTrue(writeStreamCalled)
-        assertEquals(1024 * 1024L, limitPassed)
+        assertTrue(writeBytesCalled)
     }
 
     @Test
@@ -85,7 +78,7 @@ class WebServerZipBombTest {
             WebServer.restoreBackupZip(configDir, ByteArrayInputStream(zip))
         }
 
-        assertFalse(writeStreamCalled)
+        assertFalse(writeBytesCalled)
     }
 
     @Test
@@ -96,7 +89,7 @@ class WebServerZipBombTest {
             WebServer.restoreBackupZip(configDir, ByteArrayInputStream(zip))
         }
 
-        assertFalse(writeStreamCalled)
+        assertFalse(writeBytesCalled)
     }
 
     private fun zipOf(
