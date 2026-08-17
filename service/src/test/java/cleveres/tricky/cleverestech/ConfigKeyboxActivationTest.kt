@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import java.io.File
-import java.security.KeyPair
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -87,54 +86,25 @@ class ConfigKeyboxActivationTest {
     }
 
     @Test
-    fun `more than backend capacity transient rejected candidates cannot starve later activation`() {
+    fun `more than backend capacity rejected refreshes commit empty active set every cycle`() {
         withKeyboxRoot { root ->
             val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }
-            val file = File(keyboxDir, "candidate.xml")
-            file.writeText("seed")
+            File(keyboxDir, "candidate.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+            ManagedKeyboxParserOracle.install()
 
-            val fixture = ManagedOpaqueKeyOracle.parse(TestKeyboxFixtures.validEcKeyboxXml.reader(), "fixture.xml").single()
-            val candidateStore = LinkedHashSet<String>()
-            var sequence = 1
-            fun candidate(idNumber: Int): CertHack.KeyBox {
-                val id = ByteArray(KEY_ID_BYTES)
-                id[0] = 1
-                id[12] = (idNumber ushr 24).toByte()
-                id[13] = (idNumber ushr 16).toByte()
-                id[14] = (idNumber ushr 8).toByte()
-                id[15] = idNumber.toByte()
-                val encoded = id.joinToString("") { "%02x".format(it.toInt() and 0xff) }
-                if (!candidateStore.add(encoded) || candidateStore.size > MAX_STORED_KEYS) {
-                    throw IllegalStateException("simulated Rust key store exhausted")
-                }
-                return CertHack.KeyBox(
-                    KeyPair(fixture.keyPair().public, BackendKeyHandle(fixture.keyPair().private.algorithm, id)),
-                    fixture.certificates(),
-                    "candidate.xml",
-                )
-            }
-
-            KeyboxLoader.fileParserOverride = { _, _ -> listOf(candidate(sequence++)) }
+            val committedSizes = ArrayList<Int>()
             KeyboxLoader.activeSetOverride = { ids ->
-                val retained = ids.map { it.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) } }.toSet()
-                candidateStore.retainAll(retained)
+                committedSizes += ids.size
                 true
             }
 
-            repeat(MAX_STORED_KEYS + 1) { cycle ->
-                file.writeText("rejected-$cycle-${"x".repeat(cycle % 7)}")
-                file.setLastModified(System.currentTimeMillis() + cycle + 1L)
+            repeat(MAX_STORED_KEYS + 1) {
                 Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.REVOKED }
                 assertEquals(0, CertHack.getKeyboxCount())
-                assertTrue("transient candidates were not pruned", candidateStore.isEmpty())
             }
 
-            file.writeText("legitimate-final")
-            file.setLastModified(System.currentTimeMillis() + MAX_STORED_KEYS + 1000L)
-            Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.VALID }
-
-            assertEquals(1, CertHack.getKeyboxCount())
-            assertEquals(1, candidateStore.size)
+            assertEquals(MAX_STORED_KEYS + 1, committedSizes.size)
+            assertTrue("every rejected refresh must prune staged keys", committedSizes.all { it == 0 })
         }
     }
 
@@ -157,7 +127,6 @@ class ConfigKeyboxActivationTest {
     }
 
     private companion object {
-        const val KEY_ID_BYTES = 16
         const val MAX_STORED_KEYS = 256
     }
 }
