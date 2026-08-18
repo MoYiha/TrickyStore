@@ -78,15 +78,23 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 return Skip
             }
 
+            // Parse only the leaf first. A normal asymmetric key without an Android attestation
+            // challenge still has a self-signed X.509 leaf, but it must never cross the Rust
+            // certificate backend boundary. 2.5.8 rejected that case locally; preserving the same
+            // zero-backend fast path avoids a measurable non-attested-only UDS/parser cost.
+            val originalLeaf = Utils.getLeafCertificate(metadata)
+            if (
+                originalLeaf == null ||
+                !Utils.hasAndroidAttestationExtension(originalLeaf)
+            ) {
+                replacement.recycle()
+                return Skip
+            }
+
             // A successful attestation rewrite discards Android's genuine issuer chain and
             // replaces it with the selected keybox chain. Parsing every genuine issuer first
             // therefore adds work only to attested generateKey calls. Keep the hot path leaf-only
             // until CertHack confirms that a replacement can actually be produced.
-            val originalLeaf = Utils.getLeafCertificate(metadata)
-            if (originalLeaf == null) {
-                replacement.recycle()
-                return Skip
-            }
             val originalLeafOnly = arrayOf<Certificate>(originalLeaf)
             val rewritten = CertHack.hackCertificateChain(originalLeafOnly, callingUid)
             if (rewritten === originalLeafOnly) {
