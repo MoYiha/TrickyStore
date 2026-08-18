@@ -56,7 +56,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -309,19 +308,11 @@ private fun CreateScreen(
     var author by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
-    var keyboxes by remember { mutableStateOf<List<SelectedKeybox>>(emptyList()) }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var sourceName by remember { mutableStateOf<String?>(null) }
     var publicKey by remember { mutableStateOf<String?>(null) }
     var showPassword by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            keyboxes.forEach { it.bytes.fill(0) }
-            password = ""
-            confirmation = ""
-        }
-    }
 
     LaunchedEffect(Unit) {
         publicKey =
@@ -339,25 +330,22 @@ private fun CreateScreen(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             if (uri == null) return@rememberLauncherForActivityResult
             scope.launch {
-                val selected =
+                val selectedName =
                     withContext(Dispatchers.IO) {
                         try {
-                            val selectedName = displayName(context, uri) ?: "keybox.xml"
-                            val entries =
-                                context.contentResolver.openInputStream(uri)?.use { input ->
-                                    KeyboxImportReader.read(input, selectedName, NativeCrypto::validateKeyboxXml)
-                                } ?: throw IOException("input unavailable")
-                            Pair(entries, selectedName)
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                if (input.read() < 0) throw IOException("input is empty")
+                            } ?: throw IOException("input unavailable")
+                            displayName(context, uri) ?: "keybox.xml"
                         } catch (_: Exception) {
                             null
                         }
                     }
-                if (selected == null) {
+                if (selectedName == null) {
                     snackbar.showSnackbar(xmlFailed)
                 } else {
-                    keyboxes.forEach { it.bytes.fill(0) }
-                    keyboxes = selected.first
-                    sourceName = selected.second
+                    sourceUri = uri
+                    sourceName = selectedName
                 }
             }
         }
@@ -369,13 +357,13 @@ private fun CreateScreen(
         authorValid &&
             passwordValid &&
             confirmationValid &&
-            keyboxes.isNotEmpty() &&
+            sourceUri != null &&
             publicKey != null &&
             !saving
 
     fun save() {
-        val selectedKeyboxes = keyboxes
-        if (selectedKeyboxes.isEmpty()) return
+        val selectedUri = sourceUri ?: return
+        val selectedName = sourceName ?: "keybox.xml"
         saving = true
         val selectedAuthor = author
         val selectedPassword = password
@@ -383,22 +371,28 @@ private fun CreateScreen(
             val outcome =
                 withContext(Dispatchers.IO) {
                     try {
-                        val filenames =
-                            VaultStore.allocateBatchFilenames(
-                                context = context,
-                                author = selectedAuthor,
-                                sourceNames = selectedKeyboxes.map { it.displayName },
-                            )
-                        val items =
-                            selectedKeyboxes.zip(filenames) { keybox, filename ->
-                                MobileCrypto.BatchItem(filename = filename, xmlUtf8 = keybox.bytes)
-                            }
-                        MobileCrypto.encryptAndSaveBatch(
+                        val allocator = VaultStore.newBatchNameAllocator(context, selectedAuthor)
+                        MobileCrypto.encryptAndSaveStreaming(
                             noBackupDirectory = context.noBackupFilesDir.absolutePath,
                             author = selectedAuthor,
-                            items = items,
                             password = selectedPassword,
-                        )
+                        ) { encryptOne ->
+                            context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                                try {
+                                    KeyboxImportReader.process(
+                                        input = input,
+                                        displayName = selectedName,
+                                        validateXml = NativeCrypto::validateKeyboxXml,
+                                    ) { displayName, bytes ->
+                                        encryptOne(allocator.allocate(displayName), bytes)
+                                    }
+                                } catch (error: IOException) {
+                                    throw IllegalArgumentException("invalid keybox source", error)
+                                }
+                            } ?: throw IllegalArgumentException("input unavailable")
+                        }
+                    } catch (_: IllegalArgumentException) {
+                        MobileCrypto.EncryptResult.INVALID_INPUT
                     } catch (_: Exception) {
                         MobileCrypto.EncryptResult.NATIVE_FAILURE
                     }
@@ -406,8 +400,7 @@ private fun CreateScreen(
             saving = false
             when (outcome) {
                 MobileCrypto.EncryptResult.SUCCESS -> {
-                    selectedKeyboxes.forEach { it.bytes.fill(0) }
-                    keyboxes = emptyList()
+                    sourceUri = null
                     sourceName = null
                     password = ""
                     confirmation = ""
@@ -417,7 +410,7 @@ private fun CreateScreen(
                 MobileCrypto.EncryptResult.INVALID_INPUT -> snackbar.showSnackbar(xmlFailed)
                 MobileCrypto.EncryptResult.SIGNING_FAILURE -> snackbar.showSnackbar(signingUnavailable)
                 MobileCrypto.EncryptResult.NATIVE_FAILURE -> {
-                    Log.w(LOG_TAG, "Native batch keybox encryption failed")
+                    Log.w(LOG_TAG, "Native streamed keybox encryption failed")
                     snackbar.showSnackbar(encryptFailed)
                 }
             }
@@ -509,16 +502,6 @@ private fun CreateScreen(
                     ) {
                         Text(sourceName ?: stringResource(R.string.choose_xml))
                     }
-                    if (keyboxes.isNotEmpty()) {
-                        Text(
-                            stringResource(
-                                R.string.vault_summary,
-                                keyboxes.size,
-                                formatBytes(keyboxes.sumOf { it.bytes.size.toLong() }),
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
                     Text(stringResource(R.string.xml_limit), style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -561,7 +544,10 @@ private fun CreateScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = ::save, enabled = canSave, modifier = Modifier.fillMaxWidth()) {
                         if (saving) {
-                            CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                                Text(stringResource(R.string.encrypting))
+                            }
                         } else {
                             Text(stringResource(R.string.encrypt_save))
                         }
