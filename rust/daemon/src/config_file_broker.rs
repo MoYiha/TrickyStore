@@ -13,6 +13,10 @@ pub const MAX_REQUEST_BYTES: usize =
 const CONFIG_PARENT: &str = "/data/adb";
 const CONFIG_ROOT_NAME: &str = "cleverestricky";
 const KEYBOX_DIRECTORY: &str = "keyboxes";
+const WEBUI_DIRECTORY: &str = "webui_bridge";
+const WEBUI_STAGING_DIRECTORY: &str = "staging";
+const WEBUI_STAGING_PATH: &str = "webui_bridge/staging";
+const WEBUI_DOWNLOAD_SUFFIX: &str = ".download";
 const ACTION_WRITE: u8 = 0;
 const ACTION_MKDIR: u8 = 1;
 const ACTION_TOUCH: u8 = 2;
@@ -84,13 +88,7 @@ pub(crate) fn handle_stream_from<R: Read>(
             ACTION_WRITE => {
                 atomic_write_relative_from(root, path, reader, declared_body_len, scratch)
             }
-            ACTION_MKDIR => {
-                if path != KEYBOX_DIRECTORY {
-                    return Err(invalid("config directory request rejected"));
-                }
-                root.mkdir_child(KEYBOX_DIRECTORY, DIRECTORY_MODE)
-                    .map(|_| ())
-            }
+            ACTION_MKDIR => mkdir_allowed(root, path),
             ACTION_TOUCH => {
                 if path.contains('/') {
                     return Err(invalid("config touch request rejected"));
@@ -132,6 +130,20 @@ fn handle_from(root: &TrustedDir, request: &[u8]) -> io::Result<()> {
     handle_stream_from(root, &mut reader, request.len(), &mut scratch)
 }
 
+fn mkdir_allowed(root: &TrustedDir, path: &str) -> io::Result<()> {
+    match path {
+        KEYBOX_DIRECTORY => root.mkdir_child(KEYBOX_DIRECTORY, DIRECTORY_MODE).map(|_| ()),
+        WEBUI_DIRECTORY => root.mkdir_child(WEBUI_DIRECTORY, DIRECTORY_MODE).map(|_| ()),
+        WEBUI_STAGING_PATH => {
+            let bridge = root.open_child(WEBUI_DIRECTORY)?;
+            bridge
+                .mkdir_child(WEBUI_STAGING_DIRECTORY, DIRECTORY_MODE)
+                .map(|_| ())
+        }
+        _ => Err(invalid("config directory request rejected")),
+    }
+}
+
 fn atomic_write_relative_from<R: Read>(
     root: &TrustedDir,
     path: &str,
@@ -147,17 +159,49 @@ fn atomic_write_relative_from<R: Read>(
         }
         Ok(())
     };
-    if let Some((directory, name)) = path.split_once('/') {
-        if directory != KEYBOX_DIRECTORY || name.contains('/') {
-            return Err(invalid("config file path depth exceeds bound"));
-        }
-        validate_component(name)?;
-        let child = root.open_child(KEYBOX_DIRECTORY)?;
-        child.atomic_write_from_confirmed(name, reader, body_len, FILE_MODE, scratch, confirm)
-    } else {
-        validate_component(path)?;
-        root.atomic_write_from_confirmed(path, reader, body_len, FILE_MODE, scratch, confirm)
+
+    let mut components = path.split('/');
+    let first = components.next().unwrap_or_default();
+    let second = components.next();
+    let third = components.next();
+    if components.next().is_some() {
+        return Err(invalid("config file path depth exceeds bound"));
     }
+
+    match (second, third) {
+        (None, None) => {
+            validate_component(first)?;
+            root.atomic_write_from_confirmed(first, reader, body_len, FILE_MODE, scratch, confirm)
+        }
+        (Some(name), None) if first == KEYBOX_DIRECTORY => {
+            validate_component(name)?;
+            let keyboxes = root.open_child(KEYBOX_DIRECTORY)?;
+            keyboxes.atomic_write_from_confirmed(name, reader, body_len, FILE_MODE, scratch, confirm)
+        }
+        (Some(directory), Some(name))
+            if first == WEBUI_DIRECTORY && directory == WEBUI_STAGING_DIRECTORY =>
+        {
+            validate_webui_download_name(name)?;
+            let bridge = root.open_child(WEBUI_DIRECTORY)?;
+            let staging = bridge.open_child(WEBUI_STAGING_DIRECTORY)?;
+            staging.atomic_write_from_confirmed(name, reader, body_len, FILE_MODE, scratch, confirm)
+        }
+        _ => Err(invalid("config file path depth exceeds bound")),
+    }
+}
+
+fn validate_webui_download_name(value: &str) -> io::Result<()> {
+    let id = value
+        .strip_suffix(WEBUI_DOWNLOAD_SUFFIX)
+        .ok_or_else(|| invalid("WebUI staging filename rejected"))?;
+    if id.len() != 32
+        || !id
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(invalid("WebUI staging filename rejected"));
+    }
+    Ok(())
 }
 
 fn validate_component(value: &str) -> io::Result<()> {
@@ -308,6 +352,38 @@ mod tests {
                 & 0o777,
             DIRECTORY_MODE
         );
+    }
+
+    #[test]
+    fn webui_staging_paths_are_whitelisted_but_adjacent_paths_are_rejected() {
+        let test = TestRoot::new();
+        let root = test.trusted();
+        handle_from(&root, &request(ACTION_MKDIR, WEBUI_DIRECTORY, b"")).unwrap();
+        handle_from(&root, &request(ACTION_MKDIR, WEBUI_STAGING_PATH, b"")).unwrap();
+
+        let name = "0123456789abcdef0123456789abcdef.download";
+        let path = format!("{WEBUI_STAGING_PATH}/{name}");
+        handle_from(&root, &request(ACTION_WRITE, &path, b"response")).unwrap();
+        assert_eq!(
+            fs::read(
+                test.path
+                    .join(WEBUI_DIRECTORY)
+                    .join(WEBUI_STAGING_DIRECTORY)
+                    .join(name)
+            )
+            .unwrap(),
+            b"response"
+        );
+
+        for rejected in [
+            "webui_bridge/other",
+            "webui_bridge/staging/not-a-stage.download",
+            "webui_bridge/staging/0123456789abcdef0123456789abcdef.upload",
+            "webui_bridge/staging/0123456789abcdef0123456789abcdef.download/extra",
+        ] {
+            assert!(handle_from(&root, &request(ACTION_WRITE, rejected, b"x")).is_err());
+        }
+        assert!(handle_from(&root, &request(ACTION_MKDIR, "webui_bridge/other", b"")).is_err());
     }
 
     #[test]
