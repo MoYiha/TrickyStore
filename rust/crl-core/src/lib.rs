@@ -1,11 +1,11 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![forbid(unsafe_code)]
 
-use md5::Md5;
+use md5::{Digest as Md5Digest, Md5};
 use num_bigint::{BigInt, Sign};
 use serde::de::{self, DeserializeSeed, Deserializer, IgnoredAny, MapAccess, Visitor};
-use sha1::Sha1;
-use sha2::{Digest, Sha256};
+use sha1::{Digest as Sha1Digest, Sha1};
+use sha2::{Digest as Sha2Digest, Sha256};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -105,18 +105,20 @@ pub fn fingerprints(
     if serial.len() > MAX_NORMALIZED_ENTRY_BYTES {
         return Err(CrlError::Size);
     }
+    let md5 = <Md5 as Md5Digest>::digest(subject_public_key_info);
+    let sha1 = <Sha1 as Sha1Digest>::digest(subject_public_key_info);
+    let sha256 = <Sha256 as Sha2Digest>::digest(subject_public_key_info);
     Ok(RevocationFingerprints {
         serial_hex: serial,
-        md5_hex: digest_hex::<Md5>(subject_public_key_info),
-        sha1_hex: digest_hex::<Sha1>(subject_public_key_info),
-        sha256_hex: digest_hex::<Sha256>(subject_public_key_info),
+        md5_hex: bytes_hex(md5.as_ref()),
+        sha1_hex: bytes_hex(sha1.as_ref()),
+        sha256_hex: bytes_hex(sha256.as_ref()),
     })
 }
 
-fn digest_hex<D: Digest>(input: &[u8]) -> String {
-    let digest = D::digest(input);
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
+fn bytes_hex(input: &[u8]) -> String {
+    let mut output = String::with_capacity(input.len() * 2);
+    for byte in input {
         use std::fmt::Write as _;
         let _ = write!(output, "{byte:02x}");
     }
