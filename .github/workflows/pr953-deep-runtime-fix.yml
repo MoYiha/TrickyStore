@@ -1,0 +1,956 @@
+name: PR953 Deep Runtime Fix
+
+on:
+  push:
+    branches: ["agent/rust-first-service-redesign"]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'chore: install PR953 deep runtime fix runner'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: agent/rust-first-service-redesign
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+
+      - name: Apply deep runtime and mobile UI repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          # 1) The unprivileged backend must bind/listen only after dropping credentials.
+          backend_path = Path("rust/backend/src/main.rs")
+          backend = backend_path.read_text()
+          backend = replace_once(
+              backend,
+              '''fn run() -> io::Result<()> {
+              let adapter_pid = parse_adapter_pid()?;
+              backend_instance::initialize()?;
+              let mut broker = take_broker_stream()?;
+              let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
+              harden_process()?;
+              serve(listener, adapter_pid, &mut broker)
+          }
+          ''',
+              '''fn run() -> io::Result<()> {
+              let adapter_pid = parse_adapter_pid()?;
+              // Authenticate the inherited privileged broker while we still have the original
+              // process credentials, then permanently drop privileges before exposing any listener.
+              let mut broker = take_broker_stream()?;
+              harden_process()?;
+              backend_instance::initialize()?;
+              let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
+              serve(listener, adapter_pid, &mut broker)
+          }
+          ''',
+              "backend startup order",
+          )
+          backend_path.write_text(backend)
+
+          # 2) Register the Android WebUI adapter before waiting for the Rust backend. This keeps
+          # diagnostics reachable during backend recovery and closes the spawn/pid-publication race.
+          main_path = Path("service/src/main/java/cleveres/tricky/cleverestech/Main.kt")
+          main = main_path.read_text()
+          main = replace_once(
+              main,
+              '''private const val CONFIG_DIR_MODE = 448
+          private const val BACKEND_STARTUP_TIMEOUT_MS = 30_000L
+          ''',
+              '''private const val CONFIG_DIR_MODE = 448
+          private const val BACKEND_STARTUP_TIMEOUT_MS = 30_000L
+          private const val WEB_UI_START_ATTEMPTS = 8
+          private const val WEB_UI_START_INITIAL_DELAY_MS = 50L
+          private const val WEB_UI_START_MAX_DELAY_MS = 1_000L
+
+          private fun startWebUiBridge(
+              configDir: File,
+              isTampered: Boolean,
+          ): WebUiBridge? {
+              val bridge = WebUiBridge(WebServer(0, configDir, isTampered), configDir)
+              var retryDelayMs = WEB_UI_START_INITIAL_DELAY_MS
+              repeat(WEB_UI_START_ATTEMPTS) { attempt ->
+                  try {
+                      bridge.start()
+                      if (attempt > 0) {
+                          Logger.i("Native WebUI adapter registered after ${attempt + 1} attempts")
+                      }
+                      return bridge
+                  } catch (error: Exception) {
+                      Logger.e("Native WebUI adapter registration attempt ${attempt + 1} failed", error)
+                  }
+
+                  if (attempt + 1 < WEB_UI_START_ATTEMPTS) {
+                      try {
+                          Thread.sleep(retryDelayMs)
+                      } catch (_: InterruptedException) {
+                          Thread.currentThread().interrupt()
+                          return null
+                      }
+                      retryDelayMs = minOf(retryDelayMs * 2, WEB_UI_START_MAX_DELAY_MS)
+                  }
+              }
+              return null
+          }
+          ''',
+              "Main startup helper",
+          )
+          main = replace_once(
+              main,
+              '''        if (isTampered) {
+              runCatching { WebUiBridge(WebServer(0, configDir, true), configDir).start() }
+                  .onFailure { Logger.e("Failed to start native WebUI lockdown endpoint", it) }
+              Logger.e("Main: Running in tamper lockdown; native interceptors will not be registered")
+              while (true) {
+                  delay(60000)
+              }
+          }
+
+          while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
+          ''',
+              '''        val webUiBridge = startWebUiBridge(configDir, isTampered)
+          if (webUiBridge == null) {
+              Logger.e("Main: Native WebUI adapter could not register; exiting for supervisor retry")
+              return@runBlocking
+          }
+
+          if (isTampered) {
+              Logger.e("Main: Running in tamper lockdown; native interceptors will not be registered")
+              while (true) {
+                  delay(60000)
+              }
+          }
+
+          while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
+          ''',
+              "early WebUI registration",
+          )
+          main = replace_once(
+              main,
+              '''        try {
+              WebUiBridge(WebServer(0, configDir), configDir).start()
+          } catch (e: Exception) {
+              KeyboxDirectoryRefreshWatcher.stop()
+              CertificatePolicyWatcher.stop()
+              Logger.e("Failed to start native WebUI bridge", e)
+              Logger.e("Main: Exiting so the module supervisor can restore native WebUI service")
+              return@runBlocking
+          }
+
+          KeyboxAutoCleaner.start()
+          ''',
+              '''        KeyboxAutoCleaner.start()
+          ''',
+              "remove late WebUI registration",
+          )
+          main_path.write_text(main)
+
+          # 3) Preserve the hardened Rust/no-backup mobile architecture, but restore the original
+          # black/white visual identity and add an explicit in-app language chooser.
+          activity_path = Path("encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt")
+          activity = activity_path.read_text()
+
+          activity = activity.replace(
+              "import android.content.ClipData\n",
+              "import android.app.Activity\nimport android.app.LocaleManager\nimport android.content.ClipData\n",
+              1,
+          )
+          activity = activity.replace(
+              "import android.content.Context\n",
+              "import android.content.Context\nimport android.content.ContextWrapper\nimport android.content.res.Configuration\n",
+              1,
+          )
+          activity = activity.replace(
+              "import android.os.Bundle\n",
+              "import android.os.Build\nimport android.os.Bundle\nimport android.os.LocaleList\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.foundation.layout.Arrangement\n",
+              "import androidx.compose.foundation.BorderStroke\nimport androidx.compose.foundation.layout.Arrangement\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.foundation.lazy.items\n",
+              "import androidx.compose.foundation.lazy.items\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.shape.CircleShape\nimport androidx.compose.foundation.shape.RoundedCornerShape\nimport androidx.compose.foundation.verticalScroll\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material.icons.filled.Add\n",
+              "import androidx.compose.material.icons.filled.Add\nimport androidx.compose.material.icons.filled.Check\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material.icons.filled.Lock\n",
+              "import androidx.compose.material.icons.filled.Language\nimport androidx.compose.material.icons.filled.Lock\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material3.Button\n",
+              "import androidx.compose.material3.Button\nimport androidx.compose.material3.ButtonDefaults\nimport androidx.compose.material3.Card\nimport androidx.compose.material3.CardDefaults\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material3.OutlinedTextField\n",
+              "import androidx.compose.material3.OutlinedTextField\nimport androidx.compose.material3.OutlinedTextFieldDefaults\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material3.TextButton\n",
+              "import androidx.compose.material3.Surface\nimport androidx.compose.material3.TextButton\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.material3.TopAppBar\n",
+              "import androidx.compose.material3.TopAppBar\nimport androidx.compose.material3.TopAppBarDefaults\n",
+              1,
+          )
+          activity = activity.replace(
+              "import androidx.compose.ui.Modifier\n",
+              "import androidx.compose.ui.Modifier\nimport androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.platform.LocalContext\n",
+              1,
+          )
+          activity = activity.replace(
+              "import java.io.IOException\n",
+              "import java.io.IOException\nimport java.util.Locale\n",
+              1,
+          )
+
+          theme_and_locale = r'''
+          private val CleveresBackground = Color(0xFF0A0A0B)
+          private val CleveresForeground = Color(0xFFF4F4F5)
+          private val CleveresMuted = Color(0xFF9CA3AF)
+          private val CleveresAccent = Color(0xFFE7E5E4)
+          private val CleveresPanel = Color(0xFF151516)
+          private val CleveresPanelElevated = Color(0xFF1C1C1E)
+          private val CleveresBorder = Color(0xFF303033)
+          private val CleveresInputBackground = Color(0xFF111113)
+          private val CleveresSuccess = Color(0xFF4ADE80)
+          private val CleveresDanger = Color(0xFFFB7185)
+
+          @Composable
+          private fun CleveresTheme(content: @Composable () -> Unit) {
+              MaterialTheme(
+                  colorScheme =
+                      darkColorScheme(
+                          background = CleveresBackground,
+                          surface = CleveresPanel,
+                          surfaceVariant = CleveresInputBackground,
+                          primary = CleveresAccent,
+                          onPrimary = CleveresBackground,
+                          secondary = CleveresAccent,
+                          onSecondary = CleveresBackground,
+                          onBackground = CleveresForeground,
+                          onSurface = CleveresForeground,
+                          onSurfaceVariant = CleveresForeground,
+                          outline = CleveresBorder,
+                          error = CleveresDanger,
+                      ),
+                  content = content,
+              )
+          }
+
+          internal object LocaleController {
+              internal data class Language(
+                  val tag: String,
+                  val label: String,
+              )
+
+              internal val languages =
+                  listOf(
+                      Language("", "System"),
+                      Language("en", "English"),
+                      Language("tr", "Türkçe"),
+                      Language("de", "Deutsch"),
+                      Language("es", "Español"),
+                      Language("ru", "Русский"),
+                      Language("ar", "العربية"),
+                      Language("hi", "हिन्दी"),
+                      Language("in", "Bahasa Indonesia"),
+                      Language("zh-CN", "简体中文"),
+                  )
+
+              private const val PREFS = "cleveres_locale"
+              private const val KEY = "language_tag"
+
+              private fun storedTag(context: Context): String =
+                  context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "").orEmpty()
+
+              internal fun selectedTag(context: Context): String {
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      return context
+                          .getSystemService(LocaleManager::class.java)
+                          .applicationLocales
+                          .toLanguageTags()
+                          .substringBefore(',')
+                  }
+                  return storedTag(context)
+              }
+
+              internal fun apply(
+                  activity: Activity,
+                  tag: String,
+              ) {
+                  require(languages.any { it.tag == tag }) { "Unsupported locale" }
+                  if (Build.VERSION.SDK_INT >= 33) {
+                      activity.getSystemService(LocaleManager::class.java).applicationLocales =
+                          if (tag.isBlank()) LocaleList.getEmptyLocaleList() else LocaleList.forLanguageTags(tag)
+                  } else {
+                      val editor = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                      if (tag.isBlank()) editor.remove(KEY) else editor.putString(KEY, tag)
+                      editor.apply()
+                      activity.recreate()
+                  }
+              }
+
+              internal fun wrap(context: Context): Context {
+                  if (Build.VERSION.SDK_INT >= 33) return context
+                  val tag = storedTag(context)
+                  if (tag.isBlank()) return context
+                  val locale = Locale.forLanguageTag(tag)
+                  val configuration = Configuration(context.resources.configuration)
+                  configuration.setLocale(locale)
+                  configuration.setLayoutDirection(locale)
+                  return context.createConfigurationContext(configuration)
+              }
+          }
+
+          private fun Context.findActivity(): Activity? {
+              var current: Context = this
+              while (current is ContextWrapper) {
+                  if (current is Activity) return current
+                  current = current.baseContext
+              }
+              return current as? Activity
+          }
+
+          @Composable
+          private fun LanguagePicker(modifier: Modifier = Modifier) {
+              val context = LocalContext.current
+              val selectedTag = LocaleController.selectedTag(context)
+              val selected = LocaleController.languages.firstOrNull { it.tag == selectedTag } ?: LocaleController.languages.first()
+              var open by remember { mutableStateOf(false) }
+              val systemLabel = stringResource(R.string.system_default)
+
+              OutlinedButton(
+                  onClick = { open = true },
+                  modifier = modifier,
+                  border = BorderStroke(1.dp, CleveresBorder),
+              ) {
+                  Icon(Icons.Default.Language, contentDescription = stringResource(R.string.language))
+                  Text(
+                      if (selected.tag.isBlank()) systemLabel else selected.label,
+                      modifier = Modifier.padding(start = 8.dp),
+                  )
+              }
+
+              if (open) {
+                  AlertDialog(
+                      onDismissRequest = { open = false },
+                      title = { Text(stringResource(R.string.language)) },
+                      text = {
+                          Column {
+                              LocaleController.languages.forEach { language ->
+                                  TextButton(
+                                      onClick = {
+                                          open = false
+                                          context.findActivity()?.let { LocaleController.apply(it, language.tag) }
+                                      },
+                                      modifier = Modifier.fillMaxWidth(),
+                                  ) {
+                                      Row(
+                                          modifier = Modifier.fillMaxWidth(),
+                                          verticalAlignment = Alignment.CenterVertically,
+                                      ) {
+                                          Text(
+                                              if (language.tag.isBlank()) systemLabel else language.label,
+                                              modifier = Modifier.weight(1f),
+                                          )
+                                          if (language.tag == selected.tag) {
+                                              Icon(Icons.Default.Check, contentDescription = null, tint = CleveresSuccess)
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      },
+                      confirmButton = {
+                          TextButton(onClick = { open = false }) {
+                              Text(stringResource(R.string.cancel))
+                          }
+                      },
+                      containerColor = CleveresPanelElevated,
+                  )
+              }
+          }
+
+          @Composable
+          private fun vaultTextFieldColors() =
+              OutlinedTextFieldDefaults.colors(
+                  focusedContainerColor = CleveresInputBackground,
+                  unfocusedContainerColor = CleveresInputBackground,
+                  disabledContainerColor = CleveresInputBackground,
+                  focusedBorderColor = CleveresAccent,
+                  unfocusedBorderColor = CleveresBorder,
+                  focusedTextColor = CleveresForeground,
+                  unfocusedTextColor = CleveresForeground,
+                  focusedLabelColor = CleveresAccent,
+                  unfocusedLabelColor = CleveresMuted,
+                  focusedSupportingTextColor = CleveresMuted,
+                  unfocusedSupportingTextColor = CleveresMuted,
+              )
+
+          '''
+          activity = replace_once(activity, "class SecureMainActivity : ComponentActivity() {\n", theme_and_locale + "class SecureMainActivity : ComponentActivity() {\n", "theme insertion")
+          activity = replace_once(
+              activity,
+              '''class SecureMainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+          ''',
+              '''class SecureMainActivity : ComponentActivity() {
+              override fun attachBaseContext(newBase: Context) {
+                  super.attachBaseContext(LocaleController.wrap(newBase))
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+          ''',
+              "legacy locale context",
+          )
+          activity = replace_once(
+              activity,
+              '''        setContent {
+                  MaterialTheme(colorScheme = darkColorScheme()) {
+                      SecureEncryptorApp()
+                  }
+              }
+          ''',
+              '''        setContent {
+                  CleveresTheme {
+                      SecureEncryptorApp()
+                  }
+              }
+          ''',
+              "custom theme",
+          )
+          activity = activity.replace("val context = androidx.compose.ui.platform.LocalContext.current", "val context = LocalContext.current")
+          activity = replace_once(
+              activity,
+              '''    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+          ''',
+              '''    Scaffold(
+              snackbarHost = { SnackbarHost(snackbar) },
+              containerColor = CleveresBackground,
+          ) { padding ->
+          ''',
+              "root scaffold colors",
+          )
+
+          old_top = '''        topBar = {
+              Row(
+                  modifier = Modifier.fillMaxWidth().padding(20.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+              ) {
+                  Column(modifier = Modifier.weight(1f)) {
+                      Text(
+                          text = stringResource(R.string.vault_title),
+                          style = MaterialTheme.typography.headlineMedium,
+                          fontWeight = FontWeight.SemiBold,
+                      )
+                      Text(text = stringResource(R.string.vault_subtitle))
+                  }
+                  Text(text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.length() })))
+              }
+          },
+          '''
+          new_top = '''        topBar = {
+              Column(
+                  modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 18.dp),
+                  verticalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                  Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      verticalAlignment = Alignment.CenterVertically,
+                  ) {
+                      Column(modifier = Modifier.weight(1f)) {
+                          Text(
+                              text = stringResource(R.string.vault_title),
+                              style = MaterialTheme.typography.headlineMedium,
+                              fontWeight = FontWeight.SemiBold,
+                          )
+                          Text(
+                              text = stringResource(R.string.vault_subtitle),
+                              color = CleveresMuted,
+                          )
+                      }
+                      LanguagePicker()
+                  }
+                  Card(
+                      colors = CardDefaults.cardColors(containerColor = CleveresPanel),
+                      border = BorderStroke(1.dp, CleveresBorder),
+                      shape = RoundedCornerShape(18.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                  ) {
+                      Row(
+                          modifier = Modifier.fillMaxWidth().padding(14.dp),
+                          verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                          Surface(
+                              shape = RoundedCornerShape(12.dp),
+                              color = CleveresPanelElevated,
+                          ) {
+                              Icon(
+                                  Icons.Default.Lock,
+                                  contentDescription = null,
+                                  tint = CleveresSuccess,
+                                  modifier = Modifier.padding(10.dp),
+                              )
+                          }
+                          Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                              Text(stringResource(R.string.vault_title), fontWeight = FontWeight.SemiBold)
+                              Text(
+                                  stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.length() })),
+                                  color = CleveresMuted,
+                                  style = MaterialTheme.typography.bodySmall,
+                              )
+                          }
+                      }
+                  }
+              }
+          },
+          '''
+          activity = replace_once(activity, old_top, new_top, "vault header")
+          activity = replace_once(
+              activity,
+              '''            FloatingActionButton(onClick = onCreate) {
+                  Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_encrypted_keybox))
+              }
+          ''',
+              '''            FloatingActionButton(
+                  onClick = onCreate,
+                  containerColor = CleveresAccent,
+                  contentColor = CleveresBackground,
+                  shape = CircleShape,
+              ) {
+                  Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_encrypted_keybox))
+              }
+          ''',
+              "vault fab",
+          )
+          activity = replace_once(
+              activity,
+              '''        },
+          ) { padding ->
+              if (files.isEmpty()) {
+          ''',
+              '''        },
+              containerColor = CleveresBackground,
+          ) { padding ->
+              if (files.isEmpty()) {
+          ''',
+              "vault scaffold background",
+          )
+          activity = replace_once(
+              activity,
+              '''            ) {
+                  Icon(Icons.Default.Lock, contentDescription = null)
+                  Spacer(modifier = Modifier.height(12.dp))
+                  Text(stringResource(R.string.empty_vault_title), fontWeight = FontWeight.SemiBold)
+                  Text(stringResource(R.string.empty_vault_body))
+                  Spacer(modifier = Modifier.height(16.dp))
+                  Button(onClick = onCreate) { Text(stringResource(R.string.create_keybox)) }
+              }
+          ''',
+              '''            ) {
+                  Surface(
+                      shape = CircleShape,
+                      color = CleveresPanel,
+                      border = BorderStroke(1.dp, CleveresBorder),
+                  ) {
+                      Icon(
+                          Icons.Default.Lock,
+                          contentDescription = null,
+                          tint = CleveresAccent,
+                          modifier = Modifier.padding(18.dp),
+                      )
+                  }
+                  Spacer(modifier = Modifier.height(18.dp))
+                  Text(
+                      stringResource(R.string.empty_vault_title),
+                      style = MaterialTheme.typography.titleLarge,
+                      fontWeight = FontWeight.SemiBold,
+                  )
+                  Text(
+                      stringResource(R.string.empty_vault_body),
+                      color = CleveresMuted,
+                  )
+                  Spacer(modifier = Modifier.height(18.dp))
+                  Button(
+                      onClick = onCreate,
+                      colors = ButtonDefaults.buttonColors(
+                          containerColor = CleveresAccent,
+                          contentColor = CleveresBackground,
+                      ),
+                  ) {
+                      Text(stringResource(R.string.create_keybox))
+                  }
+              }
+          ''',
+              "empty vault styling",
+          )
+
+          # Style file rows as bordered panels.
+          old_item = '''                items(files, key = { it.name }) { file ->
+                      Row(
+                          modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                          verticalAlignment = Alignment.CenterVertically,
+                      ) {
+                          Column(modifier = Modifier.weight(1f)) {
+                              Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                              Text(formatBytes(file.length()), style = MaterialTheme.typography.bodySmall)
+                          }
+                          IconButton(
+                              onClick = {
+                                  exportTarget = file
+                                  exportLauncher.launch(file.name)
+                              },
+                          ) {
+                              Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.export_file, file.name))
+                          }
+                          IconButton(onClick = { deleteTarget = file }) {
+                              Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_file, file.name))
+                          }
+                      }
+                  }
+          '''
+          new_item = '''                items(files, key = { it.name }) { file ->
+                      Card(
+                          colors = CardDefaults.cardColors(containerColor = CleveresPanel),
+                          border = BorderStroke(1.dp, CleveresBorder),
+                          shape = RoundedCornerShape(16.dp),
+                          modifier = Modifier.fillMaxWidth(),
+                      ) {
+                          Row(
+                              modifier = Modifier.fillMaxWidth().padding(12.dp),
+                              verticalAlignment = Alignment.CenterVertically,
+                          ) {
+                              Column(modifier = Modifier.weight(1f)) {
+                                  Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                  Text(
+                                      formatBytes(file.length()),
+                                      style = MaterialTheme.typography.bodySmall,
+                                      color = CleveresMuted,
+                                  )
+                              }
+                              IconButton(
+                                  onClick = {
+                                      exportTarget = file
+                                      exportLauncher.launch(file.name)
+                                  },
+                              ) {
+                                  Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.export_file, file.name))
+                              }
+                              IconButton(onClick = { deleteTarget = file }) {
+                                  Icon(
+                                      Icons.Default.Delete,
+                                      contentDescription = stringResource(R.string.delete_file, file.name),
+                                      tint = CleveresDanger,
+                                  )
+                              }
+                          }
+                      }
+                  }
+          '''
+          activity = replace_once(activity, old_item, new_item, "vault rows")
+
+          # Create flow: keep FLAG_SECURE/Rust crypto/noBackup storage, but restore panel hierarchy.
+          activity = replace_once(
+              activity,
+              '''            TopAppBar(
+                  title = { Text(stringResource(R.string.create_keybox)) },
+                  navigationIcon = {
+                      IconButton(onClick = onBack, enabled = !saving) {
+                          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                      }
+                  },
+              )
+          ''',
+              '''            TopAppBar(
+                  title = { Text(stringResource(R.string.create_keybox), fontWeight = FontWeight.SemiBold) },
+                  navigationIcon = {
+                      IconButton(onClick = onBack, enabled = !saving) {
+                          Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                      }
+                  },
+                  colors = TopAppBarDefaults.topAppBarColors(containerColor = CleveresBackground),
+              )
+          ''',
+              "create app bar",
+          )
+          activity = replace_once(
+              activity,
+              '''    ) { padding ->
+              Column(
+                  modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
+          ''',
+              '''        containerColor = CleveresBackground,
+              ) { padding ->
+              Column(
+                  modifier =
+                      Modifier
+                          .fillMaxSize()
+                          .padding(padding)
+                          .verticalScroll(rememberScrollState())
+                          .padding(20.dp),
+          ''',
+              "create scaffold",
+          )
+          activity = replace_once(
+              activity,
+              '''        ) {
+              Text(stringResource(R.string.security_title), fontWeight = FontWeight.SemiBold)
+              Text(stringResource(R.string.security_body), style = MaterialTheme.typography.bodySmall)
+
+              OutlinedTextField(
+          ''',
+              '''        ) {
+              Card(
+                  colors = CardDefaults.cardColors(containerColor = CleveresPanel),
+                  border = BorderStroke(1.dp, CleveresBorder),
+                  shape = RoundedCornerShape(18.dp),
+                  modifier = Modifier.fillMaxWidth(),
+              ) {
+                  Column(modifier = Modifier.padding(16.dp)) {
+                      Text(stringResource(R.string.security_title), fontWeight = FontWeight.SemiBold)
+                      Text(
+                          stringResource(R.string.security_body),
+                          style = MaterialTheme.typography.bodySmall,
+                          color = CleveresMuted,
+                      )
+                  }
+              }
+
+              OutlinedTextField(
+          ''',
+              "security panel",
+          )
+          # Apply old input surface styling to the three text fields.
+          activity = activity.replace(
+              "                modifier = Modifier.fillMaxWidth(),\n            )",
+              "                modifier = Modifier.fillMaxWidth(),\n                colors = vaultTextFieldColors(),\n            )",
+              3,
+          )
+          activity = replace_once(
+              activity,
+              '''            Button(onClick = { save(false) }, enabled = canSave, modifier = Modifier.fillMaxWidth()) {
+          ''',
+              '''            Button(
+                  onClick = { save(false) },
+                  enabled = canSave,
+                  modifier = Modifier.fillMaxWidth(),
+                  colors = ButtonDefaults.buttonColors(
+                      containerColor = CleveresAccent,
+                      contentColor = CleveresBackground,
+                      disabledContainerColor = CleveresPanelElevated,
+                      disabledContentColor = CleveresMuted,
+                  ),
+              ) {
+          ''',
+              "save button",
+          )
+          activity_path.write_text(activity)
+
+          # Add the visible language selector labels to every locale without changing the locale set.
+          translations = {
+              "values/strings.xml": ("Language", "System default"),
+              "values-tr/strings.xml": ("Dil", "Sistem varsayılanı"),
+              "values-de/strings.xml": ("Sprache", "Systemstandard"),
+              "values-es/strings.xml": ("Idioma", "Predeterminado del sistema"),
+              "values-ru/strings.xml": ("Язык", "Системный язык"),
+              "values-in/strings.xml": ("Bahasa", "Default sistem"),
+              "values-hi/strings.xml": ("भाषा", "सिस्टम डिफ़ॉल्ट"),
+              "values-ar/strings.xml": ("اللغة", "إعداد النظام الافتراضي"),
+              "values-zh-rCN/strings.xml": ("语言", "系统默认"),
+          }
+          res_root = Path("encryptor-app/src/main/res")
+          for relative, (language, system_default) in translations.items():
+              path = res_root / relative
+              text = path.read_text()
+              if 'name="language"' in text or 'name="system_default"' in text:
+                  raise SystemExit(f"locale labels already exist unexpectedly in {path}")
+              text = text.replace(
+                  "</resources>",
+                  f'    <string name="language">{language}</string>\n'
+                  f'    <string name="system_default">{system_default}</string>\n'
+                  "</resources>",
+              )
+              path.write_text(text)
+
+          # Permanent startup-order regression test for the Android adapter.
+          startup_test = Path("service/src/test/java/cleveres/tricky/cleverestech/MainStartupContractTest.kt")
+          startup_test.write_text(r'''package cleveres.tricky.cleverestech
+
+          import java.io.File
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class MainStartupContractTest {
+              @Test
+              fun `web ui adapter registers before backend readiness gate`() {
+                  val source = locate("src/main/java/cleveres/tricky/cleverestech/Main.kt", "service/src/main/java/cleveres/tricky/cleverestech/Main.kt").readText()
+                  val mainStart = source.indexOf("fun main(args: Array<String>)")
+                  val registration = source.indexOf("startWebUiBridge(configDir, isTampered)", mainStart)
+                  val backendWait = source.indexOf("NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)", mainStart)
+
+                  assertTrue("main entry point missing", mainStart >= 0)
+                  assertTrue("native WebUI registration missing", registration > mainStart)
+                  assertTrue("backend readiness gate missing", backendWait > mainStart)
+                  assertTrue("WebUI must register before backend readiness can block startup", registration < backendWait)
+              }
+
+              private fun locate(vararg candidates: String): File =
+                  candidates.map(::File).firstOrNull(File::isFile)
+                      ?: error("Could not locate ${candidates.joinToString()}")
+          }
+          ''')
+
+          # Permanent startup-order regression test for Linux peer credentials.
+          rust_test = Path("rust/backend/tests/startup_privilege_order.rs")
+          rust_test.parent.mkdir(parents=True, exist_ok=True)
+          rust_test.write_text(r'''#[test]
+          fn backend_listener_is_created_only_after_privilege_drop() {
+              let source = include_str!("../src/main.rs");
+              let start = source.find("fn run() -> io::Result<()> {").expect("run function");
+              let end = source[start..]
+                  .find("\n}\n\nfn parse_adapter_pid")
+                  .map(|offset| start + offset)
+                  .expect("run function end");
+              let run = &source[start..end];
+
+              let broker = run.find("take_broker_stream()?").expect("broker authentication");
+              let harden = run.find("harden_process()?").expect("privilege drop");
+              let listener = run
+                  .find("bind_abstract(BACKEND_SOCKET_NAME)?")
+                  .expect("backend listener");
+
+              assert!(broker < harden, "the inherited root broker must be authenticated before dropping uid/gid");
+              assert!(harden < listener, "the public backend listener must be bound after dropping to the unprivileged identity");
+          }
+          ''')
+
+          # Extend mobile contract tests so visual/security/localization layers cannot be silently removed again.
+          mobile_test_path = Path("encryptor-app/src/test/java/cleveres/tricky/encryptor/MobileSecurityContractTest.kt")
+          mobile_test = mobile_test_path.read_text()
+          mobile_test = replace_once(
+              mobile_test,
+              '''        assertTrue(activity.contains("WindowManager.LayoutParams.FLAG_SECURE"))
+              assertTrue(activity.contains("context.noBackupFilesDir"))
+          ''',
+              '''        assertTrue(activity.contains("WindowManager.LayoutParams.FLAG_SECURE"))
+              assertTrue(activity.contains("private fun CleveresTheme"))
+              assertTrue(activity.contains("private fun LanguagePicker"))
+              assertTrue(activity.contains("LocaleManager::class.java"))
+              assertTrue(activity.contains("Color(0xFFE7E5E4)"))
+              assertTrue(activity.contains("context.noBackupFilesDir"))
+          ''',
+              "mobile UI contract",
+          )
+          mobile_test_path.write_text(mobile_test)
+
+          locale_test_path = Path("encryptor-app/src/test/java/cleveres/tricky/encryptor/LocalizationParityTest.kt")
+          locale_test = locale_test_path.read_text()
+          locale_test = replace_once(
+              locale_test,
+              '''        assertEquals(setOf("en") + localeDirectories.values, configured)
+              }
+          ''',
+              '''        assertEquals(setOf("en") + localeDirectories.values, configured)
+
+              val activitySource =
+                  locate(
+                      "src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt",
+                      "encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt",
+                  ).readText()
+              assertTrue("In-app language picker is missing", activitySource.contains("private fun LanguagePicker"))
+              for (locale in configured) {
+                  assertTrue("In-app language picker is missing $locale", activitySource.contains("Language(\"$locale\""))
+              }
+              }
+          ''',
+              "localization picker contract",
+          )
+          locale_test_path.write_text(locale_test)
+          PY
+
+      - name: Format sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew ktlintFormat --warning-mode=fail --console=plain
+          (cd rust && cargo fmt --all)
+
+      - name: Verify startup regression gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :service:testDebugUnitTest --tests '*MainStartupContractTest' \
+            :encryptor-app:testDebugUnitTest --tests '*LocalizationParityTest' \
+            :encryptor-app:testDebugUnitTest --tests '*MobileSecurityContractTest' \
+            --warning-mode=fail --console=plain
+          (cd rust && cargo test -p cleverestricky-backend --test startup_privilege_order --verbose)
+
+      - name: Run exact Android unit and lint gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew ktlintCheck \
+            :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest \
+            :service:lintDebug :stub:lintDebug :encryptor-app:lintDebug \
+            --warning-mode=fail --console=plain
+
+      - name: Run Rust backend gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust
+          cargo fmt --all -- --check
+          RUSTFLAGS='-D warnings' cargo clippy -p cleverestricky-backend --all-targets -- -D warnings
+          cargo test -p cleverestricky-backend --verbose
+
+      - name: Commit tested repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/pr953-deep-runtime-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix: restore runtime startup and secure mobile UX'
+          git push origin HEAD:agent/rust-first-service-redesign
