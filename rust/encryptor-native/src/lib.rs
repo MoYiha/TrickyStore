@@ -11,10 +11,10 @@ use jni::{Env, EnvUnowned, Outcome};
 use pbkdf2::pbkdf2_hmac;
 use serde::Serialize;
 use sha2::Sha256;
+use std::io;
 use std::path::Path;
 use std::ptr;
 use std::str;
-use std::io;
 use zeroize::{Zeroize, Zeroizing};
 
 const KDF_ITERATIONS: u32 = 250_000;
@@ -274,10 +274,9 @@ fn read_bytes_bounded(
     input: &JByteArray<'_>,
     max_bytes: usize,
 ) -> Result<Zeroizing<Vec<u8>>, EncryptError> {
-    let length = env
-        .get_array_length(input)
+    let length = input
+        .len(env)
         .map_err(|_| EncryptError::InvalidInput)?;
-    let length = usize::try_from(length).map_err(|_| EncryptError::InvalidInput)?;
     if length > max_bytes {
         return Err(EncryptError::InvalidInput);
     }
@@ -290,15 +289,15 @@ fn read_password(
     env: &mut Env<'_>,
     input: &JCharArray<'_>,
 ) -> Result<Zeroizing<String>, EncryptError> {
-    let length = env
-        .get_array_length(input)
+    let length = input
+        .len(env)
         .map_err(|_| EncryptError::InvalidInput)?;
-    let length = usize::try_from(length).map_err(|_| EncryptError::InvalidInput)?;
     if !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&length) {
         return Err(EncryptError::InvalidInput);
     }
     let mut units = Zeroizing::new(vec![0u16; length]);
-    env.get_char_array_region(input, 0, &mut units)
+    input
+        .get_region(env, 0, &mut units)
         .map_err(|_| EncryptError::InvalidInput)?;
     String::from_utf16(&units)
         .map(Zeroizing::new)
@@ -321,8 +320,8 @@ fn read_string_bounded(
 
 fn throw_native_failure(env: &mut Env<'_>) {
     let _ = env.throw_new(
-        "java/lang/IllegalStateException",
-        "Native keybox operation failed",
+        jni::jni_str!("java/lang/IllegalStateException"),
+        jni::jni_str!("Native keybox operation failed"),
     );
 }
 
