@@ -43,4 +43,6 @@
     <string name="replace">Ersetzen</string>
     <string name="security_title">Lokal zuerst, gehärtete Verschlüsselung</string>
     <string name="security_body">Die XML verlässt diese App nicht. CBOX-Verschlüsselung und atomare Schreibvorgänge in den privaten Tresor laufen in der begrenzten Rust-Schicht.</string>
+    <string name="language">Sprache</string>
+    <string name="system_default">Systemstandard</string>
 </resources>

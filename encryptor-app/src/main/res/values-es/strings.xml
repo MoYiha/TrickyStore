@@ -43,4 +43,6 @@
     <string name="replace">Reemplazar</string>
     <string name="security_title">Cifrado reforzado y local</string>
     <string name="security_body">El XML nunca sale de esta aplicación. El cifrado CBOX y las escrituras atómicas de la bóveda privada se ejecutan en la capa Rust acotada.</string>
+    <string name="language">Idioma</string>
+    <string name="system_default">Predeterminado del sistema</string>
 </resources>

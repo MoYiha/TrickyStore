@@ -43,4 +43,6 @@
     <string name="replace">استبدال</string>
     <string name="security_title">تشفير محلي ومحصّن</string>
     <string name="security_body">لا يغادر XML هذا التطبيق. يعمل تشفير CBOX والكتابة الذرية إلى الخزنة الخاصة داخل طبقة Rust محدودة.</string>
+    <string name="language">اللغة</string>
+    <string name="system_default">إعداد النظام الافتراضي</string>
 </resources>

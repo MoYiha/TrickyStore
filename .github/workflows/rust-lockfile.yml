@@ -5,47 +5,18 @@ on:
     branches: [ "master" ]
     paths:
       - "rust/**"
-      - ".github/**"
-      - "service/**"
-      - "encryptor-app/**"
+      - ".github/workflows/rust-lockfile.yml"
   workflow_dispatch:
 
 concurrency:
   group: rust-lockfile-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair-pr953:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 953
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out PR branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          ref: agent/rust-first-service-redesign
-          fetch-depth: 0
-
-      - name: Apply device repair
-        run: python3 .github/pr953_repair.py
-
-      - name: Commit repaired tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          git show ad90e82673df37e2366831ea356811aeb25bcfc5:.github/workflows/rust-lockfile.yml > .github/workflows/rust-lockfile.yml
-          rm -f .github/pr953_repair.py .github/workflows/pr953-deep-runtime-fix.yml .github/workflows/pr953-device-repair.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'fix: restore device runtime and mobile experience'
-          git push origin HEAD:agent/rust-first-service-redesign
-
   lockfile:
-    if: github.event_name != 'pull_request' || github.event.pull_request.number != 953
     name: "🔒 Rust Lockfile"
     runs-on: ubuntu-latest
     defaults:

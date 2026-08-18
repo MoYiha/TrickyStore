@@ -43,4 +43,6 @@
     <string name="replace">Заменить</string>
     <string name="security_title">Локальное усиленное шифрование</string>
     <string name="security_body">XML не покидает приложение. Шифрование CBOX и атомарная запись в приватное хранилище выполняются в ограниченном слое Rust.</string>
+    <string name="language">Язык</string>
+    <string name="system_default">Системный язык</string>
 </resources>

@@ -43,4 +43,6 @@
     <string name="replace">Replace</string>
     <string name="security_title">Local-first, hardened encryption</string>
     <string name="security_body">The XML never leaves this app. CBOX encryption and atomic private-vault writes run in the bounded Rust layer.</string>
+    <string name="language">Language</string>
+    <string name="system_default">System default</string>
 </resources>

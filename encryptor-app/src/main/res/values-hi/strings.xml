@@ -43,4 +43,6 @@
     <string name="replace">बदलें</string>
     <string name="security_title">स्थानीय और मजबूत एन्क्रिप्शन</string>
     <string name="security_body">XML इस ऐप से बाहर नहीं जाता। CBOX एन्क्रिप्शन और निजी वॉल्ट में परमाणु लेखन सीमित Rust परत में चलता है।</string>
+    <string name="language">भाषा</string>
+    <string name="system_default">सिस्टम डिफ़ॉल्ट</string>
 </resources>

@@ -72,10 +72,12 @@ fn main() {
 
 fn run() -> io::Result<()> {
     let adapter_pid = parse_adapter_pid()?;
-    backend_instance::initialize()?;
+    // Authenticate the inherited privileged broker before permanently dropping
+    // credentials and exposing the backend listener to Android clients.
     let mut broker = take_broker_stream()?;
-    let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
     harden_process()?;
+    backend_instance::initialize()?;
+    let listener = bind_abstract(BACKEND_SOCKET_NAME)?;
     serve(listener, adapter_pid, &mut broker)
 }
 

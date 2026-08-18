@@ -26,6 +26,8 @@ class MobileSecurityContractTest {
 
         val activity = File(root, "encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt").readText()
         assertTrue(activity.contains("WindowManager.LayoutParams.FLAG_SECURE"))
+        assertTrue(activity.contains("CleveresVaultColors"))
+        assertTrue(activity.contains("LanguagePicker()"))
         assertTrue(activity.contains("context.noBackupFilesDir"))
         assertFalse(activity.contains("getExternalFilesDir"))
 

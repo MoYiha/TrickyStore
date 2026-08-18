@@ -43,4 +43,6 @@
     <string name="replace">Değiştir</string>
     <string name="security_title">Yerel öncelikli, sertleştirilmiş şifreleme</string>
     <string name="security_body">XML bu uygulamadan çıkmaz. CBOX şifreleme ve atomik özel kasa yazımları sınırlı Rust katmanında çalışır.</string>
+    <string name="language">Dil</string>
+    <string name="system_default">Sistem varsayılanı</string>
 </resources>

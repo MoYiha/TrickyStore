@@ -43,4 +43,6 @@
     <string name="replace">Ganti</string>
     <string name="security_title">Enkripsi lokal yang diperkuat</string>
     <string name="security_body">XML tidak pernah keluar dari aplikasi. Enkripsi CBOX dan penulisan atomik ke brankas privat berjalan di lapisan Rust yang dibatasi.</string>
+    <string name="language">Bahasa</string>
+    <string name="system_default">Default sistem</string>
 </resources>

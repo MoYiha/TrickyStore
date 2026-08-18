@@ -72,11 +72,15 @@ import java.io.File
 import java.io.IOException
 
 class SecureMainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleController.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            MaterialTheme(colorScheme = CleveresVaultColors) {
                 SecureEncryptorApp()
             }
         }
@@ -156,7 +160,13 @@ private fun VaultScreen(
                     )
                     Text(text = stringResource(R.string.vault_subtitle))
                 }
-                Text(text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.length() })))
+                Column(horizontalAlignment = Alignment.End) {
+                    LanguagePicker()
+                    Text(
+                        text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.length() })),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         },
         floatingActionButton = {

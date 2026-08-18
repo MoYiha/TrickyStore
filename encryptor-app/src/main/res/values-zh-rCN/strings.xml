@@ -43,4 +43,6 @@
     <string name="replace">替换</string>
     <string name="security_title">本地优先的强化加密</string>
     <string name="security_body">XML 不会离开此应用。CBOX 加密和原子私有保险库写入均在有界 Rust 层中执行。</string>
+    <string name="language">语言</string>
+    <string name="system_default">系统默认</string>
 </resources>
