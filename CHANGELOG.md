@@ -24,8 +24,8 @@ Most users should not need to learn the new architecture. The practical goal is 
 - **Moved portable attestation certificate parsing and rewriting into the unprivileged Rust backend.** Android-facing code now keeps a much smaller role around Binder/framework integration.
 - **Private key material no longer needs to cross the managed IPC boundary.** Active keyboxes are represented by opaque backend-owned key identifiers instead of transporting PKCS#8 private-key bytes through Android-side IPC.
 - **Improved Root of Trust, patch-level, device-ID and module-hash handling.** The Rust certificate path preserves the original certificate structure while applying only the configured compatibility changes.
-- **Fixed a 2.6.0 timing regression found during real-device testing.** Non-attested `generateKey` results are rejected locally before the Rust certificate backend is touched, restoring the low-overhead fast path used by 2.5.8. Attested replies also avoid parsing issuer certificates that will be replaced anyway.
-- **Kept the hot Binder path bounded.** No synthetic sleep/delay was added to hide timing differences; the fix removes unnecessary work instead.
+- **Fixed the 2.6.0 timing regression found during real-device testing at both key creation and readback.** Non-attested `generateKey` replies and targeted `getKeyEntry` readbacks are classified locally by Android's attestation-extension OID before Rust certificate-backend work is considered. In particular, an ordinary non-attested readback no longer pays a Rust UDS certificate-inspection round trip while an attested readback is served from the in-memory replacement cache.
+- **Kept the hot Binder path bounded.** No synthetic sleep, delay, threshold change or timing padding was added to hide the difference; the fix removes the asymmetric work instead.
 
 ### Keybox safety and recovery
 
@@ -72,12 +72,12 @@ Most users should not need to learn the new architecture. The practical goal is 
 - **Added runtime payload integrity gates to the build.** CI now verifies required binaries/assets, installer wiring, supervisor wiring and minimum expected payload sizes so accidental deletion or abnormal shrinkage cannot quietly produce a "successful" module ZIP.
 - **Added checksum/layout verification for the final module archive.** Missing payload hashes, orphan hashes, duplicates, traversal entries and unsafe archive layout are rejected.
 - **Added native ELF hardening validation for both supported Android ABIs.**
-- **Expanded security regression coverage.** Runtime wiring, WebUI staging, bounded streaming, backend recovery, keybox activation and the attestation fast path are now protected by automated tests.
+- **Expanded security regression coverage.** Runtime wiring, WebUI staging, bounded streaming, backend recovery, keybox activation and both `generateKey` and `getKeyEntry` attestation fast paths are now protected by automated tests.
 - **Failed JVM test reports are retained as CI artifacts.** This removes the previous blind spot where an enforcement gate could fail without an immediately useful report.
 
 ### Performance and resource behavior
 
-- **Removed unnecessary work from the latency-sensitive attestation path.** Non-attested keys do not enter the Rust certificate backend and attested rewrites no longer parse an issuer chain that will be discarded.
+- **Removed unnecessary work from the latency-sensitive attestation path.** Ordinary keys stay on the local fast path during both creation and readback; non-attested readback no longer enters Rust certificate inspection, while attested readback can use the already-published replacement cache.
 - **Kept policy/profile resolution cached in managed memory** instead of adding an out-of-process lookup to every Binder hot-path call.
 - **Avoided new polling loops and unbounded queues.** IPC frames, parser counts, files, staging bodies and caches all have explicit limits.
 - **Reduced avoidable Android UI I/O** by moving filesystem/JNI work off the main thread in the companion app.
