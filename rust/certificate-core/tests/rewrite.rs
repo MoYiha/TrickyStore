@@ -8,8 +8,8 @@ use cleverestricky_certificate_core::{
 };
 use cleverestricky_keybox_core::normalize_private_key_pkcs8;
 use cleverestricky_xml_core::parse_keybox_xml_bytes;
-use der::asn1::{BitString, OctetString};
-use der::{Decode, DecodePem, Encode};
+use x509_cert::der::asn1::{Any, OctetString};
+use x509_cert::der::{Decode, DecodePem, Encode, Tag, TagNumber};
 use x509_cert::ext::Extension;
 use x509_cert::Certificate;
 
@@ -77,12 +77,12 @@ fn ec_issuer_resigns_rsa_subject_without_changing_subject_spki() {
     let output = Certificate::from_der(&rewritten.leaf_der).expect("rewritten certificate DER");
 
     assert_eq!(
-        output.tbs_certificate.subject_public_key_info,
-        genuine.tbs_certificate.subject_public_key_info,
+        output.tbs_certificate().subject_public_key_info(),
+        genuine.tbs_certificate().subject_public_key_info(),
     );
     assert_eq!(
-        output.tbs_certificate.issuer,
-        ec_issuer.tbs_certificate.subject,
+        output.tbs_certificate().issuer(),
+        ec_issuer.tbs_certificate().subject(),
     );
     verify_signature(&output, &ec_issuer, SigningAlgorithm::EcP256Sha256);
 }
@@ -133,28 +133,28 @@ fn run_fixture(xml: &[u8], algorithm: SigningAlgorithm) {
     );
     let output = Certificate::from_der(&rewritten.leaf_der).expect("rewritten certificate DER");
     assert_eq!(
-        output.tbs_certificate.serial_number,
-        genuine.tbs_certificate.serial_number,
+        output.tbs_certificate().serial_number(),
+        genuine.tbs_certificate().serial_number(),
     );
     assert_eq!(
-        output.tbs_certificate.validity,
-        genuine.tbs_certificate.validity
+        output.tbs_certificate().validity(),
+        genuine.tbs_certificate().validity()
     );
     assert_eq!(
-        output.tbs_certificate.subject,
-        genuine.tbs_certificate.subject
+        output.tbs_certificate().subject(),
+        genuine.tbs_certificate().subject()
     );
     assert_eq!(
-        output.tbs_certificate.subject_public_key_info,
-        genuine.tbs_certificate.subject_public_key_info,
+        output.tbs_certificate().subject_public_key_info(),
+        genuine.tbs_certificate().subject_public_key_info(),
     );
-    assert!(genuine.tbs_certificate.issuer_unique_id.is_some());
-    assert!(genuine.tbs_certificate.subject_unique_id.is_some());
-    assert!(output.tbs_certificate.issuer_unique_id.is_none());
-    assert!(output.tbs_certificate.subject_unique_id.is_none());
+    assert!(genuine.tbs_certificate().issuer_unique_id().is_some());
+    assert!(genuine.tbs_certificate().subject_unique_id().is_some());
+    assert!(output.tbs_certificate().issuer_unique_id().is_none());
+    assert!(output.tbs_certificate().subject_unique_id().is_none());
     assert_eq!(
-        output.tbs_certificate.issuer,
-        issuer.tbs_certificate.subject
+        output.tbs_certificate().issuer(),
+        issuer.tbs_certificate().subject()
     );
     assert_eq!(
         non_attestation_extensions(&output),
@@ -162,9 +162,9 @@ fn run_fixture(xml: &[u8], algorithm: SigningAlgorithm) {
     );
 
     let attestation = output
-        .tbs_certificate
-        .extensions
-        .as_deref()
+        .tbs_certificate()
+        .extensions()
+        .map(Vec::as_slice)
         .unwrap_or(&[])
         .iter()
         .find(|extension| extension.extn_id == ANDROID_ATTESTATION_OID)
@@ -194,23 +194,93 @@ fn normalized_pem(value: &str) -> String {
 }
 
 fn synthetic_genuine_leaf(issuer: &Certificate) -> Certificate {
-    let mut leaf = issuer.clone();
-    leaf.tbs_certificate.serial_number = 0x012345u32.into();
-    leaf.tbs_certificate.issuer = issuer.tbs_certificate.subject.clone();
-    leaf.tbs_certificate.issuer_unique_id =
-        Some(BitString::from_bytes(&[0xa0]).expect("issuer unique id"));
-    leaf.tbs_certificate.subject_unique_id =
-        Some(BitString::from_bytes(&[0xb0]).expect("subject unique id"));
+    let issuer_tbs = issuer.tbs_certificate();
+    let version = explicit_x509_tag(0, &2i32.to_der().expect("v3 DER"));
+    let serial = 0x012345i32.to_der().expect("serial DER");
+    let signature = issuer_tbs.signature().to_der().expect("signature algorithm DER");
+    let issuer_name = issuer_tbs.subject().to_der().expect("issuer name DER");
+    let validity = issuer_tbs.validity().to_der().expect("validity DER");
+    let subject = issuer_tbs.subject().to_der().expect("subject DER");
+    let spki = issuer_tbs
+        .subject_public_key_info()
+        .to_der()
+        .expect("SPKI DER");
+    let issuer_unique_id = implicit_unique_id(1, 0xa0);
+    let subject_unique_id = implicit_unique_id(2, 0xb0);
+
     let extension_der = synthetic_attestation_extension();
-    let mut extensions = leaf.tbs_certificate.extensions.take().unwrap_or_default();
+    let mut extensions = issuer_tbs.extensions().cloned().unwrap_or_default();
     extensions.retain(|extension| extension.extn_id != ANDROID_ATTESTATION_OID);
     extensions.push(Extension {
         extn_id: ANDROID_ATTESTATION_OID,
         critical: false,
         extn_value: OctetString::new(extension_der).expect("attestation octets"),
     });
-    leaf.tbs_certificate.extensions = Some(extensions);
-    leaf
+    let extensions = extensions
+        .to_der()
+        .expect("extensions DER");
+    let extensions = explicit_x509_tag(3, &extensions);
+
+    let tbs = x509_sequence([
+        version.as_slice(),
+        serial.as_slice(),
+        signature.as_slice(),
+        issuer_name.as_slice(),
+        validity.as_slice(),
+        subject.as_slice(),
+        spki.as_slice(),
+        issuer_unique_id.as_slice(),
+        subject_unique_id.as_slice(),
+        extensions.as_slice(),
+    ]);
+    let outer_algorithm = issuer
+        .signature_algorithm()
+        .to_der()
+        .expect("outer signature algorithm DER");
+    let outer_signature = issuer.signature().to_der().expect("outer signature DER");
+    let certificate = x509_sequence([
+        tbs.as_slice(),
+        outer_algorithm.as_slice(),
+        outer_signature.as_slice(),
+    ]);
+    Certificate::from_der(&certificate).expect("synthetic genuine certificate")
+}
+
+fn explicit_x509_tag(tag: u32, inner: &[u8]) -> Vec<u8> {
+    Any::new(
+        Tag::ContextSpecific {
+            constructed: true,
+            number: TagNumber(tag),
+        },
+        inner.to_vec(),
+    )
+    .expect("explicit tag")
+    .to_der()
+    .expect("explicit tag DER")
+}
+
+fn implicit_unique_id(tag: u32, value: u8) -> Vec<u8> {
+    Any::new(
+        Tag::ContextSpecific {
+            constructed: false,
+            number: TagNumber(tag),
+        },
+        vec![0, value],
+    )
+    .expect("unique id")
+    .to_der()
+    .expect("unique id DER")
+}
+
+fn x509_sequence<'a>(parts: impl IntoIterator<Item = &'a [u8]>) -> Vec<u8> {
+    let mut value = Vec::new();
+    for part in parts {
+        value.extend_from_slice(part);
+    }
+    Any::new(Tag::Sequence, value)
+        .expect("sequence")
+        .to_der()
+        .expect("sequence DER")
 }
 
 fn synthetic_attestation_extension() -> Vec<u8> {
@@ -239,22 +309,22 @@ fn verify_signature(output: &Certificate, issuer: &Certificate, algorithm: Signi
     use sha2::Sha256;
     use signature::Verifier;
 
-    let tbs = output.tbs_certificate.to_der().expect("TBS DER");
+    let tbs = output.tbs_certificate().to_der().expect("TBS DER");
     let issuer_spki = issuer
-        .tbs_certificate
-        .subject_public_key_info
+        .tbs_certificate()
+        .subject_public_key_info()
         .to_der()
         .expect("issuer SPKI");
     match algorithm {
         SigningAlgorithm::EcP256Sha256 => {
             let key = EcVerifyingKey::from_public_key_der(&issuer_spki).expect("EC issuer key");
-            let signature = EcSignature::from_der(output.signature.raw_bytes()).expect("EC sig");
+            let signature = EcSignature::from_der(output.signature().raw_bytes()).expect("EC sig");
             key.verify(&tbs, &signature).expect("EC verification");
         }
         SigningAlgorithm::RsaPkcs1Sha256 => {
             let key = rsa::RsaPublicKey::from_public_key_der(&issuer_spki).expect("RSA issuer key");
             let verifying = RsaVerifyingKey::<Sha256>::new(key);
-            let signature = RsaSignature::try_from(output.signature.raw_bytes()).expect("RSA sig");
+            let signature = RsaSignature::try_from(output.signature().raw_bytes()).expect("RSA sig");
             verifying
                 .verify(&tbs, &signature)
                 .expect("RSA verification");
@@ -264,9 +334,9 @@ fn verify_signature(output: &Certificate, issuer: &Certificate, algorithm: Signi
 
 fn non_attestation_extensions(certificate: &Certificate) -> Vec<Vec<u8>> {
     certificate
-        .tbs_certificate
-        .extensions
-        .as_deref()
+        .tbs_certificate()
+        .extensions()
+        .map(Vec::as_slice)
         .unwrap_or(&[])
         .iter()
         .filter(|extension| extension.extn_id != ANDROID_ATTESTATION_OID)
