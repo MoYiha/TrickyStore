@@ -1,28 +1,28 @@
 name: Rust Lockfile Check
 
 on:
-  push:
-    branches: [ "agent/rust-first-service-redesign" ]
   pull_request:
     branches: [ "master" ]
     paths:
       - "rust/**"
-      - ".github/workflows/rust-lockfile.yml"
+      - ".github/**"
+      - "service/**"
+      - "encryptor-app/**"
   workflow_dispatch:
 
 concurrency:
   group: rust-lockfile-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
   repair-pr953:
-    if: github.event_name == 'push' && github.event.head_commit.message == 'chore: run compact PR953 repair'
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 953
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out PR branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: agent/rust-first-service-redesign
@@ -45,7 +45,7 @@ jobs:
           git push origin HEAD:agent/rust-first-service-redesign
 
   lockfile:
-    if: github.event_name != 'push'
+    if: github.event_name != 'pull_request' || github.event.pull_request.number != 953
     name: "🔒 Rust Lockfile"
     runs-on: ubuntu-latest
     defaults:
