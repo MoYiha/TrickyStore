@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-const uxSource = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
+const uxSource = fs.readFileSync('module/template/webroot/ux-core.js', 'utf8');
 const catalogMarker = '    let locale = readLocale();';
 const instrumentedSource = uxSource.replace(
     catalogMarker,
@@ -27,7 +27,7 @@ function loadI18n(locale) {
     };
     context.window = context;
     vm.createContext(context);
-    vm.runInContext(instrumentedSource, context, { filename: 'ux.js' });
+    vm.runInContext(instrumentedSource, context, { filename: 'ux-core.js' });
     return { i18n: context.CleveresI18n, catalogs: context.__CleveresCatalogs };
 }
 
