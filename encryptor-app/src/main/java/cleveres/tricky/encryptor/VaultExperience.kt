@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import java.util.Locale
 
 internal val CleveresVaultColors =
@@ -102,12 +103,9 @@ internal object LocaleController {
             activity.getSystemService(LocaleManager::class.java).applicationLocales =
                 if (tag.isBlank()) LocaleList.getEmptyLocaleList() else LocaleList.forLanguageTags(tag)
         } else {
-            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .apply {
-                    if (tag.isBlank()) remove(KEY) else putString(KEY, tag)
-                }
-                .apply()
+            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+                if (tag.isBlank()) remove(KEY) else putString(KEY, tag)
+            }
             activity.recreate()
         }
     }
