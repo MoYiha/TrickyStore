@@ -155,7 +155,7 @@ internal fun LanguagePicker() {
         ) {
             IconButton(
                 onClick = { open = true },
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(48.dp),
             ) {
                 Icon(
                     imageVector = Icons.Default.Language,
@@ -168,7 +168,7 @@ internal fun LanguagePicker() {
         DropdownMenu(
             expanded = open,
             onDismissRequest = { open = false },
-            modifier = Modifier.widthIn(min = 220.dp),
+            modifier = Modifier.widthIn(min = 232.dp),
             containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp,
             shadowElevation = 8.dp,
