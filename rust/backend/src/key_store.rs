@@ -118,6 +118,7 @@ fn active_key(id: &KeyId) -> Result<Arc<StoredKey>, &'static str> {
     ))
 }
 
+#[cfg(test)]
 pub fn with_key<T>(
     id: &KeyId,
     operation: impl FnOnce(SigningAlgorithm, &[u8], &[u8]) -> Result<T, &'static str>,
