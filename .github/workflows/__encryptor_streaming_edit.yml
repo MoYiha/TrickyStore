@@ -1,0 +1,279 @@
+name: Final Encryptor streaming UI pass
+
+on:
+  push:
+    branches:
+      - feat/v2.6.1-webui-zip-import
+    paths:
+      - .github/workflows/__encryptor_streaming_edit.yml
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch streaming create flow and localized copy
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          from xml.sax.saxutils import escape
+
+          activity_path = Path('encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt')
+          text = activity_path.read_text(encoding='utf-8')
+          text = text.replace('import androidx.compose.runtime.DisposableEffect\n', '')
+
+          old_state = '''    var keyboxes by remember { mutableStateOf<List<SelectedKeybox>>(emptyList()) }
+    var sourceName by remember { mutableStateOf<String?>(null) }
+    var publicKey by remember { mutableStateOf<String?>(null) }
+    var showPassword by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            keyboxes.forEach { it.bytes.fill(0) }
+            password = ""
+            confirmation = ""
+        }
+    }
+'''
+          new_state = '''    var sourceUri by remember { mutableStateOf<Uri?>(null) }
+    var sourceName by remember { mutableStateOf<String?>(null) }
+    var publicKey by remember { mutableStateOf<String?>(null) }
+    var showPassword by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+'''
+          if old_state not in text: raise SystemExit('state block anchor missing')
+          text = text.replace(old_state, new_state, 1)
+
+          picker_start = text.index('    val picker =\n', text.index('private fun CreateScreen'))
+          picker_end = text.index('    val authorValid', picker_start)
+          new_picker = '''    val picker =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                val selectedName =
+                    withContext(Dispatchers.IO) {
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                if (input.read() < 0) throw IOException("input is empty")
+                            } ?: throw IOException("input unavailable")
+                            displayName(context, uri) ?: "keybox.xml"
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                if (selectedName == null) {
+                    snackbar.showSnackbar(xmlFailed)
+                } else {
+                    sourceUri = uri
+                    sourceName = selectedName
+                }
+            }
+        }
+
+'''
+          text = text[:picker_start] + new_picker + text[picker_end:]
+          text = text.replace('            keyboxes.isNotEmpty() &&\n', '            sourceUri != null &&\n', 1)
+
+          save_start = text.index('    fun save() {', text.index('private fun CreateScreen'))
+          save_end = text.index('    Scaffold(', save_start)
+          new_save = '''    fun save() {
+        val selectedUri = sourceUri ?: return
+        val selectedName = sourceName ?: "keybox.xml"
+        saving = true
+        val selectedAuthor = author
+        val selectedPassword = password
+        scope.launch {
+            val outcome =
+                withContext(Dispatchers.IO) {
+                    try {
+                        val allocator = VaultStore.newBatchNameAllocator(context, selectedAuthor)
+                        MobileCrypto.encryptAndSaveStreaming(
+                            noBackupDirectory = context.noBackupFilesDir.absolutePath,
+                            author = selectedAuthor,
+                            password = selectedPassword,
+                        ) { encryptOne ->
+                            context.contentResolver.openInputStream(selectedUri)?.use { input ->
+                                KeyboxImportReader.process(
+                                    input = input,
+                                    displayName = selectedName,
+                                    validateXml = NativeCrypto::validateKeyboxXml,
+                                ) { displayName, bytes ->
+                                    encryptOne(allocator.allocate(displayName), bytes)
+                                }
+                            } ?: throw IOException("input unavailable")
+                        }
+                    } catch (_: Exception) {
+                        MobileCrypto.EncryptResult.NATIVE_FAILURE
+                    }
+                }
+            saving = false
+            when (outcome) {
+                MobileCrypto.EncryptResult.SUCCESS -> {
+                    sourceUri = null
+                    sourceName = null
+                    password = ""
+                    confirmation = ""
+                    snackbar.showSnackbar(encryptSuccess)
+                    onBack()
+                }
+                MobileCrypto.EncryptResult.INVALID_INPUT -> snackbar.showSnackbar(xmlFailed)
+                MobileCrypto.EncryptResult.SIGNING_FAILURE -> snackbar.showSnackbar(signingUnavailable)
+                MobileCrypto.EncryptResult.NATIVE_FAILURE -> {
+                    Log.w(LOG_TAG, "Native streamed keybox encryption failed")
+                    snackbar.showSnackbar(encryptFailed)
+                }
+            }
+        }
+    }
+
+'''
+          text = text[:save_start] + new_save + text[save_end:]
+
+          summary_start = text.find('                    if (keyboxes.isNotEmpty()) {')
+          if summary_start >= 0:
+              summary_end = text.index('                    Text(stringResource(R.string.xml_limit)', summary_start)
+              text = text[:summary_start] + text[summary_end:]
+
+          old_loading = '''                        if (saving) {
+                            CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        } else {
+                            Text(stringResource(R.string.encrypt_save))
+                        }
+'''
+          new_loading = '''                        if (saving) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                                Text(stringResource(R.string.encrypting))
+                            }
+                        } else {
+                            Text(stringResource(R.string.encrypt_save))
+                        }
+'''
+          if old_loading not in text: raise SystemExit('loading button anchor missing')
+          text = text.replace(old_loading, new_loading, 1)
+          if 'keyboxes' in text[text.index('private fun CreateScreen'):]:
+              raise SystemExit('CreateScreen still retains keybox byte lists')
+          activity_path.write_text(text, encoding='utf-8')
+
+          translations = {
+            'values': {
+              'create_keybox': 'Create CBOX',
+              'choose_xml': 'Choose XML keybox or ZIP',
+              'xml_limit': 'Single XML or ZIP · up to 10,000 keyboxes · 10 MiB per XML',
+              'encrypting': 'Encrypting & saving…',
+              'security_body': 'Selected keybox XML files never leave this app. XML or ZIP input is processed one keybox at a time; each CBOX is signed and encrypted locally, and atomic private-vault writes run in the bounded Rust layer.',
+            },
+            'values-tr': {
+              'create_keybox': 'CBOX oluştur',
+              'choose_xml': 'XML keybox veya ZIP seç',
+              'xml_limit': 'Tek XML veya ZIP · en fazla 10.000 keybox · XML başına 10 MiB',
+              'encrypting': 'Şifreleniyor ve kaydediliyor…',
+              'security_body': 'Seçilen keybox XML dosyaları bu uygulamadan çıkmaz. XML veya ZIP girdisi her seferinde tek bir keybox işlenerek yürütülür; her CBOX yerel olarak imzalanıp şifrelenir ve atomik özel kasa yazımları sınırlandırılmış Rust katmanında yapılır.',
+            },
+            'values-zh-rCN': {
+              'create_keybox': '创建 CBOX', 'choose_xml': '选择 XML Keybox 或 ZIP',
+              'xml_limit': '单个 XML 或 ZIP · 最多 10,000 个 Keybox · 每个 XML 10 MiB',
+              'encrypting': '正在加密并保存…',
+              'security_body': '所选 Keybox XML 文件不会离开本应用。XML 或 ZIP 会逐个 Keybox 处理；每个 CBOX 都在本地签名和加密，原子私有保险库写入由受限的 Rust 层完成。',
+            },
+            'values-es': {
+              'create_keybox': 'Crear CBOX', 'choose_xml': 'Elegir Keybox XML o ZIP',
+              'xml_limit': 'XML individual o ZIP · hasta 10.000 keyboxes · 10 MiB por XML',
+              'encrypting': 'Cifrando y guardando…',
+              'security_body': 'Los XML de keybox seleccionados nunca salen de esta app. La entrada XML o ZIP se procesa un keybox cada vez; cada CBOX se firma y cifra localmente y las escrituras atómicas del almacén privado se realizan en la capa Rust acotada.',
+            },
+            'values-de': {
+              'create_keybox': 'CBOX erstellen', 'choose_xml': 'XML-Keybox oder ZIP wählen',
+              'xml_limit': 'Einzelnes XML oder ZIP · bis zu 10.000 Keyboxes · 10 MiB pro XML',
+              'encrypting': 'Wird verschlüsselt und gespeichert…',
+              'security_body': 'Ausgewählte Keybox-XML-Dateien verlassen diese App nie. XML- oder ZIP-Eingaben werden Keybox für Keybox verarbeitet; jede CBOX wird lokal signiert und verschlüsselt, atomare Schreibvorgänge in den privaten Tresor laufen in der begrenzten Rust-Schicht.',
+            },
+            'values-ru': {
+              'create_keybox': 'Создать CBOX', 'choose_xml': 'Выбрать XML keybox или ZIP',
+              'xml_limit': 'Один XML или ZIP · до 10 000 keybox · 10 MiB на XML',
+              'encrypting': 'Шифрование и сохранение…',
+              'security_body': 'Выбранные XML keybox никогда не покидают приложение. XML или ZIP обрабатывается по одному keybox; каждый CBOX локально подписывается и шифруется, а атомарная запись в приватное хранилище выполняется в ограниченном слое Rust.',
+            },
+            'values-in': {
+              'create_keybox': 'Buat CBOX', 'choose_xml': 'Pilih keybox XML atau ZIP',
+              'xml_limit': 'XML tunggal atau ZIP · hingga 10.000 keybox · 10 MiB per XML',
+              'encrypting': 'Mengenkripsi dan menyimpan…',
+              'security_body': 'File XML keybox yang dipilih tidak pernah keluar dari aplikasi ini. Input XML atau ZIP diproses satu keybox pada satu waktu; setiap CBOX ditandatangani dan dienkripsi secara lokal, dan penulisan vault privat atomik berjalan di lapisan Rust yang dibatasi.',
+            },
+            'values-hi': {
+              'create_keybox': 'CBOX बनाएँ', 'choose_xml': 'XML keybox या ZIP चुनें',
+              'xml_limit': 'एक XML या ZIP · अधिकतम 10,000 keybox · प्रति XML 10 MiB',
+              'encrypting': 'एन्क्रिप्ट और सेव किया जा रहा है…',
+              'security_body': 'चुनी गई keybox XML फ़ाइलें इस ऐप से बाहर नहीं जातीं। XML या ZIP इनपुट एक समय में एक keybox के रूप में प्रोसेस होता है; हर CBOX स्थानीय रूप से साइन और एन्क्रिप्ट होता है और निजी vault की atomic writes सीमित Rust layer में होती हैं।',
+            },
+            'values-ar': {
+              'create_keybox': 'إنشاء CBOX', 'choose_xml': 'اختر Keybox XML أو ZIP',
+              'xml_limit': 'XML منفرد أو ZIP · حتى 10,000 Keybox · ‏10 MiB لكل XML',
+              'encrypting': 'جارٍ التشفير والحفظ…',
+              'security_body': 'لا تغادر ملفات Keybox XML المحددة هذا التطبيق. تتم معالجة XML أو ZIP بمعدل Keybox واحد في كل مرة؛ ويُوقّع كل CBOX ويُشفّر محليًا، وتتم الكتابات الذرية إلى الخزنة الخاصة في طبقة Rust المحدودة.',
+            },
+          }
+
+          def set_string(path, name, value):
+              content = path.read_text(encoding='utf-8')
+              escaped = escape(value, {'"': '&quot;'})
+              pattern = re.compile(rf'<string name="{re.escape(name)}">.*?</string>')
+              replacement = f'<string name="{name}">{escaped}</string>'
+              if pattern.search(content):
+                  content = pattern.sub(replacement, content, count=1)
+              else:
+                  content = content.replace('</resources>', f'    {replacement}\n</resources>')
+              path.write_text(content, encoding='utf-8')
+
+          for folder, values in translations.items():
+              path = Path('encryptor-app/src/main/res') / folder / 'strings.xml'
+              if not path.is_file(): raise SystemExit(f'missing locale file: {path}')
+              for name, value in values.items(): set_string(path, name, value)
+
+          contract = Path('encryptor-app/src/test/java/cleveres/tricky/encryptor/MobileSecurityContractTest.kt')
+          c = contract.read_text(encoding='utf-8')
+          c = c.replace('KeyboxImportReader.read(input, selectedName, NativeCrypto::validateKeyboxXml)', 'KeyboxImportReader.process(')
+          c = c.replace('MobileCrypto.encryptAndSaveBatch', 'MobileCrypto.encryptAndSaveStreaming')
+          c = c.replace('VaultStore.allocateBatchFilenames', 'VaultStore.newBatchNameAllocator')
+          c = c.replace('MAX_KEYBOX_FILES = 64', 'MAX_KEYBOX_FILES = 10_000')
+          c = c.replace('        assertTrue(zipReader.contains("MAX_TOTAL_XML_BYTES = 48 * 1024 * 1024"))\n', '')
+          c = c.replace('        assertTrue(zipReader.contains("MAX_ARCHIVE_BYTES = 64 * 1024 * 1024"))\n', '')
+          c = c.replace('        assertTrue(zipReader.contains("selected.forEach { it.bytes.fill(0) }"))\n', '        assertTrue(zipReader.contains("bytes.fill(0)"))\n        assertFalse(zipReader.contains("MutableList<SelectedKeybox>"))\n')
+          c = c.replace('        assertTrue(mobileCrypto.contains("encryptAndSaveBatch"))', '        assertTrue(mobileCrypto.contains("encryptAndSaveStreaming"))')
+          c = c.replace('        assertTrue(vault.contains("allocateBatchFilenames"))', '        assertTrue(vault.contains("newBatchNameAllocator"))\n        assertTrue(vault.contains("MAX_FILES = 10_000"))')
+          c = c.replace('fun `mobile and module versions come from the same 2_6_0 root source`()', 'fun `mobile and module versions come from the same 2_6_1 root source`()')
+          c = c.replace('val verName = \\"V2.6.0\\"', 'val verName = \\"V2.6.1\\"')
+          contract.write_text(c, encoding='utf-8')
+          PY
+      - name: Verify final app source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'var sourceUri by remember' encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt
+          grep -Fq 'MobileCrypto.encryptAndSaveStreaming' encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt
+          grep -Fq 'VaultStore.newBatchNameAllocator' encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt
+          ! grep -Fq 'List<SelectedKeybox>' encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt
+          grep -Fq 'MAX_KEYBOX_FILES = 10_000' encryptor-app/src/main/java/cleveres/tricky/encryptor/KeyboxZipReader.kt
+          grep -Fq 'MAX_FILES = 10_000' encryptor-app/src/main/java/cleveres/tricky/encryptor/VaultStore.kt
+          grep -Fq 'name="encrypting"' encryptor-app/src/main/res/values/strings.xml
+          git diff --check
+      - name: Commit final app pass
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/__encryptor_streaming_edit.yml
+          git add encryptor-app
+          git commit -m "feat(encryptor): stream up to 10000 keyboxes per ZIP"
+          git push origin HEAD:feat/v2.6.1-webui-zip-import
