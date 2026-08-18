@@ -1,13 +1,6 @@
 package cleveres.tricky.encryptor
 
 internal object NativeCrypto {
-    const val ENCRYPT_OK = 0
-    const val ENCRYPT_INVALID_INPUT = 1
-    const val ENCRYPT_RANDOM_UNAVAILABLE = 2
-    const val ENCRYPT_CRYPTO_FAILURE = 3
-    const val ENCRYPT_STORAGE_FAILURE = 4
-    const val ENCRYPT_INTERNAL_FAILURE = 5
-
     init {
         System.loadLibrary("cleveres_encryptor_crypto")
     }
@@ -21,7 +14,7 @@ internal object NativeCrypto {
         xmlUtf8: ByteArray,
         signatureBase64: ByteArray,
         passwordUtf16: CharArray,
-    ): Int
+    ): Boolean
 
     external fun ensureVault(noBackupDirectory: String): Boolean
 
