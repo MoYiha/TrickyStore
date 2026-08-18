@@ -94,7 +94,7 @@ class RuntimeWiringContractTest {
     @Test
     fun `web ui registration precedes backend readiness`() {
         val root = locateRoot()
-        val source = File(root, "service/src/main/java/cleveres/tricky/cleverestech/Main.kt").readText()
+        val source = mainSource(root)
         val entry = source.indexOf("fun main(args: Array<String>)")
         val registration = source.indexOf("startWebUiBridge(configDir, isTampered)", entry)
         val backendWait = source.indexOf("NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)", entry)
@@ -103,6 +103,26 @@ class RuntimeWiringContractTest {
         assertTrue(registration > entry)
         assertTrue(backendWait > registration)
     }
+
+    @Test
+    fun `always-on keystore interception remains after backend and config initialization`() {
+        val root = locateRoot()
+        val source = mainSource(root)
+        val entry = source.indexOf("fun main(args: Array<String>)")
+        val backendWait = source.indexOf("NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)", entry)
+        val configInitialization = source.indexOf("Config.initialize()", backendWait)
+        val currentHookState = source.indexOf("var ksSuccess = KeystoreInterceptor.isRunning()", configInitialization)
+        val hookStart = source.indexOf("KeystoreInterceptor.tryRunKeystoreInterceptor()", currentHookState)
+
+        assertTrue(entry >= 0)
+        assertTrue(backendWait > entry)
+        assertTrue(configInitialization > backendWait)
+        assertTrue(currentHookState > configInitialization)
+        assertTrue(hookStart > currentHookState)
+    }
+
+    private fun mainSource(root: File): String =
+        File(root, "service/src/main/java/cleveres/tricky/cleverestech/Main.kt").readText()
 
     private fun secureFileSource(root: File): String =
         File(
