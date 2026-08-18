@@ -1,6 +1,6 @@
 const fs = require('fs');
 const assert = require('assert');
-const ux = fs.readFileSync('module/template/webroot/ux-core.js','utf8');
+const ux = fs.readFileSync('module/template/webroot/ux.js','utf8');
 const required = [
   'Custom Templates','Create a reusable device identity template. The form stays collapsed until you open it.',
   'Template ID','Manufacturer','Fingerprint','Brand','Product','Device','Android release','Build ID','Incremental',

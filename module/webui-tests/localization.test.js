@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-const uxSource = fs.readFileSync('module/template/webroot/ux-core.js', 'utf8');
+const uxSource = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
 const catalogMarker = '    let locale = readLocale();';
 const instrumentedSource = uxSource.replace(
     catalogMarker,

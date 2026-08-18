@@ -97,9 +97,7 @@ private fun verifyRuntimePayloadContract(
             RuntimePayloadFloor("webroot/index.html", 100_000),
             RuntimePayloadFloor("webroot/bridge.js", 15_000),
             RuntimePayloadFloor("webroot/policy.js", 40_000),
-            RuntimePayloadFloor("webroot/ux.js", 500),
-            RuntimePayloadFloor("webroot/ux-core.js", 250_000),
-            RuntimePayloadFloor("webroot/zip-import.js", 15_000),
+            RuntimePayloadFloor("webroot/ux.js", 250_000),
         )
     val nativeFloors =
         mapOf(

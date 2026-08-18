@@ -2,7 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
-const source = fs.readFileSync('module/template/webroot/zip-import.js', 'utf8');
+const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
 assert.ok(source.includes('const MAX_SUPPORTED_FILES = 10000;'), 'ZIP keybox limit must be 10000');
 assert.ok(source.includes('const MAX_FILE_BYTES = 10 * 1024 * 1024;'), 'per-keybox limit must remain 10 MiB');
 assert.ok(!source.includes('MAX_TOTAL_XML_BYTES'), 'ZIP importer must not retain the old aggregate XML cap');
