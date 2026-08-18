@@ -36,11 +36,7 @@ class RuntimeWiringContractTest {
     @Test
     fun `android broker client authenticates direct daemon parent without procfs dependency`() {
         val root = locateRoot()
-        val secureFile =
-            File(
-                root,
-                "service/src/main/java/cleveres/tricky/cleverestech/util/RustSecureFileOperations.kt",
-            ).readText()
+        val secureFile = secureFileSource(root)
 
         assertTrue(secureFile.contains("Os.getppid()"))
         assertTrue(secureFile.contains("peer.uid != 0"))
@@ -49,6 +45,30 @@ class RuntimeWiringContractTest {
         assertTrue(secureFile.contains("awaitAdapterRegistration()"))
         assertTrue(secureFile.contains("STARTUP_RETRY_ATTEMPTS"))
         assertFalse(secureFile.contains("/proc/"))
+    }
+
+    @Test
+    fun `web ui staging stays on an explicit bounded capability path`() {
+        val root = locateRoot()
+        val secureFile = secureFileSource(root)
+        val webUiBridge =
+            File(root, "service/src/main/java/cleveres/tricky/cleverestech/WebUiBridge.kt").readText()
+        val broker = File(root, "rust/daemon/src/config_file_broker.rs").readText()
+
+        assertTrue(webUiBridge.contains("SecureFile.mkdirs(bridgeDir, DIRECTORY_MODE)"))
+        assertTrue(webUiBridge.contains("SecureFile.mkdirs(stagingDir, DIRECTORY_MODE)"))
+        assertTrue(webUiBridge.contains("SecureFile.writeStream(stagedFile, combined, MAX_RESPONSE_BYTES.toLong())"))
+
+        assertTrue(secureFile.contains("ACTION_STAGE_CREATE = 4"))
+        assertTrue(secureFile.contains("ACTION_STAGE_APPEND = 5"))
+        assertTrue(secureFile.contains("streamBoundedChunks(inputStream, limit, scratch)"))
+        assertTrue(secureFile.contains("WEBUI_DOWNLOAD_SUFFIX = \".download\""))
+
+        assertTrue(broker.contains("WEBUI_STAGING_PATH"))
+        assertTrue(broker.contains("ACTION_STAGE_CREATE"))
+        assertTrue(broker.contains("ACTION_STAGE_APPEND"))
+        assertTrue(broker.contains("validate_webui_download_name"))
+        assertTrue(broker.contains("append_bounded(name, &scratch[..body_len], MAX_FILE_BYTES)"))
     }
 
     @Test
@@ -83,6 +103,12 @@ class RuntimeWiringContractTest {
         assertTrue(registration > entry)
         assertTrue(backendWait > registration)
     }
+
+    private fun secureFileSource(root: File): String =
+        File(
+            root,
+            "service/src/main/java/cleveres/tricky/cleverestech/util/RustSecureFileOperations.kt",
+        ).readText()
 
     private fun locateRoot(): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
