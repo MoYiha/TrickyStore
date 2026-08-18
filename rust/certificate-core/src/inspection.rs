@@ -3,7 +3,6 @@ use crate::{Error, ANDROID_ATTESTATION_OID, MAX_CERTIFICATE_DER_BYTES};
 use attestation_der::asn1::AnyRef;
 use attestation_der::{Decode as AttestationDecode, Tag, Tagged};
 use cleverestricky_attestation_core::{inspect_captured_patch_levels, CapturedPatchLevels};
-use der::Decode;
 use x509_cert::Certificate;
 
 const SOFTWARE_INDEX: usize = 6;
@@ -28,9 +27,8 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
     }
     let leaf = Certificate::from_der(leaf_der).map_err(|_| Error::InvalidCertificate)?;
     let extensions = leaf
-        .tbs_certificate
-        .extensions
-        .as_deref()
+        .tbs_certificate()
+        .extensions()
         .ok_or(Error::MissingAttestationExtension)?;
     let mut attestation = None;
     for extension in extensions {

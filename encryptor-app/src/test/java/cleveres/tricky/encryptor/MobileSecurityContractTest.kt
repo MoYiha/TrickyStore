@@ -64,7 +64,9 @@ class MobileSecurityContractTest {
         assertTrue(native.contains("unlink_file"))
         assertTrue(native.contains("0o700"))
         assertTrue(native.contains("0o600"))
-        assertTrue(native.contains("panic::catch_unwind"))
+        assertTrue(native.contains("EnvUnowned"))
+        assertTrue(native.contains(".with_env("))
+        assertTrue(native.contains("Outcome::Panic(_)"))
         assertFalse("Mobile Rust code must not contain unsafe blocks", native.contains("unsafe {"))
         assertEquals(
             "Unsafe-code allowances must remain confined to the six JNI symbol exports",

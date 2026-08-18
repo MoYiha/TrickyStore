@@ -8,6 +8,7 @@ use der::{Decode, Encode, Tag, TagNumber, Tagged};
 const ROOT_OF_TRUST_TAG: u32 = 704;
 const SYSTEM_PATCH_TAG: u32 = 706;
 const BRAND_TAG: u32 = 710;
+const DEVICE_TAG: u32 = 711;
 const VENDOR_PATCH_TAG: u32 = 718;
 const BOOT_PATCH_TAG: u32 = 719;
 const MODULE_HASH_TAG: u32 = 724;
@@ -56,6 +57,35 @@ fn replaces_present_brand_and_keeps_authorization_tags_sorted() {
 }
 
 #[test]
+fn ignores_configured_attestation_id_that_is_absent_from_the_genuine_leaf() {
+    let tee = auth_list([
+        explicit_tag(ROOT_OF_TRUST_TAG, &root_of_trust([0; 32], [0; 32])),
+        explicit_octet(BRAND_TAG, b"OriginalBrand"),
+    ]);
+    let extension = key_description(100, 100, auth_list([]), tee);
+    let ids = [AttestationIdOverride {
+        tag: DEVICE_TAG,
+        value: b"ConfiguredButAbsent",
+    }];
+
+    let rewritten = rewrite(&extension, &ids, None);
+    let tee_fields = authorization_fields(&rewritten, 7);
+
+    assert!(tee_fields.iter().all(|(tag, _)| *tag != DEVICE_TAG));
+    assert_eq!(
+        decode_explicit_octets(
+            tee_fields
+                .iter()
+                .find(|(tag, _)| *tag == BRAND_TAG)
+                .expect("brand tag")
+                .1
+                .as_slice(),
+        ),
+        b"OriginalBrand",
+    );
+}
+
+#[test]
 fn inserts_supported_module_hash_only_in_software_list() {
     let tee = auth_list([explicit_tag(
         ROOT_OF_TRUST_TAG,
@@ -75,6 +105,22 @@ fn inserts_supported_module_hash_only_in_software_list() {
         decode_explicit_octets(module.1.as_slice()),
         &[0xde, 0xad, 0xbe, 0xef],
     );
+    assert!(tee.iter().all(|(tag, _)| *tag != MODULE_HASH_TAG));
+}
+
+#[test]
+fn ignores_configured_module_hash_when_the_genuine_leaf_does_not_support_it() {
+    let tee = auth_list([explicit_tag(
+        ROOT_OF_TRUST_TAG,
+        &root_of_trust([0; 32], [0; 32]),
+    )]);
+    let extension = key_description(100, 100, auth_list([]), tee);
+
+    let rewritten = rewrite(&extension, &[], Some(&[0xde, 0xad, 0xbe, 0xef]));
+    let software = authorization_fields(&rewritten, 6);
+    let tee = authorization_fields(&rewritten, 7);
+
+    assert!(software.iter().all(|(tag, _)| *tag != MODULE_HASH_TAG));
     assert!(tee.iter().all(|(tag, _)| *tag != MODULE_HASH_TAG));
 }
 

@@ -276,13 +276,42 @@ public final class CertHack {
                 if (cached != null) return cached.clone();
             }
 
-            inspection = CertificateBackend.inspect(leafEncoded);
-            if (inspection == null) return caList;
-            Config.AttestationPatchLevels patchLevels = PolicyState.INSTANCE.resolveAttestationPatchLevels(
-                    uid,
-                    inspection.getSystemPatch(),
-                    inspection.getVendorPatch(),
-                    inspection.getBootPatch());
+            // In 2.6.0 every fresh attested key paid one backend round trip just to inspect fields
+            // that are irrelevant when security-patch rewriting is disabled. Non-attested keys
+            // already bypass the backend, so that extra request/response became a stable timing
+            // distinguisher. Keep DER parsing and signing in the hardened Rust backend, but do not
+            // ask it to inspect a leaf unless policy or verified-boot fallback actually needs data
+            // from that leaf.
+            boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
+                    PolicyState.Feature.SECURITY_PATCH, uid);
+            byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
+            byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
+            boolean needsInspection = needsCapturedPatchLevels
+                    || verifiedBootKey == null
+                    || verifiedBootHash == null;
+
+            Config.AttestationPatchLevels patchLevels;
+            if (needsInspection) {
+                inspection = CertificateBackend.inspect(leafEncoded);
+                if (inspection == null) return caList;
+                patchLevels = needsCapturedPatchLevels
+                        ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
+                                uid,
+                                inspection.getSystemPatch(),
+                                inspection.getVendorPatch(),
+                                inspection.getBootPatch())
+                        : keepPatchLevels();
+                if (verifiedBootKey == null) {
+                    verifiedBootKey = firstUsableBootDigest(
+                            null, inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
+                }
+                if (verifiedBootHash == null) {
+                    verifiedBootHash = firstUsableBootDigest(
+                            null, inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
+                }
+            } else {
+                patchLevels = keepPatchLevels();
+            }
 
             String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
@@ -301,17 +330,17 @@ public final class CertHack {
             int signingAlgorithm = signingWireAlgorithm(prepared.signatureAlgorithm);
             if (signingAlgorithm == 0) return caList;
 
-            byte[] verifiedBootKey = firstUsableBootDigest(
-                    UtilKt.getBootKey(), inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
-            byte[] verifiedBootHash = firstUsableBootDigest(
-                    UtilKt.getBootHash(), inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
             if (verifiedBootKey == null || verifiedBootHash == null) {
                 Logger.e("Verified boot key/hash is unavailable; preserving the original certificate chain");
                 return caList;
             }
 
-            Map<Integer, byte[]> idOverrides = presentIdOverrides(uid, inspection.getPresentIdMask());
-            byte[] moduleHash = inspection.getSupportsModuleHash() ? Config.INSTANCE.getModuleHash() : null;
+            Map<Integer, byte[]> idOverrides = inspection == null
+                    ? configuredIdOverrides(uid)
+                    : presentIdOverrides(uid, inspection.getPresentIdMask());
+            byte[] moduleHash = inspection == null || inspection.getSupportsModuleHash()
+                    ? Config.INSTANCE.getModuleHash()
+                    : null;
             keyId = keybox.keyPair.getPrivate().getEncoded();
             if (keyId == null || keyId.length != BACKEND_KEY_ID_BYTES) return caList;
 
@@ -345,6 +374,21 @@ public final class CertHack {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
             if (inspection != null) inspection.wipe();
         }
+    }
+
+    private static Config.AttestationPatchLevels keepPatchLevels() {
+        Config.AttestationPatchComponent keep =
+                new Config.AttestationPatchComponent(Config.PatchDisposition.KEEP, 0);
+        return new Config.AttestationPatchLevels(keep, keep, keep);
+    }
+
+    private static Map<Integer, byte[]> configuredIdOverrides(int uid) {
+        Map<Integer, byte[]> overrides = new HashMap<>();
+        for (int index = 0; index < ATTESTATION_ID_TAGS.length; index++) {
+            byte[] value = Config.INSTANCE.getAttestationId(ATTESTATION_ID_NAMES[index], uid);
+            if (value != null) overrides.put(ATTESTATION_ID_TAGS[index], value);
+        }
+        return overrides;
     }
 
     private static Map<Integer, byte[]> presentIdOverrides(int uid, int mask) {

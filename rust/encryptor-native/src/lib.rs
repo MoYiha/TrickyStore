@@ -7,14 +7,14 @@ use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_xml_core::parse_keybox_xml_bytes;
 use jni::objects::{JByteArray, JCharArray, JObject, JString};
 use jni::sys::{jboolean, jbyteArray, JNI_FALSE, JNI_TRUE};
-use jni::JNIEnv;
+use jni::{Env, EnvUnowned, Outcome};
 use pbkdf2::pbkdf2_hmac;
 use serde::Serialize;
 use sha2::Sha256;
+use std::io;
 use std::path::Path;
 use std::ptr;
 use std::str;
-use std::{io, panic};
 use zeroize::{Zeroize, Zeroizing};
 
 const KDF_ITERATIONS: u32 = 250_000;
@@ -270,14 +270,11 @@ fn utf16_units(value: &str) -> usize {
 }
 
 fn read_bytes_bounded(
-    env: &mut JNIEnv<'_>,
+    env: &mut Env<'_>,
     input: &JByteArray<'_>,
     max_bytes: usize,
 ) -> Result<Zeroizing<Vec<u8>>, EncryptError> {
-    let length = env
-        .get_array_length(input)
-        .map_err(|_| EncryptError::InvalidInput)?;
-    let length = usize::try_from(length).map_err(|_| EncryptError::InvalidInput)?;
+    let length = input.len(env).map_err(|_| EncryptError::InvalidInput)?;
     if length > max_bytes {
         return Err(EncryptError::InvalidInput);
     }
@@ -287,18 +284,16 @@ fn read_bytes_bounded(
 }
 
 fn read_password(
-    env: &mut JNIEnv<'_>,
+    env: &mut Env<'_>,
     input: &JCharArray<'_>,
 ) -> Result<Zeroizing<String>, EncryptError> {
-    let length = env
-        .get_array_length(input)
-        .map_err(|_| EncryptError::InvalidInput)?;
-    let length = usize::try_from(length).map_err(|_| EncryptError::InvalidInput)?;
+    let length = input.len(env).map_err(|_| EncryptError::InvalidInput)?;
     if !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&length) {
         return Err(EncryptError::InvalidInput);
     }
     let mut units = Zeroizing::new(vec![0u16; length]);
-    env.get_char_array_region(input, 0, &mut units)
+    input
+        .get_region(env, 0, &mut units)
         .map_err(|_| EncryptError::InvalidInput)?;
     String::from_utf16(&units)
         .map(Zeroizing::new)
@@ -306,171 +301,204 @@ fn read_password(
 }
 
 fn read_string_bounded(
-    env: &mut JNIEnv<'_>,
+    env: &Env<'_>,
     input: &JString<'_>,
     max_utf16_units: usize,
 ) -> Result<Zeroizing<String>, EncryptError> {
-    let java = env
-        .get_string(input)
+    let value = input
+        .try_to_string(env)
         .map_err(|_| EncryptError::InvalidInput)?;
-    let value: String = java.into();
     if utf16_units(&value) > max_utf16_units {
         return Err(EncryptError::InvalidInput);
     }
     Ok(Zeroizing::new(value))
 }
 
-fn throw_native_failure(env: &mut JNIEnv<'_>) {
+fn throw_native_failure(env: &mut Env<'_>) {
     let _ = env.throw_new(
-        "java/lang/IllegalStateException",
-        "Native keybox operation failed",
+        jni::jni_str!("java/lang/IllegalStateException"),
+        jni::jni_str!("Native keybox operation failed"),
     );
 }
 
-// JNI requires stable exported symbol names. The unsafe attribute is confined to
-// the symbol export itself; these functions contain no unsafe block and every
-// panic is contained before returning through the JNI ABI.
+// JNI requires stable exported symbol names. EnvUnowned is the FFI-safe jni 0.22 wrapper for
+// the raw JNIEnv pointer. with_env upgrades it to the full Env API and contains panics before the
+// native frame returns to the JVM.
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_validateKeyboxXml(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    xml: JByteArray<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_validateKeyboxXml<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    xml: JByteArray<'caller>,
 ) -> jboolean {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let xml = read_bytes_bounded(&mut env, &xml, MAX_XML_BYTES)?;
-        parse_keybox_xml_bytes(&xml).map_err(|_| EncryptError::InvalidInput)?;
-        Ok::<(), EncryptError>(())
-    }));
-    if matches!(result, Ok(Ok(()))) {
-        JNI_TRUE
-    } else {
-        JNI_FALSE
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jboolean> {
+            let result = (|| -> Result<(), EncryptError> {
+                let xml = read_bytes_bounded(env, &xml, MAX_XML_BYTES)?;
+                parse_keybox_xml_bytes(&xml).map_err(|_| EncryptError::InvalidInput)?;
+                Ok(())
+            })();
+            Ok(if result.is_ok() { JNI_TRUE } else { JNI_FALSE })
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => JNI_FALSE,
     }
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    no_backup_dir: JString<'_>,
-    filename: JString<'_>,
-    author: JByteArray<'_>,
-    xml: JByteArray<'_>,
-    signature_base64: JByteArray<'_>,
-    password: JCharArray<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_encryptAndSave<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    no_backup_dir: JString<'caller>,
+    filename: JString<'caller>,
+    author: JByteArray<'caller>,
+    xml: JByteArray<'caller>,
+    signature_base64: JByteArray<'caller>,
+    password: JCharArray<'caller>,
 ) -> jboolean {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir =
-            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
-        let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
-        let author = read_bytes_bounded(&mut env, &author, MAX_AUTHOR_UTF8_BYTES)?;
-        let xml = read_bytes_bounded(&mut env, &xml, MAX_XML_BYTES)?;
-        let signature_base64 =
-            read_bytes_bounded(&mut env, &signature_base64, MAX_SIGNATURE_BYTES)?;
-        let password = read_password(&mut env, &password)?;
-        encrypt_and_save(
-            &no_backup_dir,
-            &filename,
-            &author,
-            &xml,
-            &signature_base64,
-            &password,
-        )
-    }));
-    match result {
-        Ok(Ok(())) => JNI_TRUE,
-        Ok(Err(_)) | Err(_) => {
-            throw_native_failure(&mut env);
-            JNI_FALSE
-        }
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jboolean> {
+            let result = (|| -> Result<(), EncryptError> {
+                let no_backup_dir =
+                    read_string_bounded(env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+                let filename = read_string_bounded(env, &filename, MAX_FILENAME_UTF16_UNITS)?;
+                let author = read_bytes_bounded(env, &author, MAX_AUTHOR_UTF8_BYTES)?;
+                let xml = read_bytes_bounded(env, &xml, MAX_XML_BYTES)?;
+                let signature_base64 =
+                    read_bytes_bounded(env, &signature_base64, MAX_SIGNATURE_BYTES)?;
+                let password = read_password(env, &password)?;
+                encrypt_and_save(
+                    &no_backup_dir,
+                    &filename,
+                    &author,
+                    &xml,
+                    &signature_base64,
+                    &password,
+                )
+            })();
+            match result {
+                Ok(()) => Ok(JNI_TRUE),
+                Err(_) => {
+                    throw_native_failure(env);
+                    Ok(JNI_FALSE)
+                }
+            }
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => JNI_FALSE,
     }
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    no_backup_dir: JString<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_ensureVault<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    no_backup_dir: JString<'caller>,
 ) -> jboolean {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir =
-            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
-        ensure_vault(&no_backup_dir)
-    }));
-    if matches!(result, Ok(Ok(()))) {
-        JNI_TRUE
-    } else {
-        JNI_FALSE
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jboolean> {
+            let result = (|| -> Result<(), EncryptError> {
+                let no_backup_dir =
+                    read_string_bounded(env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+                ensure_vault(&no_backup_dir)
+            })();
+            Ok(if result.is_ok() { JNI_TRUE } else { JNI_FALSE })
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => JNI_FALSE,
     }
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypted(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    no_backup_dir: JString<'_>,
-    filename: JString<'_>,
-    ciphertext: JByteArray<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_storeEncrypted<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    no_backup_dir: JString<'caller>,
+    filename: JString<'caller>,
+    ciphertext: JByteArray<'caller>,
 ) -> jboolean {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir =
-            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
-        let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
-        let ciphertext = read_bytes_bounded(&mut env, &ciphertext, MAX_CBOX_WIRE_BYTES)?;
-        store_encrypted(&no_backup_dir, &filename, &ciphertext)
-    }));
-    if matches!(result, Ok(Ok(()))) {
-        JNI_TRUE
-    } else {
-        JNI_FALSE
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jboolean> {
+            let result = (|| -> Result<(), EncryptError> {
+                let no_backup_dir =
+                    read_string_bounded(env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+                let filename = read_string_bounded(env, &filename, MAX_FILENAME_UTF16_UNITS)?;
+                let ciphertext = read_bytes_bounded(env, &ciphertext, MAX_CBOX_WIRE_BYTES)?;
+                store_encrypted(&no_backup_dir, &filename, &ciphertext)
+            })();
+            Ok(if result.is_ok() { JNI_TRUE } else { JNI_FALSE })
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => JNI_FALSE,
     }
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    no_backup_dir: JString<'_>,
-    filename: JString<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    no_backup_dir: JString<'caller>,
+    filename: JString<'caller>,
 ) -> jbyteArray {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir =
-            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
-        let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
-        let bytes = read_encrypted(&no_backup_dir, &filename)?;
-        let output = env
-            .byte_array_from_slice(&bytes)
-            .map_err(|_| EncryptError::StorageFailed)?;
-        Ok::<jbyteArray, EncryptError>(output.into_raw())
-    }));
-    match result {
-        Ok(Ok(output)) => output,
-        Ok(Err(_)) | Err(_) => ptr::null_mut(),
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jbyteArray> {
+            let result = (|| -> Result<jbyteArray, EncryptError> {
+                let no_backup_dir =
+                    read_string_bounded(env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+                let filename = read_string_bounded(env, &filename, MAX_FILENAME_UTF16_UNITS)?;
+                let bytes = read_encrypted(&no_backup_dir, &filename)?;
+                let output = env
+                    .byte_array_from_slice(&bytes)
+                    .map_err(|_| EncryptError::StorageFailed)?;
+                Ok(output.into_raw())
+            })();
+            Ok(result.unwrap_or(ptr::null_mut()))
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => ptr::null_mut(),
     }
 }
 
 #[allow(unsafe_code)]
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_deleteEncrypted(
-    mut env: JNIEnv<'_>,
-    _this: JObject<'_>,
-    no_backup_dir: JString<'_>,
-    filename: JString<'_>,
+pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_deleteEncrypted<'caller>(
+    mut unowned_env: EnvUnowned<'caller>,
+    _this: JObject<'caller>,
+    no_backup_dir: JString<'caller>,
+    filename: JString<'caller>,
 ) -> jboolean {
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let no_backup_dir =
-            read_string_bounded(&mut env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
-        let filename = read_string_bounded(&mut env, &filename, MAX_FILENAME_UTF16_UNITS)?;
-        delete_encrypted(&no_backup_dir, &filename)
-    }));
-    match result {
-        Ok(Ok(true)) => JNI_TRUE,
-        _ => JNI_FALSE,
+    match unowned_env
+        .with_env(|env| -> jni::errors::Result<jboolean> {
+            let result = (|| -> Result<bool, EncryptError> {
+                let no_backup_dir =
+                    read_string_bounded(env, &no_backup_dir, MAX_DIRECTORY_UTF16_UNITS)?;
+                let filename = read_string_bounded(env, &filename, MAX_FILENAME_UTF16_UNITS)?;
+                delete_encrypted(&no_backup_dir, &filename)
+            })();
+            Ok(if matches!(result, Ok(true)) {
+                JNI_TRUE
+            } else {
+                JNI_FALSE
+            })
+        })
+        .into_outcome()
+    {
+        Outcome::Ok(value) => value,
+        Outcome::Err(_) | Outcome::Panic(_) => JNI_FALSE,
     }
 }
 

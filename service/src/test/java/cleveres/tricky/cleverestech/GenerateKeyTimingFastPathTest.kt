@@ -40,6 +40,35 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
+    fun `default attested generateKey does not require a Rust inspection round trip`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val featureGate =
+            source.indexOf("PolicyState.Feature.SECURITY_PATCH, uid")
+        val inspectionDecision =
+            source.indexOf("boolean needsInspection = needsCapturedPatchLevels", featureGate)
+        val conditionalInspection =
+            source.indexOf("if (needsInspection)", inspectionDecision)
+        val backendInspect =
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", conditionalInspection)
+        val configuredIds =
+            source.indexOf("? configuredIdOverrides(uid)", backendInspect)
+        val backendRewrite =
+            source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", configuredIds)
+
+        assertTrue(featureGate >= 0)
+        assertTrue(inspectionDecision > featureGate)
+        assertTrue(conditionalInspection > inspectionDecision)
+        assertTrue(backendInspect > conditionalInspection)
+        assertTrue(configuredIds > backendInspect)
+        assertTrue(backendRewrite > configuredIds)
+    }
+
+    @Test
     fun `getKeyEntry rejects non-attested leaf before Rust certificate backend`() {
         val root = locateRoot()
         val source =
@@ -58,6 +87,30 @@ class GenerateKeyTimingFastPathTest {
         assertTrue(chainRead > postTransact)
         assertTrue(localExtensionGuard > chainRead)
         assertTrue(backendRewrite > localExtensionGuard)
+    }
+
+    @Test
+    fun `timing fix cannot use synthetic delay equalization`() {
+        val root = locateRoot()
+        val sources =
+            listOf(
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/SecurityLevelInterceptor.kt",
+                ).readText(),
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/KeystoreInterceptor.kt",
+                ).readText(),
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+                ).readText(),
+            ).joinToString("\n")
+
+        assertFalse(sources.contains("Thread.sleep"))
+        assertFalse(sources.contains("parkNanos"))
+        assertFalse(sources.contains("busyWait"))
     }
 
     private fun locateRoot(): File {
