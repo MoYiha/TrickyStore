@@ -77,39 +77,48 @@ object KeystoreInterceptor : BinderInterceptor() {
         val p = Parcel.obtain()
         try {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
-            val originalChain = Utils.getCertificateChain(response)
+            if (response == null || response.metadata == null) {
+                p.recycle()
+                return Skip
+            }
             val targeted = Config.needHack(callingUid)
-            val newChain =
-                if (originalChain == null) {
-                    null
-                } else if (targeted) {
-                    // Keep ordinary key readback entirely local. Attested readback normally hits
-                    // CertHack's in-memory replacement cache; sending only the non-attested path
-                    // through CertificateBackend.inspect adds a measurable UDS/parser asymmetry.
-                    // The leaf is already parsed, so reject the negative case by fixed extension OID.
-                    val originalLeaf = originalChain.firstOrNull()
-                    if (
-                        originalLeaf == null ||
-                        !Utils.hasAndroidAttestationExtension(originalLeaf)
-                    ) {
-                        null
-                    } else {
-                        CertHack.hackCertificateChain(originalChain, callingUid).takeUnless { it === originalChain }
-                    }
-                } else {
-                    // A grant or isolated process is allowed to observe the chain already returned
-                    // to the key owner, but it must not synthesize a new per-reader chain.
-                    CertHack.getCachedCertificateChain(originalChain)
-                }
+            val mayReadGrantedChain = callingUid >= FIRST_APPLICATION_UID
 
+            // Duck Detector's timing probe creates the keys once and then measures repeated
+            // service.getKeyEntry calls. generateKey has already populated CertHack's replacement
+            // cache for an attested key, so try the genuine raw leaf DER before constructing any
+            // X509Certificate objects. A hit assigns the already-encoded replacement leaf/issuers
+            // directly to KeyMetadata and avoids CertificateFactory, Certificate[] allocation,
+            // getEncoded(), issuer parsing and every Rust backend operation on the measured path.
+            if (
+                (targeted || mayReadGrantedChain) &&
+                CertHack.applyCachedCertificateChain(response.metadata)
+            ) {
+                p.writeNoException()
+                p.writeTypedObject(response, 0)
+                return OverrideReply(0, p)
+            }
+
+            if (!targeted) {
+                p.recycle()
+                return Skip
+            }
+
+            // Cache miss is the exceptional/recovery path. Match the 2.5.8 ordering here: parse the
+            // returned chain and let CertHack classify the uncached leaf after its own cache lookup.
+            // CertHack rejects an ordinary non-attested leaf locally before any Rust IPC.
+            val originalChain = Utils.getCertificateChain(response)
+            val newChain =
+                originalChain?.let {
+                    CertHack.hackCertificateChain(it, callingUid).takeUnless { rewritten -> rewritten === it }
+                }
             if (newChain != null) {
                 Utils.putCertificateChain(response, newChain)
                 p.writeNoException()
                 p.writeTypedObject(response, 0)
                 return OverrideReply(0, p)
-            } else {
-                p.recycle()
             }
+            p.recycle()
         } catch (t: Throwable) {
             Logger.e("Failed to rewrite a stored attestation certificate chain", t)
             p.recycle()

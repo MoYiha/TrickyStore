@@ -154,7 +154,7 @@ public final class Utils {
         return chain;
     }
 
-    private static byte[] encodeIssuerChain(Certificate[] chain) throws CertificateException {
+    static byte[] encodeIssuerChain(Certificate[] chain) throws CertificateException {
         if (chain.length == 1) return new byte[0];
 
         IdentityHashMap<Certificate, EncodedIssuerChain> cache = ENCODED_ISSUER_CHAINS.get();

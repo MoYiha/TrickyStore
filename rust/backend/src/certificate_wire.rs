@@ -1,8 +1,8 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 use crate::keybox_wire::key_store::{self, KeyId, KEY_ID_BYTES};
 use cleverestricky_certificate_core::{
-    inspect_certificate, rewrite_certificate, AttestationIdOverride, CertificateRewriteRequest,
-    PatchComponent, PatchLevels, SigningAlgorithm, MAX_ATTESTATION_ID_BYTES,
+    inspect_certificate, rewrite_certificate_prepared, AttestationIdOverride, PatchComponent,
+    PatchLevels, PreparedCertificateRewriteRequest, SigningAlgorithm, MAX_ATTESTATION_ID_BYTES,
     MAX_CERTIFICATE_DER_BYTES, MAX_MODULE_HASH_BYTES,
 };
 use zeroize::Zeroize;
@@ -60,27 +60,24 @@ pub fn rewrite_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
             return Err("certificate rewrite request rejected");
         }
         let parsed = parse_rewrite_request(&request)?;
-        key_store::with_key(
-            &parsed.key_id,
-            |stored_algorithm, issuer_private_key_pkcs8, issuer_certificate_der| {
-                if stored_algorithm != parsed.signing_algorithm {
-                    return Err("opaque key algorithm does not match rewrite request");
-                }
-                rewrite_certificate(&CertificateRewriteRequest {
-                    genuine_leaf_der: parsed.genuine_leaf_der,
-                    issuer_certificate_der,
-                    issuer_private_key_pkcs8,
-                    signing_algorithm: stored_algorithm,
-                    patch_levels: parsed.patch_levels,
-                    id_overrides: &parsed.id_overrides,
-                    module_hash: parsed.module_hash,
-                    verified_boot_key: parsed.verified_boot_key,
-                    verified_boot_hash: parsed.verified_boot_hash,
-                })
-                .map(|rewritten| rewritten.leaf_der)
-                .map_err(|_| "certificate rewrite rejected")
-            },
-        )
+        key_store::with_prepared_key(&parsed.key_id, |stored_algorithm, prepared_issuer| {
+            if stored_algorithm != parsed.signing_algorithm
+                || prepared_issuer.algorithm() != stored_algorithm
+            {
+                return Err("opaque key algorithm does not match rewrite request");
+            }
+            rewrite_certificate_prepared(&PreparedCertificateRewriteRequest {
+                genuine_leaf_der: parsed.genuine_leaf_der,
+                issuer: prepared_issuer,
+                patch_levels: parsed.patch_levels,
+                id_overrides: &parsed.id_overrides,
+                module_hash: parsed.module_hash,
+                verified_boot_key: parsed.verified_boot_key,
+                verified_boot_hash: parsed.verified_boot_hash,
+            })
+            .map(|rewritten| rewritten.leaf_der)
+            .map_err(|_| "certificate rewrite rejected")
+        })
     })();
     request.zeroize();
     result

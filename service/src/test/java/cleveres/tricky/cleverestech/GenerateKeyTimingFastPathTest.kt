@@ -69,7 +69,7 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
-    fun `getKeyEntry rejects non-attested leaf before Rust certificate backend`() {
+    fun `measured getKeyEntry serves encoded cache before X509 chain parsing`() {
         val root = locateRoot()
         val source =
             File(
@@ -77,16 +77,81 @@ class GenerateKeyTimingFastPathTest {
                 "service/src/main/java/cleveres/tricky/cleverestech/KeystoreInterceptor.kt",
             ).readText()
         val postTransact = source.indexOf("override fun onPostTransact")
-        val chainRead = source.indexOf("val originalChain = Utils.getCertificateChain(response)", postTransact)
-        val localExtensionGuard =
-            source.indexOf("!Utils.hasAndroidAttestationExtension(originalLeaf)", chainRead)
-        val backendRewrite =
-            source.indexOf("CertHack.hackCertificateChain(originalChain, callingUid)", chainRead)
+        val responseRead = source.indexOf("val response = reply.readTypedObject", postTransact)
+        val encodedCache =
+            source.indexOf("CertHack.applyCachedCertificateChain(response.metadata)", responseRead)
+        val chainRead =
+            source.indexOf("val originalChain = Utils.getCertificateChain(response)", encodedCache)
 
         assertTrue(postTransact >= 0)
-        assertTrue(chainRead > postTransact)
-        assertTrue(localExtensionGuard > chainRead)
+        assertTrue(responseRead > postTransact)
+        assertTrue(encodedCache > responseRead)
+        assertTrue(chainRead > encodedCache)
+    }
+
+    @Test
+    fun `cached getKeyEntry applies raw replacement bytes without certificate reencoding`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val method = source.indexOf("public static boolean applyCachedCertificateChain")
+        val methodEnd = source.indexOf("public static Certificate[] getCachedCertificateChain", method)
+        val body = source.substring(method, methodEnd)
+
+        assertTrue(method >= 0)
+        assertTrue(methodEnd > method)
+        assertTrue(body.contains("new CacheKey(metadata.certificate)"))
+        assertTrue(body.contains("cached.applyTo(metadata)"))
+        assertFalse(body.contains("CERTIFICATE_FACTORY"))
+        assertFalse(body.contains("getEncoded()"))
+        assertFalse(body.contains("CertificateBackend"))
+    }
+
+    @Test
+    fun `uncached non-attested getKeyEntry leaf is rejected locally after cache lookup`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val method = source.indexOf("public static Certificate[] hackCertificateChain")
+        val cacheLookup = source.indexOf("CachedCertificateChain cached = cache.get(cacheKey)", method)
+        val localExtensionGuard =
+            source.indexOf("!Utils.hasAndroidAttestationExtension(caList[0])", cacheLookup)
+        val backendInspect =
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", localExtensionGuard)
+        val backendRewrite =
+            source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", localExtensionGuard)
+
+        assertTrue(method >= 0)
+        assertTrue(cacheLookup > method)
+        assertTrue(localExtensionGuard > cacheLookup)
+        assertTrue(backendInspect > localExtensionGuard)
         assertTrue(backendRewrite > localExtensionGuard)
+    }
+
+    @Test
+    fun `completed rewrite cache retains encoded leaf and issuer bytes`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val rewrite = source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite")
+        val issuerEncoding = source.indexOf("byte[] issuerChainEncoded = Utils.encodeIssuerChain(result)", rewrite)
+        val completed =
+            source.indexOf("new CachedCertificateChain(result, rewrittenDer, issuerChainEncoded)", issuerEncoding)
+        val cachePut = source.indexOf("cache.put(cacheKey, completed)", completed)
+
+        assertTrue(rewrite >= 0)
+        assertTrue(issuerEncoding > rewrite)
+        assertTrue(completed > issuerEncoding)
+        assertTrue(cachePut > completed)
     }
 
     @Test

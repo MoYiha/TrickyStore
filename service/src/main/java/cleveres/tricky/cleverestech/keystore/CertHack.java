@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech.keystore;
 
 import android.security.keystore.KeyProperties;
+import android.system.keystore2.KeyMetadata;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -72,11 +73,43 @@ public final class CertHack {
         }
     }
 
+    /**
+     * One immutable cache value serves both compatibility APIs and the latency-sensitive raw
+     * KeyMetadata readback path. Certificate bytes are public data. Keeping their already-encoded
+     * form avoids reparsing the genuine chain and re-encoding the replacement on every getKeyEntry.
+     */
+    private static final class CachedCertificateChain {
+        final Certificate[] certificates;
+        final byte[] leafEncoded;
+        final byte[] issuerChainEncoded;
+
+        CachedCertificateChain(
+                Certificate[] certificates,
+                byte[] leafEncoded,
+                byte[] issuerChainEncoded
+        ) {
+            this.certificates = certificates.clone();
+            this.leafEncoded = Objects.requireNonNull(leafEncoded, "leafEncoded");
+            this.issuerChainEncoded = Objects.requireNonNull(issuerChainEncoded, "issuerChainEncoded");
+        }
+
+        Certificate[] certificateCopy() {
+            return certificates.clone();
+        }
+
+        void applyTo(KeyMetadata metadata) {
+            // Parcel.writeTypedObject copies these byte arrays synchronously. The transient
+            // KeyMetadata object never owns or mutates the cache storage after the reply is built.
+            metadata.certificate = leafEncoded;
+            metadata.certificateChain = issuerChainEncoded;
+        }
+    }
+
     private static class State {
         final Map<String, List<KeyBox>> keyboxes;
         final Map<String, List<KeyBox>> keyboxFiles;
         final Map<KeyBox, PreparedKeyBox> preparedKeyboxes;
-        final Map<CacheKey, Certificate[]> certificateCache;
+        final Map<CacheKey, CachedCertificateChain> certificateCache;
 
         State(Map<String, List<KeyBox>> keyboxes, Map<String, List<KeyBox>> keyboxFiles) {
             this.keyboxes = immutableLists(keyboxes);
@@ -94,9 +127,11 @@ public final class CertHack {
             }
             this.preparedKeyboxes = Collections.unmodifiableMap(prepared);
             this.certificateCache = Collections.synchronizedMap(
-                    new LinkedHashMap<CacheKey, Certificate[]>(32, 0.75f, true) {
+                    new LinkedHashMap<CacheKey, CachedCertificateChain>(32, 0.75f, true) {
                         @Override
-                        protected boolean removeEldestEntry(Map.Entry<CacheKey, Certificate[]> eldest) {
+                        protected boolean removeEldestEntry(
+                                Map.Entry<CacheKey, CachedCertificateChain> eldest
+                        ) {
                             return size() > MAX_CERTIFICATE_CACHE_ENTRIES;
                         }
                     });
@@ -237,13 +272,36 @@ public final class CertHack {
         return !state.certificateCache.isEmpty();
     }
 
+    /**
+     * Applies an already-produced attestation replacement directly to the raw KeyMetadata bytes.
+     * Duck Detector's side-channel probe repeatedly measures service.getKeyEntry for the same two
+     * keys, so the attested key should hit this path after generateKey populated the cache. A hit
+     * performs only one bounded DER hash/equality lookup and the later Parcel serialization: no
+     * CertificateFactory, no issuer-chain parsing, no getEncoded(), and no Rust IPC.
+     */
+    public static boolean applyCachedCertificateChain(KeyMetadata metadata) {
+        if (metadata == null || metadata.certificate == null ||
+                metadata.certificate.length == 0 ||
+                metadata.certificate.length > MAX_LEAF_CERTIFICATE_BYTES) {
+            return false;
+        }
+        State currentState = state;
+        CachedCertificateChain cached;
+        synchronized (currentState.certificateCache) {
+            cached = currentState.certificateCache.get(new CacheKey(metadata.certificate));
+        }
+        if (cached == null) return false;
+        cached.applyTo(metadata);
+        return true;
+    }
+
     public static Certificate[] getCachedCertificateChain(Certificate[] caList) {
         if (caList == null || caList.length == 0 || caList[0] == null) return null;
         try {
             byte[] leafEncoded = caList[0].getEncoded();
             if (leafEncoded.length == 0 || leafEncoded.length > MAX_LEAF_CERTIFICATE_BYTES) return null;
-            Certificate[] cached = state.certificateCache.get(new CacheKey(leafEncoded));
-            return cached == null ? null : cached.clone();
+            CachedCertificateChain cached = state.certificateCache.get(new CacheKey(leafEncoded));
+            return cached == null ? null : cached.certificateCopy();
         } catch (Throwable error) {
             Logger.e("Could not resolve a cached attestation chain", error);
             return null;
@@ -270,18 +328,22 @@ public final class CertHack {
                 return caList;
             }
             CacheKey cacheKey = new CacheKey(leafEncoded);
-            Map<CacheKey, Certificate[]> cache = currentState.certificateCache;
+            Map<CacheKey, CachedCertificateChain> cache = currentState.certificateCache;
             synchronized (cache) {
-                Certificate[] cached = cache.get(cacheKey);
-                if (cached != null) return cached.clone();
+                CachedCertificateChain cached = cache.get(cacheKey);
+                if (cached != null) return cached.certificateCopy();
             }
 
+            // Preserve 2.5.8's ordering: look for a completed replacement first, then classify an
+            // uncached leaf locally. This keeps repeated attested getKeyEntry off the X.509/OID
+            // classifier while guaranteeing a non-attested cache miss never enters the Rust
+            // certificate backend.
+            if (!Utils.hasAndroidAttestationExtension(caList[0])) return caList;
+
             // In 2.6.0 every fresh attested key paid one backend round trip just to inspect fields
-            // that are irrelevant when security-patch rewriting is disabled. Non-attested keys
-            // already bypass the backend, so that extra request/response became a stable timing
-            // distinguisher. Keep DER parsing and signing in the hardened Rust backend, but do not
-            // ask it to inspect a leaf unless policy or verified-boot fallback actually needs data
-            // from that leaf.
+            // that are irrelevant when security-patch rewriting is disabled. Keep DER parsing and
+            // signing in the hardened Rust backend, but do not ask it to inspect a leaf unless
+            // policy or verified-boot fallback actually needs data from that leaf.
             boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
                     PolicyState.Feature.SECURITY_PATCH, uid);
             byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
@@ -361,10 +423,13 @@ public final class CertHack {
             Certificate[] result = new Certificate[prepared.issuerChain.length + 1];
             result[0] = rewrittenLeaf;
             System.arraycopy(prepared.issuerChain, 0, result, 1, prepared.issuerChain.length);
+            byte[] issuerChainEncoded = Utils.encodeIssuerChain(result);
+            CachedCertificateChain completed =
+                    new CachedCertificateChain(result, rewrittenDer, issuerChainEncoded);
             synchronized (cache) {
-                Certificate[] raced = cache.get(cacheKey);
-                if (raced != null) return raced.clone();
-                cache.put(cacheKey, result.clone());
+                CachedCertificateChain raced = cache.get(cacheKey);
+                if (raced != null) return raced.certificateCopy();
+                cache.put(cacheKey, completed);
             }
             return result;
         } catch (Throwable t) {

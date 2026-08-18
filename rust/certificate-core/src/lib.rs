@@ -34,6 +34,7 @@ const ECDSA_SHA256_ALGORITHM_DER: &[u8] = &[
 const RSA_SHA256_ALGORITHM_DER: &[u8] = &[
     0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00,
 ];
+const PREPARED_ISSUER_VALIDATION_MESSAGE: &[u8] = b"CleveresTricky prepared issuer validation";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SigningAlgorithm {
@@ -51,6 +52,119 @@ pub struct CertificateRewriteRequest<'a> {
     pub module_hash: Option<&'a [u8]>,
     pub verified_boot_key: &'a [u8; 32],
     pub verified_boot_hash: &'a [u8; 32],
+}
+
+pub struct PreparedCertificateRewriteRequest<'a> {
+    pub genuine_leaf_der: &'a [u8],
+    pub issuer: &'a PreparedIssuer,
+    pub patch_levels: PatchLevels,
+    pub id_overrides: &'a [AttestationIdOverride<'a>],
+    pub module_hash: Option<&'a [u8]>,
+    pub verified_boot_key: &'a [u8; 32],
+    pub verified_boot_hash: &'a [u8; 32],
+}
+
+enum PreparedSigner {
+    Ec(EcSigningKey),
+    Rsa(Box<RsaSigningKey<Sha256>>),
+}
+
+/// Keybox-owned issuer state that is expensive to validate but invariant across generated keys.
+///
+/// Construct this when a keybox is registered, not on the generateKey reply path. The constructor
+/// parses the private key and issuer certificate and proves that the key can verify under the issuer
+/// SPKI exactly once. Fresh attestation rewrites then perform only the unavoidable genuine-leaf DER
+/// rewrite plus one signature operation.
+pub struct PreparedIssuer {
+    algorithm: SigningAlgorithm,
+    issuer_name_der: Vec<u8>,
+    signer: PreparedSigner,
+}
+
+impl PreparedIssuer {
+    pub fn new(
+        issuer_certificate_der: &[u8],
+        issuer_private_key_pkcs8: &[u8],
+        signing_algorithm: SigningAlgorithm,
+    ) -> Result<Self, Error> {
+        if issuer_certificate_der.is_empty()
+            || issuer_certificate_der.len() > MAX_CERTIFICATE_DER_BYTES
+            || issuer_private_key_pkcs8.is_empty()
+            || issuer_private_key_pkcs8.len() > MAX_PRIVATE_KEY_DER_BYTES
+        {
+            return Err(Error::Bounds);
+        }
+
+        let issuer =
+            Certificate::from_der(issuer_certificate_der).map_err(|_| Error::InvalidCertificate)?;
+        let issuer_name_der = issuer
+            .tbs_certificate()
+            .subject()
+            .to_der()
+            .map_err(|_| Error::Encoding)?;
+        let issuer_spki = issuer
+            .tbs_certificate()
+            .subject_public_key_info()
+            .to_der()
+            .map_err(|_| Error::Encoding)?;
+
+        let signer = match signing_algorithm {
+            SigningAlgorithm::EcP256Sha256 => {
+                let signer = EcSigningKey::from_pkcs8_der(issuer_private_key_pkcs8)
+                    .map_err(|_| Error::InvalidPrivateKey)?;
+                let verifier = EcVerifyingKey::from_public_key_der(&issuer_spki)
+                    .map_err(|_| Error::IssuerKeyMismatch)?;
+                let signature: EcSignature = signer
+                    .try_sign(PREPARED_ISSUER_VALIDATION_MESSAGE)
+                    .map_err(|_| Error::Signature)?;
+                verifier
+                    .verify(PREPARED_ISSUER_VALIDATION_MESSAGE, &signature)
+                    .map_err(|_| Error::IssuerKeyMismatch)?;
+                PreparedSigner::Ec(signer)
+            }
+            SigningAlgorithm::RsaPkcs1Sha256 => {
+                let signer = RsaSigningKey::<Sha256>::from_pkcs8_der(issuer_private_key_pkcs8)
+                    .map_err(|_| Error::InvalidPrivateKey)?;
+                let issuer_public = rsa::RsaPublicKey::from_public_key_der(&issuer_spki)
+                    .map_err(|_| Error::IssuerKeyMismatch)?;
+                let verifier = RsaVerifyingKey::<Sha256>::new(issuer_public);
+                let signature: RsaSignature = signer
+                    .try_sign(PREPARED_ISSUER_VALIDATION_MESSAGE)
+                    .map_err(|_| Error::Signature)?;
+                verifier
+                    .verify(PREPARED_ISSUER_VALIDATION_MESSAGE, &signature)
+                    .map_err(|_| Error::IssuerKeyMismatch)?;
+                PreparedSigner::Rsa(Box::new(signer))
+            }
+        };
+
+        Ok(Self {
+            algorithm: signing_algorithm,
+            issuer_name_der,
+            signer,
+        })
+    }
+
+    pub fn algorithm(&self) -> SigningAlgorithm {
+        self.algorithm
+    }
+
+    fn sign_certificate(&self, tbs_der: &[u8], algorithm_der: &[u8]) -> Result<Vec<u8>, Error> {
+        match &self.signer {
+            PreparedSigner::Ec(signer) => {
+                let signature: EcSignature =
+                    signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
+                let signature_der = signature.to_der();
+                encode_signed_certificate(tbs_der, algorithm_der, signature_der.as_bytes())
+            }
+            PreparedSigner::Rsa(signer) => {
+                let signature: RsaSignature =
+                    signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
+                let signature_bytes = signature.to_vec();
+                encode_signed_certificate(tbs_der, algorithm_der, &signature_bytes)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -94,11 +208,33 @@ pub fn rewrite_certificate(
     request: &CertificateRewriteRequest<'_>,
 ) -> Result<CertificateRewriteResult, Error> {
     validate_bounds(request)?;
+    let issuer = PreparedIssuer::new(
+        request.issuer_certificate_der,
+        request.issuer_private_key_pkcs8,
+        request.signing_algorithm,
+    )?;
+    rewrite_certificate_prepared(&PreparedCertificateRewriteRequest {
+        genuine_leaf_der: request.genuine_leaf_der,
+        issuer: &issuer,
+        patch_levels: request.patch_levels,
+        id_overrides: request.id_overrides,
+        module_hash: request.module_hash,
+        verified_boot_key: request.verified_boot_key,
+        verified_boot_hash: request.verified_boot_hash,
+    })
+}
+
+pub fn rewrite_certificate_prepared(
+    request: &PreparedCertificateRewriteRequest<'_>,
+) -> Result<CertificateRewriteResult, Error> {
+    if request.genuine_leaf_der.is_empty()
+        || request.genuine_leaf_der.len() > MAX_CERTIFICATE_DER_BYTES
+    {
+        return Err(Error::Bounds);
+    }
+
     let leaf =
         Certificate::from_der(request.genuine_leaf_der).map_err(|_| Error::InvalidCertificate)?;
-    let issuer = Certificate::from_der(request.issuer_certificate_der)
-        .map_err(|_| Error::InvalidCertificate)?;
-
     let mut extensions = leaf
         .tbs_certificate()
         .extensions()
@@ -124,22 +260,14 @@ pub fn rewrite_certificate(
     extensions[index].extn_value =
         OctetString::new(rewritten.extension_der).map_err(|_| Error::Encoding)?;
 
-    let algorithm_der = signature_algorithm_der(request.signing_algorithm);
-    let tbs_der = rebuild_tbs_certificate(&leaf, &issuer, &extensions, algorithm_der)?;
-    let leaf_der = match request.signing_algorithm {
-        SigningAlgorithm::EcP256Sha256 => sign_ec(
-            &tbs_der,
-            &issuer,
-            request.issuer_private_key_pkcs8,
-            algorithm_der,
-        )?,
-        SigningAlgorithm::RsaPkcs1Sha256 => sign_rsa(
-            &tbs_der,
-            &issuer,
-            request.issuer_private_key_pkcs8,
-            algorithm_der,
-        )?,
-    };
+    let algorithm_der = signature_algorithm_der(request.issuer.algorithm());
+    let tbs_der = rebuild_tbs_certificate(
+        &leaf,
+        &request.issuer.issuer_name_der,
+        &extensions,
+        algorithm_der,
+    )?;
+    let leaf_der = request.issuer.sign_certificate(&tbs_der, algorithm_der)?;
     if leaf_der.len() > MAX_CERTIFICATE_DER_BYTES {
         return Err(Error::Bounds);
     }
@@ -171,12 +299,11 @@ fn signature_algorithm_der(algorithm: SigningAlgorithm) -> &'static [u8] {
 
 fn rebuild_tbs_certificate(
     leaf: &Certificate,
-    issuer: &Certificate,
+    issuer_name_der: &[u8],
     extensions: &Extensions,
     algorithm_der: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let leaf_tbs = leaf.tbs_certificate();
-    let issuer_tbs = issuer.tbs_certificate();
 
     // Match the managed X509v3CertificateBuilder oracle: rebuild from genuine serial, validity,
     // subject, SPKI and extensions; issuer comes from the selected keybox. The managed builder did
@@ -186,7 +313,6 @@ fn rebuild_tbs_certificate(
         .serial_number()
         .to_der()
         .map_err(|_| Error::Encoding)?;
-    let issuer_name = issuer_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
     let validity = leaf_tbs.validity().to_der().map_err(|_| Error::Encoding)?;
     let subject = leaf_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
     let spki = leaf_tbs
@@ -200,7 +326,7 @@ fn rebuild_tbs_certificate(
         &version,
         &serial,
         algorithm_der,
-        &issuer_name,
+        issuer_name_der,
         &validity,
         &subject,
         &spki,
@@ -248,57 +374,6 @@ fn encode_sequence(fields: &[&[u8]]) -> Result<Vec<u8>, Error> {
         .map_err(|_| Error::Encoding)?
         .to_der()
         .map_err(|_| Error::Encoding)
-}
-
-fn sign_ec(
-    tbs_der: &[u8],
-    issuer: &Certificate,
-    private_key_pkcs8: &[u8],
-    algorithm_der: &[u8],
-) -> Result<Vec<u8>, Error> {
-    let signer =
-        EcSigningKey::from_pkcs8_der(private_key_pkcs8).map_err(|_| Error::InvalidPrivateKey)?;
-    let signature: EcSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
-
-    let issuer_spki = issuer
-        .tbs_certificate()
-        .subject_public_key_info()
-        .to_der()
-        .map_err(|_| Error::Encoding)?;
-    let verifier =
-        EcVerifyingKey::from_public_key_der(&issuer_spki).map_err(|_| Error::IssuerKeyMismatch)?;
-    verifier
-        .verify(tbs_der, &signature)
-        .map_err(|_| Error::IssuerKeyMismatch)?;
-
-    let signature_der = signature.to_der();
-    encode_signed_certificate(tbs_der, algorithm_der, signature_der.as_bytes())
-}
-
-fn sign_rsa(
-    tbs_der: &[u8],
-    issuer: &Certificate,
-    private_key_pkcs8: &[u8],
-    algorithm_der: &[u8],
-) -> Result<Vec<u8>, Error> {
-    let signer = RsaSigningKey::<Sha256>::from_pkcs8_der(private_key_pkcs8)
-        .map_err(|_| Error::InvalidPrivateKey)?;
-    let signature: RsaSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
-
-    let issuer_spki = issuer
-        .tbs_certificate()
-        .subject_public_key_info()
-        .to_der()
-        .map_err(|_| Error::Encoding)?;
-    let issuer_public = rsa::RsaPublicKey::from_public_key_der(&issuer_spki)
-        .map_err(|_| Error::IssuerKeyMismatch)?;
-    let verifier = RsaVerifyingKey::<Sha256>::new(issuer_public);
-    verifier
-        .verify(tbs_der, &signature)
-        .map_err(|_| Error::IssuerKeyMismatch)?;
-
-    let signature_bytes = signature.to_vec();
-    encode_signed_certificate(tbs_der, algorithm_der, &signature_bytes)
 }
 
 fn encode_signed_certificate(
