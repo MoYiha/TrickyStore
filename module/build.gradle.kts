@@ -97,7 +97,9 @@ private fun verifyRuntimePayloadContract(
             RuntimePayloadFloor("webroot/index.html", 100_000),
             RuntimePayloadFloor("webroot/bridge.js", 15_000),
             RuntimePayloadFloor("webroot/policy.js", 40_000),
-            RuntimePayloadFloor("webroot/ux.js", 250_000),
+            RuntimePayloadFloor("webroot/ux.js", 500),
+            RuntimePayloadFloor("webroot/ux-core.js", 250_000),
+            RuntimePayloadFloor("webroot/zip-import.js", 15_000),
         )
     val nativeFloors =
         mapOf(
@@ -164,7 +166,9 @@ private fun verifyRuntimePayloadContract(
                 File(moduleRoot, "webroot/index.html").length() +
                 File(moduleRoot, "webroot/bridge.js").length() +
                 File(moduleRoot, "webroot/policy.js").length() +
-                File(moduleRoot, "webroot/ux.js").length()
+                File(moduleRoot, "webroot/ux.js").length() +
+                File(moduleRoot, "webroot/ux-core.js").length() +
+                File(moduleRoot, "webroot/zip-import.js").length()
         if (runtimeBytes < 2_500_000L) {
             throw GradleException(
                 "Runtime contract aggregate payload for $abi is unexpectedly small: $runtimeBytes bytes",
