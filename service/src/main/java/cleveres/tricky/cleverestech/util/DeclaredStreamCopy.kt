@@ -4,12 +4,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 
-/**
- * Bounded streaming primitive shared by secure-file regression tests.
- *
- * The production broker path uses the same declared-length rules: exact byte count, bounded
- * zero-read tolerance, no trailing byte, and scratch zeroization on every exit path.
- */
+/** Exact-length streaming primitive used by atomic broker writes. */
 @Throws(IOException::class)
 internal fun copyDeclaredBody(
     input: InputStream,
@@ -35,6 +30,45 @@ internal fun copyDeclaredBody(
             remaining -= count
         }
         if (input.read() >= 0) throw IOException("Input stream exceeds declared length")
+    } finally {
+        scratch.fill(0)
+    }
+}
+
+/**
+ * Maximum-length streaming primitive used by WebUI staging.
+ *
+ * Each emitted chunk is inside the caller supplied scratch buffer. The callback must consume the
+ * bytes synchronously. No chunk that would cross [limit] is emitted, and the scratch buffer is
+ * wiped after every chunk and on every exit path.
+ */
+@Throws(IOException::class)
+internal fun streamBoundedChunks(
+    input: InputStream,
+    limit: Long,
+    scratch: ByteArray,
+    emit: (ByteArray, Int) -> Unit,
+): Long {
+    require(limit >= 0)
+    require(scratch.isNotEmpty())
+    var total = 0L
+    var emptyReads = 0
+    try {
+        while (true) {
+            val count = input.read(scratch)
+            if (count < 0) return total
+            if (count == 0) {
+                if (++emptyReads > MAX_EMPTY_READS) throw IOException("Input stream stalled")
+                continue
+            }
+            emptyReads = 0
+            if (count.toLong() > limit - total) {
+                throw IOException("File size exceeds the $limit-byte limit")
+            }
+            emit(scratch, count)
+            scratch.fill(0, 0, count)
+            total += count
+        }
     } finally {
         scratch.fill(0)
     }
