@@ -4,11 +4,11 @@ use base64::Engine as _;
 use cleverestricky_certificate_core::{SigningAlgorithm, MAX_CERTIFICATE_DER_BYTES};
 use cleverestricky_keybox_core::{normalize_private_key_pkcs8, public_key_spki_from_pkcs8};
 use cleverestricky_xml_core::{KeyboxDocument, MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX};
-use der::{Decode, Encode};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock};
 use x509_cert::Certificate;
+use x509_der::{Decode as X509Decode, Encode as X509Encode};
 use zeroize::Zeroizing;
 
 pub const KEY_ID_BYTES: usize = 16;
@@ -191,8 +191,8 @@ fn build_stored_key(
     )
     .map_err(|_| "keybox leaf certificate rejected")?;
     let leaf_spki = leaf
-        .tbs_certificate
-        .subject_public_key_info
+        .tbs_certificate()
+        .subject_public_key_info()
         .to_der()
         .map_err(|_| "keybox leaf public key encoding failed")?;
     if private_spki != leaf_spki {
