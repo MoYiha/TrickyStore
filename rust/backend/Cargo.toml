@@ -11,7 +11,7 @@ name = "cleverestricky_backend"
 path = "src/main.rs"
 
 [dependencies]
-base64 = "=0.22.1"
+base64 = "=0.23.1"
 cleverestricky-cbox-recovery-core = { path = "../cbox-recovery-core" }
 cleverestricky-certificate-core = { path = "../certificate-core" }
 cleverestricky-crl-core = { path = "../crl-core" }
@@ -27,4 +27,4 @@ x509-cert = { version = "=0.2.5", default-features = false, features = ["std"] }
 zeroize = "1.8"
 
 [dev-dependencies]
-base64 = "=0.22.1"
+base64 = "=0.23.1"
