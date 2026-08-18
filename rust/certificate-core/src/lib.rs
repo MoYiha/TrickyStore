@@ -1,11 +1,11 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![forbid(unsafe_code)]
 
+use attestation_der::asn1::{Any, BitString, OctetString};
+use attestation_der::{Decode as X509Decode, Encode as X509Encode, Tag, TagNumber};
 use cleverestricky_attestation_core::{
     rewrite_extension, AttestationIdOverride, CapturedPatchLevels, PatchLevels, RewriteRequest,
 };
-use der::asn1::{BitString, OctetString};
-use der::{Decode, Encode};
 use p256::ecdsa::{
     Signature as EcSignature, SigningKey as EcSigningKey, VerifyingKey as EcVerifyingKey,
 };
@@ -16,13 +16,24 @@ use rsa::pkcs1v15::{
 use sha2::Sha256;
 use signature::{SignatureEncoding, Signer, Verifier};
 use std::fmt;
-use x509_cert::spki::{DynSignatureAlgorithmIdentifier, ObjectIdentifier};
-use x509_cert::{Certificate, TbsCertificate};
+use x509_cert::ext::Extensions;
+use x509_cert::spki::ObjectIdentifier;
+use x509_cert::Certificate;
 
 pub const MAX_CERTIFICATE_DER_BYTES: usize = 256 * 1024;
 pub const MAX_PRIVATE_KEY_DER_BYTES: usize = 3 * MAX_CERTIFICATE_DER_BYTES;
 pub const ANDROID_ATTESTATION_OID: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("1.3.6.1.4.1.11129.2.1.17");
+
+// Keep these canonical encodings local instead of mixing the spki 0.7 traits used by the
+// signing-key crates with the spki 0.8 types used by x509-cert 0.3. They are the two fixed
+// algorithms accepted by the certificate wire protocol.
+const ECDSA_SHA256_ALGORITHM_DER: &[u8] = &[
+    0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02,
+];
+const RSA_SHA256_ALGORITHM_DER: &[u8] = &[
+    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00,
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SigningAlgorithm {
@@ -83,15 +94,15 @@ pub fn rewrite_certificate(
     request: &CertificateRewriteRequest<'_>,
 ) -> Result<CertificateRewriteResult, Error> {
     validate_bounds(request)?;
-    let mut leaf =
+    let leaf =
         Certificate::from_der(request.genuine_leaf_der).map_err(|_| Error::InvalidCertificate)?;
     let issuer = Certificate::from_der(request.issuer_certificate_der)
         .map_err(|_| Error::InvalidCertificate)?;
 
-    let extensions = leaf
-        .tbs_certificate
-        .extensions
-        .as_mut()
+    let mut extensions = leaf
+        .tbs_certificate()
+        .extensions()
+        .cloned()
         .ok_or(Error::MissingAttestationExtension)?;
     let mut matching_index = None;
     for (index, extension) in extensions.iter().enumerate() {
@@ -113,22 +124,20 @@ pub fn rewrite_certificate(
     extensions[index].extn_value =
         OctetString::new(rewritten.extension_der).map_err(|_| Error::Encoding)?;
 
-    // Match the managed X509v3CertificateBuilder oracle: rebuild from the genuine serial,
-    // validity, subject, SPKI and extensions. The builder does not carry issuer/subject unique IDs.
-    leaf.tbs_certificate.issuer = issuer.tbs_certificate.subject.clone();
-    leaf.tbs_certificate.issuer_unique_id = None;
-    leaf.tbs_certificate.subject_unique_id = None;
-
+    let algorithm_der = signature_algorithm_der(request.signing_algorithm);
+    let tbs_der = rebuild_tbs_certificate(&leaf, &issuer, &extensions, algorithm_der)?;
     let leaf_der = match request.signing_algorithm {
         SigningAlgorithm::EcP256Sha256 => sign_ec(
-            leaf.tbs_certificate,
+            &tbs_der,
             &issuer,
             request.issuer_private_key_pkcs8,
+            algorithm_der,
         )?,
         SigningAlgorithm::RsaPkcs1Sha256 => sign_rsa(
-            leaf.tbs_certificate,
+            &tbs_der,
             &issuer,
             request.issuer_private_key_pkcs8,
+            algorithm_der,
         )?,
     };
     if leaf_der.len() > MAX_CERTIFICATE_DER_BYTES {
@@ -153,83 +162,150 @@ fn validate_bounds(request: &CertificateRewriteRequest<'_>) -> Result<(), Error>
     Ok(())
 }
 
+fn signature_algorithm_der(algorithm: SigningAlgorithm) -> &'static [u8] {
+    match algorithm {
+        SigningAlgorithm::EcP256Sha256 => ECDSA_SHA256_ALGORITHM_DER,
+        SigningAlgorithm::RsaPkcs1Sha256 => RSA_SHA256_ALGORITHM_DER,
+    }
+}
+
+fn rebuild_tbs_certificate(
+    leaf: &Certificate,
+    issuer: &Certificate,
+    extensions: &Extensions,
+    algorithm_der: &[u8],
+) -> Result<Vec<u8>, Error> {
+    let leaf_tbs = leaf.tbs_certificate();
+    let issuer_tbs = issuer.tbs_certificate();
+
+    // Match the managed X509v3CertificateBuilder oracle: rebuild from genuine serial, validity,
+    // subject, SPKI and extensions; issuer comes from the selected keybox. The managed builder did
+    // not preserve issuer/subject unique IDs, so they are intentionally omitted here as well.
+    let version = encode_explicit(0, &2i32.to_der().map_err(|_| Error::Encoding)?)?;
+    let serial = leaf_tbs.serial_number().to_der().map_err(|_| Error::Encoding)?;
+    let issuer_name = issuer_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
+    let validity = leaf_tbs.validity().to_der().map_err(|_| Error::Encoding)?;
+    let subject = leaf_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
+    let spki = leaf_tbs
+        .subject_public_key_info()
+        .to_der()
+        .map_err(|_| Error::Encoding)?;
+    let extensions = encode_extensions(extensions)?;
+    let extensions = encode_explicit(3, &extensions)?;
+
+    encode_sequence(&[
+        &version,
+        &serial,
+        algorithm_der,
+        &issuer_name,
+        &validity,
+        &subject,
+        &spki,
+        &extensions,
+    ])
+}
+
+fn encode_extensions(extensions: &Extensions) -> Result<Vec<u8>, Error> {
+    let mut encoded = Vec::new();
+    for extension in extensions {
+        let field = extension.to_der().map_err(|_| Error::Encoding)?;
+        encoded
+            .try_reserve(field.len())
+            .map_err(|_| Error::Encoding)?;
+        encoded.extend_from_slice(&field);
+    }
+    Any::new(Tag::Sequence, encoded)
+        .map_err(|_| Error::Encoding)?
+        .to_der()
+        .map_err(|_| Error::Encoding)
+}
+
+fn encode_explicit(tag: u32, inner: &[u8]) -> Result<Vec<u8>, Error> {
+    Any::new(
+        Tag::ContextSpecific {
+            constructed: true,
+            number: TagNumber(tag),
+        },
+        inner.to_vec(),
+    )
+    .map_err(|_| Error::Encoding)?
+    .to_der()
+    .map_err(|_| Error::Encoding)
+}
+
+fn encode_sequence(fields: &[&[u8]]) -> Result<Vec<u8>, Error> {
+    let mut encoded = Vec::new();
+    for field in fields {
+        encoded
+            .try_reserve(field.len())
+            .map_err(|_| Error::Encoding)?;
+        encoded.extend_from_slice(field);
+    }
+    Any::new(Tag::Sequence, encoded)
+        .map_err(|_| Error::Encoding)?
+        .to_der()
+        .map_err(|_| Error::Encoding)
+}
+
 fn sign_ec(
-    mut tbs: TbsCertificate,
+    tbs_der: &[u8],
     issuer: &Certificate,
     private_key_pkcs8: &[u8],
+    algorithm_der: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let signer =
         EcSigningKey::from_pkcs8_der(private_key_pkcs8).map_err(|_| Error::InvalidPrivateKey)?;
-    let algorithm = signer
-        .signature_algorithm_identifier()
-        .map_err(|_| Error::Encoding)?;
-    tbs.signature = algorithm.clone();
-    let tbs_der = tbs.to_der().map_err(|_| Error::Encoding)?;
-    let signature: EcSignature = signer.try_sign(&tbs_der).map_err(|_| Error::Signature)?;
+    let signature: EcSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
 
     let issuer_spki = issuer
-        .tbs_certificate
-        .subject_public_key_info
+        .tbs_certificate()
+        .subject_public_key_info()
         .to_der()
         .map_err(|_| Error::Encoding)?;
     let verifier =
         EcVerifyingKey::from_public_key_der(&issuer_spki).map_err(|_| Error::IssuerKeyMismatch)?;
     verifier
-        .verify(&tbs_der, &signature)
+        .verify(tbs_der, &signature)
         .map_err(|_| Error::IssuerKeyMismatch)?;
 
     let signature_der = signature.to_der();
-    encode_certificate(
-        tbs,
-        algorithm,
-        BitString::from_bytes(signature_der.as_bytes()).map_err(|_| Error::Encoding)?,
-    )
+    encode_signed_certificate(tbs_der, algorithm_der, signature_der.as_bytes())
 }
 
 fn sign_rsa(
-    mut tbs: TbsCertificate,
+    tbs_der: &[u8],
     issuer: &Certificate,
     private_key_pkcs8: &[u8],
+    algorithm_der: &[u8],
 ) -> Result<Vec<u8>, Error> {
     let signer = RsaSigningKey::<Sha256>::from_pkcs8_der(private_key_pkcs8)
         .map_err(|_| Error::InvalidPrivateKey)?;
-    let algorithm = signer
-        .signature_algorithm_identifier()
-        .map_err(|_| Error::Encoding)?;
-    tbs.signature = algorithm.clone();
-    let tbs_der = tbs.to_der().map_err(|_| Error::Encoding)?;
-    let signature: RsaSignature = signer.try_sign(&tbs_der).map_err(|_| Error::Signature)?;
+    let signature: RsaSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
 
     let issuer_spki = issuer
-        .tbs_certificate
-        .subject_public_key_info
+        .tbs_certificate()
+        .subject_public_key_info()
         .to_der()
         .map_err(|_| Error::Encoding)?;
     let issuer_public = rsa::RsaPublicKey::from_public_key_der(&issuer_spki)
         .map_err(|_| Error::IssuerKeyMismatch)?;
     let verifier = RsaVerifyingKey::<Sha256>::new(issuer_public);
     verifier
-        .verify(&tbs_der, &signature)
+        .verify(tbs_der, &signature)
         .map_err(|_| Error::IssuerKeyMismatch)?;
 
     let signature_bytes = signature.to_vec();
-    encode_certificate(
-        tbs,
-        algorithm,
-        BitString::from_bytes(&signature_bytes).map_err(|_| Error::Encoding)?,
-    )
+    encode_signed_certificate(tbs_der, algorithm_der, &signature_bytes)
 }
 
-fn encode_certificate(
-    tbs_certificate: TbsCertificate,
-    signature_algorithm: x509_cert::spki::AlgorithmIdentifierOwned,
-    signature: BitString,
+fn encode_signed_certificate(
+    tbs_der: &[u8],
+    algorithm_der: &[u8],
+    signature: &[u8],
 ) -> Result<Vec<u8>, Error> {
-    Certificate {
-        tbs_certificate,
-        signature_algorithm,
-        signature,
-    }
-    .to_der()
-    .map_err(|_| Error::Encoding)
+    let signature = BitString::from_bytes(signature)
+        .map_err(|_| Error::Encoding)?
+        .to_der()
+        .map_err(|_| Error::Encoding)?;
+    encode_sequence(&[tbs_der, algorithm_der, &signature])
 }
