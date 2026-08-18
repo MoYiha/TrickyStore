@@ -19,7 +19,7 @@ class LocalizationParityTest {
                 "values-es" to "es",
                 "values-de" to "de",
                 "values-ru" to "ru",
-                "values-b+id" to "id",
+                "values-in" to "in",
                 "values-hi" to "hi",
                 "values-ar" to "ar",
             )
