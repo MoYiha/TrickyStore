@@ -169,7 +169,7 @@ internal object MobileCrypto {
         } catch (_: InvalidBatchException) {
             return EncryptResult.INVALID_INPUT
         } catch (_: IOException) {
-            return EncryptResult.INVALID_INPUT
+            return EncryptResult.SIGNING_FAILURE
         } catch (_: ProviderException) {
             return EncryptResult.SIGNING_FAILURE
         } catch (_: GeneralSecurityException) {

@@ -30,7 +30,7 @@ internal object VaultStore {
     ) {
         fun allocate(sourceName: String): String {
             if (remaining <= 0) throw IOException("Vault capacity exceeded")
-            val base = batchBaseName(author, sourceName)
+            val base = VaultStore.batchBaseName(author, sourceName)
             var sequence = 1
             var candidate = "$base$CBOX_SUFFIX"
             while (!occupied.add(candidate.lowercase(Locale.ROOT))) {

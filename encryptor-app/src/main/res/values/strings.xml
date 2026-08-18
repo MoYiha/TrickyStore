@@ -30,8 +30,8 @@
     <string name="signing_key_unavailable">Signing key unavailable</string>
     <string name="public_key_copied">Public key copied</string>
     <string name="copy_public_key">Copy public key</string>
-    <string name="choose_xml">Choose XML or ZIP</string>
-    <string name="xml_limit">Single XML · up to 10 MiB, or ZIP · up to 64 XML files · 10 MiB each · 48 MiB total</string>
+    <string name="choose_xml">Choose XML keybox or ZIP</string>
+    <string name="xml_limit">Single XML or ZIP · up to 10,000 keyboxes · 10 MiB per XML</string>
     <string name="password">Password</string>
     <string name="hide_password">Hide password</string>
     <string name="show_password">Show password</string>
@@ -39,7 +39,8 @@
     <string name="encrypt_save">Encrypt &amp; save</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · Android Keystore signature</string>
     <string name="security_title">Local-first, hardened encryption</string>
-    <string name="security_body">Selected keybox XML files never leave this app. Each CBOX is signed and encrypted locally; atomic private-vault writes run in the bounded Rust layer.</string>
+    <string name="security_body">Selected keybox XML files never leave this app. XML or ZIP input is processed one keybox at a time; each CBOX is signed and encrypted locally, and atomic private-vault writes run in the bounded Rust layer.</string>
     <string name="language">Language</string>
     <string name="system_default">System default</string>
+    <string name="encrypting">Encrypting &amp; saving…</string>
 </resources>

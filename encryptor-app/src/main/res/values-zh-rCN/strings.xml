@@ -30,8 +30,8 @@
     <string name="signing_key_unavailable">签名密钥不可用</string>
     <string name="public_key_copied">公钥已复制</string>
     <string name="copy_public_key">复制公钥</string>
-    <string name="choose_xml">选择 XML 或 ZIP</string>
-    <string name="xml_limit">单个 XML · 最大 10 MiB，或 ZIP · 最多 64 个 XML · 每个 10 MiB · 总计 48 MiB</string>
+    <string name="choose_xml">选择 XML Keybox 或 ZIP</string>
+    <string name="xml_limit">单个 XML 或 ZIP · 最多 10,000 个 Keybox · 每个 XML 10 MiB</string>
     <string name="password">密码</string>
     <string name="hide_password">隐藏密码</string>
     <string name="show_password">显示密码</string>
@@ -39,7 +39,8 @@
     <string name="encrypt_save">加密并保存</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · Android Keystore 签名</string>
     <string name="security_title">本地优先的强化加密</string>
-    <string name="security_body">所选 Keybox XML 文件不会离开此应用。每个 CBOX 都在本地签名和加密；私有保险库的原子写入在有界 Rust 层中执行。</string>
+    <string name="security_body">所选 Keybox XML 文件不会离开本应用。XML 或 ZIP 会逐个 Keybox 处理；每个 CBOX 都在本地签名和加密，原子私有保险库写入由受限的 Rust 层完成。</string>
     <string name="language">语言</string>
     <string name="system_default">系统默认</string>
+    <string name="encrypting">正在加密并保存…</string>
 </resources>

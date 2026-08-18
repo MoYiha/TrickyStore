@@ -30,8 +30,8 @@
     <string name="signing_key_unavailable">Ключ подписи недоступен</string>
     <string name="public_key_copied">Открытый ключ скопирован</string>
     <string name="copy_public_key">Копировать открытый ключ</string>
-    <string name="choose_xml">Выбрать XML или ZIP</string>
-    <string name="xml_limit">Один XML · до 10 MiB, или ZIP · до 64 XML-файлов · по 10 MiB · всего 48 MiB</string>
+    <string name="choose_xml">Выбрать XML keybox или ZIP</string>
+    <string name="xml_limit">Один XML или ZIP · до 10 000 keybox · 10 MiB на XML</string>
     <string name="password">Пароль</string>
     <string name="hide_password">Скрыть пароль</string>
     <string name="show_password">Показать пароль</string>
@@ -39,7 +39,8 @@
     <string name="encrypt_save">Зашифровать и сохранить</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · подпись Android Keystore</string>
     <string name="security_title">Локальное усиленное шифрование</string>
-    <string name="security_body">Выбранные XML-файлы keybox не покидают приложение. Каждый CBOX подписывается и шифруется локально; атомарная запись в приватное хранилище выполняется в ограниченном слое Rust.</string>
+    <string name="security_body">Выбранные XML keybox никогда не покидают приложение. XML или ZIP обрабатывается по одному keybox; каждый CBOX локально подписывается и шифруется, а атомарная запись в приватное хранилище выполняется в ограниченном слое Rust.</string>
     <string name="language">Язык</string>
     <string name="system_default">Системный язык</string>
+    <string name="encrypting">Шифрование и сохранение…</string>
 </resources>

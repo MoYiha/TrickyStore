@@ -30,8 +30,8 @@
     <string name="signing_key_unavailable">Kunci penandatanganan tidak tersedia</string>
     <string name="public_key_copied">Kunci publik disalin</string>
     <string name="copy_public_key">Salin kunci publik</string>
-    <string name="choose_xml">Pilih XML atau ZIP</string>
-    <string name="xml_limit">Satu XML · hingga 10 MiB, atau ZIP · hingga 64 XML · masing-masing 10 MiB · total 48 MiB</string>
+    <string name="choose_xml">Pilih keybox XML atau ZIP</string>
+    <string name="xml_limit">XML tunggal atau ZIP · hingga 10.000 keybox · 10 MiB per XML</string>
     <string name="password">Kata sandi</string>
     <string name="hide_password">Sembunyikan kata sandi</string>
     <string name="show_password">Tampilkan kata sandi</string>
@@ -39,7 +39,8 @@
     <string name="encrypt_save">Enkripsi dan simpan</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · tanda tangan Android Keystore</string>
     <string name="security_title">Enkripsi lokal yang diperkuat</string>
-    <string name="security_body">File XML keybox yang dipilih tidak pernah keluar dari aplikasi. Setiap CBOX ditandatangani dan dienkripsi secara lokal; penulisan atomik ke brankas privat berjalan di lapisan Rust yang dibatasi.</string>
+    <string name="security_body">File XML keybox yang dipilih tidak pernah keluar dari aplikasi ini. Input XML atau ZIP diproses satu keybox pada satu waktu; setiap CBOX ditandatangani dan dienkripsi secara lokal, dan penulisan vault privat atomik berjalan di lapisan Rust yang dibatasi.</string>
     <string name="language">Bahasa</string>
     <string name="system_default">Default sistem</string>
+    <string name="encrypting">Mengenkripsi dan menyimpan…</string>
 </resources>
