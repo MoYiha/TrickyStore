@@ -74,14 +74,22 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 
 private const val LOG_TAG = "CleveresEncryptor"
+private const val MAX_XML_BYTES = 10 * 1024 * 1024
 
 private data class VaultItem(
     val file: File,
     val size: Long,
+)
+
+private data class SelectedKeybox(
+    val bytes: ByteArray,
+    val displayName: String,
 )
 
 private data class SaveOutcome(
@@ -350,19 +358,21 @@ private fun CreateScreen(
                                 bytes.fill(0)
                                 null
                             } else {
-                                bytes
+                                SelectedKeybox(
+                                    bytes = bytes,
+                                    displayName = displayName(context, uri) ?: "keybox.xml",
+                                )
                             }
                         } catch (_: Exception) {
                             null
                         }
                     }
-                if (selected == null || selected.isEmpty()) {
-                    selected?.fill(0)
+                if (selected == null) {
                     snackbar.showSnackbar(xmlFailed)
                 } else {
                     xml?.fill(0)
-                    xml = selected
-                    xmlName = displayName(context, uri) ?: "keybox.xml"
+                    xml = selected.bytes
+                    xmlName = selected.displayName
                 }
             }
         }
@@ -581,6 +591,26 @@ private fun displayName(
         }
     }
     return null
+}
+
+private fun readBytes(input: InputStream): ByteArray {
+    val output = ByteArrayOutputStream(minOf(MAX_XML_BYTES, 64 * 1024))
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var total = 0
+    try {
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (count == 0) continue
+            if (count > MAX_XML_BYTES - total) throw IOException("XML exceeds size limit")
+            output.write(buffer, 0, count)
+            total += count
+        }
+        if (total == 0) throw IOException("XML is empty")
+        return output.toByteArray()
+    } finally {
+        buffer.fill(0)
+    }
 }
 
 private fun formatBytes(bytes: Long): String =
