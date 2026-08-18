@@ -8,12 +8,20 @@ import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
+import java.util.Locale
 
 internal object VaultStore {
     private const val VAULT_DIR = "vault"
     private const val MAX_FILES = 256
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
+    private const val MAX_FILENAME_CHARS = 128
+    private const val CBOX_SUFFIX = ".cbox"
     private val unsafeFilenameChars = Regex("[^a-zA-Z0-9._-]")
+
+    private data class VaultNameSnapshot(
+        val names: MutableSet<String>,
+        val entryCount: Int,
+    )
 
     fun directory(context: Context): File {
         check(NativeCrypto.ensureVault(context.noBackupFilesDir.absolutePath)) {
@@ -24,7 +32,43 @@ internal object VaultStore {
 
     fun filenameFor(author: String): String {
         val safe = author.replace(unsafeFilenameChars, "_").trim('.').take(100)
-        return "${safe.ifEmpty { "keybox" }}.cbox"
+        return "${safe.ifEmpty { "keybox" }}$CBOX_SUFFIX"
+    }
+
+    fun allocateBatchFilenames(
+        context: Context,
+        author: String,
+        sourceNames: List<String>,
+    ): List<String> {
+        require(sourceNames.isNotEmpty()) { "Batch is empty" }
+        val snapshot = vaultNameSnapshot(context)
+        if (sourceNames.size > MAX_FILES - snapshot.entryCount) {
+            throw IOException("Vault capacity exceeded")
+        }
+        val existing = snapshot.names
+
+        return sourceNames.map { sourceName ->
+            val base = batchBaseName(author, sourceName)
+            var sequence = 1
+            var candidate = "$base$CBOX_SUFFIX"
+            while (!existing.add(candidate.lowercase(Locale.ROOT))) {
+                sequence++
+                val suffix = "_$sequence"
+                candidate = "${base.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length - suffix.length)}$suffix$CBOX_SUFFIX"
+            }
+            candidate
+        }
+    }
+
+    internal fun batchBaseName(
+        author: String,
+        sourceName: String,
+    ): String {
+        val safeAuthor = sanitizeComponent(author, 48).ifEmpty { "keybox" }
+        val basename = sourceName.substringAfterLast('/').substringAfterLast('\\')
+        val sourceBase = basename.substringBeforeLast('.', basename)
+        val safeSource = sanitizeComponent(sourceBase, 64).ifEmpty { "keybox" }
+        return "$safeAuthor-$safeSource".take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
     }
 
     fun exists(
@@ -126,6 +170,19 @@ internal object VaultStore {
         }
     }
 
+    private fun vaultNameSnapshot(context: Context): VaultNameSnapshot {
+        val names = linkedSetOf<String>()
+        var entryCount = 0
+        Files.newDirectoryStream(directory(context).toPath()).use { entries ->
+            for (entry in entries) {
+                entryCount++
+                if (entryCount > MAX_FILES) throw IOException("Vault capacity exceeded")
+                names += entry.fileName.toString().lowercase(Locale.ROOT)
+            }
+        }
+        return VaultNameSnapshot(names = names, entryCount = entryCount)
+    }
+
     private fun exportFromRoot(
         root: File,
         file: File,
@@ -150,9 +207,14 @@ internal object VaultStore {
         return vault.parentFile
     }
 
+    private fun sanitizeComponent(
+        value: String,
+        maxLength: Int,
+    ): String = value.replace(unsafeFilenameChars, "_").trim('.').take(maxLength)
+
     private fun validName(name: String): Boolean =
-        name.endsWith(".cbox", ignoreCase = true) &&
-            name.length <= 128 &&
+        name.endsWith(CBOX_SUFFIX, ignoreCase = true) &&
+            name.length <= MAX_FILENAME_CHARS &&
             !name.startsWith('.') &&
             !name.contains('/') &&
             !name.contains('\u0000')
