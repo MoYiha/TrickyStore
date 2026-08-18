@@ -12,7 +12,7 @@ import java.util.Locale
 
 internal object VaultStore {
     private const val VAULT_DIR = "vault"
-    private const val MAX_FILES = 256
+    internal const val MAX_FILES = 10_000
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
     private const val MAX_FILENAME_CHARS = 128
     private const val CBOX_SUFFIX = ".cbox"
@@ -22,6 +22,27 @@ internal object VaultStore {
         val names: MutableSet<String>,
         val entryCount: Int,
     )
+
+    internal class BatchNameAllocator(
+        private val author: String,
+        private val occupied: MutableSet<String>,
+        private var remaining: Int,
+    ) {
+        fun allocate(sourceName: String): String {
+            if (remaining <= 0) throw IOException("Vault capacity exceeded")
+            val base = batchBaseName(author, sourceName)
+            var sequence = 1
+            var candidate = "$base$CBOX_SUFFIX"
+            while (!occupied.add(candidate.lowercase(Locale.ROOT))) {
+                sequence++
+                if (sequence > MAX_FILES) throw IOException("Could not allocate a unique vault filename")
+                val suffix = "_$sequence"
+                candidate = "${base.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length - suffix.length)}$suffix$CBOX_SUFFIX"
+            }
+            remaining--
+            return candidate
+        }
+    }
 
     fun directory(context: Context): File {
         check(NativeCrypto.ensureVault(context.noBackupFilesDir.absolutePath)) {
@@ -35,29 +56,27 @@ internal object VaultStore {
         return "${safe.ifEmpty { "keybox" }}$CBOX_SUFFIX"
     }
 
+    fun newBatchNameAllocator(
+        context: Context,
+        author: String,
+    ): BatchNameAllocator {
+        val snapshot = vaultNameSnapshot(context)
+        return BatchNameAllocator(
+            author = author,
+            occupied = snapshot.names,
+            remaining = MAX_FILES - snapshot.entryCount,
+        )
+    }
+
     fun allocateBatchFilenames(
         context: Context,
         author: String,
         sourceNames: List<String>,
     ): List<String> {
         require(sourceNames.isNotEmpty()) { "Batch is empty" }
-        val snapshot = vaultNameSnapshot(context)
-        if (sourceNames.size > MAX_FILES - snapshot.entryCount) {
-            throw IOException("Vault capacity exceeded")
-        }
-        val existing = snapshot.names
-
-        return sourceNames.map { sourceName ->
-            val base = batchBaseName(author, sourceName)
-            var sequence = 1
-            var candidate = "$base$CBOX_SUFFIX"
-            while (!existing.add(candidate.lowercase(Locale.ROOT))) {
-                sequence++
-                val suffix = "_$sequence"
-                candidate = "${base.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length - suffix.length)}$suffix$CBOX_SUFFIX"
-            }
-            candidate
-        }
+        if (sourceNames.size > MAX_FILES) throw IOException("Vault capacity exceeded")
+        val allocator = newBatchNameAllocator(context, author)
+        return sourceNames.map(allocator::allocate)
     }
 
     internal fun batchBaseName(
@@ -82,7 +101,7 @@ internal object VaultStore {
 
     fun list(context: Context): List<File> {
         val vault = directory(context)
-        val files = ArrayList<File>(MAX_FILES)
+        val files = ArrayList<File>()
         Files.newDirectoryStream(vault.toPath()).use { entries ->
             for (entry in entries) {
                 if (files.size == MAX_FILES) break
@@ -96,7 +115,7 @@ internal object VaultStore {
         }
         return files.sortedWith(
             compareByDescending<File> { it.lastModified() }
-                .thenBy { it.name.lowercase() },
+                .thenBy { it.name.lowercase(Locale.ROOT) },
         )
     }
 
@@ -171,7 +190,7 @@ internal object VaultStore {
     }
 
     private fun vaultNameSnapshot(context: Context): VaultNameSnapshot {
-        val names = linkedSetOf<String>()
+        val names = HashSet<String>()
         var entryCount = 0
         Files.newDirectoryStream(directory(context).toPath()).use { entries ->
             for (entry in entries) {
