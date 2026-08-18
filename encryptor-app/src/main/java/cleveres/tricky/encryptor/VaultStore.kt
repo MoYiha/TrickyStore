@@ -13,6 +13,7 @@ internal object VaultStore {
     private const val VAULT_DIR = "vault"
     private const val MAX_FILES = 256
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
+    private val unsafeFilenameChars = Regex("[^a-zA-Z0-9._-]")
 
     fun directory(context: Context): File {
         check(NativeCrypto.ensureVault(context.noBackupFilesDir.absolutePath)) {
@@ -22,8 +23,17 @@ internal object VaultStore {
     }
 
     fun filenameFor(author: String): String {
-        val safe = author.replace(Regex("[^a-zA-Z0-9._-]"), "_").trim('.').take(100)
+        val safe = author.replace(unsafeFilenameChars, "_").trim('.').take(100)
         return "${safe.ifEmpty { "keybox" }}.cbox"
+    }
+
+    fun exists(
+        context: Context,
+        filename: String,
+    ): Boolean {
+        if (!validName(filename)) return false
+        val candidate = File(directory(context), filename).toPath()
+        return Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)
     }
 
     fun list(context: Context): List<File> {
