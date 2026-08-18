@@ -274,9 +274,7 @@ fn read_bytes_bounded(
     input: &JByteArray<'_>,
     max_bytes: usize,
 ) -> Result<Zeroizing<Vec<u8>>, EncryptError> {
-    let length = input
-        .len(env)
-        .map_err(|_| EncryptError::InvalidInput)?;
+    let length = input.len(env).map_err(|_| EncryptError::InvalidInput)?;
     if length > max_bytes {
         return Err(EncryptError::InvalidInput);
     }
@@ -289,9 +287,7 @@ fn read_password(
     env: &mut Env<'_>,
     input: &JCharArray<'_>,
 ) -> Result<Zeroizing<String>, EncryptError> {
-    let length = input
-        .len(env)
-        .map_err(|_| EncryptError::InvalidInput)?;
+    let length = input.len(env).map_err(|_| EncryptError::InvalidInput)?;
     if !(MIN_PASSWORD_UTF16_UNITS..=MAX_PASSWORD_UTF16_UNITS).contains(&length) {
         return Err(EncryptError::InvalidInput);
     }
