@@ -182,7 +182,10 @@ fn rebuild_tbs_certificate(
     // subject, SPKI and extensions; issuer comes from the selected keybox. The managed builder did
     // not preserve issuer/subject unique IDs, so they are intentionally omitted here as well.
     let version = encode_explicit(0, &2i32.to_der().map_err(|_| Error::Encoding)?)?;
-    let serial = leaf_tbs.serial_number().to_der().map_err(|_| Error::Encoding)?;
+    let serial = leaf_tbs
+        .serial_number()
+        .to_der()
+        .map_err(|_| Error::Encoding)?;
     let issuer_name = issuer_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
     let validity = leaf_tbs.validity().to_der().map_err(|_| Error::Encoding)?;
     let subject = leaf_tbs.subject().to_der().map_err(|_| Error::Encoding)?;
