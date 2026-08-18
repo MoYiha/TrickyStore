@@ -464,7 +464,7 @@ pub extern "system" fn Java_cleveres_tricky_encryptor_NativeCrypto_readEncrypted
                     .map_err(|_| EncryptError::StorageFailed)?;
                 Ok(output.into_raw())
             })();
-            Ok(result.unwrap_or_else(|_| ptr::null_mut()))
+            Ok(result.unwrap_or(ptr::null_mut()))
         })
         .into_outcome()
     {
