@@ -64,6 +64,7 @@ class WebServerSecurityTest {
         configDir = tempFolder.newFolder("config")
         permissionCalls.clear()
         secureFileCalls.clear()
+        ManagedKeyboxParserOracle.install()
 
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl =
@@ -105,6 +106,7 @@ class WebServerSecurityTest {
 
     @After
     fun tearDown() {
+        ManagedKeyboxParserOracle.reset()
         SecureFile.impl = originalSecureFileImpl
         server.stop()
     }

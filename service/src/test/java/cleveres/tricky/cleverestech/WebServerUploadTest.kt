@@ -52,6 +52,9 @@ class WebServerUploadTest {
             },
         )
         configDir = tempFolder.newFolder("config")
+        KeyboxLoader.resetForTesting()
+        cleveres.tricky.cleverestech.keystore.CertHack.setKeyboxes(emptyList())
+        ManagedKeyboxParserOracle.install()
 
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl =
@@ -94,6 +97,10 @@ class WebServerUploadTest {
 
     @After
     fun tearDown() {
+        KeyboxLoader.resetForTesting()
+        BackendRecovery.recoveryOverride = null
+        cleveres.tricky.cleverestech.keystore.CertHack.setKeyboxes(emptyList())
+        ManagedKeyboxParserOracle.reset()
         SecureFile.impl = originalSecureFileImpl
         server.stop()
     }
@@ -159,6 +166,24 @@ class WebServerUploadTest {
 
         val f = File(configDir, "keyboxes/valid_keybox.xml")
         assert(f.exists())
+    }
+
+    @Test
+    fun testValidUploadDoesNotReportSuccessWhenBackendActivationFails() {
+        KeyboxLoader.activeSetOverride = { true }
+        assertEquals(200, uploadKeybox("active.xml", TestKeyboxFixtures.validEcKeyboxXml))
+        val activeKeyboxCount = cleveres.tricky.cleverestech.keystore.CertHack.getPublishedKeyboxCountForTesting()
+
+        KeyboxLoader.activeSetOverride = { false }
+        BackendRecovery.recoveryOverride = { false }
+        val responseCode = uploadKeybox("activation_failure.xml", TestKeyboxFixtures.validEcKeyboxXml)
+
+        assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, responseCode)
+        assertEquals(
+        activeKeyboxCount,
+        cleveres.tricky.cleverestech.keystore.CertHack.getPublishedKeyboxCountForTesting(),
+    )
+        assert(File(configDir, "keyboxes/activation_failure.xml").exists())
     }
 
     @Test

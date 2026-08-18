@@ -27,6 +27,7 @@ class WebUiBridgeTest {
     fun setUp() {
         SecureFile.impl = MockSecureFileOperations()
         configDir = tempFolder.newFolder("config")
+        File(configDir, "webui_bridge/staging").mkdirs()
     }
 
     @After
@@ -38,21 +39,19 @@ class WebUiBridgeTest {
     @Test
     fun `native request reaches api without network authentication`() {
         bridge = WebUiBridge(WebServer(0, configDir), configDir)
-        bridge.start()
-        val response = submit("00000000000000000000000000000001", "/api/config")
+        val response = submit("/api/config")
 
         assertEquals(200, response.getInt("status"))
         val body = decodeBody(response)
         assertTrue(JSONObject(body).has("files"))
-        assertFalse(File(configDir, "webui_bridge/requests/00000000000000000000000000000001.request").exists())
-        assertFalse(File(configDir, "webui_bridge/requests/00000000000000000000000000000001.working").exists())
+        assertFalse(File(configDir, "webui_bridge/requests").exists())
+        assertFalse(File(configDir, "webui_bridge/responses").exists())
     }
 
     @Test
     fun `tamper lockdown and unknown fields fail closed`() {
         bridge = WebUiBridge(WebServer(0, configDir, true), configDir)
-        bridge.start()
-        val blocked = submit("00000000000000000000000000000002", "/api/config")
+        val blocked = submit("/api/config")
         assertEquals(403, blocked.getInt("status"))
 
         val invalid =
@@ -62,15 +61,38 @@ class WebUiBridgeTest {
                 .put("path", "/api/config")
                 .put("parameters", JSONObject())
                 .put("unexpected", true)
-        val rejected = submit("00000000000000000000000000000003", invalid)
+        val rejected = submit(invalid)
         assertEquals(400, rejected.getInt("status"))
+    }
+
+    @Test
+    fun `malformed and oversized request envelopes fail closed`() {
+        bridge = WebUiBridge(WebServer(0, configDir), configDir)
+        val malformed = bridge.processRequestBytes("not-json".toByteArray())
+        assertEquals(400, JSONObject(String(malformed)).getInt("status"))
+
+        val invalidUtf8 = byteArrayOf(0xc3.toByte(), 0x28)
+        try {
+            val rejected = bridge.processRequestBytes(invalidUtf8)
+            assertEquals(400, JSONObject(String(rejected, Charsets.UTF_8)).getInt("status"))
+        } finally {
+            invalidUtf8.fill(0)
+        }
+
+        val oversized = ByteArray(1024 * 1024 + 1)
+        try {
+            bridge.processRequestBytes(oversized)
+            throw AssertionError("oversized request was accepted")
+        } catch (_: IllegalArgumentException) {
+            // The UDS frame parser rejects this size before JSON parsing in production.
+        } finally {
+            oversized.fill(0)
+        }
     }
 
     @Test
     fun `large responses spill to bounded staging`() {
         bridge = WebUiBridge(WebServer(0, configDir), configDir)
-        bridge.start()
-        val requestId = "00000000000000000000000000000004"
         val body = ByteArray(300 * 1024) { index -> (index and 0xff).toByte() }
         val response =
             NanoHTTPD.newFixedLengthResponse(
@@ -79,28 +101,18 @@ class WebUiBridgeTest {
                 ByteArrayInputStream(body),
                 body.size.toLong(),
             )
-        val responseFile = File(configDir, "webui_bridge/responses/$requestId.response")
-        val method =
-            WebUiBridge::class.java.getDeclaredMethod(
-                "writeResponse",
-                String::class.java,
-                File::class.java,
-                NanoHTTPD.Response::class.java,
-            )
-        method.isAccessible = true
-        method.invoke(bridge, requestId, responseFile, response)
+        val envelope = JSONObject(String(bridge.encodeResponse(response), Charsets.UTF_8))
+        val downloadId = envelope.getString("downloadId")
 
-        val envelope = JSONObject(responseFile.readText())
+        assertTrue(Regex("[0-9a-f]{32}").matches(downloadId))
         assertEquals(body.size, envelope.getInt("size"))
-        assertEquals(requestId, envelope.getString("downloadId"))
         assertFalse(envelope.has("body"))
-        assertArrayEquals(body, File(configDir, "webui_bridge/staging/$requestId.download").readBytes())
+        assertArrayEquals(body, File(configDir, "webui_bridge/staging/$downloadId.download").readBytes())
     }
 
     @Test
     fun `rejected upload request removes its staging file`() {
         bridge = WebUiBridge(WebServer(0, configDir), configDir)
-        bridge.start()
         val uploadId = "11111111111111111111111111111111"
         val upload = File(configDir, "webui_bridge/staging/$uploadId.upload")
         upload.writeText("payload")
@@ -113,18 +125,14 @@ class WebUiBridgeTest {
                 .put("uploadId", uploadId)
                 .put("uploadField", 7)
 
-        val response = submit("00000000000000000000000000000005", request)
+        val response = submit(request)
 
         assertEquals(400, response.getInt("status"))
         assertFalse(upload.exists())
     }
 
-    private fun submit(
-        id: String,
-        path: String,
-    ): JSONObject =
+    private fun submit(path: String): JSONObject =
         submit(
-            id,
             JSONObject()
                 .put("version", 1)
                 .put("method", "GET")
@@ -132,19 +140,13 @@ class WebUiBridgeTest {
                 .put("parameters", JSONObject()),
         )
 
-    private fun submit(
-        id: String,
-        request: JSONObject,
-    ): JSONObject {
-        val requestFile = File(configDir, "webui_bridge/requests/$id.request")
-        requestFile.writeText(request.toString())
-        val responseFile = File(configDir, "webui_bridge/responses/$id.response")
-        repeat(200) {
-            bridge.processPendingRequests()
-            if (responseFile.isFile) return JSONObject(responseFile.readText())
-            Thread.sleep(10)
+    private fun submit(request: JSONObject): JSONObject {
+        val requestBytes = request.toString().toByteArray(Charsets.UTF_8)
+        return try {
+            JSONObject(String(bridge.processRequestBytes(requestBytes), Charsets.UTF_8))
+        } finally {
+            requestBytes.fill(0)
         }
-        throw AssertionError("Native bridge response was not published")
     }
 
     private fun decodeBody(response: JSONObject): String {

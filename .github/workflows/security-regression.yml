@@ -51,17 +51,23 @@ jobs:
             curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output /dev/null "$url"
           done
 
-      - name: Enforce resolved Bouncy Castle security baseline
+      - name: Enforce Bouncy Castle test-only security baseline
         shell: bash
         run: |
           set -euo pipefail
-          check_bc() {
+          resolved_version() {
+            artifact="$1"
+            configuration="$2"
+            output=$(./gradlew :service:dependencyInsight --dependency "org.bouncycastle:${artifact}" --configuration "$configuration" --console=plain)
+            printf '%s\n' "$output" | sed -nE "s/^org\.bouncycastle:${artifact}:([^[:space:]]+).*/\1/p" | head -n1
+          }
+          enforce_minimum() {
             artifact="$1"
             minimum="$2"
-            output=$(./gradlew :service:dependencyInsight --dependency "org.bouncycastle:${artifact}" --configuration debugRuntimeClasspath --console=plain)
-            resolved=$(printf '%s\n' "$output" | sed -nE "s/^org\.bouncycastle:${artifact}:([^[:space:]]+).*/\1/p" | head -n1)
+            configuration="$3"
+            resolved=$(resolved_version "$artifact" "$configuration")
             if [[ -z "$resolved" ]]; then
-              echo "::error::Could not resolve org.bouncycastle:${artifact}"
+              echo "::error::Could not resolve org.bouncycastle:${artifact} from ${configuration}"
               exit 1
             fi
             lowest=$(printf '%s\n%s\n' "$minimum" "$resolved" | sort -V | head -n1)
@@ -69,11 +75,22 @@ jobs:
               echo "::error::org.bouncycastle:${artifact} resolved to $resolved below security baseline $minimum"
               exit 1
             fi
-            echo "org.bouncycastle:${artifact} resolved to $resolved (minimum $minimum)"
+            echo "org.bouncycastle:${artifact} test oracle resolved to $resolved (minimum $minimum)"
           }
-          check_bc bcprov-jdk18on 1.84
-          check_bc bcpkix-jdk18on 1.84
-          check_bc bcutil-jdk18on 1.84
+          for artifact in bcprov-jdk18on bcpkix-jdk18on bcutil-jdk18on; do
+            runtime=$(resolved_version "$artifact" debugRuntimeClasspath)
+            if [[ -n "$runtime" ]]; then
+              echo "::error::org.bouncycastle:${artifact}:$runtime leaked into production debugRuntimeClasspath"
+              exit 1
+            fi
+          done
+          enforce_minimum bcprov-jdk18on 1.84 debugUnitTestRuntimeClasspath
+          enforce_minimum bcpkix-jdk18on 1.84 debugUnitTestRuntimeClasspath
+          enforce_minimum bcutil-jdk18on 1.84 debugUnitTestRuntimeClasspath
+
+      - name: Validate installer extraction security
+        shell: bash
+        run: bash module/install-tests/verify_extract_security.test.sh
 
       - name: Validate all WebUI syntax and behavior
         shell: bash
@@ -101,7 +118,62 @@ jobs:
           cargo test -p cleverestricky-native-core platform::tests::fast_binder_cache_keeps_alternating_exchange_sites_hot -- --exact
 
       - name: Run Android JVM unit tests
+        id: android_jvm_tests
+        continue-on-error: true
         run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
+      - name: Show Android JVM test failures
+        if: steps.android_jvm_tests.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=false
+          while IFS= read -r report; do
+            found=true
+            echo "===== $report ====="
+            python3 - "$report" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          path = sys.argv[1]
+          root = ET.parse(path).getroot()
+          for case in root.findall("testcase"):
+              failures = list(case.findall("failure")) + list(case.findall("error"))
+              for failure in failures:
+                  name = case.get("name", "<unnamed>")
+                  cls = case.get("classname", "<unknown>")
+                  message = failure.get("message", "")
+                  text = (failure.text or "").strip()
+                  print(f"FAILED: {cls} > {name}")
+                  if message:
+                      print(message)
+                  if text:
+                      print(text)
+          PY
+          done < <(find service stub encryptor-app -type f -path '*/build/test-results/*/TEST-*.xml' -print | sort)
+          if [[ "$found" != "true" ]]; then
+            echo "::warning::Android JVM tests failed but no XML test report was found"
+          fi
+
+      - name: Upload Android JVM failure reports
+        if: steps.android_jvm_tests.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: security-jvm-failure-reports
+          path: |
+            service/build/test-results
+            service/build/reports/tests
+            stub/build/test-results
+            stub/build/reports/tests
+            encryptor-app/build/test-results
+            encryptor-app/build/reports/tests
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
+
+      - name: Enforce Android JVM unit test result
+        if: steps.android_jvm_tests.outcome == 'failure'
+        run: exit 1
 
   dependency-submission:
     name: "📦 Submit Gradle Dependency Graph"
@@ -116,9 +188,6 @@ jobs:
 
       - name: Setup Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          java-version: 21
 
       - name: Submit resolved Gradle dependency graph
         uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0

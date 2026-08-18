@@ -16,6 +16,10 @@ val releaseSigningValues =
     )
 val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
 val useDebugSigningForPullRequest = System.getenv("GITHUB_EVENT_NAME") == "pull_request"
+val moduleVersionCode = rootProject.extra["verCode"] as Int
+val moduleVersionName = rootProject.extra["verName"] as String
+val encryptorMinSdk = 26
+val generatedRustJni = file("build/generated/rust/jniLibs")
 
 if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigured) {
     throw GradleException("Encryptor release signing configuration is incomplete")
@@ -27,14 +31,22 @@ android {
 
     defaultConfig {
         applicationId = "cleveres.tricky.encryptor"
-        minSdk = 26
+        minSdk = encryptorMinSdk
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = moduleVersionCode
+        versionName = moduleVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+    }
+
+    bundle {
+        language {
+            // The vault offers an in-app language picker and must keep all packaged locales
+            // available offline instead of relying on Play language split downloads.
+            enableSplit = false
         }
     }
 
@@ -66,20 +78,27 @@ android {
         }
     }
     compileOptions {
+        // Current Compose/AndroidX artifacts contain JVM 11 bytecode. Keeping Java and Kotlin on
+        // the same target avoids higher-platform inlining failures while D8 still supports minSdk 26.
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("main").jniLibs.srcDir(generatedRustJni)
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
     testOptions {
         unitTests.all {
-            // Avoid locale-dependent native library naming issues on Windows hosts.
             it.systemProperty("user.language", "en")
             it.systemProperty("user.country", "US")
         }
@@ -90,6 +109,61 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
+}
+
+val buildEncryptorRust =
+    tasks.register<Exec>("buildEncryptorRust") {
+        group = "rust"
+        description = "Builds the Rust CBOX/vault JNI bridge for supported Android ABIs"
+        dependsOn(":module:installRustTargets")
+        workingDir = file("../rust")
+        environment("RUSTFLAGS", "-D warnings")
+        doFirst {
+            generatedRustJni.deleteRecursively()
+            generatedRustJni.mkdirs()
+        }
+        commandLine(
+            "cargo",
+            "ndk",
+            "--platform",
+            encryptorMinSdk.toString(),
+            "-t",
+            "arm64-v8a",
+            "-t",
+            "x86_64",
+            "-o",
+            generatedRustJni.absolutePath,
+            "build",
+            "--release",
+            "-p",
+            "cleverestricky-encryptor-native",
+        )
+    }
+
+tasks.named("preBuild") {
+    dependsOn(buildEncryptorRust)
+}
+
+tasks.register("verifyModuleVersionParity") {
+    group = "verification"
+    doLast {
+        check(android.defaultConfig.versionCode == moduleVersionCode) {
+            "Encryptor versionCode must match module verCode"
+        }
+        check(android.defaultConfig.versionName == moduleVersionName) {
+            "Encryptor versionName must match module verName"
+        }
+        check(android.compileOptions.sourceCompatibility == JavaVersion.VERSION_11) {
+            "Encryptor Java sourceCompatibility must remain JVM 11"
+        }
+        check(android.compileOptions.targetCompatibility == JavaVersion.VERSION_11) {
+            "Encryptor Java targetCompatibility must remain JVM 11"
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("verifyModuleVersionParity")
 }
 
 dependencies {

@@ -1,49 +1,118 @@
 package cleveres.tricky.cleverestech.util
 
-import android.util.Base64
-import cleveres.tricky.cleverestech.Logger
-import org.json.JSONObject
+import cleveres.tricky.cleverestech.NativeBackend
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.security.KeyFactory
-import java.security.PublicKey
-import java.security.Signature
-import java.security.spec.X509EncodedKeySpec
-import javax.crypto.Cipher
-import javax.crypto.SecretKeyFactory
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.PBEKeySpec
-import javax.crypto.spec.SecretKeySpec
 
+/**
+ * Compatibility seam for legacy callers. CBOX cryptography and signature verification live exclusively
+ * in the unprivileged Rust backend; this object only classifies envelopes and bounds stream ingestion.
+ */
 object CboxDecryptor {
-    private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
-    private const val AES_TRANSFORMATION = "AES/GCM/NoPadding"
-    private const val ITERATION_COUNT = 250_000
-    private const val KEY_LENGTH = 256
+    private const val CBOX_MAGIC = "CBOX"
     private const val SALT_LENGTH = 16
     private const val IV_LENGTH = 12
     private const val GCM_TAG_LENGTH = 16
-    private const val CBOX_MAGIC = "CBOX"
-    private const val MAX_CIPHERTEXT_BYTES = 10 * 1024 * 1024
-    private const val MAX_XML_CHARS = 10 * 1024 * 1024
-    private const val MAX_SIGNATURE_CHARS = 16 * 1024
-    private const val MAX_AUTHOR_CHARS = 1024
+    private const val HEADER_BYTES = 4 + Int.SIZE_BYTES + SALT_LENGTH + IV_LENGTH + GCM_TAG_LENGTH
+    private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
     private const val MAX_PASSWORD_CHARS = 1024
+    private const val READ_BUFFER_BYTES = 16 * 1024
+    private const val MAX_EMPTY_READS = 16
 
-    data class CboxPayload(
-        val author: String,
-        val xmlContent: String,
-        val signatureBase64: String,
-        val signatureVersion: Int,
-    )
+    private val magicBytes = CBOX_MAGIC.toByteArray(StandardCharsets.US_ASCII)
+
+    @Volatile
+    internal var backendOpenOverride: ((ByteArray, String, String?) -> NativeBackend.CboxPayload?)? = null
+
+    class CboxPayload internal constructor(
+        encrypted: ByteArray,
+        private val password: String,
+    ) {
+        private var encryptedBytes: ByteArray? = encrypted
+        private var opened: NativeBackend.CboxPayload? = null
+        private var attemptedWithoutKey = false
+        private var verifiedPublicKey: String? = null
+
+        val author: String
+            get() = openWithoutVerification()?.author.orEmpty()
+
+        /** Temporary legacy accessor. Prefer [takeXmlContentBytes] for production parsing. */
+        val xmlContent: String
+            get() {
+                val bytes = openWithoutVerification()?.xmlContent ?: return ""
+                return String(bytes, StandardCharsets.UTF_8)
+            }
+
+        /** Mutable copy for compatibility callers. The caller owns and must clear the returned bytes. */
+        internal val xmlContentBytes: ByteArray
+            get() = openWithoutVerification()?.xmlContent?.copyOf() ?: ByteArray(0)
+
+        /**
+         * Transfer plaintext XML to a byte-oriented caller and wipe the backend response buffer.
+         * The caller owns and must clear the returned bytes.
+         */
+        @Synchronized
+        internal fun takeXmlContentBytes(): ByteArray {
+            val payload = openWithoutVerification() ?: return ByteArray(0)
+            val copy = payload.xmlContent.copyOf()
+            payload.xmlContent.fill(0)
+            return copy
+        }
+
+        @Synchronized
+        internal fun verify(publicKey: String): Boolean {
+            val normalizedKey = publicKey.takeUnless { it.isBlank() } ?: return false
+            if (verifiedPublicKey != null) return verifiedPublicKey == normalizedKey
+
+            val encrypted = encryptedBytes ?: return false
+            val verified = openBackend(encrypted, password, normalizedKey) ?: return false
+            if (!verified.hasSignature) {
+                verified.xmlContent.fill(0)
+                return false
+            }
+
+            opened?.takeIf { it !== verified }?.xmlContent?.fill(0)
+            opened = verified
+            verifiedPublicKey = normalizedKey
+            encrypted.fill(0)
+            encryptedBytes = null
+            return true
+        }
+
+        @Synchronized
+        private fun openWithoutVerification(): NativeBackend.CboxPayload? {
+            opened?.let { return it }
+            if (attemptedWithoutKey) return null
+            attemptedWithoutKey = true
+            val encrypted = encryptedBytes ?: return null
+            val payload = openBackend(encrypted, password, null)
+            if (payload == null) {
+                encrypted.fill(0)
+                encryptedBytes = null
+                return null
+            }
+            opened = payload
+            if (!payload.hasSignature) {
+                encrypted.fill(0)
+                encryptedBytes = null
+            }
+            return payload
+        }
+    }
 
     fun hasSupportedEnvelopeHeader(bytes: ByteArray): Boolean {
-        if (bytes.size < 4 + Int.SIZE_BYTES + SALT_LENGTH + IV_LENGTH + GCM_TAG_LENGTH) return false
-        if (!bytes.copyOfRange(0, 4).contentEquals(CBOX_MAGIC.toByteArray(StandardCharsets.US_ASCII))) {
-            return false
+        if (bytes.size < HEADER_BYTES) return false
+        for (index in magicBytes.indices) {
+            if (bytes[index] != magicBytes[index]) return false
         }
-        return ByteBuffer.wrap(bytes, 4, Int.SIZE_BYTES).int in 1..2
+        val versionOffset = magicBytes.size
+        val version =
+            ((bytes[versionOffset].toInt() and 0xff) shl 24) or
+                ((bytes[versionOffset + 1].toInt() and 0xff) shl 16) or
+                ((bytes[versionOffset + 2].toInt() and 0xff) shl 8) or
+                (bytes[versionOffset + 3].toInt() and 0xff)
+        return version in 1..2
     }
 
     fun decrypt(
@@ -51,195 +120,61 @@ object CboxDecryptor {
         password: String,
     ): CboxPayload? {
         if (password.length > MAX_PASSWORD_CHARS) return null
-
-        val magic = ByteArray(4)
-        val versionBytes = ByteArray(Int.SIZE_BYTES)
-        val salt = ByteArray(SALT_LENGTH)
-        val iv = ByteArray(IV_LENGTH)
-        var ciphertext: ByteArray? = null
-        var keyBytes: ByteArray? = null
-        try {
-            if (!readFully(inputStream, magic) || String(magic, StandardCharsets.US_ASCII) != CBOX_MAGIC) {
-                Logger.e("Invalid CBOX header")
-                return null
-            }
-            if (!readFully(inputStream, versionBytes)) return null
-            val version = ByteBuffer.wrap(versionBytes).int
-            if (version !in 1..2) {
-                Logger.e("Unsupported CBOX version")
-                return null
-            }
-            if (!readFully(inputStream, salt) || !readFully(inputStream, iv)) return null
-
-            val encrypted = readLimited(inputStream, MAX_CIPHERTEXT_BYTES) ?: return null
-            ciphertext = encrypted
-            if (encrypted.size < GCM_TAG_LENGTH) {
-                Logger.e("CBOX ciphertext is shorter than its authentication tag")
-                return null
-            }
-
-            val derivedKey = deriveKey(password, salt)
-            keyBytes = derivedKey
-            val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-            cipher.init(
-                Cipher.DECRYPT_MODE,
-                SecretKeySpec(derivedKey, "AES"),
-                GCMParameterSpec(128, iv),
-            )
-            if (version == 2) {
-                cipher.updateAAD(magic)
-                cipher.updateAAD(versionBytes)
-                cipher.updateAAD(salt)
-                cipher.updateAAD(iv)
-            }
-            val plaintext = cipher.doFinal(encrypted)
-            try {
-                val json = JSONObject(String(plaintext, StandardCharsets.UTF_8))
-                val author = json.getString("author")
-                val xmlContent = json.getString("xml_content")
-                val signature = json.getString("signature")
-                val signatureVersion = json.optInt("signature_version", 1)
-                if (author.length > MAX_AUTHOR_CHARS ||
-                    xmlContent.length > MAX_XML_CHARS ||
-                    signature.length > MAX_SIGNATURE_CHARS ||
-                    signatureVersion !in 1..2
-                ) {
-                    Logger.e("CBOX metadata exceeds safety limits")
-                    return null
-                }
-                return CboxPayload(author, xmlContent, signature, signatureVersion)
-            } finally {
-                plaintext.fill(0)
-            }
-        } catch (e: Exception) {
-            Logger.e("CBOX decryption failed: ${e.javaClass.simpleName}")
+        val encrypted = readBounded(inputStream) ?: return null
+        if (!hasSupportedEnvelopeHeader(encrypted)) {
+            encrypted.fill(0)
             return null
-        } finally {
-            magic.fill(0)
-            versionBytes.fill(0)
-            salt.fill(0)
-            iv.fill(0)
-            ciphertext?.fill(0)
-            keyBytes?.fill(0)
         }
+        return CboxPayload(encrypted, password)
     }
 
     fun verifySignature(
         payload: CboxPayload,
         publicKeyBase64: String,
-    ): Boolean {
-        if (publicKeyBase64.length > MAX_SIGNATURE_CHARS ||
-            payload.signatureBase64.length > MAX_SIGNATURE_CHARS
-        ) {
-            return false
-        }
+    ): Boolean = publicKeyBase64.isNotBlank() && payload.verify(publicKeyBase64)
 
-        var publicKeyBytes: ByteArray? = null
-        var signatureBytes: ByteArray? = null
-        val sensitiveParts = ArrayList<ByteArray>()
-        return try {
-            val decodedPublicKey = Base64.decode(publicKeyBase64, Base64.DEFAULT)
-            publicKeyBytes = decodedPublicKey
-            val publicKey = parsePublicKey(decodedPublicKey) ?: return false
-            val verifier =
-                Signature.getInstance(
-                    when (publicKey.algorithm.uppercase()) {
-                        "EC", "ECDSA" -> "SHA256withECDSA"
-                        else -> "SHA256withRSA"
-                    },
-                )
-            verifier.initVerify(publicKey)
-            updateSignature(verifier, payload, sensitiveParts)
-            val decodedSignature = Base64.decode(payload.signatureBase64, Base64.DEFAULT)
-            signatureBytes = decodedSignature
-            verifier.verify(decodedSignature)
-        } catch (e: Exception) {
-            Logger.e("CBOX signature verification failed: ${e.javaClass.simpleName}")
-            false
-        } finally {
-            publicKeyBytes?.fill(0)
-            signatureBytes?.fill(0)
-            sensitiveParts.forEach { it.fill(0) }
-        }
+    internal fun resetForTesting() {
+        backendOpenOverride = null
     }
 
-    private fun updateSignature(
-        verifier: Signature,
-        payload: CboxPayload,
-        sensitiveParts: MutableList<ByteArray>,
-    ) {
-        val author = payload.author.toByteArray(StandardCharsets.UTF_8).also(sensitiveParts::add)
-        val xml = payload.xmlContent.toByteArray(StandardCharsets.UTF_8).also(sensitiveParts::add)
-        if (payload.signatureVersion == 1) {
-            verifier.update(author)
-            verifier.update(xml)
-            return
-        }
-        verifier.update(SIGNATURE_V2_DOMAIN)
-        verifier.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(author.size).array())
-        verifier.update(author)
-        verifier.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(xml.size).array())
-        verifier.update(xml)
-    }
-
-    private fun parsePublicKey(encoded: ByteArray): PublicKey? {
-        val spec = X509EncodedKeySpec(encoded)
-        return runCatching { KeyFactory.getInstance("RSA").generatePublic(spec) }
-            .recoverCatching { KeyFactory.getInstance("EC").generatePublic(spec) }
-            .getOrNull()
-    }
-
-    private fun deriveKey(
+    private fun openBackend(
+        encrypted: ByteArray,
         password: String,
-        salt: ByteArray,
-    ): ByteArray {
-        val passwordChars = password.toCharArray()
-        val spec = PBEKeySpec(passwordChars, salt, ITERATION_COUNT, KEY_LENGTH)
-        return try {
-            SecretKeyFactory.getInstance(PBKDF2_ALGORITHM).generateSecret(spec).encoded
-        } finally {
-            spec.clearPassword()
-            passwordChars.fill('\u0000')
+        publicKey: String?,
+    ): NativeBackend.CboxPayload? {
+        val override = backendOpenOverride
+        return if (override != null) {
+            override(encrypted, password, publicKey)
+        } else {
+            NativeBackend.openCbox(encrypted, password, publicKey)
         }
     }
 
-    private fun readFully(
-        input: InputStream,
-        destination: ByteArray,
-    ): Boolean {
-        var offset = 0
-        while (offset < destination.size) {
-            val count = input.read(destination, offset, destination.size - offset)
-            if (count < 0) return false
-            if (count == 0) continue
-            offset += count
-        }
-        return true
-    }
-
-    private fun readLimited(
-        input: InputStream,
-        maxBytes: Int,
-    ): ByteArray? {
-        val output = FastByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    private fun readBounded(input: InputStream): ByteArray? {
+        val initialCapacity = input.available().coerceIn(0, MAX_CBOX_BYTES).coerceAtLeast(HEADER_BYTES)
+        val output = ByteArrayOutputStream(initialCapacity)
+        val buffer = ByteArray(READ_BUFFER_BYTES)
+        var total = 0
+        var emptyReads = 0
         return try {
-            var total = 0
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
-                if (count == 0) continue
-                if (count > maxBytes - total) return null
+                if (count == 0) {
+                    if (++emptyReads > MAX_EMPTY_READS) return null
+                    continue
+                }
+                emptyReads = 0
+                total = Math.addExact(total, count)
+                if (total > MAX_CBOX_BYTES) return null
                 output.write(buffer, 0, count)
-                total += count
             }
             output.toByteArray()
+        } catch (_: ArithmeticException) {
+            null
         } finally {
             buffer.fill(0)
-            output.wipe()
+            output.reset()
         }
     }
-
-    private val SIGNATURE_V2_DOMAIN =
-        "CBOX-SIGNATURE-V2\u0000".toByteArray(StandardCharsets.US_ASCII)
 }

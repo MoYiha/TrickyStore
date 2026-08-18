@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,13 +46,13 @@ class WebServerFingerprintTest {
         configDir = tempFolder.newFolder("config")
         server = WebServer(0, configDir)
         server.start()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @After
     fun tearDown() {
         server.stop()
-        CertHack.readFromXml(null)
+        ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
     @Test
@@ -64,9 +63,6 @@ class WebServerFingerprintTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        // Check for the Fingerprint header and the copy button next to it
-        // Note: The HTML might contain escaped characters, so checking for substrings
-        // that uniquely identify the button next to "Fingerprint" is key.
         assertTrue(
             "Fingerprint section should include a Copy button",
             html.contains("<div class=\"section-header\">") &&

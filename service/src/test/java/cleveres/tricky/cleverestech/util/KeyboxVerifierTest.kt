@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.util
 
+import cleveres.tricky.cleverestech.KeyboxLoader
 import cleveres.tricky.cleverestech.keystore.CertHack
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -55,6 +56,38 @@ class KeyboxVerifierTest {
         val key = "1".repeat(129)
         assertThrows(IOException::class.java) {
             KeyboxVerifier.parseCrl("""{"entries":{"$key":"REVOKED"}}""")
+        }
+    }
+
+    @Test
+    fun `verify parses keybox files through Rust loader boundary`() {
+        val configDir = Files.createTempDirectory("keybox-verifier-rust-path").toFile()
+        val file = configDir.resolve("keybox.xml")
+        file.writeText("not legacy XML")
+        val mockCert = Mockito.mock(X509Certificate::class.java)
+        Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger.ONE)
+        val publicKey = Mockito.mock(java.security.PublicKey::class.java)
+        Mockito.`when`(publicKey.encoded).thenReturn(byteArrayOf(1, 2, 3))
+        Mockito.`when`(mockCert.publicKey).thenReturn(publicKey)
+        val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+        Mockito.`when`(mockKeyBox.certificates()).thenReturn(listOf(mockCert))
+        var observedScope: KeyboxLoader.FileScope? = null
+        var observedFilename: String? = null
+        KeyboxLoader.fileParserOverride = { scope, filename ->
+            observedScope = scope
+            observedFilename = filename
+            listOf(mockKeyBox)
+        }
+
+        try {
+            val result = KeyboxVerifier.verify(configDir) { emptySet() }.single()
+
+            assertEquals(KeyboxVerifier.Status.VALID, result.status)
+            assertEquals(KeyboxLoader.FileScope.CONFIG_ROOT, observedScope)
+            assertEquals("keybox.xml", observedFilename)
+        } finally {
+            KeyboxLoader.resetForTesting()
+            configDir.deleteRecursively()
         }
     }
 

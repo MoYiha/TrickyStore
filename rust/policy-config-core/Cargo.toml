@@ -1,0 +1,9 @@
+# Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+[package]
+name = "cleverestricky-policy-config-core"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded portable policy configuration parsers for CleveresTricky"
+license = "GPL-3.0-only"
+
+[dependencies]

@@ -1,7 +1,3 @@
 #!/system/bin/sh
-
 MODDIR=${0%/*}
-export CLASSPATH="$MODDIR/service.apk"
-exec /system/bin/app_process / \
-  --nice-name=CleveresTricky \
-  cleveres.tricky.cleverestech.MainKt
+exec "$MODDIR/cleverestrickyd" "$MODDIR"

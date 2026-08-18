@@ -11,7 +11,7 @@ public class ConcurrencyTest {
 
     @After
     public void tearDown() {
-        CertHack.readFromXml(null);
+        ManagedKeyboxStateOracle.readFromXml(null);
     }
 
     private static final String VALID_XML = "<?xml version=\"1.0\"?>\n" +
@@ -34,7 +34,7 @@ public class ConcurrencyTest {
 
     @Test
     public void testKeyboxesConcurrency() throws InterruptedException {
-        CertHack.readFromXml(new StringReader(VALID_XML));
+        ManagedKeyboxStateOracle.readFromXml(new StringReader(VALID_XML));
         assertTrue(CertHack.canHack());
 
         AtomicBoolean running = new AtomicBoolean(true);
@@ -50,7 +50,7 @@ public class ConcurrencyTest {
 
         Thread writer = new Thread(() -> {
             for (int i = 0; i < 100; i++) {
-                CertHack.readFromXml(new StringReader(VALID_XML));
+                ManagedKeyboxStateOracle.readFromXml(new StringReader(VALID_XML));
                 try {
                     Thread.sleep(1);
                 } catch (InterruptedException e) {

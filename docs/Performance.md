@@ -38,6 +38,10 @@ The WebUI resource view reads bounded procfs lines only when opened. Its CPU par
 
 Encrypted and backup operations enforce expanded size before retaining input. Sensitive temporary byte arrays are cleared where the managed runtime permits.
 
+## Reproducible artifact measurements
+
+Artifact sizes and hashes are intentionally not pinned to an intermediate PR head. For a release candidate, use the artifact from the Build run attached to the exact commit being reviewed and record the run ID, artifact ID, archive SHA-256, and per-binary sizes together.
+
 ## Build choices
 
 Release Rust uses full link time optimization, one code generation unit, size optimization, symbol stripping, and caught panic unwinding at FFI boundaries. The small unwind cost prevents an unexpected Rust panic from terminating a critical injected process.

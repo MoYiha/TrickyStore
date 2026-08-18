@@ -54,14 +54,29 @@ fi
 ui_print "- Device sdk: $API (Supported)"
 
 ui_print "- Extracting verify.sh"
-unzip -o "$ZIPFILE" 'verify.sh' -d "$TMPDIR" >&2 \
-  || abort "! Unable to extract verify.sh"
-if [ ! -f "$TMPDIR/verify.sh" ]; then
+for bootstrap_target in "$TMPDIR/verify.sh" "$TMPDIR/verify.sh.sha256"; do
+  if [ -L "$bootstrap_target" ] || { [ -e "$bootstrap_target" ] && [ ! -f "$bootstrap_target" ]; }; then
+    abort "! Existing installer verification target is unsafe"
+  fi
+  rm -f "$bootstrap_target" || abort "! Could not prepare installer verification target"
+done
+unzip -o "$ZIPFILE" 'verify.sh' 'verify.sh.sha256' -d "$TMPDIR" >&2 \
+  || abort "! Unable to extract installer verification files"
+if [ -L "$TMPDIR/verify.sh" ] || [ ! -f "$TMPDIR/verify.sh" ] || \
+  [ -L "$TMPDIR/verify.sh.sha256" ] || [ ! -f "$TMPDIR/verify.sh.sha256" ]; then
   ui_print "*********************************************************"
-  ui_print "! Unable to extract verify.sh!"
+  ui_print "! Unable to extract verify.sh safely!"
   ui_print "! This zip may be corrupted, please try downloading again"
   abort    "*********************************************************"
 fi
+bootstrap_hash=$(tr -d '[:space:]' < "$TMPDIR/verify.sh.sha256")
+case "$bootstrap_hash" in
+  ''|*[!0-9A-Fa-f]*) abort "! Invalid verify.sh checksum" ;;
+esac
+[ "${#bootstrap_hash}" -eq 64 ] || abort "! Invalid verify.sh checksum length"
+printf '%s  %s\n' "$bootstrap_hash" "$TMPDIR/verify.sh" | sha256sum -c - >/dev/null 2>&1 \
+  || abort "! Failed to verify verify.sh before execution"
+bootstrap_hash=
 # shellcheck disable=SC1091
 . "$TMPDIR/verify.sh"
 extract "$ZIPFILE" 'customize.sh'  "$TMPDIR/.vunzip"
@@ -74,8 +89,8 @@ fi
 ui_print "- Extracting module files"
 extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
-extract "$ZIPFILE" 'service.sh'      "$MODPATH"
-extract "$ZIPFILE" 'action.sh'       "$MODPATH"
+extract "$ZIPFILE" 'service.sh' "$MODPATH"
+extract "$ZIPFILE" 'action.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
@@ -104,20 +119,33 @@ case "$ARCH" in
     extract "$ZIPFILE" "lib/x86_64/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/x86_64/inject" "$MODPATH" true
     extract "$ZIPFILE" "lib/x86_64/webui_bridge" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/cleverestrickyd" "$MODPATH" true
+    extract "$ZIPFILE" "lib/x86_64/cleverestricky_backend" "$MODPATH" true
     ;;
   "arm64")
     ui_print "- Extracting arm64 libraries"
     extract "$ZIPFILE" "lib/arm64-v8a/lib$SONAME.so" "$MODPATH" true
     extract "$ZIPFILE" "lib/arm64-v8a/inject" "$MODPATH" true
     extract "$ZIPFILE" "lib/arm64-v8a/webui_bridge" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/cleverestrickyd" "$MODPATH" true
+    extract "$ZIPFILE" "lib/arm64-v8a/cleverestricky_backend" "$MODPATH" true
     ;;
   *)
     abort "! Unsupported ARCH: $ARCH"
     ;;
 esac
 
-chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/daemon" "$MODPATH/service.sh" \
-  "$MODPATH/post-fs-data.sh" "$MODPATH/action.sh" || abort "! Could not set module executable permissions"
+for module_payload in module.prop post-fs-data.sh service.sh action.sh service.apk sepolicy.rule daemon \
+  "lib$SONAME.so" inject webui_bridge cleverestrickyd cleverestricky_backend; do
+  payload_path="$MODPATH/$module_payload"
+  if [ -L "$payload_path" ] || [ ! -f "$payload_path" ]; then
+    abort "! Extracted module payload is unsafe: $module_payload"
+  fi
+done
+
+chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
+  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/post-fs-data.sh" \
+  || abort "! Could not set module executable permissions"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ -L "$CONFIG_DIR" ]; then
@@ -279,10 +307,14 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   || abort "! Could not set policy state ownership"
 [ ! -e "$CONFIG_DIR/spoof_enabled" ] || chown 0:0 "$CONFIG_DIR/spoof_enabled" \
   || abort "! Could not set identity Spoof Engine switch ownership"
-[ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity"
-[ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough"
-[ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props"
-[ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging"
+[ ! -e "$CONFIG_DIR/spoof_build_identity" ] || chown 0:0 "$CONFIG_DIR/spoof_build_identity" \
+  || abort "! Could not set identity build switch ownership"
+[ ! -e "$CONFIG_DIR/drm_passthrough" ] || chown 0:0 "$CONFIG_DIR/drm_passthrough" \
+  || abort "! Could not set DRM passthrough ownership"
+[ ! -e "$CONFIG_DIR/hide_sensitive_props" ] || chown 0:0 "$CONFIG_DIR/hide_sensitive_props" \
+  || abort "! Could not set sensitive-property switch ownership"
+[ ! -e "$CONFIG_DIR/debug_logging" ] || chown 0:0 "$CONFIG_DIR/debug_logging" \
+  || abort "! Could not set debug logging switch ownership"
 
 normalize_conflicting_module_name() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]_.-'

@@ -1,7 +1,12 @@
 package cleveres.tricky.cleverestech.util
 
+import cleveres.tricky.cleverestech.CrlBackend
+import cleveres.tricky.cleverestech.CrlWire
+import cleveres.tricky.cleverestech.KeyboxLoader
 import cleveres.tricky.cleverestech.Logger
+import cleveres.tricky.cleverestech.RustBackendUnavailableException
 import cleveres.tricky.cleverestech.keystore.CertHack
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
@@ -29,21 +34,29 @@ object KeyboxVerifier {
         ERROR,
     }
 
+    private sealed interface RevocationSource {
+        data class Rust(val handle: CrlWire.Handle) : RevocationSource
+
+        data class Legacy(val entries: Set<String>) : RevocationSource
+    }
+
     private const val DEFAULT_CRL_URL = "https://android.googleapis.com/attestation/status"
     private const val MAX_CRL_BYTES = 8L * 1024 * 1024
-    private const val MAX_CRL_ENTRIES = 1_000_000
-    private const val MAX_CRL_KEY_CHARS = 128
     private const val MAX_KEYBOX_XML_BYTES = 10L * 1024 * 1024
     private const val MAX_KEYBOX_FILES = 64
     private const val PERSISTED_CRL_FILE = "attestation_status_cache.json"
+    private const val CACHE_TTL = 24 * 60 * 60 * 1000L
 
     @Volatile
     private var crlUrl = DEFAULT_CRL_URL
 
     @Volatile
     private var cacheRoot = File("/data/adb/cleverestricky")
-    private val HASH_LENGTHS = listOf(32, 40, 64)
-    private val ZEROS = "0".repeat(64)
+
+    private var cachedCrl: CrlWire.Handle? = null
+    private var cachedEtag: String? = null
+    private var lastFetchTime: Long = 0
+    private val cacheLock = java.util.concurrent.locks.ReentrantLock()
 
     @androidx.annotation.VisibleForTesting
     fun setCrlUrlForTesting(url: String) {
@@ -109,35 +122,33 @@ object KeyboxVerifier {
         }
     }
 
-    private var cachedCrl: Set<String>? = null
-    private var cachedEtag: String? = null
-    private var lastFetchTime: Long = 0
-    private const val CACHE_TTL = 24 * 60 * 60 * 1000L
-    private val cacheLock = java.util.concurrent.locks.ReentrantLock()
-
-    private fun isHex(str: String): Boolean {
-        if (str.isEmpty()) return false
-        for (i in 0 until str.length) {
-            val c = str[i]
-            if (!(c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F')) {
-                return false
-            }
-        }
-        return true
-    }
-
     @JvmStatic
-    @JvmOverloads
+    fun verify(configDir: File): List<Result> =
+        verifyWithSource(configDir) { fetchCrl()?.let(RevocationSource::Rust) }
+
+    /** JVM test compatibility only; production never models a Rust CRL generation as a Set. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
     fun verify(
         configDir: File,
-        crlFetcher: () -> Set<String>? = { fetchCrl() },
+        crlFetcher: () -> Set<String>?,
+    ): List<Result> = verifyLegacy(configDir, crlFetcher)
+
+    /** Production-source bridge used only when WebServer receives its JVM-test CRL injector. */
+    internal fun verifyLegacy(
+        configDir: File,
+        crlFetcher: () -> Set<String>?,
+    ): List<Result> =
+        verifyWithSource(configDir) { crlFetcher()?.let(RevocationSource::Legacy) }
+
+    private fun verifyWithSource(
+        configDir: File,
+        crlFetcher: () -> RevocationSource?,
     ): List<Result> {
         val results = ArrayList<Result>()
-        val revokedSerials = crlFetcher()
-
-        if (revokedSerials == null) {
-            return listOf(Result(File(""), "Global", Status.ERROR, "Failed to fetch CRL from Google"))
-        }
+        val crl =
+            crlFetcher()
+                ?: return listOf(Result(File(""), "Global", Status.ERROR, "Failed to initialize CRL index"))
 
         if (!Files.isDirectory(configDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             return listOf(Result(File(""), "Global", Status.ERROR, "Config directory not found"))
@@ -145,7 +156,7 @@ object KeyboxVerifier {
 
         val legacyFile = File(configDir, "keybox.xml")
         if (isSafeKeyboxFile(legacyFile)) {
-            results.add(checkFile(legacyFile, revokedSerials))
+            results.add(checkFile(legacyFile, KeyboxLoader.FileScope.CONFIG_ROOT, "keybox.xml", crl))
         }
 
         val keyboxDir = File(configDir, "keyboxes")
@@ -168,31 +179,32 @@ object KeyboxVerifier {
             }
             files.sortBy { it.name }
             for (file in files) {
-                results.add(checkFile(file, revokedSerials))
+                results.add(checkFile(file, KeyboxLoader.FileScope.KEYBOX_DIRECTORY, file.name, crl))
             }
         }
-
         return results
     }
 
     @JvmStatic
-    fun fetchCrl(): Set<String>? {
+    fun fetchCrl(): CrlWire.Handle? {
         val now = System.currentTimeMillis()
         cacheLock.lock()
         try {
-            if (
-                cachedCrl != null &&
-                now >= lastFetchTime &&
-                now - lastFetchTime < CACHE_TTL
-            ) {
-                return cachedCrl
+            cachedCrl?.let { cached ->
+                if (now >= lastFetchTime && now - lastFetchTime < CACHE_TTL) return cached
             }
 
             loadPersistedCrlLocked(now)?.let { persisted ->
-                cachedCrl = persisted.first
-                lastFetchTime = persisted.second
-                Logger.i("Loaded fresh attestation revocation cache from disk")
-                return persisted.first
+                val (raw, modified) = persisted
+                try {
+                    val handle = CrlBackend.refresh(raw) ?: return@let
+                    cachedCrl = handle
+                    lastFetchTime = modified
+                    Logger.i("Loaded fresh attestation revocation cache into Rust generation ${handle.generation}")
+                    return handle
+                } finally {
+                    raw.fill(0)
+                }
             }
 
             val requestedUrl = crlUrl
@@ -209,9 +221,7 @@ object KeyboxVerifier {
                 connection.requestMethod = "GET"
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("Accept-Encoding", "identity")
-                cachedEtag?.let {
-                    connection.setRequestProperty("If-None-Match", it)
-                }
+                cachedEtag?.let { connection.setRequestProperty("If-None-Match", it) }
 
                 val responseCode = connection.responseCode
                 if (responseCode == HttpURLConnection.HTTP_NOT_MODIFIED && cachedCrl != null) {
@@ -225,18 +235,19 @@ object KeyboxVerifier {
 
                 val declaredLength = connection.contentLengthLong
                 if (declaredLength > MAX_CRL_BYTES) throw IOException("CRL response is too large")
-                val rawCrl =
-                    BoundedInputStream(connection.inputStream, MAX_CRL_BYTES)
-                        .bufferedReader(Charsets.UTF_8)
-                        .use { it.readText() }
-                val newCrl = parseCrl(rawCrl)
-                cachedCrl = newCrl
-                cachedEtag = connection.getHeaderField("ETag")?.take(512)
-                lastFetchTime = now
-                persistCrlLocked(rawCrl)
-                return newCrl
-            } catch (e: Exception) {
-                Logger.e("Failed to fetch CRL", e)
+                val raw = BoundedInputStream(connection.inputStream, MAX_CRL_BYTES).use(::readAllBytesBounded)
+                try {
+                    val handle = CrlBackend.refresh(raw) ?: return null
+                    persistCrlLocked(raw)
+                    cachedCrl = handle
+                    cachedEtag = connection.getHeaderField("ETag")?.take(512)
+                    lastFetchTime = now
+                    return handle
+                } finally {
+                    raw.fill(0)
+                }
+            } catch (error: Exception) {
+                Logger.e("Failed to fetch CRL", error)
                 return null
             } finally {
                 connection.disconnect()
@@ -245,6 +256,44 @@ object KeyboxVerifier {
             cacheLock.unlock()
         }
     }
+
+    /** Rebuilds only from the persisted raw cache; restart recovery never performs recursive network work. */
+    internal fun refreshPersistedCrlForBackendRecovery(): CrlWire.Handle? {
+        val now = System.currentTimeMillis()
+        cacheLock.lock()
+        try {
+            cachedCrl = null
+            lastFetchTime = 0
+            val persisted = loadPersistedCrlLocked(now) ?: return null
+            val (raw, modified) = persisted
+            return try {
+                CrlBackend.refresh(raw)?.also { handle ->
+                    cachedCrl = handle
+                    lastFetchTime = modified
+                }
+            } finally {
+                raw.fill(0)
+            }
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    @JvmStatic
+    fun countRevokedKeys(): Int = fetchCrl()?.normalizedEntryCount ?: -1
+
+    internal fun invalidateBackendGeneration() {
+        cacheLock.lock()
+        try {
+            cachedCrl = null
+            lastFetchTime = 0
+        } finally {
+            cacheLock.unlock()
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    fun invalidateBackendGenerationForTesting() = invalidateBackendGeneration()
 
     private fun isAllowedCrlUrl(
         value: String,
@@ -260,11 +309,11 @@ object KeyboxVerifier {
                     uri.scheme.equals("https", ignoreCase = true) ||
                         (allowLoopbackHttp && loopback && uri.scheme.equals("http", ignoreCase = true))
                 )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
 
-    private fun loadPersistedCrlLocked(now: Long): Pair<Set<String>, Long>? {
+    private fun loadPersistedCrlLocked(now: Long): Pair<ByteArray, Long>? {
         val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
         val path = cacheFile.toPath()
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
@@ -273,19 +322,16 @@ object KeyboxVerifier {
         val age = now - modified
         if (size !in 1..MAX_CRL_BYTES || modified <= 0L || age < 0L || age >= CACHE_TTL) return null
         return runCatching {
-            val parsed =
-                BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
-                    .bufferedReader(Charsets.UTF_8)
-                    .use(::parseCrl)
-            parsed to modified
+            BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
+                .use(::readAllBytesBounded) to modified
         }.onFailure {
             Logger.w("Ignoring invalid persisted attestation revocation cache")
         }.getOrNull()
     }
 
-    private fun persistCrlLocked(rawCrl: String) {
+    private fun persistCrlLocked(rawCrl: ByteArray) {
         runCatching {
-            SecureFile.writeText(File(cacheRoot, PERSISTED_CRL_FILE), rawCrl)
+            SecureFile.writeBytes(File(cacheRoot, PERSISTED_CRL_FILE), rawCrl)
         }.onFailure {
             Logger.w("Could not persist attestation revocation cache")
         }
@@ -297,264 +343,148 @@ object KeyboxVerifier {
         lastFetchTime = 0
     }
 
-    @JvmStatic
-    fun parseCrl(jsonStr: String): Set<String> {
-        return parseCrl(java.io.StringReader(jsonStr))
-    }
-
-    @JvmStatic
-    fun countRevokedKeys(): Int {
-        return fetchCrl()?.size ?: -1
-    }
-
-    @JvmStatic
-    fun countCrlEntries(reader: java.io.Reader): Int {
-        var count = 0
-        val jsonReader = android.util.JsonReader(reader)
-        var entriesFound = false
-        try {
-            jsonReader.beginObject()
-            while (jsonReader.hasNext()) {
-                val name = jsonReader.nextName()
-                if (name == "entries") {
-                    entriesFound = true
-                    jsonReader.beginObject()
-                    while (jsonReader.hasNext()) {
-                        val key = jsonReader.nextName()
-                        if (key.length > MAX_CRL_KEY_CHARS) throw IOException("CRL entry key is too long")
-                        jsonReader.skipValue()
-                        count++
-                        if (count > MAX_CRL_ENTRIES) throw IOException("CRL has too many entries")
-                    }
-                    jsonReader.endObject()
-                } else {
-                    jsonReader.skipValue()
-                }
-            }
-            jsonReader.endObject()
-        } catch (e: Exception) {
-            Logger.e("Failed to count CRL JSON entries", e)
-            return -1
-        } finally {
-            try {
-                jsonReader.close()
-            } catch (_: Exception) {
-            }
-        }
-        return if (entriesFound) count else -1
-    }
-
-    @JvmStatic
-    fun parseCrl(reader: java.io.Reader): Set<String> {
-        val set = HashSet<String>()
-        val jsonReader = android.util.JsonReader(reader)
-        var entriesFound = false
-        var entriesProcessed = 0
-        try {
-            jsonReader.beginObject()
-            while (jsonReader.hasNext()) {
-                val name = jsonReader.nextName()
-                if (name == "entries") {
-                    entriesFound = true
-                    jsonReader.beginObject()
-                    while (jsonReader.hasNext()) {
-                        if (++entriesProcessed > MAX_CRL_ENTRIES) throw IOException("CRL has too many entries")
-                        val decStr = jsonReader.nextName()
-                        if (decStr.length > MAX_CRL_KEY_CHARS) throw IOException("CRL entry key is too long")
-                        jsonReader.skipValue()
-                        processEntry(decStr, set)
-                    }
-                    jsonReader.endObject()
-                } else {
-                    jsonReader.skipValue()
-                }
-            }
-            jsonReader.endObject()
-
-            if (!entriesFound) {
-                throw IOException("Invalid CRL: 'entries' object missing")
-            }
-        } catch (e: Exception) {
-            Logger.e("Failed to parse CRL JSON", e)
-            throw IOException("Failed to parse CRL", e)
-        } finally {
-            try {
-                jsonReader.close()
-            } catch (_: Exception) {
-            }
-        }
-
-        if (!entriesFound) {
-            throw IOException("CRL missing 'entries' field")
-        }
-        return set
-    }
-
-    private fun processEntry(
-        decStr: String,
-        set: HashSet<String>,
-    ) {
-        if (decStr.isEmpty() || decStr.length > MAX_CRL_KEY_CHARS) {
-            Logger.e("Rejected invalid CRL entry key length")
-            return
-        }
-
-        var added = false
-        val digitStart = if (decStr[0] == '-') 1 else 0
-        var isDecimal = digitStart < decStr.length
-        if (isDecimal && decStr.length - digitStart > 1 && decStr[digitStart] == '0') {
-            isDecimal = false
-        } else if (isDecimal) {
-            for (i in digitStart until decStr.length) {
-                if (!Character.isDigit(decStr[i])) {
-                    isDecimal = false
-                    break
-                }
-            }
-        }
-
-        if (isDecimal) {
-            try {
-                val number = java.math.BigInteger(decStr)
-                val hexStr = number.toString(16)
-                set.add(hexStr)
-                if (number.signum() >= 0) {
-                    val hexLen = hexStr.length
-                    for (targetLen in HASH_LENGTHS) {
-                        if (hexLen < targetLen) {
-                            set.add(ZEROS.substring(0, targetLen - hexLen) + hexStr)
-                        }
-                    }
-                }
-                added = true
-            } catch (_: Exception) {
-            }
-        }
-
-        if (decStr.length == 32 || decStr.length == 40 || decStr.length == 64) {
-            if (isHex(decStr)) {
-                set.add(decStr.lowercase())
-            }
-        }
-
-        if (!added && isHex(decStr)) {
-            try {
-                val hexStr = java.math.BigInteger(decStr, 16).toString(16)
-                set.add(hexStr)
-                added = true
-            } catch (_: Exception) {
-            }
-        }
-
-        if (!added) {
-            Logger.e("Failed to parse CRL entry key")
-        }
-    }
-
     private fun checkFile(
         file: File,
-        revokedSerials: Set<String>,
-    ): Result {
-        return try {
+        scope: KeyboxLoader.FileScope,
+        filename: String,
+        crl: RevocationSource,
+    ): Result =
+        try {
             if (!isSafeKeyboxFile(file)) {
                 return Result(file, file.name, Status.ERROR, "Unsafe or oversized keybox file")
             }
-            val keyboxes =
-                file.bufferedReader().use { reader ->
-                    CertHack.parseKeyboxXml(reader)
-                }
-
+            val keyboxes = KeyboxLoader.parseFile(scope, filename)
             if (keyboxes.isEmpty()) {
                 return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
             }
 
-            for (kb in keyboxes) {
-                val status = verifyKeybox(kb, revokedSerials)
-                if (status == Status.REVOKED) {
-                    val chain = kb.certificates()
-                    val sn =
-                        if (chain.isNotEmpty() && chain[0] is X509Certificate) {
-                            (chain[0] as X509Certificate).serialNumber.toString(16)
-                        } else {
-                            "unknown"
-                        }
-                    return Result(file, file.name, Status.REVOKED, "Certificate with SN $sn is revoked")
-                } else if (status == Status.INVALID) {
-                    return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
+            for (keybox in keyboxes) {
+                val status =
+                    when (crl) {
+                        is RevocationSource.Rust -> verifyKeybox(keybox, crl.handle)
+                        is RevocationSource.Legacy -> verifyKeyboxLegacy(keybox, crl.entries)
+                    }
+                when (status) {
+                    Status.REVOKED -> {
+                        val chain = keybox.certificates()
+                        val serial =
+                            if (chain.isNotEmpty() && chain[0] is X509Certificate) {
+                                (chain[0] as X509Certificate).serialNumber.toString(16)
+                            } else {
+                                "unknown"
+                            }
+                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked")
+                    }
+                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
+                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable")
+                    Status.VALID -> Unit
                 }
             }
-
             Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
-        } catch (e: Exception) {
-            Result(file, file.name, Status.ERROR, "Error: ${e.javaClass.simpleName}")
+        } catch (_: RustBackendUnavailableException) {
+            Result(file, file.name, Status.ERROR, "Rust backend unavailable")
+        } catch (error: Exception) {
+            Result(file, file.name, Status.ERROR, "Error: ${error.javaClass.simpleName}")
         }
-    }
 
     private fun isSafeKeyboxFile(file: File): Boolean =
         Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
             file.length() in 1..MAX_KEYBOX_XML_BYTES
 
+    /** Production verifier for opaque Rust revocation state. */
     @JvmStatic
     fun verifyKeybox(
-        kb: CertHack.KeyBox,
-        revokedSerials: Set<String>,
+        keybox: CertHack.KeyBox,
+        crl: CrlWire.Handle,
     ): Status {
-        val chain = kb.certificates()
-        if (chain.isEmpty()) return Status.INVALID
+        val certificates = keybox.certificates()
+        if (certificates.isEmpty()) return Status.INVALID
+        val queries = ArrayList<CrlWire.Query>(certificates.size)
+        for (certificate in certificates) {
+            val x509 = certificate as? X509Certificate ?: return Status.INVALID
+            val serial = x509.serialNumber.toByteArray()
+            val spki = x509.publicKey.encoded ?: return Status.INVALID
+            if (serial.isEmpty() || spki.isEmpty()) return Status.INVALID
+            queries += CrlWire.Query(serial, spki)
+        }
+        val result = CrlBackend.check(crl.generation, queries) ?: return Status.ERROR
+        return if (result.revoked.any { it }) Status.REVOKED else Status.VALID
+    }
 
-        for (cert in chain) {
-            if (cert is X509Certificate && isRevoked(cert, revokedSerials)) {
-                return Status.REVOKED
-            }
+    /** JVM test/injection compatibility only. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
+    fun verifyKeybox(
+        keybox: CertHack.KeyBox,
+        revoked: Set<String>,
+    ): Status = verifyKeyboxLegacy(keybox, revoked)
+
+    /** Production-source bridge used only by legacy JVM-test injection paths. */
+    internal fun verifyKeyboxLegacy(
+        keybox: CertHack.KeyBox,
+        revoked: Set<String>,
+    ): Status {
+        val certificates = keybox.certificates()
+        if (certificates.isEmpty()) return Status.INVALID
+        for (certificate in certificates) {
+            val x509 = certificate as? X509Certificate ?: return Status.INVALID
+            if (isRevokedLegacySet(x509, revoked)) return Status.REVOKED
         }
         return Status.VALID
     }
 
     @JvmStatic
     fun isRevoked(
-        cert: X509Certificate,
-        revokedSerials: Set<String>,
+        certificate: X509Certificate,
+        crl: CrlWire.Handle,
     ): Boolean {
-        val sn = cert.serialNumber.toString(16)
-        if (revokedSerials.contains(sn)) return true
+        val serial = certificate.serialNumber.toByteArray()
+        val spki = certificate.publicKey.encoded ?: return false
+        val result =
+            CrlBackend.check(crl.generation, listOf(CrlWire.Query(serial, spki)))
+                ?: throw RustBackendUnavailableException(IOException("CRL generation query failed"))
+        return result.revoked.single()
+    }
 
-        val publicKeyEncoded = cert.publicKey.encoded
-        if (checkHash(publicKeyEncoded, "SHA-1", revokedSerials)) return true
-        if (checkHash(publicKeyEncoded, "SHA-256", revokedSerials)) return true
-        if (checkHash(publicKeyEncoded, "MD5", revokedSerials)) return true
+    /** JVM test/injection compatibility only. */
+    @JvmStatic
+    @androidx.annotation.VisibleForTesting
+    fun isRevoked(
+        certificate: X509Certificate,
+        revoked: Set<String>,
+    ): Boolean = isRevokedLegacySet(certificate, revoked)
+
+    private fun isRevokedLegacySet(
+        certificate: X509Certificate,
+        revoked: Set<String>,
+    ): Boolean {
+        if (revoked.contains(certificate.serialNumber.toString(16))) return true
+        val spki = certificate.publicKey.encoded ?: return false
+        for (algorithm in LEGACY_HASH_ALGORITHMS) {
+            val digest = runCatching { MessageDigest.getInstance(algorithm).digest(spki) }.getOrNull() ?: continue
+            val hex = buildString(digest.size * 2) {
+                for (byte in digest) append(HEX[(byte.toInt() ushr 4) and 0xf]).append(HEX[byte.toInt() and 0xf])
+            }
+            digest.fill(0)
+            if (revoked.contains(hex)) return true
+        }
         return false
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
-    private val hexFormat = HexFormat { upperCase = false }
-
-    private val digestCache =
-        object : ThreadLocal<HashMap<String, MessageDigest>>() {
-            override fun initialValue(): HashMap<String, MessageDigest> {
-                return HashMap()
-            }
-        }
-
-    @OptIn(ExperimentalStdlibApi::class)
-    private fun checkHash(
-        data: ByteArray,
-        algorithm: String,
-        set: Set<String>,
-    ): Boolean {
+    private fun readAllBytesBounded(input: InputStream): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         try {
-            val cache = digestCache.get()!!
-            var md = cache[algorithm]
-            if (md == null) {
-                md = MessageDigest.getInstance(algorithm)
-                cache[algorithm] = md
-            } else {
-                md.reset()
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                output.write(buffer, 0, count)
             }
-            val digest = md.digest(data)
-            val hex = digest.toHexString(hexFormat)
-            return set.contains(hex)
-        } catch (_: Exception) {
-            return false
+            return output.toByteArray()
+        } finally {
+            buffer.fill(0)
+            output.reset()
         }
     }
 
@@ -581,4 +511,7 @@ object KeyboxVerifier {
             if (count > maxBytes) throw IOException("CRL response exceeds $maxBytes bytes")
         }
     }
+
+    private val LEGACY_HASH_ALGORITHMS = arrayOf("SHA-1", "SHA-256", "MD5")
+    private const val HEX = "0123456789abcdef"
 }

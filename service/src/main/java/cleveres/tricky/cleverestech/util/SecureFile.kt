@@ -46,7 +46,7 @@ interface SecureFileOperations {
 
 object SecureFile {
     @Volatile
-    internal var impl: SecureFileOperations = DefaultSecureFileOperations()
+    internal var impl: SecureFileOperations = defaultOperations()
 
     private val lock = ReentrantLock()
 
@@ -95,6 +95,13 @@ object SecureFile {
             impl.touch(file, mode)
         }
     }
+
+    internal fun resetDefaultForTesting() {
+        impl = defaultOperations()
+    }
+
+    private fun defaultOperations(): SecureFileOperations =
+        if (isAndroidRuntime()) RustSecureFileOperations() else DefaultSecureFileOperations()
 
     class DefaultSecureFileOperations : SecureFileOperations {
         override fun writeText(
@@ -293,15 +300,15 @@ object SecureFile {
             }
         }
 
-        private fun isAndroidRuntime(): Boolean {
-            val runtimeName = System.getProperty("java.runtime.name").orEmpty()
-            val vmName = System.getProperty("java.vm.name").orEmpty()
-            return runtimeName.contains("Android", ignoreCase = true) || vmName.equals("Dalvik", ignoreCase = true)
-        }
-
         private companion object {
             const val FILE_MODE = 0b110_000_000
             const val DIRECTORY_MODE = 0b111_000_000
         }
+    }
+
+    private fun isAndroidRuntime(): Boolean {
+        val runtimeName = System.getProperty("java.runtime.name").orEmpty()
+        val vmName = System.getProperty("java.vm.name").orEmpty()
+        return runtimeName.contains("Android", ignoreCase = true) || vmName.equals("Dalvik", ignoreCase = true)
     }
 }

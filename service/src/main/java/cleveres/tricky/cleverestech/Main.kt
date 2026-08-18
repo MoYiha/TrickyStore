@@ -10,6 +10,40 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 
 private const val CONFIG_DIR_MODE = 448
+private const val BACKEND_STARTUP_TIMEOUT_MS = 30_000L
+private const val WEB_UI_START_ATTEMPTS = 12
+private const val WEB_UI_START_INITIAL_DELAY_MS = 50L
+private const val WEB_UI_START_MAX_DELAY_MS = 1_000L
+
+private fun startWebUiBridge(
+    configDir: File,
+    isTampered: Boolean,
+): WebUiBridge? {
+    val bridge = WebUiBridge(WebServer(0, configDir, isTampered), configDir)
+    var retryDelayMs = WEB_UI_START_INITIAL_DELAY_MS
+    repeat(WEB_UI_START_ATTEMPTS) { attempt ->
+        try {
+            bridge.start()
+            if (attempt > 0) {
+                Logger.i("Native WebUI adapter registered after ${attempt + 1} attempts")
+            }
+            return bridge
+        } catch (error: Exception) {
+            Logger.e("Native WebUI adapter registration attempt ${attempt + 1} failed", error)
+        }
+        if (attempt + 1 < WEB_UI_START_ATTEMPTS) {
+            try {
+                Thread.sleep(retryDelayMs)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return null
+            }
+            retryDelayMs = minOf(retryDelayMs * 2, WEB_UI_START_MAX_DELAY_MS)
+        }
+    }
+    return null
+}
+
 
 private fun hasConfiguredKeyboxSource(configDir: File): Boolean {
     val roots =
@@ -47,13 +81,30 @@ fun main(args: Array<String>) {
             return@runBlocking
         }
 
+        val webUiBridge = startWebUiBridge(configDir, isTampered)
+        if (webUiBridge == null) {
+            Logger.e("Main: Native WebUI adapter could not register; exiting for supervisor retry")
+            return@runBlocking
+        }
+
         if (isTampered) {
-            runCatching { WebUiBridge(WebServer(0, configDir, true), configDir).start() }
-                .onFailure { Logger.e("Failed to start native WebUI lockdown endpoint", it) }
             Logger.e("Main: Running in tamper lockdown; native interceptors will not be registered")
             while (true) {
                 delay(60000)
             }
+        }
+
+        while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
+
+            if (Thread.currentThread().isInterrupted) {
+                Logger.i("Main: Interrupted while waiting for Rust backend")
+                return@runBlocking
+            }
+            // The daemon supervises and restarts the backend independently. A transient backend
+            // failure must not terminate the Android adapter, because the daemon intentionally
+            // treats adapter death as a full-stack failure and would otherwise churn the WebUI
+            // control socket into EPIPE/Broken-pipe errors.
+            Logger.e("Rust backend is not ready; waiting for backend supervisor recovery")
         }
 
         try {
@@ -72,16 +123,6 @@ fun main(args: Array<String>) {
 
         runCatching { KeyboxDirectoryRefreshWatcher.start(Config.keyboxDirectory) }
             .onFailure { Logger.e("Failed to install conflated keybox watcher; keeping legacy observer", it) }
-
-        try {
-            WebUiBridge(WebServer(0, configDir), configDir).start()
-        } catch (e: Exception) {
-            KeyboxDirectoryRefreshWatcher.stop()
-            CertificatePolicyWatcher.stop()
-            Logger.e("Failed to start native WebUI bridge", e)
-            Logger.e("Main: Exiting so the module supervisor can restore native WebUI service")
-            return@runBlocking
-        }
 
         KeyboxAutoCleaner.start()
 

@@ -131,6 +131,22 @@ mirror_root_keyboxes() {
   done
 }
 
+generate_backend_auth() {
+  # Keep the backend capability in process environment only. Regenerate for every
+  # daemon lifetime so stale workers from a previous supervisor iteration cannot
+  # authenticate to the new Android adapter.
+  token=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | od -An -tx1 2>/dev/null | tr -d '[:space:]')
+  case "$token" in
+    ''|*[!0-9a-f]*) return 1 ;;
+  esac
+  [ "${#token}" -eq 64 ] || return 1
+  [ "$token" != "0000000000000000000000000000000000000000000000000000000000000000" ] || return 1
+  CLEVERES_TRICKY_BACKEND_AUTH=$token
+  export CLEVERES_TRICKY_BACKEND_AUTH
+  token=
+  return 0
+}
+
 if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chown 0:0 "$CONFIG_DIR" 2>/dev/null
   chmod 700 "$CONFIG_DIR" 2>/dev/null
@@ -143,6 +159,8 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
 fi
 
 chcon u:object_r:system_file:s0 "$MODDIR/daemon" 2>/dev/null
+chcon u:object_r:system_file:s0 "$MODDIR/cleverestrickyd" 2>/dev/null
+chcon u:object_r:system_file:s0 "$MODDIR/cleverestricky_backend" 2>/dev/null
 chcon u:object_r:system_file:s0 "$MODDIR/inject" 2>/dev/null
 chcon u:object_r:system_file:s0 "$MODDIR/webui_bridge" 2>/dev/null
 find "$MODDIR" -maxdepth 1 -type f \( -name '*.apk' -o -name '*.so' \) \
@@ -161,10 +179,20 @@ while true; do
     log -t CleveresTricky "Daemon executable is unavailable; daemon supervisor stopped"
     break
   fi
+  if ! generate_backend_auth; then
+    log -t CleveresTricky "Backend capability entropy unavailable; refusing to start daemon"
+    sleep "$retry_delay"
+    if [ "$retry_delay" -lt "$max_retry_delay" ]; then
+      retry_delay=$((retry_delay * 2))
+      [ "$retry_delay" -gt "$max_retry_delay" ] && retry_delay=$max_retry_delay
+    fi
+    continue
+  fi
 
   started_at=$(date +%s)
   "$MODDIR/daemon"
   exit_code=$?
+  unset CLEVERES_TRICKY_BACKEND_AUTH
   stopped_at=$(date +%s)
   runtime=$((stopped_at - started_at))
 

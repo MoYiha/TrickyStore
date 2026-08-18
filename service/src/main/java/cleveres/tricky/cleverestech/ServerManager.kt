@@ -12,7 +12,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.StringReader
 import java.net.URI
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -341,19 +340,14 @@ object ServerManager {
                         try {
                             val dec = DeviceKeyManager.decrypt(enc)
                             if (dec != null) {
-                                try {
-                                    val xml = String(dec, StandardCharsets.UTF_8)
-                                    val parsed = CertHack.parseKeyboxXml(StringReader(xml), "server_${server.name}")
-                                    val statuses = parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) }
-                                    if (parsed.isNotEmpty() && statuses.all { it == KeyboxVerifier.Status.VALID }) {
-                                        serverKeyboxes[server.id] = parsed
-                                        Logger.i("Loaded cached keyboxes for server: ${server.name}")
-                                    } else {
-                                        deactivateServerContent(server.id, deleteCache = true)
-                                        Logger.w("Rejected incomplete or invalid server cache: ${server.name}")
-                                    }
-                                } finally {
-                                    dec.fill(0)
+                                val parsed = KeyboxLoader.parse(dec, "server_${server.name}")
+                                val statuses = parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) }
+                                if (parsed.isNotEmpty() && statuses.all { it == KeyboxVerifier.Status.VALID }) {
+                                    serverKeyboxes[server.id] = parsed
+                                    Logger.i("Loaded cached keyboxes for server: ${server.name}")
+                                } else {
+                                    deactivateServerContent(server.id, deleteCache = true)
+                                    Logger.w("Rejected incomplete or invalid server cache: ${server.name}")
                                 }
                             } else {
                                 deactivateServerContent(server.id, deleteCache = true)
@@ -464,39 +458,43 @@ object ServerManager {
                 } finally {
                     bytes.fill(0)
                 }
-            val crl = KeyboxVerifier.fetchCrl()
-            if (crl == null) {
-                server.lastStatus = "CRL_UNAVAILABLE"
-                deactivateServerContent(server.id, deleteCache = false)
-                persistStatusSafely()
-                return false
-            }
             val keyboxes = result.first
-            val statuses = keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
-            val xmlContent = result.second
+            val cacheBytes = result.second
+            try {
+                val crl = KeyboxVerifier.fetchCrl()
+                if (crl == null) {
+                    server.lastStatus = "CRL_UNAVAILABLE"
+                    deactivateServerContent(server.id, deleteCache = false)
+                    persistStatusSafely()
+                    return false
+                }
+                val statuses = keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
 
-            if (keyboxes.isNotEmpty() && statuses.all { it == KeyboxVerifier.Status.VALID }) {
-                serverKeyboxes[server.id] = keyboxes
-                server.lastStatus = "OK"
-                val cert = keyboxes.firstOrNull()?.certificates?.firstOrNull()
-                if (cert is X509Certificate) {
-                    server.lastAuthor = cert.subjectX500Principal.name.take(1024)
+                if (keyboxes.isNotEmpty() && statuses.all { it == KeyboxVerifier.Status.VALID }) {
+                    serverKeyboxes[server.id] = keyboxes
+                    server.lastStatus = "OK"
+                    val cert = keyboxes.firstOrNull()?.certificates?.firstOrNull()
+                    if (cert is X509Certificate) {
+                        server.lastAuthor = cert.subjectX500Principal.name.take(1024)
+                    } else {
+                        server.lastAuthor = "Unknown"
+                    }
+
+                    if (cacheBytes != null) {
+                        cacheXml(server.id, cacheBytes)
+                    }
                 } else {
-                    server.lastAuthor = "Unknown"
+                    server.lastStatus = "INVALID_CONTENT"
+                    deactivateServerContent(server.id, deleteCache = true)
+                    persistStatusSafely()
+                    return false
                 }
 
-                if (xmlContent != null) {
-                    cacheXml(server.id, xmlContent)
-                }
-            } else {
-                server.lastStatus = "INVALID_CONTENT"
-                deactivateServerContent(server.id, deleteCache = true)
                 persistStatusSafely()
-                return false
+                return true
+            } finally {
+                cacheBytes?.fill(0)
             }
-
-            persistStatusSafely()
-            return true
         } catch (e: IllegalArgumentException) {
             server.lastStatus = "INVALID_CONFIG"
             Logger.e("Invalid server configuration: ${server.name}", e)
@@ -515,7 +513,7 @@ object ServerManager {
     internal fun processContent(
         bytes: ByteArray,
         server: ServerConfig,
-    ): Pair<List<CertHack.KeyBox>, String?> {
+    ): Pair<List<CertHack.KeyBox>, ByteArray?> {
         val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), StandardCharsets.US_ASCII) else ""
 
         if (magic == "CBOX") {
@@ -528,9 +526,14 @@ object ServerManager {
                     Logger.e("Signature verification failed for server ${server.name}")
                     return Pair(emptyList(), null)
                 }
-                val keyboxes = CertHack.parseKeyboxXml(StringReader(payload.xmlContent), "server_${server.name}")
-                if (keyboxes.isNotEmpty()) {
-                    return Pair(keyboxes, payload.xmlContent)
+                val xml = payload.takeXmlContentBytes()
+                if (xml.isNotEmpty()) {
+                    val cacheBytes = xml.copyOf()
+                    val keyboxes = KeyboxLoader.parse(xml, "server_${server.name}")
+                    if (keyboxes.isNotEmpty()) {
+                        return Pair(keyboxes, cacheBytes)
+                    }
+                    cacheBytes.fill(0)
                 }
             }
         } else if (bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
@@ -553,11 +556,13 @@ object ServerManager {
                             Logger.e("Signature verification failed for zip entry $name")
                             return Pair(emptyList(), null)
                         }
+                        val xml = payload.takeXmlContentBytes()
                         val keyboxes =
-                            CertHack.parseKeyboxXml(
-                                StringReader(payload.xmlContent),
-                                "server_${server.name}_$name",
-                            )
+                            if (xml.isEmpty()) {
+                                emptyList()
+                            } else {
+                                KeyboxLoader.parse(xml, "server_${server.name}_$name")
+                            }
                         if (keyboxes.isEmpty()) {
                             Logger.e("Zip entry contains no valid keybox records: $name")
                             return Pair(emptyList(), null)
@@ -570,7 +575,10 @@ object ServerManager {
                     }
 
                     if (allKeys.isNotEmpty()) {
-                        return Pair(allKeys, serializeKeyboxesForCache(allKeys))
+                        return Pair(
+                            allKeys,
+                            serializeKeyboxesForCache(allKeys).toByteArray(StandardCharsets.UTF_8),
+                        )
                     }
                 } finally {
                     pack.cboxFiles.forEach { it.second.fill(0) }
@@ -581,22 +589,20 @@ object ServerManager {
                 Logger.e("Signed server refused unsigned plain XML")
                 return Pair(emptyList(), null)
             }
-            val xml = String(bytes, StandardCharsets.UTF_8)
-            if (xml.contains("AndroidAttestation")) {
-                val keyboxes = CertHack.parseKeyboxXml(StringReader(xml), "server_${server.name}")
-                if (keyboxes.isNotEmpty()) {
-                    return Pair(keyboxes, xml)
-                }
+            val cacheBytes = bytes.copyOf()
+            val keyboxes = KeyboxLoader.parse(bytes, "server_${server.name}")
+            if (keyboxes.isNotEmpty()) {
+                return Pair(keyboxes, cacheBytes)
             }
+            cacheBytes.fill(0)
         }
         return Pair(emptyList(), null)
     }
 
     private fun cacheXml(
         serverId: String,
-        xml: String,
+        plaintext: ByteArray,
     ) {
-        val plaintext = xml.toByteArray(StandardCharsets.UTF_8)
         try {
             val encrypted = DeviceKeyManager.encrypt(plaintext)
             if (encrypted != null) {

@@ -28,17 +28,13 @@ public class XMLParser {
         public StringBuilder textBuilder;
         public Map<String, List<Element>> children = new HashMap<>();
 
-        public Element(String name) {
-            this.name = name;
-        }
+        public Element(String name) { this.name = name; }
 
         public void addChild(Element child) {
             children.computeIfAbsent(child.name, k -> new ArrayList<>()).add(child);
         }
 
-        public String getText() {
-            return textBuilder == null ? null : textBuilder.toString();
-        }
+        public String getText() { return textBuilder == null ? null : textBuilder.toString(); }
 
         public Element getChild(String name) {
             List<Element> list = children.get(name);
@@ -52,19 +48,13 @@ public class XMLParser {
 
     private final Element root;
 
-    public XMLParser(Reader reader) throws Exception {
-        root = parse(reader);
-    }
+    public XMLParser(Reader reader) throws Exception { root = parse(reader); }
 
-    public Element getRoot() {
-        return root;
-    }
+    public Element getRoot() { return root; }
 
     private Element parse(Reader reader) throws Exception {
         String document = readBounded(reader);
-        if (document.contains("<!DOCTYPE") || document.contains("<!ENTITY")) {
-            throw dtdRejected();
-        }
+        if (document.contains("<!DOCTYPE") || document.contains("<!ENTITY")) throw dtdRejected();
 
         XmlPullParserFactory xmlFactoryObject = XmlPullParserFactory.newInstance();
         XmlPullParser parser = xmlFactoryObject.newPullParser();
@@ -77,20 +67,14 @@ public class XMLParser {
 
         Element currentElement = null;
         Element parsedRoot = null;
-        // Stack to keep track of parents
         List<Element> stack = new ArrayList<>();
-
         int eventType = parser.getEventType();
         int elementCount = 0;
         int textChars = 0;
         while (eventType != XmlPullParser.END_DOCUMENT) {
             switch (eventType) {
                 case XmlPullParser.DOCDECL:
-                    // Security: Explicitly reject DTDs to prevent XXE (XML External Entity) attacks.
-                    // Even if FEATURE_PROCESS_DOCDECL was disabled, checking the event type adds
-                    // a second layer of defense.
                     throw dtdRejected();
-
                 case XmlPullParser.START_TAG:
                     if (++elementCount > MAX_ELEMENTS || stack.size() >= MAX_DEPTH) {
                         throw new SecurityException("XML structure exceeds safety limits");
@@ -116,13 +100,10 @@ public class XMLParser {
                         }
                         element.attributes.put(attributeName, attributeValue);
                     }
-                    if (!stack.isEmpty()) {
-                        stack.get(stack.size() - 1).addChild(element);
-                    }
+                    if (!stack.isEmpty()) stack.get(stack.size() - 1).addChild(element);
                     stack.add(element);
                     currentElement = element;
                     break;
-
                 case XmlPullParser.TEXT:
                     if (parser.getText() != null) {
                         String text = parser.getText().trim();
@@ -131,25 +112,16 @@ public class XMLParser {
                         }
                         if (!text.isEmpty()) {
                             textChars = Math.addExact(textChars, text.length());
-                            if (textChars > MAX_TEXT_CHARS) {
-                                throw new SecurityException("XML text exceeds safety limit");
-                            }
-                            if (currentElement.textBuilder == null) {
-                                currentElement.textBuilder = new StringBuilder(text);
-                            } else {
-                                currentElement.textBuilder.append(text);
-                            }
+                            if (textChars > MAX_TEXT_CHARS) throw new SecurityException("XML text exceeds safety limit");
+                            if (currentElement.textBuilder == null) currentElement.textBuilder = new StringBuilder(text);
+                            else currentElement.textBuilder.append(text);
                         }
                     }
                     break;
-
                 case XmlPullParser.ENTITY_REF:
                     throw new SecurityException("XML entities are not allowed");
-
                 case XmlPullParser.END_TAG:
-                    if (stack.isEmpty()) {
-                        throw new SecurityException("XML closing tag has no matching element");
-                    }
+                    if (stack.isEmpty()) throw new SecurityException("XML closing tag has no matching element");
                     Element finished = stack.remove(stack.size() - 1);
                     if (stack.isEmpty()) {
                         parsedRoot = finished;
@@ -161,9 +133,7 @@ public class XMLParser {
             }
             eventType = parser.next();
         }
-        if (!stack.isEmpty()) {
-            throw new SecurityException("XML document ended before all elements were closed");
-        }
+        if (!stack.isEmpty()) throw new SecurityException("XML document ended before all elements were closed");
         return parsedRoot;
     }
 
@@ -191,17 +161,14 @@ public class XMLParser {
         try {
             parser.setFeature(feature, false);
         } catch (XmlPullParserException | RuntimeException unsupported) {
-            // Parser implementations expose different optional feature sets.
-            // Raw declarations and entity events are rejected independently.
+            // Test oracle retains the production parser's historical feature behavior.
         }
     }
 
     public Map<String, String> obtainPath(String path) {
         Element current = getElement(path, true);
         Map<String, String> result = new HashMap<>(current.attributes);
-        if (current.textBuilder != null) {
-            result.put("text", current.textBuilder.toString());
-        }
+        if (current.textBuilder != null) result.put("text", current.textBuilder.toString());
         return result;
     }
 
@@ -225,25 +192,20 @@ public class XMLParser {
         Element current = root;
         int len = path.length();
         int start = 0;
-
         int dotIndex = path.indexOf('.', start);
         String firstPart = (dotIndex == -1) ? path : path.substring(start, dotIndex);
-
         int bracketIndex = firstPart.indexOf('[');
         String rootName = (bracketIndex == -1) ? firstPart : firstPart.substring(0, bracketIndex);
-
         if (bracketIndex != -1 || rootName.isEmpty() || !root.name.equals(rootName)) {
             if (strict) throw new RuntimeException("Path root mismatch: " + rootName + " vs " + root.name);
             return null;
         }
-
         if (dotIndex == -1) return current;
 
         start = dotIndex + 1;
         while (start < len) {
             dotIndex = path.indexOf('.', start);
             String rawTag = (dotIndex == -1) ? path.substring(start) : path.substring(start, dotIndex);
-
             bracketIndex = rawTag.indexOf('[');
             String name;
             int index = 0;
@@ -263,14 +225,12 @@ public class XMLParser {
             } else {
                 name = rawTag;
             }
-
             List<Element> children = current.children.get(name);
             if (name.isEmpty() || children == null || index < 0 || index >= children.size()) {
                 if (strict) throw new RuntimeException("Path not found: " + path);
                 return null;
             }
             current = children.get(index);
-
             if (dotIndex == -1) break;
             start = dotIndex + 1;
         }

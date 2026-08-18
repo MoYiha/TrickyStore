@@ -1,8 +1,20 @@
 [workspace]
 members = [
+    "attestation-core",
+    "backend",
+    "cbox-recovery-core",
+    "certificate-core",
+    "crl-core",
+    "crypto-core",
+    "daemon",
+    "encryptor-native",
     "injector-core",
+    "keybox-core",
     "native-core",
-    "webui-bridge"
+    "policy-config-core",
+    "service-core",
+    "webui-bridge",
+    "xml-core"
 ]
 resolver = "2"
 

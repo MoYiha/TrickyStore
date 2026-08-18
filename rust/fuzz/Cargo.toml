@@ -1,0 +1,79 @@
+# Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
+[package]
+name = "cleverestricky-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "GPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+cleverestricky-attestation-core = { path = "../attestation-core" }
+cleverestricky-backend = { path = "../backend" }
+cleverestricky-cbox-recovery-core = { path = "../cbox-recovery-core" }
+cleverestricky-crypto-core = { path = "../crypto-core" }
+cleverestricky-policy-config-core = { path = "../policy-config-core" }
+cleverestricky-service-core = { path = "../service-core" }
+cleverestricky-xml-core = { path = "../xml-core" }
+
+[[bin]]
+name = "ipc_frame"
+path = "fuzz_targets/ipc_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keybox_xml"
+path = "fuzz_targets/keybox_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "attestation_asn1"
+path = "fuzz_targets/attestation_asn1.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "certificate_rewrite_wire"
+path = "fuzz_targets/certificate_rewrite_wire.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crl_wire"
+path = "fuzz_targets/crl_wire.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cbox_framing"
+path = "fuzz_targets/cbox_framing.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "backup_envelope"
+path = "fuzz_targets/backup_envelope.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "policy_config"
+path = "fuzz_targets/policy_config.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

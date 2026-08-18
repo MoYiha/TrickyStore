@@ -38,6 +38,14 @@ class WebServerTemplateBackupTest {
                     file.writeText(content)
                 }
 
+                override fun writeBytes(
+                    file: File,
+                    content: ByteArray,
+                ) {
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(content)
+                }
+
                 override fun writeStream(
                     file: File,
                     inputStream: java.io.InputStream,

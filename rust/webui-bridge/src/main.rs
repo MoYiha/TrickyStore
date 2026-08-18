@@ -1,24 +1,24 @@
+use cleverestricky_service_core::ipc::{
+    read_header, write_header, FrameHeader, FLAG_ERROR, MAX_FRAME_BYTES, OP_WEB_REQUEST,
+};
+use cleverestricky_service_core::secure_fs::TrustedDir;
+use cleverestricky_service_core::unix_socket::{connect_abstract, DAEMON_SOCKET_NAME};
 use std::env;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process;
-use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 const CONFIG_DIR: &str = "/data/adb/cleverestricky";
-const BRIDGE_DIR: &str = "/data/adb/cleverestricky/webui_bridge";
-const REQUEST_DIR: &str = "/data/adb/cleverestricky/webui_bridge/requests";
-const RESPONSE_DIR: &str = "/data/adb/cleverestricky/webui_bridge/responses";
 const STAGING_DIR: &str = "/data/adb/cleverestricky/webui_bridge/staging";
-const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+const MAX_REQUEST_BYTES: usize = MAX_FRAME_BYTES;
 const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES: usize = 20 * 1024 * 1024;
 const MAX_RESPONSE_ENVELOPE_BYTES: usize = 512 * 1024;
 const MAX_CHUNK_BYTES: usize = 64 * 1024;
 const STALE_AGE: Duration = Duration::from_secs(10 * 60);
-const CLAIM_TIMEOUT: Duration = Duration::from_secs(5);
 const O_NOFOLLOW: i32 = 0x20000;
 
 fn main() {
@@ -29,8 +29,8 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    ensure_layout()?;
-    cleanup_stale();
+    let staging = ensure_layout()?;
+    cleanup_stale(&staging);
     let args: Vec<String> = env::args().skip(1).collect();
     let command = args.first().map(String::as_str).ok_or("Missing command")?;
     match command {
@@ -39,54 +39,34 @@ fn run() -> Result<(), String> {
             call(request, parse_timeout(&args[2])?)
         }
         "call-file" if args.len() == 3 => {
-            let id = validate_id(&args[1])?;
-            let path = stage_path(id, "request")?;
-            let request_result = read_limited(&path, MAX_REQUEST_BYTES);
-            remove_if_regular(&path);
+            let name = stage_name(&args[1], "request")?;
+            let request_result = staging
+                .read_bounded(&name, MAX_REQUEST_BYTES)
+                .map_err(|error| format!("Could not read staged request: {error}"));
+            let _ = staging.unlink_file(&name);
             let request = request_result?;
             call(request, parse_timeout(&args[2])?)
         }
-        "stage-create" if args.len() == 2 => stage_create(&args[1]),
-        "stage-append" if args.len() == 4 => stage_append(&args[1], &args[2], &args[3]),
-        "stage-read" if args.len() == 5 => stage_read(&args[1], &args[2], &args[3], &args[4]),
-        "stage-drop" if args.len() == 3 => stage_drop(&args[1], &args[2]),
-        "export" if args.len() == 4 => export_file(&args[1], &args[2], &args[3]),
+        "stage-create" if args.len() == 2 => stage_create(&staging, &args[1]),
+        "stage-append" if args.len() == 4 => stage_append(&staging, &args[1], &args[2], &args[3]),
+        "stage-read" if args.len() == 5 => {
+            stage_read(&staging, &args[1], &args[2], &args[3], &args[4])
+        }
+        "stage-drop" if args.len() == 3 => stage_drop(&staging, &args[1], &args[2]),
+        "export" if args.len() == 4 => export_file(&staging, &args[1], &args[2], &args[3]),
         _ => Err("Invalid command".to_string()),
     }
 }
 
-fn ensure_layout() -> Result<(), String> {
-    ensure_existing_directory(Path::new(CONFIG_DIR))?;
-    ensure_directory(Path::new(BRIDGE_DIR))?;
-    ensure_directory(Path::new(REQUEST_DIR))?;
-    ensure_directory(Path::new(RESPONSE_DIR))?;
-    ensure_directory(Path::new(STAGING_DIR))
-}
-
-fn ensure_existing_directory(path: &Path) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(path)
+fn ensure_layout() -> Result<TrustedDir, String> {
+    let config = TrustedDir::open(Path::new(CONFIG_DIR))
         .map_err(|error| format!("Configuration directory is unavailable: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err("Configuration directory is unsafe".to_string());
-    }
-    Ok(())
-}
-
-fn ensure_directory(path: &Path) -> Result<(), String> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
-            return Err("Bridge path is unsafe".to_string());
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            fs::create_dir(path).map_err(|create_error| {
-                format!("Could not create bridge directory: {create_error}")
-            })?;
-        }
-        Err(error) => return Err(format!("Could not inspect bridge directory: {error}")),
-    }
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-        .map_err(|error| format!("Could not secure bridge directory: {error}"))
+    let bridge = config
+        .mkdir_child("webui_bridge", 0o700)
+        .map_err(|error| format!("Could not secure WebUI bridge directory: {error}"))?;
+    bridge
+        .mkdir_child("staging", 0o700)
+        .map_err(|error| format!("Could not secure WebUI staging directory: {error}"))
 }
 
 fn parse_timeout(value: &str) -> Result<Duration, String> {
@@ -133,100 +113,99 @@ fn validate_kind(value: &str) -> Result<(&str, usize), String> {
     }
 }
 
-fn stage_path(id: &str, kind: &str) -> Result<PathBuf, String> {
+fn stage_name(id: &str, kind: &str) -> Result<String, String> {
     validate_id(id)?;
     let (extension, _) = validate_kind(kind)?;
-    Ok(Path::new(STAGING_DIR).join(format!("{id}.{extension}")))
+    Ok(format!("{id}.{extension}"))
 }
 
-fn request_path(id: &str) -> PathBuf {
-    Path::new(REQUEST_DIR).join(format!("{id}.request"))
-}
-
-fn response_path(id: &str) -> PathBuf {
-    Path::new(RESPONSE_DIR).join(format!("{id}.response"))
-}
-
-fn call(request: Vec<u8>, timeout: Duration) -> Result<(), String> {
+fn call(mut request: Vec<u8>, timeout: Duration) -> Result<(), String> {
     if request.is_empty() || request.len() > MAX_REQUEST_BYTES {
+        request.fill(0);
         return Err("Request size is outside the supported range".to_string());
     }
-    let request_text = std::str::from_utf8(&request)
-        .map_err(|_| "Request is not valid UTF-8")?
-        .trim();
-    if !request_text.starts_with('{') || !request_text.ends_with('}') {
-        return Err("Request envelope is invalid".to_string());
-    }
-    let id = random_id()?;
-    let request_file = request_path(&id);
-    let response_file = response_path(&id);
-    atomic_write(&request_file, &request)?;
-    let deadline = Instant::now() + timeout;
-    let claim_deadline = (Instant::now() + CLAIM_TIMEOUT).min(deadline);
-    let mut claimed = false;
-    let mut wait = Duration::from_millis(10);
-    while Instant::now() < deadline {
-        match fs::symlink_metadata(&response_file) {
-            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-                remove_if_regular(&request_file);
-                return Err("Bridge response path is unsafe".to_string());
-            }
-            Ok(_) => {
-                let response_result = read_limited(&response_file, MAX_RESPONSE_ENVELOPE_BYTES);
-                remove_if_regular(&response_file);
-                remove_if_regular(&request_file);
-                let response = response_result?;
-                let text = String::from_utf8(response)
-                    .map_err(|_| "Bridge response is not valid UTF-8")?;
-                print!("{text}");
-                return Ok(());
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => {
-                remove_if_regular(&request_file);
-                return Err(format!("Could not inspect bridge response: {error}"));
-            }
+    {
+        let request_text = std::str::from_utf8(&request)
+            .map_err(|_| "Request is not valid UTF-8")?
+            .trim();
+        if !request_text.starts_with('{') || !request_text.ends_with('}') {
+            request.fill(0);
+            return Err("Request envelope is invalid".to_string());
         }
-        if !claimed {
-            match fs::symlink_metadata(&request_file) {
-                Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-                    remove_if_regular(&request_file);
-                    return Err("Bridge request path is unsafe".to_string());
-                }
-                Ok(_) if Instant::now() >= claim_deadline => {
-                    remove_if_regular(&request_file);
-                    return Err("Native WebUI service is unavailable".to_string());
-                }
-                Ok(_) => {}
-                Err(error) if error.kind() == io::ErrorKind::NotFound => claimed = true,
-                Err(error) => {
-                    remove_if_regular(&request_file);
-                    return Err(format!("Could not inspect bridge request: {error}"));
-                }
-            }
-        }
-        thread::sleep(wait);
-        wait = (wait + Duration::from_millis(5)).min(Duration::from_millis(50));
     }
-    remove_if_regular(&request_file);
-    Err("WebUI service request timed out".to_string())
+
+    let result = (|| -> Result<(), String> {
+        let mut stream = connect_abstract(DAEMON_SOCKET_NAME)
+            .map_err(|error| format!("Native WebUI service is unavailable: {error}"))?;
+        stream
+            .set_read_timeout(Some(timeout))
+            .map_err(|error| format!("Could not set WebUI read timeout: {error}"))?;
+        stream
+            .set_write_timeout(Some(timeout))
+            .map_err(|error| format!("Could not set WebUI write timeout: {error}"))?;
+        write_header(
+            &mut stream,
+            FrameHeader {
+                opcode: OP_WEB_REQUEST,
+                flags: 0,
+                payload_len: request.len(),
+            },
+        )
+        .map_err(|error| format!("Could not send WebUI request header: {error}"))?;
+        stream
+            .write_all(&request)
+            .map_err(|error| format!("Could not send WebUI request: {error}"))?;
+        stream
+            .flush()
+            .map_err(|error| format!("Could not flush WebUI request: {error}"))?;
+
+        let response = read_header(&mut stream)
+            .map_err(|error| format!("Could not read WebUI response header: {error}"))?;
+        if response.opcode != OP_WEB_REQUEST {
+            return Err("Native WebUI service returned an unexpected opcode".to_string());
+        }
+        if response.payload_len > MAX_RESPONSE_ENVELOPE_BYTES {
+            return Err("Native WebUI response envelope is too large".to_string());
+        }
+        let mut response_bytes = vec![0u8; response.payload_len];
+        let read_result = stream
+            .read_exact(&mut response_bytes)
+            .map_err(|error| format!("Could not read WebUI response: {error}"));
+        if let Err(error) = read_result {
+            response_bytes.fill(0);
+            return Err(error);
+        }
+        let response_result = if response.flags == FLAG_ERROR {
+            Err(format!(
+                "Native WebUI service rejected the request: {}",
+                String::from_utf8_lossy(&response_bytes)
+            ))
+        } else if response.flags != 0 {
+            Err("Native WebUI service returned unsupported response flags".to_string())
+        } else {
+            let text = std::str::from_utf8(&response_bytes)
+                .map_err(|_| "Bridge response is not valid UTF-8")?;
+            print!("{text}");
+            Ok(())
+        };
+        response_bytes.fill(0);
+        response_result
+    })();
+    request.fill(0);
+    result
 }
 
-fn stage_create(kind: &str) -> Result<(), String> {
+fn stage_create(staging: &TrustedDir, kind: &str) -> Result<(), String> {
     let (extension, _) = validate_kind(kind)?;
     if extension == "download" {
         return Err("Download stages are service-owned".to_string());
     }
     for _ in 0..8 {
         let id = random_id()?;
-        let path = stage_path(&id, extension)?;
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-        {
-            Ok(_) => {
+        let name = stage_name(&id, extension)?;
+        match staging.create_new_file(&name, 0o600) {
+            Ok(file) => {
+                drop(file);
                 println!("{id}");
                 return Ok(());
             }
@@ -237,35 +216,31 @@ fn stage_create(kind: &str) -> Result<(), String> {
     Err("Could not allocate staging identifier".to_string())
 }
 
-fn stage_append(kind: &str, id: &str, encoded: &str) -> Result<(), String> {
+fn stage_append(staging: &TrustedDir, kind: &str, id: &str, encoded: &str) -> Result<(), String> {
     let (_, limit) = validate_kind(kind)?;
     if kind == "download" {
         return Err("Download stages are service-owned".to_string());
     }
-    let chunk = decode_base64url(encoded, MAX_CHUNK_BYTES)?;
+    let mut chunk = decode_base64url(encoded, MAX_CHUNK_BYTES)?;
     if chunk.is_empty() {
         return Err("Empty staging chunk".to_string());
     }
-    let path = stage_path(validate_id(id)?, kind)?;
-    let mut file = OpenOptions::new()
-        .append(true)
-        .custom_flags(O_NOFOLLOW)
-        .open(&path)
-        .map_err(|error| format!("Could not open staging file: {error}"))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("Could not inspect staging file: {error}"))?;
-    if !metadata.is_file() {
-        return Err("Staging path is unsafe".to_string());
-    }
-    if metadata.len() > limit as u64 || chunk.len() as u64 > limit as u64 - metadata.len() {
-        return Err("Staging file exceeds its size limit".to_string());
-    }
-    file.write_all(&chunk)
-        .map_err(|error| format!("Could not append staging data: {error}"))
+    let name = stage_name(validate_id(id)?, kind)?;
+    let result = staging
+        .append_bounded(&name, &chunk, limit)
+        .map(|_| ())
+        .map_err(|error| format!("Could not append staging data: {error}"));
+    chunk.fill(0);
+    result
 }
 
-fn stage_read(kind: &str, id: &str, offset_value: &str, length_value: &str) -> Result<(), String> {
+fn stage_read(
+    staging: &TrustedDir,
+    kind: &str,
+    id: &str,
+    offset_value: &str,
+    length_value: &str,
+) -> Result<(), String> {
     if kind != "download" {
         return Err("Only download stages can be read".to_string());
     }
@@ -278,64 +253,40 @@ fn stage_read(kind: &str, id: &str, offset_value: &str, length_value: &str) -> R
     if length == 0 || length > MAX_CHUNK_BYTES {
         return Err("Invalid read length".to_string());
     }
-    let path = stage_path(validate_id(id)?, kind)?;
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NOFOLLOW)
-        .open(&path)
-        .map_err(|error| format!("Could not open staged response: {error}"))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("Could not inspect staged response: {error}"))?;
-    if !metadata.is_file() {
-        return Err("Staging path is unsafe".to_string());
-    }
-    if metadata.len() > MAX_DOWNLOAD_BYTES as u64
-        || offset > metadata.len()
-        || length as u64 > metadata.len() - offset
-    {
-        return Err("Staged read is outside the file".to_string());
-    }
-    file.seek(SeekFrom::Start(offset))
-        .map_err(|error| format!("Could not seek staged response: {error}"))?;
-    let mut bytes = vec![0u8; length];
-    file.read_exact(&mut bytes)
+    let name = stage_name(validate_id(id)?, kind)?;
+    let (mut bytes, _) = staging
+        .read_range_bounded(&name, offset, length, MAX_DOWNLOAD_BYTES)
         .map_err(|error| format!("Could not read staged response: {error}"))?;
-    print!("{}", encode_base64url(&bytes));
+    let encoded = encode_base64url(&bytes);
+    bytes.fill(0);
+    print!("{encoded}");
     Ok(())
 }
 
-fn stage_drop(kind: &str, id: &str) -> Result<(), String> {
+fn stage_drop(staging: &TrustedDir, kind: &str, id: &str) -> Result<(), String> {
     validate_kind(kind)?;
-    let path = stage_path(validate_id(id)?, kind)?;
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
-            fs::remove_file(path).map_err(|error| format!("Could not remove staging file: {error}"))
-        }
-        Ok(_) => Err("Staging path is unsafe".to_string()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("Could not inspect staging file: {error}")),
-    }
+    let name = stage_name(validate_id(id)?, kind)?;
+    staging
+        .unlink_file(&name)
+        .map(|_| ())
+        .map_err(|error| format!("Could not remove staging file: {error}"))
 }
 
-fn export_file(kind: &str, id: &str, encoded_name: &str) -> Result<(), String> {
+fn export_file(
+    staging: &TrustedDir,
+    kind: &str,
+    id: &str,
+    encoded_name: &str,
+) -> Result<(), String> {
     let (_, limit) = validate_kind(kind)?;
     if kind == "request" {
         return Err("Request stages cannot be exported".to_string());
     }
-    let source_path = stage_path(validate_id(id)?, kind)?;
-    let mut source = OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NOFOLLOW)
-        .open(&source_path)
+    let source_name = stage_name(validate_id(id)?, kind)?;
+    let (mut source, source_size) = staging
+        .open_file_bounded(&source_name, limit)
         .map_err(|error| format!("Could not open export source: {error}"))?;
-    let source_metadata = source
-        .metadata()
-        .map_err(|error| format!("Could not inspect export source: {error}"))?;
-    if !source_metadata.is_file() {
-        return Err("Export source is unsafe".to_string());
-    }
-    if source_metadata.len() == 0 || source_metadata.len() > limit as u64 {
+    if source_size == 0 {
         return Err("Export source size is outside the supported range".to_string());
     }
     let filename_bytes = decode_base64url(encoded_name, 256)?;
@@ -369,7 +320,7 @@ fn export_file(kind: &str, id: &str, encoded_name: &str) -> Result<(), String> {
         return Err(error);
     }
     drop(output);
-    remove_if_regular(&source_path);
+    let _ = staging.unlink_file(&source_name);
     println!("{}", destination.display());
     Ok(())
 }
@@ -414,6 +365,7 @@ fn create_export_destination(directory: &Path, filename: &str) -> Result<(PathBu
             .write(true)
             .create_new(true)
             .mode(0o600)
+            .custom_flags(O_NOFOLLOW)
             .open(&path)
         {
             Ok(file) => return Ok((path, file)),
@@ -454,66 +406,6 @@ fn safe_file_metadata(path: &Path) -> Result<fs::Metadata, String> {
     Ok(metadata)
 }
 
-fn atomic_write(path: &Path, content: &[u8]) -> Result<(), String> {
-    if fs::symlink_metadata(path).is_ok() {
-        return Err("Bridge destination already exists".to_string());
-    }
-    let parent = path.parent().ok_or("Bridge destination has no parent")?;
-    let temporary = parent.join(format!(".{}.tmp", random_id()?));
-    let result = (|| -> Result<(), String> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&temporary)
-            .map_err(|error| format!("Could not create bridge request: {error}"))?;
-        file.write_all(content)
-            .map_err(|error| format!("Could not write bridge request: {error}"))?;
-        file.sync_all()
-            .map_err(|error| format!("Could not persist bridge request: {error}"))?;
-        fs::rename(&temporary, path)
-            .map_err(|error| format!("Could not publish bridge request: {error}"))
-    })();
-    if result.is_err() {
-        remove_if_regular(&temporary);
-    }
-    result
-}
-
-fn read_limited(path: &Path, limit: usize) -> Result<Vec<u8>, String> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(O_NOFOLLOW)
-        .open(path)
-        .map_err(|error| format!("Could not open file: {error}"))?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("Could not inspect file: {error}"))?;
-    if !metadata.is_file() {
-        return Err("File path is unsafe".to_string());
-    }
-    if metadata.len() > limit as u64 {
-        return Err("File exceeds its size limit".to_string());
-    }
-    let mut output = Vec::with_capacity(metadata.len() as usize);
-    Read::by_ref(&mut file)
-        .take(limit as u64 + 1)
-        .read_to_end(&mut output)
-        .map_err(|error| format!("Could not read file: {error}"))?;
-    if output.len() > limit {
-        return Err("File exceeds its size limit".to_string());
-    }
-    Ok(output)
-}
-
-fn remove_if_regular(path: &Path) {
-    if let Ok(metadata) = fs::symlink_metadata(path) {
-        if metadata.is_file() && !metadata.file_type().is_symlink() {
-            let _ = fs::remove_file(path);
-        }
-    }
-}
-
 fn remove_if_same_file(path: &Path, expected: &fs::Metadata) {
     if let Ok(metadata) = fs::symlink_metadata(path) {
         if metadata.is_file()
@@ -526,27 +418,36 @@ fn remove_if_same_file(path: &Path, expected: &fs::Metadata) {
     }
 }
 
-fn cleanup_stale() {
-    for directory in [REQUEST_DIR, RESPONSE_DIR, STAGING_DIR] {
-        let Ok(entries) = fs::read_dir(directory) else {
+fn cleanup_stale(staging: &TrustedDir) {
+    let Ok(entries) = fs::read_dir(STAGING_DIR) else {
+        return;
+    };
+    for entry in entries.flatten().take(1024) {
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        for entry in entries.flatten().take(1024) {
-            let path = entry.path();
-            let Ok(metadata) = fs::symlink_metadata(&path) else {
-                continue;
-            };
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                continue;
-            }
-            let stale = metadata
-                .modified()
-                .ok()
-                .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-                .is_some_and(|age| age > STALE_AGE);
-            if stale {
-                let _ = fs::remove_file(path);
-            }
+        let Some((id, kind)) = name.split_once('.') else {
+            continue;
+        };
+        if name.matches('.').count() != 1
+            || validate_id(id).is_err()
+            || validate_kind(kind).is_err()
+        {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            continue;
+        }
+        let stale = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| age > STALE_AGE);
+        if stale {
+            let _ = staging.unlink_file(&name);
         }
     }
 }
@@ -578,11 +479,13 @@ fn decode_base64url(value: &str, limit: usize) -> Result<Vec<u8>, String> {
                 buffer & ((1u32 << bits) - 1)
             };
             if output.len() > limit {
+                output.fill(0);
                 return Err("Decoded payload exceeds its size limit".to_string());
             }
         }
     }
     if buffer != 0 {
+        output.fill(0);
         return Err("Invalid base64url padding bits".to_string());
     }
     Ok(output)
@@ -647,9 +550,18 @@ mod tests {
         assert!(validate_id("0123456789abcdef0123456789abcdef").is_ok());
         assert!(validate_id("0123456789ABCDEF0123456789ABCDEF").is_err());
         assert!(validate_id("../../etc/passwd").is_err());
+        assert_eq!(
+            stage_name("0123456789abcdef0123456789abcdef", "request").unwrap(),
+            "0123456789abcdef0123456789abcdef.request"
+        );
         assert!(validate_filename("CleveresTricky-backup.zip").is_ok());
         assert!(validate_filename("../backup.zip").is_err());
         assert!(validate_filename(".hidden").is_err());
         assert_eq!(suffixed_filename("backup.zip", "1234"), "backup_1234.zip");
+    }
+
+    #[test]
+    fn socket_frame_preserves_full_legacy_request_bound() {
+        assert_eq!(MAX_FRAME_BYTES, MAX_REQUEST_BYTES);
     }
 }

@@ -15,7 +15,6 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
-import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
@@ -185,7 +184,8 @@ class WebServer(
     requestedPort: Int,
     private val configDir: File,
     private val isTampered: Boolean = false,
-    private val crlFetcher: () -> Set<String>? = { KeyboxVerifier.fetchCrl() },
+    // JVM test injection only. Production keeps revocation state as an opaque Rust handle.
+    private val crlFetcher: (() -> Set<String>?)? = null,
     private val autoIdentityFetcher: () -> AutoIdentityManager.Result = { AutoIdentityManager.fetchLatest() },
     private val permissionSetter: (File, Int) -> Unit = { f, m ->
         try {
@@ -214,6 +214,16 @@ class WebServer(
     private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
 
     private val fileLock = Any()
+
+    private fun updateKeyboxesFromConfiguredRevocationSource(): Boolean =
+        crlFetcher?.let { Config.updateKeyBoxesSync(it()) } ?: Config.updateKeyBoxesSync()
+
+    private fun keyboxActivationFailureResponse(): Response =
+        secureResponse(
+            Response.Status.SERVICE_UNAVAILABLE,
+            "text/plain",
+            "Keybox activation unavailable; previous active snapshot preserved",
+        )
 
     @Suppress("DEPRECATION")
     private fun getParam(
@@ -541,25 +551,38 @@ class WebServer(
         VALID,
         INVALID,
         REVOCATION_UNAVAILABLE,
+        BACKEND_UNAVAILABLE,
+    }
+
+    private fun validateUploadedKeyboxXml(
+        bytes: ByteArray,
+        filename: String,
+    ): KeyboxUploadValidation {
+        return try {
+            val keyboxes = KeyboxLoader.parse(bytes.copyOf(), filename)
+            if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
+            val allValid =
+                crlFetcher?.let { legacyFetcher ->
+                    val revoked = legacyFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
+                    keyboxes.all { KeyboxVerifier.verifyKeyboxLegacy(it, revoked) == KeyboxVerifier.Status.VALID }
+                } ?: run {
+                    val revoked = KeyboxVerifier.fetchCrl()
+                        ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
+                    keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }
+                }
+            if (allValid) KeyboxUploadValidation.VALID else KeyboxUploadValidation.INVALID
+        } catch (_: RustBackendUnavailableException) {
+            KeyboxUploadValidation.BACKEND_UNAVAILABLE
+        } catch (_: Exception) {
+            KeyboxUploadValidation.INVALID
+        }
     }
 
     private fun validateUploadedKeyboxXml(
         content: String,
         filename: String,
-    ): KeyboxUploadValidation {
-        return try {
-            val keyboxes = CertHack.parseKeyboxXml(StringReader(content), filename)
-            if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
-            val revoked = crlFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
-            if (keyboxes.all { KeyboxVerifier.verifyKeybox(it, revoked) == KeyboxVerifier.Status.VALID }) {
-                KeyboxUploadValidation.VALID
-            } else {
-                KeyboxUploadValidation.INVALID
-            }
-        } catch (error: Exception) {
-            KeyboxUploadValidation.INVALID
-        }
-    }
+    ): KeyboxUploadValidation =
+        validateUploadedKeyboxXml(content.toByteArray(Charsets.UTF_8), filename)
 
     private fun keyboxValidationError(validation: KeyboxUploadValidation): Response? =
         when (validation) {
@@ -571,6 +594,12 @@ class WebServer(
                     Response.Status.SERVICE_UNAVAILABLE,
                     "text/plain",
                     "Revocation service unavailable; keybox was not saved",
+                )
+            KeyboxUploadValidation.BACKEND_UNAVAILABLE ->
+                secureResponse(
+                    Response.Status.SERVICE_UNAVAILABLE,
+                    "text/plain",
+                    "Rust backend unavailable; keybox was not saved",
                 )
         }
 
@@ -1098,7 +1127,9 @@ class WebServer(
 
             if (filename != null && password != null) {
                 if (CboxManager.unlock(filename, password, pubKey)) {
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
                 } else {
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
@@ -1172,7 +1203,9 @@ class WebServer(
             val id = getParam(session, "id")
             if (id != null) {
                 if (ServerManager.removeServer(id)) {
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                 }
                 return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Server not found")
@@ -1192,7 +1225,9 @@ class WebServer(
                 val s = ServerManager.findServer(id)
                 if (s != null) {
                     val refreshed = ServerManager.fetchFromServer(s)
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     if (refreshed) {
                         return secureResponse(Response.Status.OK, "text/plain", "Refreshed")
                     } else {
@@ -1574,20 +1609,12 @@ class WebServer(
                             SecureFile.writeBytes(dest, bytes)
                             CboxManager.refresh()
                         } else {
-                            val xml =
-                                try {
-                                    Charsets.UTF_8.newDecoder()
-                                        .onMalformedInput(CodingErrorAction.REPORT)
-                                        .onUnmappableCharacter(CodingErrorAction.REPORT)
-                                        .decode(ByteBuffer.wrap(bytes))
-                                        .toString()
-                                } catch (error: Exception) {
-                                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Keybox XML is not valid UTF-8")
-                                }
-                            keyboxValidationError(validateUploadedKeyboxXml(xml, originalName))?.let { return it }
+                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
-                        Config.updateKeyBoxesSync(crlFetcher())
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     }
@@ -1613,7 +1640,9 @@ class WebServer(
                     }
                     try {
                         SecureFile.writeText(file, content)
-                        Config.updateKeyBoxesSync(crlFetcher())
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
                         val count = CertHack.getKeyboxCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     } catch (e: Exception) {
@@ -1646,7 +1675,9 @@ class WebServer(
                                 }
                                 CboxManager.refresh()
                             }
-                            Config.updateKeyBoxesSync(crlFetcher())
+                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                return keyboxActivationFailureResponse()
+                            }
                             return secureResponse(Response.Status.OK, "text/plain", "Deleted")
                         } else {
                             return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
@@ -1659,9 +1690,9 @@ class WebServer(
 
         if (uri == "/api/verify_keyboxes" && method == Method.POST) {
             try {
-                val crl = crlFetcher()
                 synchronized(fileLock) {
-                    val results = KeyboxVerifier.verify(configDir) { crl }
+                    val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
+                        ?: KeyboxVerifier.verify(configDir)
                     val json = createKeyboxVerificationJson(results)
                     return secureResponse(Response.Status.OK, "application/json", json)
                 }
@@ -1752,7 +1783,9 @@ class WebServer(
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         target.setLastModified(System.currentTimeMillis())
                     }
-                    Config.updateKeyBoxesSync(crlFetcher())
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
                     return secureResponse(Response.Status.OK, "text/plain", "Environment Reset")
                 }
             } catch (e: Exception) {
@@ -1771,10 +1804,18 @@ class WebServer(
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         target.setLastModified(System.currentTimeMillis())
                     }
-                    val revoked = crlFetcher()
-                    if (revoked != null) {
-                        Config.updateKeyBoxesSync(revoked)
-                    } else {
+                    val legacyFetcher = crlFetcher
+                    val revocationAvailable =
+                        if (legacyFetcher != null) {
+                            val revoked = legacyFetcher()
+                            if (revoked != null) Config.updateKeyBoxesSync(revoked)
+                            revoked != null
+                        } else {
+                            val revoked = KeyboxVerifier.fetchCrl()
+                            if (revoked != null) Config.updateKeyBoxesSync()
+                            revoked != null
+                        }
+                    if (!revocationAvailable) {
                         Logger.w("Runtime reload kept the active keybox pool because revocation data is unavailable")
                     }
                     return secureResponse(Response.Status.OK, "text/plain", "Reloaded")
@@ -1909,12 +1950,21 @@ class WebServer(
                             WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
                             DeviceTemplateManager.initialize(configDir)
                             Config.refreshRestoredConfiguration().getOrThrow()
-                            Config.updateKeyBoxesSync(crlFetcher())
+                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                return keyboxActivationFailureResponse()
+                            }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
                     } finally {
                         decrypted.fill(0)
                     }
+                } catch (e: RustBackendUnavailableException) {
+                    Logger.e("Rust backend unavailable during backup restore", e)
+                    secureResponse(
+                        Response.Status.SERVICE_UNAVAILABLE,
+                        "text/plain",
+                        "Rust backend unavailable; restore not applied",
+                    )
                 } catch (e: Exception) {
                     Logger.e("Failed to restore backup", e)
                     secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Restore failed")
@@ -2615,11 +2665,7 @@ class WebServer(
                 staged.forEach { (name, bytes) ->
                     val file = requireNotNull(destinations[name])
                     if (name.startsWith("keyboxes/")) SecureFile.mkdirs(keyboxDir, 448)
-                    SecureFile.writeStream(
-                        file,
-                        ByteArrayInputStream(bytes),
-                        backupEntryLimit(name).toLong(),
-                    )
+                    SecureFile.writeBytes(file, bytes)
                 }
                 staleConfigFiles.forEach { Files.deleteIfExists(it.toPath()) }
                 staleKeyboxFiles.forEach { Files.deleteIfExists(it.toPath()) }
@@ -2677,15 +2723,17 @@ class WebServer(
                 }
                 return
             }
+            if (isBackupKeyboxEntry(name)) {
+                if (KeyboxLoader.parse(bytes.copyOf(), name).isEmpty()) {
+                    throw IOException("Backup keybox is empty: $name")
+                }
+                return
+            }
             val content = bytes.toString(Charsets.UTF_8)
             if (!content.toByteArray(Charsets.UTF_8).contentEquals(bytes)) {
                 throw IOException("Backup entry is not valid UTF-8: $name")
             }
-            if (isBackupKeyboxEntry(name)) {
-                if (CertHack.parseKeyboxXml(StringReader(content), name).isEmpty()) {
-                    throw IOException("Backup keybox is empty: $name")
-                }
-            } else if (!validateContent(name, content)) {
+            if (!validateContent(name, content)) {
                 throw IOException("Backup configuration is invalid: $name")
             }
         }

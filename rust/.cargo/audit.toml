@@ -1,0 +1,6 @@
+# RUSTSEC-2023-0071 affects RSA operations that expose private-key timing.
+# CleveresTricky uses the `rsa` crate only to parse public SPKI keys and verify
+# PKCS#1 v1.5 / SHA-256 CBOX signatures. It never performs RSA signing or
+# private-key decryption, and the advisory has no fixed release as of 2026-08-15.
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]
