@@ -83,7 +83,19 @@ object KeystoreInterceptor : BinderInterceptor() {
                 if (originalChain == null) {
                     null
                 } else if (targeted) {
-                    CertHack.hackCertificateChain(originalChain, callingUid).takeUnless { it === originalChain }
+                    // Keep ordinary key readback entirely local. Attested readback normally hits
+                    // CertHack's in-memory replacement cache; sending only the non-attested path
+                    // through CertificateBackend.inspect adds a measurable UDS/parser asymmetry.
+                    // The leaf is already parsed, so reject the negative case by fixed extension OID.
+                    val originalLeaf = originalChain.firstOrNull()
+                    if (
+                        originalLeaf == null ||
+                        !Utils.hasAndroidAttestationExtension(originalLeaf)
+                    ) {
+                        null
+                    } else {
+                        CertHack.hackCertificateChain(originalChain, callingUid).takeUnless { it === originalChain }
+                    }
                 } else {
                     // A grant or isolated process is allowed to observe the chain already returned
                     // to the key owner, but it must not synthesize a new per-reader chain.
