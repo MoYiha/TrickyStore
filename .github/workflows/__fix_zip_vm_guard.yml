@@ -1,0 +1,47 @@
+name: Apply ZIP host capability guard
+on:
+  push:
+    branches: [feat/v2.6.1-webui-zip-import]
+    paths: [.github/workflows/__fix_zip_vm_guard.yml]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - name: Guard browser event hook
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('module/template/webroot/ux.js')
+          s=p.read_text(encoding='utf-8')
+          old="""    if (typeof document !== 'undefined') {
+        if (document.readyState === 'complete') global.setTimeout(install, 0);
+        else global.addEventListener('load', install, { once: true });
+    }
+})(window);"""
+          new="""    if (typeof document !== 'undefined') {
+        if (document.readyState === 'complete') {
+            global.setTimeout(install, 0);
+        } else if (typeof global.addEventListener === 'function') {
+            global.addEventListener('load', install, { once: true });
+        }
+    }
+})(window);"""
+          if old not in s: raise SystemExit('ZIP install hook anchor missing')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
+          node --check module/template/webroot/ux.js
+          git diff --check
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/__fix_zip_vm_guard.yml
+          git add module/template/webroot/ux.js
+          git commit -m "fix(webui): guard ZIP install hook in minimal hosts"
+          git push origin HEAD:feat/v2.6.1-webui-zip-import
