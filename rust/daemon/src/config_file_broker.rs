@@ -118,8 +118,12 @@ fn handle_from(root: &TrustedDir, request: &[u8]) -> io::Result<()> {
 
 fn mkdir_allowed(root: &TrustedDir, path: &str) -> io::Result<()> {
     match path {
-        KEYBOX_DIRECTORY => root.mkdir_child(KEYBOX_DIRECTORY, DIRECTORY_MODE).map(|_| ()),
-        WEBUI_DIRECTORY => root.mkdir_child(WEBUI_DIRECTORY, DIRECTORY_MODE).map(|_| ()),
+        KEYBOX_DIRECTORY => root
+            .mkdir_child(KEYBOX_DIRECTORY, DIRECTORY_MODE)
+            .map(|_| ()),
+        WEBUI_DIRECTORY => root
+            .mkdir_child(WEBUI_DIRECTORY, DIRECTORY_MODE)
+            .map(|_| ()),
         WEBUI_STAGING_PATH => {
             let bridge = root.open_child(WEBUI_DIRECTORY)?;
             bridge
@@ -237,7 +241,8 @@ fn atomic_write_relative_from<R: Read>(
         (Some(name), None) if first == KEYBOX_DIRECTORY => {
             validate_component(name)?;
             let keyboxes = root.open_child(KEYBOX_DIRECTORY)?;
-            keyboxes.atomic_write_from_confirmed(name, reader, body_len, FILE_MODE, scratch, confirm)
+            keyboxes
+                .atomic_write_from_confirmed(name, reader, body_len, FILE_MODE, scratch, confirm)
         }
         (Some(directory), Some(name))
             if first == WEBUI_DIRECTORY && directory == WEBUI_STAGING_DIRECTORY =>
@@ -470,7 +475,11 @@ mod tests {
         assert_eq!(fs::read(&staged).unwrap(), b"first-second");
 
         let too_large_for_worker_scratch = vec![0x41; 65];
-        assert!(handle_from(&root, &request(ACTION_STAGE_APPEND, path, &too_large_for_worker_scratch)).is_err());
+        assert!(handle_from(
+            &root,
+            &request(ACTION_STAGE_APPEND, path, &too_large_for_worker_scratch)
+        )
+        .is_err());
         assert_eq!(fs::read(&staged).unwrap(), b"first-second");
     }
 
