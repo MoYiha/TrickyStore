@@ -197,7 +197,10 @@ fn synthetic_genuine_leaf(issuer: &Certificate) -> Certificate {
     let issuer_tbs = issuer.tbs_certificate();
     let version = explicit_x509_tag(0, &2i32.to_der().expect("v3 DER"));
     let serial = 0x012345i32.to_der().expect("serial DER");
-    let signature = issuer_tbs.signature().to_der().expect("signature algorithm DER");
+    let signature = issuer_tbs
+        .signature()
+        .to_der()
+        .expect("signature algorithm DER");
     let issuer_name = issuer_tbs.subject().to_der().expect("issuer name DER");
     let validity = issuer_tbs.validity().to_der().expect("validity DER");
     let subject = issuer_tbs.subject().to_der().expect("subject DER");
@@ -216,9 +219,7 @@ fn synthetic_genuine_leaf(issuer: &Certificate) -> Certificate {
         critical: false,
         extn_value: OctetString::new(extension_der).expect("attestation octets"),
     });
-    let extensions = extensions
-        .to_der()
-        .expect("extensions DER");
+    let extensions = extensions.to_der().expect("extensions DER");
     let extensions = explicit_x509_tag(3, &extensions);
 
     let tbs = x509_sequence([
@@ -324,7 +325,8 @@ fn verify_signature(output: &Certificate, issuer: &Certificate, algorithm: Signi
         SigningAlgorithm::RsaPkcs1Sha256 => {
             let key = rsa::RsaPublicKey::from_public_key_der(&issuer_spki).expect("RSA issuer key");
             let verifying = RsaVerifyingKey::<Sha256>::new(key);
-            let signature = RsaSignature::try_from(output.signature().raw_bytes()).expect("RSA sig");
+            let signature =
+                RsaSignature::try_from(output.signature().raw_bytes()).expect("RSA sig");
             verifying
                 .verify(&tbs, &signature)
                 .expect("RSA verification");
