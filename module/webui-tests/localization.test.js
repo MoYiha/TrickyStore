@@ -23,11 +23,12 @@ function loadI18n(locale) {
         localStorage: { getItem: () => locale, setItem() {} },
         CleveresBridge: {},
         setTimeout() {},
-        clearTimeout() {}
+        clearTimeout() {},
+        addEventListener() {}
     };
     context.window = context;
     vm.createContext(context);
-    vm.runInContext(instrumentedSource, context, { filename: 'ux-core.js' });
+    vm.runInContext(instrumentedSource, context, { filename: 'ux.js' });
     return { i18n: context.CleveresI18n, catalogs: context.__CleveresCatalogs };
 }
 
