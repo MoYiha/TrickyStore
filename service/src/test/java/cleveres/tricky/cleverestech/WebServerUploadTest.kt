@@ -52,6 +52,8 @@ class WebServerUploadTest {
             },
         )
         configDir = tempFolder.newFolder("config")
+        KeyboxLoader.resetForTesting()
+        cleveres.tricky.cleverestech.keystore.CertHack.setKeyboxes(emptyList())
         ManagedKeyboxParserOracle.install()
 
         originalSecureFileImpl = SecureFile.impl
@@ -95,8 +97,9 @@ class WebServerUploadTest {
 
     @After
     fun tearDown() {
-        KeyboxLoader.activeSetOverride = null
+        KeyboxLoader.resetForTesting()
         BackendRecovery.recoveryOverride = null
+        cleveres.tricky.cleverestech.keystore.CertHack.setKeyboxes(emptyList())
         ManagedKeyboxParserOracle.reset()
         SecureFile.impl = originalSecureFileImpl
         server.stop()
