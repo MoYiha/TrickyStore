@@ -89,6 +89,30 @@ class GenerateKeyTimingFastPathTest {
         assertTrue(backendRewrite > localExtensionGuard)
     }
 
+    @Test
+    fun `timing fix cannot use synthetic delay equalization`() {
+        val root = locateRoot()
+        val sources =
+            listOf(
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/SecurityLevelInterceptor.kt",
+                ).readText(),
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/KeystoreInterceptor.kt",
+                ).readText(),
+                File(
+                    root,
+                    "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+                ).readText(),
+            ).joinToString("\n")
+
+        assertFalse(sources.contains("Thread.sleep"))
+        assertFalse(sources.contains("parkNanos"))
+        assertFalse(sources.contains("busyWait"))
+    }
+
     private fun locateRoot(): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(6) {
