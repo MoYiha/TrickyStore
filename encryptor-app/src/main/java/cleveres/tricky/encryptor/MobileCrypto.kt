@@ -35,6 +35,9 @@ internal object MobileCrypto {
         NATIVE_FAILURE,
     }
 
+    private class InvalidBatchException : Exception()
+    private class NativeBatchException : Exception()
+
     fun ensureSigningKey() {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
         if (keyStore.containsAlias(KEY_ALIAS)) return
@@ -76,15 +79,28 @@ internal object MobileCrypto {
         items: List<BatchItem>,
         password: String,
     ): EncryptResult {
+        if (items.isEmpty() || items.size > KeyboxZipReader.MAX_KEYBOX_FILES) return EncryptResult.INVALID_INPUT
+        return encryptAndSaveStreaming(noBackupDirectory, author, password) { encryptOne ->
+            items.forEach { item -> encryptOne(item.filename, item.xmlUtf8) }
+            items.size
+        }
+    }
+
+    /**
+     * Opens Android Keystore and the RSA signer once, then consumes XML entries one at a time.
+     * The caller never needs to retain an entire ZIP batch in memory. Any failure rolls back every
+     * CBOX created by this session; individual XML buffers remain owned and wiped by the reader.
+     */
+    fun encryptAndSaveStreaming(
+        noBackupDirectory: String,
+        author: String,
+        password: String,
+        consume: (((String, ByteArray) -> Unit) -> Int),
+    ): EncryptResult {
         if (
             author.isBlank() ||
             author.length > MAX_AUTHOR_UTF16_UNITS ||
-            items.isEmpty() ||
-            items.size > KeyboxZipReader.MAX_KEYBOX_FILES ||
-            password.length !in MIN_PASSWORD_UTF16_UNITS..MAX_PASSWORD_UTF16_UNITS ||
-            items.any { it.xmlUtf8.isEmpty() || it.xmlUtf8.size > MAX_XML_BYTES } ||
-            items.sumOf { it.xmlUtf8.size.toLong() } > KeyboxZipReader.MAX_TOTAL_XML_BYTES ||
-            items.map { it.filename }.toSet().size != items.size
+            password.length !in MIN_PASSWORD_UTF16_UNITS..MAX_PASSWORD_UTF16_UNITS
         ) {
             return EncryptResult.INVALID_INPUT
         }
@@ -95,7 +111,10 @@ internal object MobileCrypto {
             return EncryptResult.INVALID_INPUT
         }
         val passwordUtf16 = password.toCharArray()
-        val committed = ArrayList<String>(items.size)
+        val committed = ArrayList<String>()
+        val filenames = HashSet<String>()
+        var processed = 0
+        var succeeded = false
         try {
             ensureSigningKey()
             val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
@@ -104,48 +123,63 @@ internal object MobileCrypto {
                     ?: return EncryptResult.SIGNING_FAILURE
             val signer = Signature.getInstance(SIGNATURE_ALGORITHM)
 
-            for (item in items) {
+            val encryptOne: (String, ByteArray) -> Unit = { filename, xmlUtf8 ->
+                if (
+                    processed >= KeyboxZipReader.MAX_KEYBOX_FILES ||
+                    filename.isBlank() ||
+                    !filenames.add(filename) ||
+                    xmlUtf8.isEmpty() ||
+                    xmlUtf8.size > MAX_XML_BYTES
+                ) {
+                    throw InvalidBatchException()
+                }
+
                 var signatureBytes: ByteArray? = null
                 var signatureBase64: ByteArray? = null
                 try {
                     signer.initSign(entry.privateKey)
-                    CboxSignatureV2.update(authorUtf8, item.xmlUtf8, signer::update)
+                    CboxSignatureV2.update(authorUtf8, xmlUtf8, signer::update)
                     signatureBytes = signer.sign()
                     signatureBase64 = Base64.encode(signatureBytes, Base64.NO_WRAP)
 
                     if (
                         !NativeCrypto.encryptAndSave(
                             noBackupDirectory,
-                            item.filename,
+                            filename,
                             authorUtf8,
-                            item.xmlUtf8,
+                            xmlUtf8,
                             signatureBase64,
                             passwordUtf16,
                         )
                     ) {
-                        rollbackBatch(noBackupDirectory, committed)
-                        return EncryptResult.NATIVE_FAILURE
+                        throw NativeBatchException()
                     }
-                    committed += item.filename
+                    committed += filename
+                    processed++
                 } finally {
                     signatureBytes?.fill(0)
                     signatureBase64?.fill(0)
                 }
             }
+
+            val reportedCount = consume(encryptOne)
+            if (processed == 0 || reportedCount != processed) throw InvalidBatchException()
+            succeeded = true
             return EncryptResult.SUCCESS
+        } catch (_: InvalidBatchException) {
+            return EncryptResult.INVALID_INPUT
+        } catch (_: IOException) {
+            return EncryptResult.INVALID_INPUT
         } catch (_: ProviderException) {
-            rollbackBatch(noBackupDirectory, committed)
             return EncryptResult.SIGNING_FAILURE
         } catch (_: GeneralSecurityException) {
-            rollbackBatch(noBackupDirectory, committed)
             return EncryptResult.SIGNING_FAILURE
-        } catch (_: IOException) {
-            rollbackBatch(noBackupDirectory, committed)
-            return EncryptResult.SIGNING_FAILURE
+        } catch (_: NativeBatchException) {
+            return EncryptResult.NATIVE_FAILURE
         } catch (_: IllegalStateException) {
-            rollbackBatch(noBackupDirectory, committed)
             return EncryptResult.NATIVE_FAILURE
         } finally {
+            if (!succeeded) rollbackBatch(noBackupDirectory, committed)
             authorUtf8.fill(0)
             passwordUtf16.fill('\u0000')
         }
