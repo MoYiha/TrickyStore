@@ -7,27 +7,27 @@ import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.os.Build
 import android.os.LocaleList
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -38,20 +38,26 @@ import java.util.Locale
 
 internal val CleveresVaultColors =
     darkColorScheme(
-        background = Color(0xFF0A0A0B),
-        surface = Color(0xFF151516),
-        surfaceVariant = Color(0xFF111113),
-        primary = Color(0xFFF4F4F5),
-        onPrimary = Color(0xFF0A0A0B),
-        primaryContainer = Color(0xFFE7E5E4),
-        onPrimaryContainer = Color(0xFF0A0A0B),
-        secondary = Color(0xFFE7E5E4),
-        onSecondary = Color(0xFF0A0A0B),
-        onBackground = Color(0xFFF4F4F5),
-        onSurface = Color(0xFFF4F4F5),
-        onSurfaceVariant = Color(0xFF9CA3AF),
-        outline = Color(0xFF303033),
-        error = Color(0xFFFB7185),
+        background = Color(0xFF080808),
+        surface = Color(0xFF121212),
+        surfaceVariant = Color(0xFF181818),
+        primary = Color(0xFFF5F5F5),
+        onPrimary = Color(0xFF090909),
+        primaryContainer = Color(0xFFF5F5F5),
+        onPrimaryContainer = Color(0xFF090909),
+        secondary = Color(0xFFD4D4D4),
+        onSecondary = Color(0xFF090909),
+        secondaryContainer = Color(0xFF242424),
+        onSecondaryContainer = Color(0xFFF5F5F5),
+        onBackground = Color(0xFFF5F5F5),
+        onSurface = Color(0xFFF5F5F5),
+        onSurfaceVariant = Color(0xFFAAAAAA),
+        outline = Color(0xFF3A3A3A),
+        outlineVariant = Color(0xFF252525),
+        error = Color(0xFFF5F5F5),
+        onError = Color(0xFF090909),
+        errorContainer = Color(0xFF242424),
+        onErrorContainer = Color(0xFFF5F5F5),
     )
 
 internal object LocaleController {
@@ -137,51 +143,60 @@ internal fun LanguagePicker() {
     val selectedTag = LocaleController.selectedTag(context)
     val selected = LocaleController.languages.firstOrNull { it.tag == selectedTag } ?: LocaleController.languages.first()
     val systemDefault = stringResource(R.string.system_default)
+    val languageLabel = stringResource(R.string.language)
     var open by remember { mutableStateOf(false) }
 
-    OutlinedButton(onClick = { open = true }) {
-        Icon(Icons.Default.Language, contentDescription = stringResource(R.string.language))
-        Text(
-            text = if (selected.tag.isBlank()) systemDefault else selected.label,
-            modifier = Modifier.padding(start = 8.dp),
-        )
-    }
+    Box {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            tonalElevation = 0.dp,
+        ) {
+            IconButton(
+                onClick = { open = true },
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = languageLabel,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
 
-    if (open) {
-        AlertDialog(
+        DropdownMenu(
+            expanded = open,
             onDismissRequest = { open = false },
-            title = { Text(stringResource(R.string.language)) },
-            text = {
-                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                    items(LocaleController.languages, key = { it.tag }) { language ->
-                        TextButton(
-                            onClick = {
-                                open = false
-                                context.findActivity()?.let { LocaleController.apply(it, language.tag) }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = if (language.tag.isBlank()) systemDefault else language.label,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (language.tag == selected.tag) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
-                                }
-                            }
+            modifier = Modifier.widthIn(min = 220.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            LocaleController.languages.forEach { language ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = if (language.tag.isBlank()) systemDefault else language.label,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    },
+                    onClick = {
+                        open = false
+                        context.findActivity()?.let { LocaleController.apply(it, language.tag) }
+                    },
+                    trailingIcon = {
+                        if (language.tag == selected.tag) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { open = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+                    },
+                )
+            }
+        }
     }
 }
