@@ -29,13 +29,22 @@ class MobileSecurityContractTest {
         assertTrue(activity.contains("CleveresVaultColors"))
         assertTrue(activity.contains("LanguagePicker()"))
         assertTrue(activity.contains("context.noBackupFilesDir"))
+        assertTrue(activity.contains("enableEdgeToEdge()"))
+        assertTrue(activity.contains("NativeCrypto.validateKeyboxXml(bytes)"))
+        assertTrue(activity.contains(".imePadding()"))
+        assertTrue(activity.contains("VaultStore.exists(context, filename)"))
+        assertFalse(activity.contains("File(VaultStore.directory(context), filename).exists()"))
         assertFalse(activity.contains("getExternalFilesDir"))
+
+        val experience = File(root, "encryptor-app/src/main/java/cleveres/tricky/encryptor/VaultExperience.kt").readText()
+        assertTrue(experience.contains("Modifier.size(48.dp)"))
 
         val mobileCrypto = File(root, "encryptor-app/src/main/java/cleveres/tricky/encryptor/MobileCrypto.kt").readText()
         assertTrue(mobileCrypto.contains("AndroidKeyStore"))
         assertTrue(mobileCrypto.contains("setKeySize(3072)"))
         assertTrue(mobileCrypto.contains("setIsStrongBoxBacked(true)"))
         assertTrue(mobileCrypto.contains("NativeCrypto.encryptAndSave"))
+        assertTrue(mobileCrypto.contains("EncryptResult"))
         assertFalse(mobileCrypto.contains("PBKDF2"))
         assertFalse(mobileCrypto.contains("AES/GCM"))
 
@@ -44,6 +53,7 @@ class MobileSecurityContractTest {
         assertTrue(vault.contains("NativeCrypto.readEncrypted"))
         assertTrue(vault.contains("NativeCrypto.deleteEncrypted"))
         assertTrue(vault.contains("NativeCrypto.storeEncrypted"))
+        assertTrue(vault.contains("fun exists("))
 
         val native = File(root, "rust/encryptor-native/src/lib.rs").readText()
         assertTrue(native.contains("#![deny(unsafe_code)]"))
