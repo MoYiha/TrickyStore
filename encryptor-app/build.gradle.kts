@@ -42,6 +42,14 @@ android {
         }
     }
 
+    bundle {
+        language {
+            // The vault offers an in-app language picker and must keep all packaged locales
+            // available offline instead of relying on Play language split downloads.
+            enableSplit = false
+        }
+    }
+
     signingConfigs {
         if (releaseSigningConfigured) {
             create("release") {
