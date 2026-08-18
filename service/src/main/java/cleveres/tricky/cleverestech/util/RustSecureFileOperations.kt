@@ -46,26 +46,8 @@ internal class RustSecureFileOperations : SecureFileOperations {
 
         transactControl(ACTION_STAGE_CREATE, relative.toByteArray(Charsets.UTF_8))
         val scratch = ByteArray(STREAM_BUFFER_BYTES)
-        var total = 0L
-        var emptyReads = 0
-        try {
-            while (true) {
-                val count = inputStream.read(scratch)
-                if (count < 0) break
-                if (count == 0) {
-                    if (++emptyReads > MAX_EMPTY_READS) throw IOException("Rust file request body stalled")
-                    continue
-                }
-                emptyReads = 0
-                if (count.toLong() > limit - total) {
-                    throw IOException("File size exceeds the $limit-byte limit")
-                }
-                transactStageAppend(relative, scratch, count)
-                scratch.fill(0, 0, count)
-                total += count
-            }
-        } finally {
-            scratch.fill(0)
+        streamBoundedChunks(inputStream, limit, scratch) { bytes, count ->
+            transactStageAppend(relative, bytes, count)
         }
     }
 
