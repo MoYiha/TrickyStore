@@ -40,15 +40,20 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(limit in 0L..MAX_FILE_BYTES.toLong()) { "Invalid Rust broker streaming limit" }
         val relative = relativePath(file)
-        if (!isWebUiDownloadPath(relative)) {
-            throw IOException("Streaming writes are restricted to WebUI download staging")
+        if (isWebUiDownloadPath(relative)) {
+            transactControl(ACTION_STAGE_CREATE, relative.toByteArray(Charsets.UTF_8))
+            val scratch = ByteArray(STREAM_BUFFER_BYTES)
+            streamBoundedChunks(inputStream, limit, scratch) { bytes, count ->
+                transactStageAppend(relative, bytes, count)
+            }
+            return
         }
 
-        transactControl(ACTION_STAGE_CREATE, relative.toByteArray(Charsets.UTF_8))
-        val scratch = ByteArray(STREAM_BUFFER_BYTES)
-        streamBoundedChunks(inputStream, limit, scratch) { bytes, count ->
-            transactStageAppend(relative, bytes, count)
-        }
+        // Existing config callers use writeStream only when the exact encoded length is already
+        // known (for example the fixed-size privacy seed). Keep that path atomic through the
+        // descriptor-relative broker. WebUI download staging above is the maximum-bound stream
+        // where the final length is intentionally unknown in advance.
+        transactAtomicWrite(file, inputStream, limit.toInt())
     }
 
     override fun mkdirs(
