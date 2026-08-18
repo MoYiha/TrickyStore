@@ -1,7 +1,9 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
-use cleverestricky_certificate_core::{SigningAlgorithm, MAX_CERTIFICATE_DER_BYTES};
+use cleverestricky_certificate_core::{
+    PreparedIssuer, SigningAlgorithm, MAX_CERTIFICATE_DER_BYTES,
+};
 use cleverestricky_keybox_core::{normalize_private_key_pkcs8, public_key_spki_from_pkcs8};
 use cleverestricky_xml_core::{KeyboxDocument, MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX};
 use sha2::{Digest, Sha256};
@@ -29,6 +31,7 @@ struct StoredKey {
     algorithm_name: String,
     private_key_pkcs8: Zeroizing<Vec<u8>>,
     certificates_der: Vec<Vec<u8>>,
+    prepared_issuer: Option<PreparedIssuer>,
 }
 
 #[derive(Default)]
@@ -101,28 +104,42 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
     Ok(public)
 }
 
+fn active_key(id: &KeyId) -> Result<Arc<StoredKey>, &'static str> {
+    let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
+    let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
+    if !guard.active_ids.contains(id) {
+        return Err("opaque key identifier is not active");
+    }
+    Ok(Arc::clone(
+        guard
+            .keys
+            .get(id)
+            .ok_or("opaque key identifier is not registered")?,
+    ))
+}
+
 pub fn with_key<T>(
     id: &KeyId,
     operation: impl FnOnce(SigningAlgorithm, &[u8], &[u8]) -> Result<T, &'static str>,
 ) -> Result<T, &'static str> {
-    let key = {
-        let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));
-        let guard = store.lock().map_err(|_| "keybox store lock poisoned")?;
-        if !guard.active_ids.contains(id) {
-            return Err("opaque key identifier is not active");
-        }
-        Arc::clone(
-            guard
-                .keys
-                .get(id)
-                .ok_or("opaque key identifier is not registered")?,
-        )
-    };
+    let key = active_key(id)?;
     let issuer = key
         .certificates_der
         .first()
         .ok_or("registered key has no certificate")?;
     operation(key.algorithm, key.private_key_pkcs8.as_slice(), issuer)
+}
+
+pub fn with_prepared_key<T>(
+    id: &KeyId,
+    operation: impl FnOnce(SigningAlgorithm, &PreparedIssuer) -> Result<T, &'static str>,
+) -> Result<T, &'static str> {
+    let key = active_key(id)?;
+    let prepared = key
+        .prepared_issuer
+        .as_ref()
+        .ok_or("registered key has no prepared issuer")?;
+    operation(key.algorithm, prepared)
 }
 
 pub fn retain_only(ids: &[KeyId]) -> Result<(), &'static str> {
@@ -199,6 +216,17 @@ fn build_stored_key(
         return Err("keybox private key does not match leaf certificate");
     }
 
+    // 2.6.0 kept only raw PKCS#8 + issuer DER in this store. Certificate rewrite then parsed both
+    // and verified the just-created signature again for every fresh attested key. 2.5.8 prepared
+    // keybox signer state when keyboxes were loaded. Restore that invariant inside the unprivileged
+    // Rust boundary so the Binder hot path pays only the unavoidable per-leaf rewrite and signature.
+    let prepared_issuer = PreparedIssuer::new(
+        &certificates_der[0],
+        private_key_pkcs8.as_slice(),
+        signing_algorithm,
+    )
+    .map_err(|_| "keybox issuer preparation failed")?;
+
     let id = derive_key_id(
         algorithm_name,
         private_key_pkcs8.as_slice(),
@@ -210,6 +238,7 @@ fn build_stored_key(
         algorithm_name: algorithm_name.to_string(),
         private_key_pkcs8,
         certificates_der,
+        prepared_issuer: Some(prepared_issuer),
     })
 }
 
@@ -301,6 +330,7 @@ mod tests {
             algorithm_name: "EC".to_string(),
             private_key_pkcs8: Zeroizing::new(vec![id[0].max(1)]),
             certificates_der: vec![vec![0x30, id[0]]],
+            prepared_issuer: None,
         }
     }
 
@@ -341,11 +371,18 @@ mod tests {
         let second = register_document(&document).unwrap()[0].id;
         assert_eq!(first, second);
         assert!(with_key(&first, |_, _, _| Ok(())).is_err());
+        assert!(with_prepared_key(&first, |_, _| Ok(())).is_err());
         retain_only(&[first]).unwrap();
         with_key(&first, |algorithm, private, issuer| {
             assert_eq!(algorithm, SigningAlgorithm::EcP256Sha256);
             assert!(!private.is_empty());
             assert!(!issuer.is_empty());
+            Ok(())
+        })
+        .unwrap();
+        with_prepared_key(&first, |algorithm, prepared| {
+            assert_eq!(algorithm, SigningAlgorithm::EcP256Sha256);
+            assert_eq!(prepared.algorithm(), algorithm);
             Ok(())
         })
         .unwrap();
@@ -416,9 +453,8 @@ mod tests {
         let (crypto_started_tx, crypto_started_rx) = mpsc::channel();
         let (release_crypto_tx, release_crypto_rx) = mpsc::channel();
         let crypto = std::thread::spawn(move || {
-            with_key(&id, |_, private, issuer| {
-                assert!(!private.is_empty());
-                assert!(!issuer.is_empty());
+            with_prepared_key(&id, |_, prepared| {
+                assert_eq!(prepared.algorithm(), SigningAlgorithm::EcP256Sha256);
                 crypto_started_tx.send(()).unwrap();
                 release_crypto_rx.recv().unwrap();
                 Ok(())
