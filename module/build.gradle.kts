@@ -79,6 +79,100 @@ fun commandExists(command: String): Boolean {
     }
 }
 
+private data class RuntimePayloadFloor(
+    val relativePath: String,
+    val minimumBytes: Long,
+)
+
+private fun verifyRuntimePayloadContract(
+    moduleRoot: File,
+    abis: List<String>,
+) {
+    val commonFloors =
+        listOf(
+            RuntimePayloadFloor("service.apk", 300_000),
+            RuntimePayloadFloor("service.sh", 4_000),
+            RuntimePayloadFloor("customize.sh", 10_000),
+            RuntimePayloadFloor("daemon", 32),
+            RuntimePayloadFloor("webroot/index.html", 100_000),
+            RuntimePayloadFloor("webroot/bridge.js", 15_000),
+            RuntimePayloadFloor("webroot/policy.js", 40_000),
+            RuntimePayloadFloor("webroot/ux.js", 250_000),
+        )
+    val nativeFloors =
+        mapOf(
+            "libcleverestricky.so" to 400_000L,
+            "inject" to 200_000L,
+            "webui_bridge" to 200_000L,
+            "cleverestrickyd" to 250_000L,
+            "cleverestricky_backend" to 500_000L,
+        )
+
+    val required =
+        buildList {
+            addAll(commonFloors)
+            abis.forEach { abi ->
+                nativeFloors.forEach { (name, minimumBytes) ->
+                    add(RuntimePayloadFloor("lib/$abi/$name", minimumBytes))
+                }
+            }
+        }
+
+    required.forEach { requirement ->
+        val payload = File(moduleRoot, requirement.relativePath)
+        if (!payload.isFile) {
+            throw GradleException("Runtime contract missing ${requirement.relativePath}")
+        }
+        if (payload.length() < requirement.minimumBytes) {
+            throw GradleException(
+                "Runtime contract payload ${requirement.relativePath} shrank to ${payload.length()} bytes; " +
+                    "minimum is ${requirement.minimumBytes}. If this reduction is intentional, review and update the floor explicitly.",
+            )
+        }
+    }
+
+    val daemonWrapper = File(moduleRoot, "daemon").readText()
+    if (!daemonWrapper.contains("exec \"\$MODDIR/cleverestrickyd\" \"\$MODDIR\"")) {
+        throw GradleException("Runtime contract daemon wrapper no longer launches cleverestrickyd with the module directory")
+    }
+
+    val serviceSupervisor = File(moduleRoot, "service.sh").readText()
+    val supervisorMarkers =
+        listOf(
+            "generate_backend_auth()",
+            "CLEVERES_TRICKY_BACKEND_AUTH",
+            "\"\$MODDIR/daemon\"",
+            "unset CLEVERES_TRICKY_BACKEND_AUTH",
+        )
+    supervisorMarkers.forEach { marker ->
+        if (!serviceSupervisor.contains(marker)) {
+            throw GradleException("Runtime contract service supervisor lost required marker: $marker")
+        }
+    }
+
+    val installer = File(moduleRoot, "customize.sh").readText()
+    listOf("inject", "webui_bridge", "cleverestrickyd", "cleverestricky_backend").forEach { executable ->
+        if (!installer.contains("/$executable\"") && !installer.contains("/$executable'")) {
+            throw GradleException("Runtime contract installer no longer extracts $executable")
+        }
+    }
+
+    abis.forEach { abi ->
+        val runtimeBytes =
+            nativeFloors.keys.sumOf { name -> File(moduleRoot, "lib/$abi/$name").length() } +
+                File(moduleRoot, "service.apk").length() +
+                File(moduleRoot, "webroot/index.html").length() +
+                File(moduleRoot, "webroot/bridge.js").length() +
+                File(moduleRoot, "webroot/policy.js").length() +
+                File(moduleRoot, "webroot/ux.js").length()
+        if (runtimeBytes < 2_500_000L) {
+            throw GradleException(
+                "Runtime contract aggregate payload for $abi is unexpectedly small: $runtimeBytes bytes",
+            )
+        }
+    }
+}
+
 tasks.register<Exec>("installCargoNdk") {
     group = "rust"
     description = "Installs cargo-ndk if not present"
@@ -263,6 +357,8 @@ afterEvaluate {
                             throw GradleException("Rust backend binary for $abi is missing at $backendPath")
                         }
                     }
+
+                    verifyRuntimePayloadContract(moduleDir.get().asFile, abiList)
 
                     val payloadFiles =
                         fileTree(moduleDir) {
