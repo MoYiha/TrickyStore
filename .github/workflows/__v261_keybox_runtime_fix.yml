@@ -1,0 +1,1048 @@
+name: Apply V2.6.1 keybox runtime deep fix
+on:
+  push:
+    branches: [feat/v2.6.1-webui-zip-import]
+    paths: [.github/workflows/__v261_keybox_runtime_fix.yml]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feat/v2.6.1-webui-zip-import
+      - name: Apply runtime, verification and WebUI fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, content):
+              Path(path).parent.mkdir(parents=True, exist_ok=True)
+              Path(path).write_text(content, encoding='utf-8')
+
+          def replace_once(path, old, new):
+              text = read(path)
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one exact anchor, found {text.count(old)}')
+              write(path, text.replace(old, new, 1))
+
+          def regex_once(path, pattern, replacement, flags=re.S):
+              text = read(path)
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{path}: regex anchor count={count}: {pattern[:100]}')
+              write(path, updated)
+
+          inventory = r'''package cleveres.tricky.cleverestech
+
+          import java.io.File
+          import java.nio.file.Files
+          import java.nio.file.LinkOption
+          import java.util.Locale
+
+          /**
+           * One bounded inventory for locally stored keybox sources. Direct XML files under the
+           * module root and XML/CBOX files under keyboxes/ are intentionally modeled separately so
+           * WebUI operations never have to infer a path from a display name.
+           */
+          internal object StoredKeyboxInventory {
+              enum class Scope(
+                  val apiValue: String,
+                  val fileScope: KeyboxLoader.FileScope?,
+              ) {
+                  ROOT("root", KeyboxLoader.FileScope.CONFIG_ROOT),
+                  KEYBOXES("keyboxes", KeyboxLoader.FileScope.KEYBOX_DIRECTORY),
+              }
+
+              data class Source(
+                  val scope: Scope,
+                  val filename: String,
+                  val file: File,
+              ) {
+                  val id: String
+                      get() = "${scope.apiValue}:$filename"
+
+                  val isXml: Boolean
+                      get() = filename.endsWith(".xml", ignoreCase = true)
+
+                  val isCbox: Boolean
+                      get() = filename.endsWith(".cbox", ignoreCase = true)
+              }
+
+              const val MAX_ACTIVE_XML_SOURCES = 64
+              const val MAX_STORED_SOURCES = 256
+              const val MAX_FILENAME_BYTES = 255
+              const val MAX_XML_BYTES = 10L * 1024 * 1024
+
+              fun list(configDir: File): List<Source> {
+                  val output = ArrayList<Source>()
+                  scan(configDir, Scope.ROOT, allowCbox = false, output)
+                  val keyboxDir = File(configDir, "keyboxes")
+                  if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                      scan(keyboxDir, Scope.KEYBOXES, allowCbox = true, output)
+                  }
+                  output.sortWith(
+                      compareBy<Source> { it.filename.lowercase(Locale.ROOT) }
+                          .thenBy { it.scope.apiValue },
+                  )
+                  return output
+              }
+
+              fun runtimeXmlSources(configDir: File): List<Source> {
+                  val sources = list(configDir).filter { it.isXml }
+                  require(sources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
+                  val seen = HashSet<String>()
+                  sources.forEach { source ->
+                      require(seen.add(source.filename.lowercase(Locale.ROOT))) {
+                          "Duplicate keybox filename across storage scopes"
+                      }
+                  }
+                  return sources
+              }
+
+              fun resolve(
+                  configDir: File,
+                  scopeValue: String,
+                  filename: String,
+              ): Source? {
+                  val scope = Scope.entries.firstOrNull { it.apiValue == scopeValue } ?: return null
+                  if (!isSafeStoredName(filename, allowCbox = scope == Scope.KEYBOXES)) return null
+                  val directory = if (scope == Scope.ROOT) configDir else File(configDir, "keyboxes")
+                  val candidate = File(directory, filename)
+                  if (candidate.parentFile?.canonicalFile != directory.canonicalFile) return null
+                  if (!Files.isRegularFile(candidate.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
+                  return Source(scope, filename, candidate)
+              }
+
+              private fun scan(
+                  directory: File,
+                  scope: Scope,
+                  allowCbox: Boolean,
+                  output: MutableList<Source>,
+              ) {
+                  if (!Files.isDirectory(directory.toPath(), LinkOption.NOFOLLOW_LINKS)) return
+                  Files.newDirectoryStream(directory.toPath()).use { entries ->
+                      for (entry in entries) {
+                          val filename = entry.fileName.toString()
+                          if (!isSafeStoredName(filename, allowCbox)) continue
+                          if (!Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) continue
+                          require(output.size < MAX_STORED_SOURCES) { "Too many stored keybox sources" }
+                          output += Source(scope, filename, entry.toFile())
+                      }
+                  }
+              }
+
+              private fun isSafeStoredName(
+                  filename: String,
+                  allowCbox: Boolean,
+              ): Boolean {
+                  if (filename.isEmpty() || filename.startsWith('.') || filename.contains('/') || filename.contains('\\') || filename.contains('\u0000')) return false
+                  if (filename.toByteArray(Charsets.UTF_8).size > MAX_FILENAME_BYTES) return false
+                  if (filename.any { it.code < 0x20 || it.code == 0x7f }) return false
+                  return filename.endsWith(".xml", ignoreCase = true) ||
+                      (allowCbox && filename.endsWith(".cbox", ignoreCase = true))
+              }
+          }
+          '''
+          write('service/src/main/java/cleveres/tricky/cleverestech/StoredKeyboxInventory.kt', textwrap.dedent(inventory))
+
+          # CertHack: expose source-level count and the requested third-certificate serial.
+          replace_once(
+              'service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java',
+              'import java.security.cert.CertificateFactory;\n',
+              'import java.security.cert.CertificateFactory;\nimport java.security.cert.X509Certificate;\n',
+          )
+          cert_anchor = '''    public static int getKeyboxCount() {
+                  if (!KeyboxLoader.isActiveSetHealthy()) {
+                      throw new IllegalStateException("Rust keybox backend activation is unavailable");
+                  }
+                  return getPublishedKeyboxCountForTesting();
+              }
+          '''
+          cert_new = cert_anchor + '''
+              /** Counts active keybox sources, not EC/RSA key records inside those sources. */
+              public static int getKeyboxSourceCount() {
+                  if (!KeyboxLoader.isActiveSetHealthy()) {
+                      throw new IllegalStateException("Rust keybox backend activation is unavailable");
+                  }
+                  return state.keyboxFiles.size();
+              }
+
+              public static String getDeviceCertificateSerial(String filename) {
+                  if (filename == null) return null;
+                  List<KeyBox> boxes = state.keyboxFiles.get(filename);
+                  if (boxes == null) return null;
+                  for (KeyBox box : boxes) {
+                      String serial = getDeviceCertificateSerial(box);
+                      if (serial != null) return serial;
+                  }
+                  return null;
+              }
+
+              /** The project UI calls certificate #3 in the selected chain the device certificate. */
+              public static String getDeviceCertificateSerial(KeyBox keybox) {
+                  if (keybox == null || keybox.certificates().size() < 3) return null;
+                  Certificate certificate = keybox.certificates().get(2);
+                  if (!(certificate instanceof X509Certificate x509)) return null;
+                  return x509.getSerialNumber().toString(16).toUpperCase(Locale.ROOT);
+              }
+          '''
+          replace_once('service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java', cert_anchor, cert_new)
+
+          # Config: one scope-aware cache/scan for direct-root XML and keyboxes/*.xml.
+          regex_once(
+              'service/src/main/java/cleveres/tricky/cleverestech/Config.kt',
+              r'    @Volatile\n    private var cachedLegacyKeyboxes: List<CertHack\.KeyBox> = emptyList\(\).*?    fun updateKeyBoxes\(\) =',
+              '''    private data class KeyboxFileCache(
+                  val lastModified: Long,
+                  val length: Long,
+                  val keyboxes: List<CertHack.KeyBox>,
+              )
+
+              private val storedKeyboxCache = ConcurrentHashMap<String, KeyboxFileCache>()
+
+              fun updateKeyBoxes() =''',
+          )
+          replace_once(
+              'service/src/main/java/cleveres/tricky/cleverestech/Config.kt',
+              '''        cachedLegacyKeyboxes = emptyList()
+                  lastKeyboxModified = 0
+                  lastKeyboxLength = 0
+                  directoryKeyboxCache.clear()
+          ''',
+              '''        storedKeyboxCache.clear()
+          ''',
+          )
+          regex_once(
+              'service/src/main/java/cleveres/tricky/cleverestech/Config.kt',
+              r'            val legacyFile = File\(root, KEYBOX_FILE\).*?            if \(refreshExternalSources\) CboxManager\.refresh\(\)',
+              '''            val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
+              Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
+              val currentFiles = HashSet<String>()
+              storedSources.forEach { source ->
+                  currentFiles.add(source.id)
+                  val file = source.file
+                  if (file.length() !in 1..StoredKeyboxInventory.MAX_XML_BYTES) {
+                      storedKeyboxCache.remove(source.id)
+                      Logger.w("Ignoring empty or oversized keybox file: ${source.filename}")
+                      return@forEach
+                  }
+                  val lastMod = file.lastModified()
+                  val length = file.length()
+                  val cached = storedKeyboxCache[source.id]
+                  if (cached != null && cached.lastModified == lastMod && cached.length == length) {
+                      allKeyboxes.addAll(cached.keyboxes)
+                  } else {
+                      try {
+                          val parsed = KeyboxLoader.parseFile(
+                              requireNotNull(source.scope.fileScope),
+                              source.filename,
+                          )
+                          storedKeyboxCache[source.id] = KeyboxFileCache(lastMod, length, parsed)
+                          allKeyboxes.addAll(parsed)
+                          Logger.i("Reloaded keybox source: ${source.id}")
+                      } catch (error: RustBackendUnavailableException) {
+                          throw error
+                      } catch (error: Exception) {
+                          storedKeyboxCache.remove(source.id)
+                          Logger.e("Failed to parse keybox source: ${source.id}", error)
+                      }
+                  }
+              }
+              val cacheIterator = storedKeyboxCache.keys.iterator()
+              while (cacheIterator.hasNext()) {
+                  if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
+              }
+
+              if (refreshExternalSources) CboxManager.refresh()''',
+          )
+
+          # Rust broker: CONFIG_ROOT is no longer hardcoded to keybox.xml, but remains basename-only XML.
+          broker = 'rust/daemon/src/keybox_file_broker.rs'
+          replace_once(broker, 'const LEGACY_KEYBOX: &str = "keybox.xml";\n', '')
+          replace_once(
+              broker,
+              '''    let directory = match scope {
+                  SCOPE_CONFIG_ROOT => {
+                      if name != LEGACY_KEYBOX {
+                          return Err(invalid("root keybox request is not whitelisted"));
+                      }
+                      None
+                  }
+                  SCOPE_KEYBOX_DIRECTORY => {
+                      if !name
+                          .get(name.len().saturating_sub(4)..)
+                          .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".xml"))
+                      {
+                          return Err(invalid("keybox directory request must target XML"));
+                      }
+                      Some(root.open_child(KEYBOX_DIRECTORY)?)
+                  }
+                  _ => return Err(invalid("unknown keybox file scope")),
+              };
+          ''',
+              '''    if !safe_xml_basename(name) {
+                  return Err(invalid("keybox request must target a safe XML basename"));
+              }
+              let directory = match scope {
+                  SCOPE_CONFIG_ROOT => None,
+                  SCOPE_KEYBOX_DIRECTORY => Some(root.open_child(KEYBOX_DIRECTORY)?),
+                  _ => return Err(invalid("unknown keybox file scope")),
+              };
+          ''',
+          )
+          replace_once(
+              broker,
+              'fn snapshot_opened_keybox(opened: OpenedKeybox) -> io::Result<File> {\n',
+              '''fn safe_xml_basename(name: &str) -> bool {
+              !name.is_empty()
+                  && !name.starts_with('.')
+                  && !name.contains('/')
+                  && !name.contains('\\\\')
+                  && !name.bytes().any(|byte| byte == 0 || byte < 0x20 || byte == 0x7f)
+                  && name
+                      .get(name.len().saturating_sub(4)..)
+                      .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".xml"))
+          }
+
+          fn snapshot_opened_keybox(opened: OpenedKeybox) -> io::Result<File> {
+          ''',
+          )
+          replace_once(
+              broker,
+              '''    fn opens_only_whitelisted_legacy_and_directory_xml_files() {
+                  let test = TestRoot::new();
+                  fs::write(test.path.join(LEGACY_KEYBOX), b"legacy").unwrap();
+                  fs::write(
+                      test.path.join(KEYBOX_DIRECTORY).join("A B.XML"),
+                      b"directory",
+                  )
+                  .unwrap();
+                  let root = TrustedDir::open(&test.path).unwrap();
+
+                  let legacy =
+                      open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, LEGACY_KEYBOX)).unwrap();
+                  assert_eq!(legacy.size, 6);
+                  let directory =
+                      open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "A B.XML")).unwrap();
+                  assert_eq!(directory.size, 9);
+
+                  assert!(open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "other.xml")).is_err());
+                  assert!(
+                      open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "not-cbox.txt")).is_err()
+                  );
+                  assert!(open_requested_from(&root, &request(9, "x.xml")).is_err());
+              }
+          ''',
+              '''    fn opens_root_and_directory_xml_basenames_only() {
+                  let test = TestRoot::new();
+                  fs::write(test.path.join("keybox.xml"), b"legacy").unwrap();
+                  fs::write(test.path.join("A1B2C3.xml"), b"named-root").unwrap();
+                  fs::write(
+                      test.path.join(KEYBOX_DIRECTORY).join("A B.XML"),
+                      b"directory",
+                  )
+                  .unwrap();
+                  let root = TrustedDir::open(&test.path).unwrap();
+
+                  let legacy =
+                      open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "keybox.xml")).unwrap();
+                  assert_eq!(legacy.size, 6);
+                  let named =
+                      open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "A1B2C3.xml")).unwrap();
+                  assert_eq!(named.size, 10);
+                  let directory =
+                      open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "A B.XML")).unwrap();
+                  assert_eq!(directory.size, 9);
+
+                  for name in ["../root.xml", "sub/root.xml", ".hidden.xml", "not-cbox.txt"] {
+                      assert!(open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, name)).is_err());
+                  }
+                  assert!(
+                      open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "not-cbox.txt")).is_err()
+                  );
+                  assert!(open_requested_from(&root, &request(9, "x.xml")).is_err());
+              }
+          ''',
+          )
+
+          # CRL cache: cached generations must be tied to the live Rust backend identity.
+          crl = 'service/src/main/java/cleveres/tricky/cleverestech/CrlBackend.kt'
+          replace_once(
+              crl,
+              '        refreshOverride?.let { return it(crl) }\n',
+              '''        refreshOverride?.let { override ->
+                  val handle = override(crl)
+                  if (handle != null) activeGeneration = handle.generation
+                  return handle
+              }
+          ''',
+          )
+          replace_once(
+              crl,
+              '''    @VisibleForTesting
+              internal fun resetForTesting() {
+          ''',
+              '''    fun isCurrent(generation: Long): Boolean {
+                  if (refreshOverride != null || queryOverride != null) return generation == activeGeneration
+                  val identity = activeIdentity ?: return false
+                  return generation == activeGeneration && NativeBackend.isCurrentBackendIdentity(identity)
+              }
+
+              @VisibleForTesting
+              internal fun resetForTesting() {
+          ''',
+          )
+
+          verifier = 'service/src/main/java/cleveres/tricky/cleverestech/util/KeyboxVerifier.kt'
+          replace_once(
+              verifier,
+              'import cleveres.tricky.cleverestech.RustBackendUnavailableException\n',
+              'import cleveres.tricky.cleverestech.RustBackendUnavailableException\nimport cleveres.tricky.cleverestech.StoredKeyboxInventory\n',
+          )
+          replace_once(
+              verifier,
+              '''    data class Result(
+                  val file: File,
+                  val filename: String,
+                  val status: Status,
+                  val details: String,
+              )
+          ''',
+              '''    data class Result(
+                  val file: File,
+                  val filename: String,
+                  val status: Status,
+                  val details: String,
+                  val storageId: String = "",
+                  val certificateSerial: String? = null,
+              )
+          ''',
+          )
+          regex_once(
+              verifier,
+              r'        val legacyFile = File\(configDir, "keybox\.xml"\).*?        return results\n',
+              '''        val sources =
+                  try {
+                      StoredKeyboxInventory.runtimeXmlSources(configDir)
+                  } catch (error: Exception) {
+                      Logger.e("Failed to enumerate stored keyboxes", error)
+                      return listOf(Result(File(""), "Global", Status.ERROR, error.message ?: "Failed to scan keyboxes"))
+                  }
+              for (source in sources) {
+                  results.add(
+                      checkFile(
+                          source.file,
+                          requireNotNull(source.scope.fileScope),
+                          source.filename,
+                          source.id,
+                          crl,
+                      ),
+                  )
+              }
+              return results
+          ''',
+          )
+          replace_once(
+              verifier,
+              '''            cachedCrl?.let { cached ->
+                      if (now >= lastFetchTime && now - lastFetchTime < CACHE_TTL) return cached
+                  }
+          ''',
+              '''            cachedCrl?.let { cached ->
+                      if (now >= lastFetchTime && now - lastFetchTime < CACHE_TTL) {
+                          if (CrlBackend.isCurrent(cached.generation)) return cached
+                          Logger.i("Discarding stale in-memory CRL generation ${cached.generation}")
+                          cachedCrl = null
+                          lastFetchTime = 0
+                      }
+                  }
+          ''',
+          )
+          replace_once(
+              verifier,
+              '''    private fun checkFile(
+                  file: File,
+                  scope: KeyboxLoader.FileScope,
+                  filename: String,
+                  crl: RevocationSource,
+              ): Result =
+          ''',
+              '''    private fun checkFile(
+                  file: File,
+                  scope: KeyboxLoader.FileScope,
+                  filename: String,
+                  storageId: String,
+                  crl: RevocationSource,
+              ): Result =
+          ''',
+          )
+          replace_once(
+              verifier,
+              '''            val keyboxes = KeyboxLoader.parseFile(scope, filename)
+                  if (keyboxes.isEmpty()) {
+                      return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
+                  }
+
+                  for (keybox in keyboxes) {
+          ''',
+              '''            val keyboxes = KeyboxLoader.parseFile(scope, filename)
+                  if (keyboxes.isEmpty()) {
+                      return Result(file, file.name, Status.INVALID, "No valid keybox found or parse error", storageId)
+                  }
+                  val deviceSerial = keyboxes.asSequence().mapNotNull(CertHack::getDeviceCertificateSerial).firstOrNull()
+
+                  for (keybox in keyboxes) {
+          ''',
+          )
+          replace_once(
+              verifier,
+              '                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked")\n',
+              '                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked", storageId, deviceSerial)\n',
+          )
+          replace_once(
+              verifier,
+              '                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")\n',
+              '                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid", storageId, deviceSerial)\n',
+          )
+          replace_once(
+              verifier,
+              '                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable")\n',
+              '                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable", storageId, deviceSerial)\n',
+          )
+          replace_once(
+              verifier,
+              '            Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")\n',
+              '            Result(file, file.name, Status.VALID, "Active keybox", storageId, deviceSerial)\n',
+          )
+          replace_once(
+              verifier,
+              '            Result(file, file.name, Status.ERROR, "Rust backend unavailable")\n',
+              '            Result(file, file.name, Status.ERROR, "Rust backend unavailable", storageId)\n',
+          )
+          replace_once(
+              verifier,
+              '            Result(file, file.name, Status.ERROR, "Error: ${error.javaClass.simpleName}")\n',
+              '            Result(file, file.name, Status.ERROR, "Error: ${error.javaClass.simpleName}", storageId)\n',
+          )
+
+          # Web server: source-aware inventory, source-count labels and bulk deletion.
+          web = 'service/src/main/java/cleveres/tricky/cleverestech/WebServer.kt'
+          regex_once(
+              web,
+              r'    private fun listKeyboxes\(\): List<String> \{.*?\n    \}\n',
+              '''    private fun listKeyboxes(): List<String> =
+              StoredKeyboxInventory.list(configDir)
+                  .map { it.filename }
+                  .distinct()
+
+              private fun keyboxInventoryJson(): String {
+                  val array = JSONArray()
+                  StoredKeyboxInventory.list(configDir).forEach { source ->
+                      array.put(
+                          JSONObject()
+                              .put("id", source.id)
+                              .put("scope", source.scope.apiValue)
+                              .put("filename", source.filename)
+                              .put("type", if (source.isCbox) "cbox" else "xml")
+                              .put("certificate_serial", CertHack.getDeviceCertificateSerial(source.filename) ?: ""),
+                      )
+                  }
+                  return array.toString()
+              }
+          ''',
+          )
+          replace_once(
+              web,
+              '''        if (uri == "/api/keyboxes" && method == Method.GET) {
+                  val keyboxes = listKeyboxes()
+                  val array = JSONArray(keyboxes)
+                  return secureResponse(Response.Status.OK, "application/json", array.toString())
+              }
+          ''',
+              '''        if (uri == "/api/keyboxes" && method == Method.GET) {
+                  val keyboxes = listKeyboxes()
+                  val array = JSONArray(keyboxes)
+                  return secureResponse(Response.Status.OK, "application/json", array.toString())
+              }
+
+              if (uri == "/api/keybox_inventory" && method == Method.GET) {
+                  return try {
+                      secureResponse(Response.Status.OK, "application/json", keyboxInventoryJson())
+                  } catch (error: Exception) {
+                      Logger.e("Failed to enumerate stored keyboxes", error)
+                      secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to enumerate stored keyboxes")
+                  }
+              }
+          ''',
+          )
+          text = read(web).replace('CertHack.getKeyboxCount()', 'CertHack.getKeyboxSourceCount()')
+          write(web, text)
+          regex_once(
+              web,
+              r'        if \(uri == "/api/delete_keybox" && method == Method\.POST\) \{.*?        if \(uri == "/api/verify_keyboxes" && method == Method\.POST\) \{',
+              '''        if (uri == "/api/delete_keybox" && method == Method.POST) {
+                  val map = HashMap<String, String>()
+                  try {
+                      session.parseBody(map)
+                  } catch (error: Exception) {
+                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+                  }
+                  val filename = getParam(session, "filename")
+                  val scope = getParam(session, "scope") ?: "keyboxes"
+                  if (filename != null) {
+                      synchronized(fileLock) {
+                          val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                              ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox source")
+                          if (source.file.delete()) {
+                              if (source.isCbox) {
+                                  Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                                  CboxManager.refresh()
+                              }
+                              if (!updateKeyboxesFromConfiguredRevocationSource()) return keyboxActivationFailureResponse()
+                              return secureResponse(Response.Status.OK, "text/plain", "Deleted")
+                          }
+                          return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
+                      }
+                  }
+                  return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+              }
+
+              if (uri == "/api/delete_keyboxes" && method == Method.POST) {
+                  val map = HashMap<String, String>()
+                  try {
+                      session.parseBody(map)
+                  } catch (error: Exception) {
+                      return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+                  }
+                  val rawItems = getParam(session, "items")
+                      ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing items")
+                  return synchronized(fileLock) {
+                      try {
+                          val items = JSONArray(rawItems)
+                          if (items.length() !in 1..StoredKeyboxInventory.MAX_ACTIVE_XML_SOURCES) {
+                              return@synchronized secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid item count")
+                          }
+                          var deleted = 0
+                          var failed = 0
+                          var cboxChanged = false
+                          for (index in 0 until items.length()) {
+                              val item = items.optJSONObject(index)
+                              val filename = item?.optString("filename").orEmpty()
+                              val scope = item?.optString("scope").orEmpty()
+                              val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                              if (source == null || !source.file.delete()) {
+                                  failed++
+                                  continue
+                              }
+                              deleted++
+                              if (source.isCbox) {
+                                  Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                                  cboxChanged = true
+                              }
+                          }
+                          if (cboxChanged) CboxManager.refresh()
+                          if (!updateKeyboxesFromConfiguredRevocationSource()) return@synchronized keyboxActivationFailureResponse()
+                          secureResponse(
+                              if (failed == 0) Response.Status.OK else Response.Status.INTERNAL_ERROR,
+                              "application/json",
+                              JSONObject().put("deleted", deleted).put("failed", failed).toString(),
+                          )
+                      } catch (error: Exception) {
+                          Logger.e("Failed to bulk-delete keyboxes", error)
+                          secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox selection")
+                      }
+                  }
+              }
+
+              if (uri == "/api/verify_keyboxes" && method == Method.POST) {''',
+          )
+          replace_once(
+              web,
+              '                obj.put("filename", r.filename)\n',
+              '''                obj.put("filename", r.filename)
+                      obj.put("storage_id", r.storageId)
+                      obj.put("certificate_serial", r.certificateSerial ?: "")
+          ''',
+          )
+
+          # WebUI module ZIP import must match the module runtime bound, not the separate app vault bound.
+          ux = 'module/template/webroot/ux.js'
+          text = read(ux)
+          if text.count('const MAX_SUPPORTED_FILES = 10000;') != 1:
+              raise SystemExit('ux.js: expected one module ZIP max')
+          text = text.replace('const MAX_SUPPORTED_FILES = 10000;', 'const MAX_SUPPORTED_FILES = 64;', 1)
+          text = text.replace('const MAX_ARCHIVE_ENTRIES = 20000;', 'const MAX_ARCHIVE_ENTRIES = 256;', 1)
+          text = text.replace('more than 10000 supported XML/CBOX files', 'more than 64 supported XML/CBOX files')
+          text = text.replace('10000 adetten fazla desteklenen XML/CBOX dosyası', '64 adetten fazla desteklenen XML/CBOX dosyası')
+          text = text.replace('受支持的 XML/CBOX 文件超过 10000 个', '受支持的 XML/CBOX 文件超过 64 个')
+          text = text.replace('más de 10000 archivos XML/CBOX compatibles', 'más de 64 archivos XML/CBOX compatibles')
+          text = text.replace('mehr als 10000 unterstützte XML/CBOX-Dateien', 'mehr als 64 unterstützte XML/CBOX-Dateien')
+          text = text.replace('больше 10000 поддерживаемых XML/CBOX-файлов', 'больше 64 поддерживаемых XML/CBOX-файлов')
+          text = text.replace('lebih dari 10000 file XML/CBOX yang didukung', 'lebih dari 64 file XML/CBOX yang didukung')
+          text = text.replace('10000 से अधिक समर्थित XML/CBOX फ़ाइलें', '64 से अधिक समर्थित XML/CBOX फ़ाइलें')
+          text = text.replace('أكثر من 10000 ملف XML/CBOX مدعوماً', 'أكثر من 64 ملف XML/CBOX مدعوماً')
+          write(ux, text)
+
+          stored_ux = r'''
+
+          // Source-aware Stored Keyboxes / Verification UX. Runtime ownership stays in ux.js.
+          (function (global) {
+              'use strict';
+              if (typeof document === 'undefined') return;
+              const PAGE_SIZE = 5;
+              const COPY = {
+                  en: { selected:'selected', deleteSelected:'Delete selected', previous:'Previous', next:'Next', page:'Page {page} / {pages}', root:'Module root', managed:'Managed folder', cert:'Certificate #3 serial', certMissing:'Certificate #3 serial unavailable', deleteConfirm:'Delete this stored keybox?', bulkConfirm:'Delete {count} selected keyboxes?', bulkDone:'Deleted {count} keyboxes', keyboxesLoaded:'{count} Keyboxes Loaded' },
+                  tr: { selected:'seçili', deleteSelected:'Seçilileri sil', previous:'Önceki', next:'Sonraki', page:'Sayfa {page} / {pages}', root:'Modül kökü', managed:'Yönetilen klasör', cert:'3. sertifika seri no', certMissing:'3. sertifika seri no yok', deleteConfirm:'Bu kayıtlı keybox silinsin mi?', bulkConfirm:'Seçili {count} keybox silinsin mi?', bulkDone:'{count} keybox silindi', keyboxesLoaded:'{count} Keybox Yüklendi' },
+                  'zh-CN': { selected:'已选择', deleteSelected:'删除所选', previous:'上一页', next:'下一页', page:'第 {page} / {pages} 页', root:'模块根目录', managed:'受管目录', cert:'第 3 个证书序列号', certMissing:'无第 3 个证书序列号', deleteConfirm:'删除此已存储密钥盒？', bulkConfirm:'删除选中的 {count} 个密钥盒？', bulkDone:'已删除 {count} 个密钥盒', keyboxesLoaded:'已加载 {count} 个 Keybox' },
+                  es: { selected:'seleccionados', deleteSelected:'Eliminar seleccionados', previous:'Anterior', next:'Siguiente', page:'Página {page} / {pages}', root:'Raíz del módulo', managed:'Carpeta administrada', cert:'Serie del certificado n.º 3', certMissing:'Serie del certificado n.º 3 no disponible', deleteConfirm:'¿Eliminar esta keybox guardada?', bulkConfirm:'¿Eliminar {count} keyboxes seleccionadas?', bulkDone:'Se eliminaron {count} keyboxes', keyboxesLoaded:'{count} Keyboxes cargadas' },
+                  de: { selected:'ausgewählt', deleteSelected:'Auswahl löschen', previous:'Zurück', next:'Weiter', page:'Seite {page} / {pages}', root:'Modulstamm', managed:'Verwalteter Ordner', cert:'Seriennummer Zertifikat Nr. 3', certMissing:'Seriennummer Zertifikat Nr. 3 nicht verfügbar', deleteConfirm:'Diese gespeicherte Keybox löschen?', bulkConfirm:'{count} ausgewählte Keyboxen löschen?', bulkDone:'{count} Keyboxen gelöscht', keyboxesLoaded:'{count} Keyboxen geladen' },
+                  ru: { selected:'выбрано', deleteSelected:'Удалить выбранные', previous:'Назад', next:'Далее', page:'Страница {page} / {pages}', root:'Корень модуля', managed:'Управляемая папка', cert:'Серийный номер сертификата №3', certMissing:'Серийный номер сертификата №3 недоступен', deleteConfirm:'Удалить этот сохранённый keybox?', bulkConfirm:'Удалить выбранные keybox: {count}?', bulkDone:'Удалено keybox: {count}', keyboxesLoaded:'Загружено Keybox: {count}' },
+                  id: { selected:'dipilih', deleteSelected:'Hapus pilihan', previous:'Sebelumnya', next:'Berikutnya', page:'Halaman {page} / {pages}', root:'Root modul', managed:'Folder terkelola', cert:'Serial sertifikat #3', certMissing:'Serial sertifikat #3 tidak tersedia', deleteConfirm:'Hapus keybox tersimpan ini?', bulkConfirm:'Hapus {count} keybox terpilih?', bulkDone:'{count} keybox dihapus', keyboxesLoaded:'{count} Keybox dimuat' },
+                  hi: { selected:'चयनित', deleteSelected:'चयनित हटाएँ', previous:'पिछला', next:'अगला', page:'पृष्ठ {page} / {pages}', root:'मॉड्यूल रूट', managed:'प्रबंधित फ़ोल्डर', cert:'सर्टिफिकेट #3 सीरियल', certMissing:'सर्टिफिकेट #3 सीरियल उपलब्ध नहीं', deleteConfirm:'यह सहेजा Keybox हटाएँ?', bulkConfirm:'चयनित {count} Keybox हटाएँ?', bulkDone:'{count} Keybox हटाए गए', keyboxesLoaded:'{count} Keybox लोड हुए' },
+                  ar: { selected:'محدد', deleteSelected:'حذف المحدد', previous:'السابق', next:'التالي', page:'الصفحة {page} / {pages}', root:'جذر الوحدة', managed:'المجلد المدار', cert:'الرقم التسلسلي للشهادة 3', certMissing:'الرقم التسلسلي للشهادة 3 غير متاح', deleteConfirm:'حذف Keybox المحفوظ هذا؟', bulkConfirm:'حذف {count} من Keybox المحددة؟', bulkDone:'تم حذف {count} من Keybox', keyboxesLoaded:'تم تحميل {count} Keybox' }
+              };
+              let inventory = [];
+              let selected = new Set();
+              let page = 1;
+              let installed = false;
+              let loading = false;
+              let originalLoad = null;
+
+              function locale() {
+                  try {
+                      const value = global.CleveresI18n && global.CleveresI18n.locale;
+                      return COPY[value] ? value : 'en';
+                  } catch (_) { return 'en'; }
+              }
+              function t(key, values) {
+                  let value = (COPY[locale()] || COPY.en)[key] || COPY.en[key] || key;
+                  Object.entries(values || {}).forEach(([name, replacement]) => { value = value.split('{' + name + '}').join(String(replacement)); });
+                  return value;
+              }
+              function safeText(value) { return String(value == null ? '' : value); }
+              function statusLabel() {
+                  const node = document.getElementById('keyboxStatus');
+                  if (!node) return;
+                  const match = (node.textContent || '').match(/(\d+)/);
+                  if (match) node.textContent = t('keyboxesLoaded', { count: match[1] });
+              }
+              function ensureControls() {
+                  const list = document.getElementById('storedKeyboxesList');
+                  if (!list || document.getElementById('ct_keybox_bulk')) return;
+                  list.style.maxHeight = 'none';
+                  list.style.overflowY = 'visible';
+                  const toolbar = document.createElement('div');
+                  toolbar.id = 'ct_keybox_bulk';
+                  toolbar.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:space-between;margin:8px 0;flex-wrap:wrap;';
+                  const count = document.createElement('span');
+                  count.id = 'ct_keybox_selected_count';
+                  count.style.cssText = 'font-size:.82em;color:#888;';
+                  const button = document.createElement('button');
+                  button.id = 'ct_keybox_delete_selected';
+                  button.type = 'button';
+                  button.className = 'danger';
+                  button.style.cssText = 'padding:8px 12px;font-size:.82em;';
+                  button.addEventListener('click', bulkDelete);
+                  toolbar.append(count, button);
+                  list.parentNode.insertBefore(toolbar, list);
+                  const pager = document.createElement('div');
+                  pager.id = 'ct_keybox_pager';
+                  pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;';
+                  list.insertAdjacentElement('afterend', pager);
+              }
+              function updateControls(pages) {
+                  ensureControls();
+                  const count = document.getElementById('ct_keybox_selected_count');
+                  const deleteButton = document.getElementById('ct_keybox_delete_selected');
+                  if (count) count.textContent = selected.size + ' ' + t('selected');
+                  if (deleteButton) { deleteButton.textContent = t('deleteSelected'); deleteButton.disabled = selected.size === 0; }
+                  const pager = document.getElementById('ct_keybox_pager');
+                  if (!pager) return;
+                  pager.innerHTML = '';
+                  const prev = document.createElement('button');
+                  prev.type = 'button'; prev.textContent = t('previous'); prev.disabled = page <= 1;
+                  prev.addEventListener('click', () => { page--; render(); });
+                  const label = document.createElement('span');
+                  label.style.cssText = 'font-size:.82em;color:#888;';
+                  label.textContent = t('page', { page, pages });
+                  const next = document.createElement('button');
+                  next.type = 'button'; next.textContent = t('next'); next.disabled = page >= pages;
+                  next.addEventListener('click', () => { page++; render(); });
+                  pager.append(prev, label, next);
+              }
+              function filteredInventory() {
+                  const filter = (document.getElementById('keyboxFilter')?.value || '').toLowerCase();
+                  if (!filter) return inventory.slice();
+                  return inventory.filter(item => (item.filename + ' ' + (item.certificate_serial || '')).toLowerCase().includes(filter));
+              }
+              function render() {
+                  const list = document.getElementById('storedKeyboxesList');
+                  if (!list) return;
+                  ensureControls();
+                  const clear = document.getElementById('clearKeyboxFilterBtn');
+                  const filter = document.getElementById('keyboxFilter');
+                  if (clear) clear.style.display = filter && filter.value ? 'flex' : 'none';
+                  const items = filteredInventory();
+                  const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+                  page = Math.min(Math.max(1, page), pages);
+                  list.innerHTML = '';
+                  if (loading) {
+                      const loadingNode = document.createElement('div'); loadingNode.style.cssText='padding:10px;text-align:center;color:#888'; loadingNode.textContent='Loading…'; list.appendChild(loadingNode);
+                      updateControls(pages); return;
+                  }
+                  if (items.length === 0) {
+                      const empty = document.createElement('div'); empty.style.cssText='padding:10px;text-align:center;color:#666'; empty.textContent = inventory.length ? 'No keyboxes match your filter.' : 'No keyboxes stored.'; list.appendChild(empty);
+                      updateControls(pages); return;
+                  }
+                  items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(item => {
+                      const row = document.createElement('div'); row.className='row'; row.style.cssText='padding:10px;border-bottom:1px solid var(--border);gap:10px;align-items:center;';
+                      const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(item.id); checkbox.setAttribute('aria-label','Select ' + item.filename);
+                      checkbox.addEventListener('change', () => { if (checkbox.checked) selected.add(item.id); else selected.delete(item.id); updateControls(pages); });
+                      const body = document.createElement('div'); body.style.cssText='flex:1;min-width:0;';
+                      const name = document.createElement('div'); name.style.cssText='overflow-wrap:anywhere;font-weight:500'; name.textContent=safeText(item.filename);
+                      const meta = document.createElement('div'); meta.style.cssText='font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere';
+                      const scope = item.scope === 'root' ? t('root') : t('managed');
+                      const cert = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+                      meta.textContent = scope + ' · ' + cert;
+                      body.append(name, meta);
+                      const remove = document.createElement('button'); remove.type='button'; remove.className='danger'; remove.style.cssText='padding:8px 12px;font-size:.82em;'; remove.textContent='Delete';
+                      remove.addEventListener('click', () => deleteOne(item));
+                      row.append(checkbox, body, remove); list.appendChild(row);
+                  });
+                  updateControls(pages);
+              }
+              async function refreshInventory() {
+                  if (typeof global.fetchAuth !== 'function') return;
+                  loading = true; render();
+                  try {
+                      const response = await global.fetchAuth('/api/keybox_inventory');
+                      if (!response.ok) throw new Error(await response.text());
+                      const data = await response.json();
+                      inventory = Array.isArray(data) ? data : [];
+                      const ids = new Set(inventory.map(item => item.id));
+                      selected = new Set(Array.from(selected).filter(id => ids.has(id)));
+                  } catch (error) {
+                      if (typeof global.notify === 'function') global.notify('Error: ' + error.message, 'error');
+                  } finally {
+                      loading = false; render(); statusLabel();
+                  }
+              }
+              async function deleteOne(item) {
+                  if (typeof global.confirm === 'function' && !global.confirm(t('deleteConfirm'))) return;
+                  const body = new URLSearchParams(); body.set('filename', item.filename); body.set('scope', item.scope);
+                  const response = await global.fetchAuth('/api/delete_keybox', { method:'POST', body });
+                  if (!response.ok) { if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error'); return; }
+                  selected.delete(item.id); await reloadAll();
+              }
+              async function bulkDelete() {
+                  const items = inventory.filter(item => selected.has(item.id));
+                  if (!items.length) return;
+                  if (typeof global.confirm === 'function' && !global.confirm(t('bulkConfirm', { count: items.length }))) return;
+                  const body = new URLSearchParams(); body.set('items', JSON.stringify(items.map(item => ({ filename:item.filename, scope:item.scope }))));
+                  const response = await global.fetchAuth('/api/delete_keyboxes', { method:'POST', body });
+                  let payload = null; try { payload = await response.clone().json(); } catch (_) {}
+                  if (!response.ok && !payload) { if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error'); return; }
+                  if (typeof global.notify === 'function') global.notify(t('bulkDone', { count: payload?.deleted ?? items.length }), payload?.failed ? 'error' : 'normal');
+                  selected.clear(); await reloadAll();
+              }
+              async function reloadAll() {
+                  if (typeof originalLoad === 'function') await originalLoad();
+                  await refreshInventory();
+                  if (typeof global.loadKeyInfo === 'function') global.loadKeyInfo();
+              }
+              async function verify() {
+                  const result = document.getElementById('verifyResult');
+                  if (result) result.textContent = 'Verifying…';
+                  const response = await global.fetchAuth('/api/verify_keyboxes', { method:'POST' });
+                  if (!response.ok) throw new Error(await response.text());
+                  const data = await response.json();
+                  if (!result) return;
+                  result.innerHTML = '';
+                  if (!Array.isArray(data) || data.length === 0) { result.textContent = 'No keyboxes to verify'; return; }
+                  data.forEach(item => {
+                      const row = document.createElement('div'); row.style.cssText='padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere';
+                      const title = document.createElement('div'); title.style.fontWeight='600'; title.textContent=safeText(item.filename) + ' — ' + safeText(item.status);
+                      const meta = document.createElement('div'); meta.style.cssText='font-size:.8em;color:#888;margin-top:2px';
+                      meta.textContent = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+                      const details = document.createElement('div'); details.style.cssText='font-size:.8em;color:#aaa;margin-top:2px'; details.textContent=safeText(item.details);
+                      row.append(title, meta, details); result.appendChild(row);
+                  });
+              }
+              function install() {
+                  if (installed || !document.getElementById('storedKeyboxesList') || typeof global.loadKeyboxes !== 'function') { global.setTimeout(install, 50); return; }
+                  installed = true;
+                  originalLoad = global.loadKeyboxes;
+                  global.renderKeyboxes = render;
+                  global.loadKeyboxes = async function () { const value = await originalLoad.apply(this, arguments); await refreshInventory(); return value; };
+                  global.verifyKeyboxes = verify;
+                  const filter = document.getElementById('keyboxFilter');
+                  if (filter) filter.addEventListener('input', () => { page = 1; render(); });
+                  const clear = document.getElementById('clearKeyboxFilterBtn');
+                  if (clear) clear.addEventListener('click', () => { page = 1; global.setTimeout(render, 0); });
+                  ensureControls(); refreshInventory(); statusLabel();
+                  const status = document.getElementById('keyboxStatus');
+                  if (status && typeof global.MutationObserver === 'function') new global.MutationObserver(statusLabel).observe(status, { childList:true, characterData:true, subtree:true });
+              }
+              if (document.readyState === 'complete') global.setTimeout(install, 0);
+              else if (typeof global.addEventListener === 'function') global.addEventListener('load', install, { once:true });
+          })(window);
+          '''
+          with open(ux, 'a', encoding='utf-8') as handle:
+              handle.write(textwrap.dedent(stored_ux))
+
+          zip_test = 'module/webui-tests/zip-import.test.js'
+          text = read(zip_test)
+          text = text.replace("source.includes('const MAX_SUPPORTED_FILES = 10000;'), 'ZIP keybox limit must be 10000'", "source.includes('const MAX_SUPPORTED_FILES = 64;'), 'module ZIP keybox limit must match the 64-source runtime bound'")
+          text = text.replace('assert.strictEqual(api.limits.MAX_SUPPORTED_FILES, 10000);', 'assert.strictEqual(api.limits.MAX_SUPPORTED_FILES, 64);')
+          write(zip_test, text)
+
+          inventory_test = r'''package cleveres.tricky.cleverestech
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertThrows
+          import org.junit.Assert.assertTrue
+          import org.junit.Rule
+          import org.junit.Test
+          import org.junit.rules.TemporaryFolder
+          import java.io.File
+
+          class StoredKeyboxInventoryTest {
+              @get:Rule
+              val temp = TemporaryFolder()
+
+              @Test
+              fun `direct root XML and managed XML CBOX are inventoried with explicit scope`() {
+                  val root = temp.newFolder("config")
+                  File(root, "A1B2C3.xml").writeText("root")
+                  val managed = File(root, "keyboxes").also { assertTrue(it.mkdirs()) }
+                  File(managed, "D4E5F6.xml").writeText("managed")
+                  File(managed, "LOCKED.cbox").writeText("encrypted")
+                  File(root, "ignored.txt").writeText("ignored")
+
+                  val items = StoredKeyboxInventory.list(root)
+                  assertEquals(listOf("root:A1B2C3.xml", "keyboxes:D4E5F6.xml", "keyboxes:LOCKED.cbox"), items.map { it.id }.sorted())
+                  assertEquals(2, StoredKeyboxInventory.runtimeXmlSources(root).size)
+              }
+
+              @Test
+              fun `duplicate basename across root and managed scope fails closed for runtime`() {
+                  val root = temp.newFolder("duplicate")
+                  File(root, "same.xml").writeText("root")
+                  val managed = File(root, "keyboxes").also { assertTrue(it.mkdirs()) }
+                  File(managed, "same.xml").writeText("managed")
+                  assertThrows(IllegalArgumentException::class.java) {
+                      StoredKeyboxInventory.runtimeXmlSources(root)
+                  }
+              }
+
+              @Test
+              fun `runtime source count is bounded to 64`() {
+                  val root = temp.newFolder("bounded")
+                  repeat(StoredKeyboxInventory.MAX_ACTIVE_XML_SOURCES + 1) { index ->
+                      File(root, "cert-$index.xml").writeText("x")
+                  }
+                  assertThrows(IllegalArgumentException::class.java) {
+                      StoredKeyboxInventory.runtimeXmlSources(root)
+                  }
+              }
+          }
+          '''
+          write('service/src/test/java/cleveres/tricky/cleverestech/StoredKeyboxInventoryTest.kt', textwrap.dedent(inventory_test))
+
+          # Config regression: arbitrary direct-root XML is actually parsed/activated.
+          cfg_test = 'service/src/test/java/cleveres/tricky/cleverestech/ConfigKeyboxActivationTest.kt'
+          marker = 'class ConfigKeyboxActivationTest {\n'
+          addition = r'''class ConfigKeyboxActivationTest {
+              @Test
+              fun `arbitrary direct root XML is activated like legacy keybox xml`() {
+                  withKeyboxRoot { root ->
+                      File(root, "A1B2C3.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+                      ManagedKeyboxParserOracle.install()
+                      KeyboxLoader.activeSetOverride = { ids -> ids.size == 1 && ids.all(ManagedOpaqueKeyOracle::contains) }
+
+                      assertTrue(Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.VALID })
+                      assertEquals(1, CertHack.getKeyboxSourceCount())
+                  }
+              }
+
+          '''
+          text = read(cfg_test)
+          if text.count(marker) != 1:
+              raise SystemExit('ConfigKeyboxActivationTest class anchor missing')
+          write(cfg_test, text.replace(marker, textwrap.dedent(addition), 1))
+
+          # WebUI regression contract: source inventory, bulk delete and 5-item page are mandatory.
+          ux_test = 'service/src/test/java/cleveres/tricky/cleverestech/WebServerKeyboxUXTest.kt'
+          replace_once(
+              ux_test,
+              '''        assertTrue(
+                      "verifyKeyboxes should check res.ok",
+                      html.contains("if (!res.ok) throw new Error(await res.text());") ||
+                          html.contains("if (!res.ok) {"),
+                  )
+          ''',
+              '''        assertTrue(
+                      "verifyKeyboxes should check res.ok",
+                      html.contains("if (!res.ok) throw new Error(await res.text());") ||
+                          html.contains("if (!res.ok) {"),
+                  )
+                  assertTrue("Stored list must use source-aware inventory", html.contains("/api/keybox_inventory"))
+                  assertTrue("Stored list must support bulk deletion", html.contains("/api/delete_keyboxes"))
+                  assertTrue("Stored list must page five entries at a time", html.contains("const PAGE_SIZE = 5;"))
+                  assertTrue("Verification must display certificate #3 serial", html.contains("Certificate #3 serial"))
+          ''',
+          )
+
+          # Changelog: prepend V2.6.1 user-facing scope.
+          changelog = 'CHANGELOG.md'
+          text = read(changelog)
+          if '## V2.6.1' not in text:
+              section = '''# Changelog
+
+          ## V2.6.1
+
+          ### Keybox storage and verification
+
+          - Stored Keyboxes now discovers safe XML keyboxes directly under `/data/adb/cleverestricky` as well as XML/CBOX files in the managed `keyboxes` directory.
+          - Stored and Verification views identify keyboxes with the serial number of certificate #3 when that certificate exists, instead of treating every source as `keybox.xml`.
+          - WebUI counts active keybox sources rather than EC/RSA key records inside a keybox, so one multi-key keybox is shown as one keybox.
+          - Stored Keyboxes supports bulk deletion and five-item pagination.
+          - Manual verification rejects stale Rust CRL generation handles and reloads the persisted revocation cache before checking certificates, fixing the first-check-after-backend-restart failure mode.
+          - Direct-root XML loading remains basename-only, symlink-safe and bounded; duplicate filenames across root and `keyboxes/` fail closed because profile selection is filename-based.
+          - Module ZIP import is capped at the module runtime's 64-source bound. The companion app vault remains a separate 10,000-CBOX store.
+
+          ### Cleveres Encryptor
+
+          - Create CBOX continues to accept either one XML keybox or a ZIP batch and processes ZIP entries one at a time.
+          - Additional vault management improvements, including certificate-based naming, bulk deletion and multi-CBOX ZIP export, are included in this release.
+
+          '''
+              text = text.replace('# Changelog\n\n', textwrap.dedent(section), 1)
+              write(changelog, text)
+
+          # Remove this one-shot patch runner from the resulting branch.
+          Path('.github/workflows/__v261_keybox_runtime_fix.yml').unlink()
+          PY
+
+          node --check module/template/webroot/ux.js
+          node module/webui-tests/zip-import.test.js
+          git diff --check
+          ./gradlew :service:testDebugUnitTest --no-daemon
+          (cd rust && cargo test -p cleverestricky-daemon)
+      - name: Commit validated changes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat(keybox): unify stored sources and verification identity"
+          git push origin HEAD:feat/v2.6.1-webui-zip-import
