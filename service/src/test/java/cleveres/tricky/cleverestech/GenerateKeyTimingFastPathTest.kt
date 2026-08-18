@@ -40,6 +40,35 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
+    fun `default attested generateKey does not require a Rust inspection round trip`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val featureGate =
+            source.indexOf("PolicyState.Feature.SECURITY_PATCH, uid")
+        val inspectionDecision =
+            source.indexOf("boolean needsInspection = needsCapturedPatchLevels", featureGate)
+        val conditionalInspection =
+            source.indexOf("if (needsInspection)", inspectionDecision)
+        val backendInspect =
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", conditionalInspection)
+        val configuredIds =
+            source.indexOf("? configuredIdOverrides(uid)", backendInspect)
+        val backendRewrite =
+            source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", configuredIds)
+
+        assertTrue(featureGate >= 0)
+        assertTrue(inspectionDecision > featureGate)
+        assertTrue(conditionalInspection > inspectionDecision)
+        assertTrue(backendInspect > conditionalInspection)
+        assertTrue(configuredIds > backendInspect)
+        assertTrue(backendRewrite > configuredIds)
+    }
+
+    @Test
     fun `getKeyEntry rejects non-attested leaf before Rust certificate backend`() {
         val root = locateRoot()
         val source =
