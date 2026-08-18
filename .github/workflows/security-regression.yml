@@ -155,6 +155,22 @@ jobs:
             echo "::warning::Android JVM tests failed but no XML test report was found"
           fi
 
+      - name: Upload Android JVM failure reports
+        if: steps.android_jvm_tests.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: security-jvm-failure-reports
+          path: |
+            service/build/test-results
+            service/build/reports/tests
+            stub/build/test-results
+            stub/build/reports/tests
+            encryptor-app/build/test-results
+            encryptor-app/build/reports/tests
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
+
       - name: Enforce Android JVM unit test result
         if: steps.android_jvm_tests.outcome == 'failure'
         run: exit 1
