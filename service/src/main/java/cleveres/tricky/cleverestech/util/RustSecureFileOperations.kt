@@ -2,13 +2,12 @@ package cleveres.tricky.cleverestech.util
 
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
+import android.system.Os
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.Files
-import java.nio.file.LinkOption
 
 /** Thin Android adapter for descriptor-relative mutations owned by the privileged Rust daemon. */
 internal class RustSecureFileOperations : SecureFileOperations {
@@ -51,7 +50,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(mode == DIRECTORY_MODE) { "Rust broker only accepts private config directories" }
         if (file.absolutePath == CONFIG_ROOT) {
-            transactControl(ACTION_ROOT_VALIDATE, EMPTY_BYTES)
+            awaitAdapterRegistration()
             return
         }
         transactControl(ACTION_MKDIR, relativePathBytes(file))
@@ -63,6 +62,30 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(mode == FILE_MODE) { "Rust broker only accepts private config files" }
         transactControl(ACTION_TOUCH, relativePathBytes(file))
+    }
+
+    private fun awaitAdapterRegistration() {
+        var delayMs = STARTUP_RETRY_INITIAL_MS
+        var lastError: IOException? = null
+        repeat(STARTUP_RETRY_ATTEMPTS) { attempt ->
+            try {
+                transactControl(ACTION_ROOT_VALIDATE, EMPTY_BYTES)
+                return
+            } catch (error: IOException) {
+                lastError = error
+            }
+
+            if (attempt + 1 < STARTUP_RETRY_ATTEMPTS) {
+                try {
+                    Thread.sleep(delayMs)
+                } catch (error: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw IOException("Interrupted while waiting for Rust daemon adapter registration", error)
+                }
+                delayMs = minOf(delayMs * 2, STARTUP_RETRY_MAX_MS)
+            }
+        }
+        throw IOException("Rust daemon did not recognize the Android adapter", lastError)
     }
 
     private fun transactStream(
@@ -163,20 +186,11 @@ internal class RustSecureFileOperations : SecureFileOperations {
     private fun connectVerified(socket: LocalSocket) {
         socket.connect(LocalSocketAddress(FILE_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
         val peer = socket.peerCredentials
-        if (peer.uid != 0 || peer.gid != 0 || peer.pid <= 1 || !isExpectedDaemonExecutable(peer.pid)) {
+        val parentPid = Os.getppid()
+        if (parentPid <= 1 || peer.uid != 0 || peer.gid != 0 || peer.pid != parentPid) {
             throw IOException("Unexpected privileged Rust daemon peer")
         }
         socket.setSoTimeout(IO_TIMEOUT_MS)
-    }
-
-    private fun isExpectedDaemonExecutable(pid: Int): Boolean {
-        val classpath = System.getenv("CLASSPATH") ?: return false
-        if (classpath.indexOf(File.pathSeparatorChar) >= 0) return false
-        val serviceApk = File(classpath)
-        val moduleDir = serviceApk.parentFile ?: return false
-        val daemon = File(moduleDir, DAEMON_FILENAME).toPath()
-        if (!Files.isRegularFile(daemon, LinkOption.NOFOLLOW_LINKS)) return false
-        return runCatching { Files.isSameFile(daemon, File("/proc/$pid/exe").toPath()) }.getOrDefault(false)
     }
 
     private fun relativePathBytes(file: File): ByteArray = relativePath(file).toByteArray(Charsets.UTF_8)
@@ -249,6 +263,28 @@ internal class RustSecureFileOperations : SecureFileOperations {
         }
     }
 
+    private fun copyDeclaredBody(
+        input: InputStream,
+        output: OutputStream,
+        declaredBodyLength: Int,
+        scratch: ByteArray,
+    ) {
+        var remaining = declaredBodyLength
+        var emptyReads = 0
+        while (remaining > 0) {
+            val count = input.read(scratch, 0, minOf(scratch.size, remaining))
+            if (count < 0) throw IOException("Rust file request body ended early")
+            if (count == 0) {
+                if (++emptyReads > MAX_EMPTY_READS) throw IOException("Rust file request body stalled")
+                continue
+            }
+            emptyReads = 0
+            output.write(scratch, 0, count)
+            remaining -= count
+        }
+        if (input.read() != -1) throw IOException("Rust file request body exceeds declared length")
+    }
+
     private fun readU16(
         bytes: ByteArray,
         offset: Int,
@@ -292,7 +328,6 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val CONFIG_ROOT = "/data/adb/cleverestricky"
         const val KEYBOX_DIRECTORY = "keyboxes"
         const val FILE_SOCKET_NAME = "cleverestrickyd.files.v1"
-        const val DAEMON_FILENAME = "cleverestrickyd"
         const val IPC_VERSION = 1
         const val OP_FILE_WRITE = 10
         const val FLAG_ERROR = 1
@@ -314,39 +349,11 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val IO_TIMEOUT_MS = 30_000
         const val MAX_EMPTY_READS = 16
         const val STREAM_BUFFER_BYTES = 64 * 1024
+        const val STARTUP_RETRY_ATTEMPTS = 12
+        const val STARTUP_RETRY_INITIAL_MS = 25L
+        const val STARTUP_RETRY_MAX_MS = 500L
         val IPC_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'I'.code.toByte(), 'P'.code.toByte())
         val OK_BYTES = byteArrayOf('o'.code.toByte(), 'k'.code.toByte())
         val EMPTY_BYTES = ByteArray(0)
-    }
-}
-
-@Throws(IOException::class)
-internal fun copyDeclaredBody(
-    input: InputStream,
-    output: OutputStream,
-    declaredBodyLength: Int,
-    scratch: ByteArray,
-) {
-    require(declaredBodyLength >= 0)
-    require(scratch.isNotEmpty())
-    var remaining = declaredBodyLength
-    var emptyReads = 0
-    try {
-        while (remaining > 0) {
-            val count = input.read(scratch, 0, minOf(remaining, scratch.size))
-            if (count < 0) throw IOException("Input stream ended before declared length")
-            if (count == 0) {
-                if (++emptyReads > 16) throw IOException("Input stream stalled")
-                continue
-            }
-            emptyReads = 0
-            output.write(scratch, 0, count)
-            scratch.fill(0, 0, count)
-            remaining -= count
-        }
-        val trailing = input.read()
-        if (trailing >= 0) throw IOException("Input stream exceeds declared length")
-    } finally {
-        scratch.fill(0)
     }
 }
