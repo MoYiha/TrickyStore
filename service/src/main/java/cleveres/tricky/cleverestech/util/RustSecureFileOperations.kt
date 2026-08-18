@@ -29,7 +29,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(content.size <= MAX_FILE_BYTES) { "File exceeds the Rust broker size limit" }
         ByteArrayInputStream(content).use { input ->
-            transactStream(file, input, content.size)
+            transactAtomicWrite(file, input, content.size)
         }
     }
 
@@ -38,10 +38,35 @@ internal class RustSecureFileOperations : SecureFileOperations {
         inputStream: InputStream,
         limit: Long,
     ) {
-        require(limit in 0L..MAX_FILE_BYTES.toLong()) {
-            "Rust broker streaming writes require an exact declared length"
+        require(limit in 0L..MAX_FILE_BYTES.toLong()) { "Invalid Rust broker streaming limit" }
+        val relative = relativePath(file)
+        if (!isWebUiDownloadPath(relative)) {
+            throw IOException("Streaming writes are restricted to WebUI download staging")
         }
-        transactStream(file, inputStream, limit.toInt())
+
+        transactControl(ACTION_STAGE_CREATE, relative.toByteArray(Charsets.UTF_8))
+        val scratch = ByteArray(STREAM_BUFFER_BYTES)
+        var total = 0L
+        var emptyReads = 0
+        try {
+            while (true) {
+                val count = inputStream.read(scratch)
+                if (count < 0) break
+                if (count == 0) {
+                    if (++emptyReads > MAX_EMPTY_READS) throw IOException("Rust file request body stalled")
+                    continue
+                }
+                emptyReads = 0
+                if (count.toLong() > limit - total) {
+                    throw IOException("File size exceeds the $limit-byte limit")
+                }
+                transactStageAppend(relative, scratch, count)
+                scratch.fill(0, 0, count)
+                total += count
+            }
+        } finally {
+            scratch.fill(0)
+        }
     }
 
     override fun mkdirs(
@@ -88,7 +113,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
         throw IOException("Rust daemon did not recognize the Android adapter", lastError)
     }
 
-    private fun transactStream(
+    private fun transactAtomicWrite(
         file: File,
         input: InputStream,
         declaredBodyLength: Int,
@@ -119,6 +144,38 @@ internal class RustSecureFileOperations : SecureFileOperations {
         } finally {
             pathBytes.fill(0)
             scratch.fill(0)
+        }
+    }
+
+    private fun transactStageAppend(
+        relativePath: String,
+        bytes: ByteArray,
+        count: Int,
+    ) {
+        require(count in 1..STREAM_BUFFER_BYTES)
+        val pathBytes = relativePath.toByteArray(Charsets.UTF_8)
+        try {
+            require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
+            val payloadLength =
+                Math.addExact(
+                    Math.addExact(REQUEST_PREFIX_BYTES, pathBytes.size),
+                    Math.addExact(count, WRITE_COMMIT_BYTES),
+                )
+            LocalSocket().use { socket ->
+                connectVerified(socket)
+                val output = socket.outputStream
+                writeHeader(output, payloadLength)
+                writeRequestPrefix(output, ACTION_STAGE_APPEND, pathBytes.size, count)
+                output.write(pathBytes)
+                output.write(bytes, 0, count)
+                output.write(WRITE_COMMIT_MARKER)
+                output.flush()
+                readSuccessResponse(socket.inputStream)
+            }
+        } catch (error: ArithmeticException) {
+            throw IOException("Rust staging request size overflow", error)
+        } finally {
+            pathBytes.fill(0)
         }
     }
 
@@ -218,6 +275,14 @@ internal class RustSecureFileOperations : SecureFileOperations {
             }
         if (!allowed) throw IOException("Config path is outside an allowed capability subtree")
         return components.joinToString("/")
+    }
+
+    private fun isWebUiDownloadPath(relative: String): Boolean {
+        val components = relative.split('/')
+        return components.size == 3 &&
+            components[0] == WEBUI_DIRECTORY &&
+            components[1] == WEBUI_STAGING_DIRECTORY &&
+            isWebUiDownloadName(components[2])
     }
 
     private fun isWebUiDownloadName(value: String): Boolean {
@@ -333,6 +398,8 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val ACTION_MKDIR = 1
         const val ACTION_TOUCH = 2
         const val ACTION_ROOT_VALIDATE = 3
+        const val ACTION_STAGE_CREATE = 4
+        const val ACTION_STAGE_APPEND = 5
         const val WRITE_COMMIT_MARKER = 0xa5
         const val HEADER_BYTES = 16
         const val REQUEST_PREFIX_BYTES = 7
