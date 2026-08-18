@@ -21,6 +21,8 @@ const ACTION_WRITE: u8 = 0;
 const ACTION_MKDIR: u8 = 1;
 const ACTION_TOUCH: u8 = 2;
 const ACTION_ROOT_VALIDATE: u8 = 3;
+const ACTION_STAGE_CREATE: u8 = 4;
+const ACTION_STAGE_APPEND: u8 = 5;
 const WRITE_COMMIT_MARKER: u8 = 0xa5;
 const FILE_MODE: u32 = 0o600;
 const DIRECTORY_MODE: u32 = 0o700;
@@ -61,7 +63,8 @@ pub(crate) fn handle_stream_from<R: Read>(
         return Err(invalid("config file path is empty"));
     }
 
-    let expected_payload = if action == ACTION_WRITE {
+    let has_committed_body = matches!(action, ACTION_WRITE | ACTION_STAGE_APPEND);
+    let expected_payload = if has_committed_body {
         REQUEST_PREFIX_BYTES
             .checked_add(path_len)
             .and_then(|value| value.checked_add(declared_body_len))
@@ -89,32 +92,15 @@ pub(crate) fn handle_stream_from<R: Read>(
                 atomic_write_relative_from(root, path, reader, declared_body_len, scratch)
             }
             ACTION_MKDIR => mkdir_allowed(root, path),
-            ACTION_TOUCH => {
-                if path.contains('/') {
-                    return Err(invalid("config touch request rejected"));
-                }
-                validate_component(path)?;
-                match root.create_new_file(path, FILE_MODE) {
-                    Ok(file) => {
-                        drop(file);
-                        root.sync()
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                        let (_, size) = root.open_file_bounded(path, 0)?;
-                        if size != 0 {
-                            return Err(invalid("config flag is not empty"));
-                        }
-                        Ok(())
-                    }
-                    Err(error) => Err(error),
-                }
-            }
+            ACTION_TOUCH => touch_root_file(root, path),
             ACTION_ROOT_VALIDATE => {
                 if path_len != 0 {
                     return Err(invalid("config root capability request rejected"));
                 }
                 root.sync()
             }
+            ACTION_STAGE_CREATE => stage_create(root, path),
+            ACTION_STAGE_APPEND => stage_append(root, path, reader, declared_body_len, scratch),
             _ => Err(invalid("unsupported config file action")),
         }
     })();
@@ -142,6 +128,81 @@ fn mkdir_allowed(root: &TrustedDir, path: &str) -> io::Result<()> {
         }
         _ => Err(invalid("config directory request rejected")),
     }
+}
+
+fn touch_root_file(root: &TrustedDir, path: &str) -> io::Result<()> {
+    if path.contains('/') {
+        return Err(invalid("config touch request rejected"));
+    }
+    validate_component(path)?;
+    match root.create_new_file(path, FILE_MODE) {
+        Ok(file) => {
+            drop(file);
+            root.sync()
+        }
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            let (_, size) = root.open_file_bounded(path, 0)?;
+            if size != 0 {
+                return Err(invalid("config flag is not empty"));
+            }
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn open_webui_staging<'a>(root: &TrustedDir, path: &'a str) -> io::Result<(TrustedDir, &'a str)> {
+    let prefix = "webui_bridge/staging/";
+    let name = path
+        .strip_prefix(prefix)
+        .ok_or_else(|| invalid("WebUI staging path rejected"))?;
+    if name.contains('/') {
+        return Err(invalid("WebUI staging path rejected"));
+    }
+    validate_webui_download_name(name)?;
+    let bridge = root.open_child(WEBUI_DIRECTORY)?;
+    let staging = bridge.open_child(WEBUI_STAGING_DIRECTORY)?;
+    Ok((staging, name))
+}
+
+fn stage_create(root: &TrustedDir, path: &str) -> io::Result<()> {
+    let (staging, name) = open_webui_staging(root, path)?;
+    let file = staging.create_new_file(name, FILE_MODE)?;
+    drop(file);
+    staging.sync()
+}
+
+fn stage_append<R: Read>(
+    root: &TrustedDir,
+    path: &str,
+    reader: &mut R,
+    body_len: usize,
+    scratch: &mut [u8],
+) -> io::Result<()> {
+    if body_len == 0 || body_len > scratch.len() {
+        return Err(invalid("WebUI staging chunk exceeds broker scratch bound"));
+    }
+    let read_result = reader.read_exact(&mut scratch[..body_len]);
+    if let Err(error) = read_result {
+        scratch[..body_len].fill(0);
+        return Err(error);
+    }
+    let mut marker = [0u8; 1];
+    if let Err(error) = reader.read_exact(&mut marker) {
+        scratch[..body_len].fill(0);
+        return Err(error);
+    }
+    if marker[0] != WRITE_COMMIT_MARKER {
+        scratch[..body_len].fill(0);
+        return Err(invalid("WebUI staging chunk commit marker rejected"));
+    }
+
+    let (staging, name) = open_webui_staging(root, path)?;
+    let result = staging
+        .append_bounded(name, &scratch[..body_len], MAX_FILE_BYTES)
+        .map(|_| ());
+    scratch[..body_len].fill(0);
+    result
 }
 
 fn atomic_write_relative_from<R: Read>(
@@ -268,7 +329,7 @@ mod tests {
         marker: u8,
     ) -> Vec<u8> {
         let path = path.as_bytes();
-        let write_marker = usize::from(action == ACTION_WRITE);
+        let write_marker = usize::from(matches!(action, ACTION_WRITE | ACTION_STAGE_APPEND));
         let mut output =
             Vec::with_capacity(REQUEST_PREFIX_BYTES + path.len() + body.len() + write_marker);
         output.push(action);
@@ -276,7 +337,7 @@ mod tests {
         output.extend_from_slice(&(declared_body_len as u32).to_be_bytes());
         output.extend_from_slice(path);
         output.extend_from_slice(body);
-        if action == ACTION_WRITE {
+        if write_marker != 0 {
             output.push(marker);
         }
         output
@@ -384,6 +445,33 @@ mod tests {
             assert!(handle_from(&root, &request(ACTION_WRITE, rejected, b"x")).is_err());
         }
         assert!(handle_from(&root, &request(ACTION_MKDIR, "webui_bridge/other", b"")).is_err());
+    }
+
+    #[test]
+    fn webui_download_streaming_is_chunked_bounded_and_fail_closed() {
+        let test = TestRoot::new();
+        let root = test.trusted();
+        handle_from(&root, &request(ACTION_MKDIR, WEBUI_DIRECTORY, b"")).unwrap();
+        handle_from(&root, &request(ACTION_MKDIR, WEBUI_STAGING_PATH, b"")).unwrap();
+        let path = "webui_bridge/staging/0123456789abcdef0123456789abcdef.download";
+        handle_from(&root, &request(ACTION_STAGE_CREATE, path, b"")).unwrap();
+        handle_from(&root, &request(ACTION_STAGE_APPEND, path, b"first-")).unwrap();
+        handle_from(&root, &request(ACTION_STAGE_APPEND, path, b"second")).unwrap();
+
+        let staged = test
+            .path
+            .join(WEBUI_DIRECTORY)
+            .join(WEBUI_STAGING_DIRECTORY)
+            .join("0123456789abcdef0123456789abcdef.download");
+        assert_eq!(fs::read(&staged).unwrap(), b"first-second");
+
+        let bad_marker = request_with_declared(ACTION_STAGE_APPEND, path, 3, b"bad", 0);
+        assert!(handle_from(&root, &bad_marker).is_err());
+        assert_eq!(fs::read(&staged).unwrap(), b"first-second");
+
+        let too_large_for_worker_scratch = vec![0x41; 65];
+        assert!(handle_from(&root, &request(ACTION_STAGE_APPEND, path, &too_large_for_worker_scratch)).is_err());
+        assert_eq!(fs::read(&staged).unwrap(), b"first-second");
     }
 
     #[test]
