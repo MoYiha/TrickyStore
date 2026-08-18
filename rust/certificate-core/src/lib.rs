@@ -95,8 +95,8 @@ impl PreparedIssuer {
             return Err(Error::Bounds);
         }
 
-        let issuer = Certificate::from_der(issuer_certificate_der)
-            .map_err(|_| Error::InvalidCertificate)?;
+        let issuer =
+            Certificate::from_der(issuer_certificate_der).map_err(|_| Error::InvalidCertificate)?;
         let issuer_name_der = issuer
             .tbs_certificate()
             .subject()
@@ -152,12 +152,14 @@ impl PreparedIssuer {
     fn sign_certificate(&self, tbs_der: &[u8], algorithm_der: &[u8]) -> Result<Vec<u8>, Error> {
         match &self.signer {
             PreparedSigner::Ec(signer) => {
-                let signature: EcSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
+                let signature: EcSignature =
+                    signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
                 let signature_der = signature.to_der();
                 encode_signed_certificate(tbs_der, algorithm_der, signature_der.as_bytes())
             }
             PreparedSigner::Rsa(signer) => {
-                let signature: RsaSignature = signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
+                let signature: RsaSignature =
+                    signer.try_sign(tbs_der).map_err(|_| Error::Signature)?;
                 let signature_bytes = signature.to_vec();
                 encode_signed_certificate(tbs_der, algorithm_der, &signature_bytes)
             }
