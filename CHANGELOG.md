@@ -2,60 +2,63 @@
 
 ## V2.6.0
 
-### What changed
+### A new core for CleveresTricky
 
-This update focuses on making everyday use more reliable and predictable: cleaner startup, safer keybox handling, better recovery when something fails, clearer WebUI errors, and a more polished companion app.
+CleveresTricky 2.6.0 is not a small maintenance release. It is a major security and architecture upgrade built to push the TrickyStore ecosystem further: less privileged work, stronger isolation, safer key handling and a much more deliberate trust boundary.
 
-### Reliability and WebUI
+The project is now built as a **security-first TrickyStore fork**, with the goal of setting the security bar for this class of module rather than simply adding more spoofing features.
 
-- **Improved startup and reboot reliability.** The module is less likely to end up partially running after boot or after one of its background components restarts.
-- **Fixed cases where WebUI could report that the Android adapter was unavailable.** Runtime Health, resource information and file operations now have a more reliable startup path.
-- **Improved automatic recovery.** If a background component stops unexpectedly, the module can rebuild the affected runtime state instead of requiring a full reinstall.
-- **Improved large file and response handling in WebUI.** Transfers are more reliable and failures are reported more clearly.
-- **Improved diagnostics.** When something cannot be applied, the UI is more likely to show the real failure instead of leaving the module in an unclear half-working state.
+### Rust-first security architecture
 
-### Attestation and performance
+- **Keybox parsing, validation and cryptographic certificate work now live behind an unprivileged Rust backend.** Complex attacker-controlled input is handled outside the privileged Android service whenever possible.
+- **Private key material stays opaque to the Android service.** The privileged side works with short-lived opaque key handles instead of receiving raw private-key bytes.
+- **Attestation certificate rewriting and signing are performed in Rust.** The production path keeps DER/X.509 manipulation and signing inside the hardened backend boundary.
+- **Production no longer relies on the managed Bouncy Castle path for keybox and attestation processing.** Bouncy Castle remains only as a test oracle where needed for differential and regression coverage.
+- **The Rust boundary is fail-closed.** Malformed, oversized, mismatched or unsupported material is rejected instead of being partially accepted into the active runtime.
 
-- **Fixed a timing difference found during real-device testing.** Normal keys no longer do unnecessary attestation work during creation or later readback.
-- **Kept the fix performance-based rather than hiding the issue.** No artificial delay, timing padding or relaxed detection threshold was added.
-- **Reduced unnecessary work on frequently used attestation paths** while preserving the existing Android key and cryptographic behavior.
-- **Improved handling of Root of Trust, patch-level, device-ID and module-related attestation data** without changing normal key usage.
+### Hardened keybox pipeline
 
-### Keybox safety
+- **Keybox activation is transactional.** New material becomes active only after the backend has parsed, validated and prepared it successfully.
+- **Known-good state is preserved when an update fails.** A broken or incompatible keybox cannot silently replace a working setup.
+- **EC, RSA and multi-key keyboxes are validated more deeply** before they are published to the runtime.
+- **Key and certificate pairing is proven before use,** and reusable signer state is prepared once instead of repeatedly rebuilding sensitive cryptographic state on hot paths.
+- **CBOX and encrypted-backup workflows remain supported** while benefiting from the stricter activation pipeline.
 
-- **Made keybox updates safer.** A new keybox is only treated as active after it has been applied successfully.
-- **Preserved the previous working keybox when an update fails.** A bad upload should no longer replace a known-good setup.
-- **Improved validation for malformed, oversized or mismatched keyboxes** before they can affect the active configuration.
-- **Improved EC, RSA and multi-key keybox handling** while keeping existing supported formats compatible.
-- **Improved failure reporting** so invalid input and activation problems are easier to distinguish.
+### Attestation engine
+
+- **Attestation handling was rebuilt around the Rust backend** while keeping Android-specific policy decisions on the Android side.
+- **Root of Trust, verified-boot data, security patch levels, attestation IDs and module hash handling** now pass through a clearer separation between platform policy and portable certificate rewriting.
+- **Generated attestation replacements are cached as encoded certificate data** so repeated key readback can stay lightweight without reparsing or re-signing certificates.
+- **Grant and isolated-process behavior preserves the same generated chain** instead of synthesizing a different attestation for each reader.
+- **The hot path is designed around real-device behavior and strict regression gates,** with no artificial timing padding or weakened security thresholds.
+
+### Runtime reliability and WebUI
+
+- **Runtime startup, restart and recovery are more resilient.** Components can rebuild their state after failures instead of leaving the module partially active.
+- **WebUI runtime communication is more robust,** including health information, resource access and larger request/response handling.
+- **Failures are surfaced more clearly** so invalid input, backend activation problems and runtime availability issues are easier to distinguish.
+- **Installer and runtime validation are stricter** around missing files, unsafe paths, links, malformed inputs and packaging integrity.
 
 ### Companion Encryptor
 
-- **Redesigned the app with a monochrome black-and-white interface.** The previous default purple styling has been removed.
-- **Improved the create/import flow** with a cleaner full-screen layout, better keyboard behavior and clearer actions.
-- **Added an in-app language selector** with English, Arabic, German, Spanish, Hindi, Indonesian, Russian, Turkish and Simplified Chinese, plus system-default behavior.
-- **Improved validation before encryption.** Invalid keybox files are rejected earlier with clearer feedback.
-- **Improved import, export, overwrite and delete flows** and made storage-related failures easier to understand.
-- **Reduced UI stalls** by moving file and metadata work away from the main interface thread.
-- **Kept sensitive vault data local** with screen-capture protection, no-backup storage rules and the existing strong encryption settings.
+- **The Encryptor app has been redesigned with a focused monochrome interface** and a cleaner full-screen create/import experience.
+- **Vault operations stay local** and retain screen-capture protection, no-backup storage rules and strong encrypted storage.
+- **Import, export, overwrite and delete flows are safer and clearer,** with invalid keybox material rejected earlier.
+- **File and metadata work has been moved away from the main UI thread** to reduce stalls during larger operations.
+- **Language selection is available in-app** for English, Arabic, German, Spanish, Hindi, Indonesian, Russian, Turkish and Simplified Chinese, plus system-default behavior.
 
-### Security and installation
+### Security engineering
 
-- **Tightened access around sensitive files and key material** and reduced the amount of privileged work needed during normal operation.
-- **Improved protection against unsafe paths, links, malformed files and oversized inputs.**
-- **Hardened installation and update checks.** Missing or damaged module files are more likely to be caught before producing a broken installation.
-- **Expanded automated regression coverage** for startup, WebUI, keybox activation, attestation behavior and final module packaging.
+- **Privileged code has a smaller responsibility.** Parsing, cryptographic preparation and certificate construction are pushed out of the privileged service where practical.
+- **Sensitive material has a narrower lifetime and exposure surface.** Opaque handles replace raw-key transfer across the Android/Rust boundary.
+- **Input and size limits are enforced throughout the pipeline** to reduce parser and resource-exhaustion risk.
+- **CI now exercises Rust formatting, clippy, workspace tests, security audit, Android JVM tests, native hardening, fuzz smoke tests, dependency checks and final package validation.**
 
 ### Compatibility
 
-- Existing supported CBOX and encrypted-backup files remain readable.
-- Existing EC, RSA and multi-key keybox workflows remain supported.
-- KernelSU and APatch module packaging remain supported.
-- Existing user configuration and normal module usage are intended to remain familiar.
+- Existing supported **CBOX and encrypted-backup files remain readable**.
+- Existing **EC, RSA and multi-key keybox workflows remain supported**.
+- **KernelSU and APatch** module packaging remain supported.
+- Existing configuration remains familiar while the internals move to the new hardened architecture.
 
-## V2.5.8
-
-- Fixed Restore Defaults enabling Automatic Security Patch on current ROMs when only vendor or boot patch metadata lagged behind.
-- Recommended defaults now use the primary system security patch to decide whether Security Patch should be enabled, while system/vendor/boot remain automatic when the feature is actually needed.
-- Stabilized early-boot attestation by reusing only fresh, successfully parsed Google attestation revocation state across daemon restarts and reboots.
-- Kept Global Mode and Automatic Keybox Check enabled by default while optional identity/privacy features remain disabled.
+**2.6.0 is the release where CleveresTricky stops being just a feature-focused fork and becomes a security-engineered platform: Rust-first, key-material aware, aggressively validated and built to keep the privileged Android side as small as possible.**
