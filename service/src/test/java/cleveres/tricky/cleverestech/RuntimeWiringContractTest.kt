@@ -11,12 +11,13 @@ class RuntimeWiringContractTest {
         val root = locateRoot()
         val service = File(root, "module/template/service.sh").readText()
         val daemon = File(root, "module/template/daemon").readText()
+        val dollar = '$'
 
         assertTrue(service.contains("generate_backend_auth()"))
         assertTrue(service.contains("export CLEVERES_TRICKY_BACKEND_AUTH"))
-        assertTrue(service.contains("\"$MODDIR/daemon\""))
+        assertTrue(service.contains("\"${dollar}MODDIR/daemon\""))
         assertTrue(service.contains("unset CLEVERES_TRICKY_BACKEND_AUTH"))
-        assertTrue(daemon.contains("exec \"$MODDIR/cleverestrickyd\" \"$MODDIR\""))
+        assertTrue(daemon.contains("exec \"${dollar}MODDIR/cleverestrickyd\" \"${dollar}MODDIR\""))
     }
 
     @Test
@@ -47,7 +48,7 @@ class RuntimeWiringContractTest {
         assertTrue(secureFile.contains("peer.pid != parentPid"))
         assertTrue(secureFile.contains("awaitAdapterRegistration()"))
         assertTrue(secureFile.contains("STARTUP_RETRY_ATTEMPTS"))
-        assertFalse(secureFile.contains("/proc/$"))
+        assertFalse(secureFile.contains("/proc/"))
     }
 
     @Test
@@ -90,9 +91,5 @@ class RuntimeWiringContractTest {
             current = current.parentFile ?: return@repeat
         }
         error("Repository root not found")
-    }
-
-    private companion object {
-        const val MODDIR = "MODDIR"
     }
 }
