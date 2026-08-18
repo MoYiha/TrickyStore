@@ -4,6 +4,8 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import java.io.IOException
+import java.security.GeneralSecurityException
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.ProviderException
@@ -20,6 +22,16 @@ internal object MobileCrypto {
     private const val MAX_XML_BYTES = 10 * 1024 * 1024
     private const val MIN_PASSWORD_UTF16_UNITS = 12
     private const val MAX_PASSWORD_UTF16_UNITS = 1024
+
+    internal enum class EncryptResult {
+        SUCCESS,
+        INVALID_INPUT,
+        RANDOM_UNAVAILABLE,
+        CRYPTO_FAILURE,
+        STORAGE_FAILURE,
+        SIGNING_FAILURE,
+        INTERNAL_FAILURE,
+    }
 
     fun ensureSigningKey() {
         val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
@@ -48,30 +60,39 @@ internal object MobileCrypto {
         author: String,
         xmlUtf8: ByteArray,
         password: String,
-    ) {
-        require(author.isNotBlank() && author.length <= MAX_AUTHOR_UTF16_UNITS)
-        require(xmlUtf8.isNotEmpty() && xmlUtf8.size <= MAX_XML_BYTES)
-        require(password.length in MIN_PASSWORD_UTF16_UNITS..MAX_PASSWORD_UTF16_UNITS)
-
-        ensureSigningKey()
-        val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
-        val entry =
-            keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
-                ?: throw IllegalStateException("Signing key unavailable")
+    ): EncryptResult {
+        if (
+            author.isBlank() ||
+            author.length > MAX_AUTHOR_UTF16_UNITS ||
+            xmlUtf8.isEmpty() ||
+            xmlUtf8.size > MAX_XML_BYTES ||
+            password.length !in MIN_PASSWORD_UTF16_UNITS..MAX_PASSWORD_UTF16_UNITS
+        ) {
+            return EncryptResult.INVALID_INPUT
+        }
 
         val authorUtf8 = author.toByteArray(Charsets.UTF_8)
-        require(authorUtf8.size <= MAX_AUTHOR_UTF8_BYTES)
+        if (authorUtf8.size > MAX_AUTHOR_UTF8_BYTES) {
+            authorUtf8.fill(0)
+            return EncryptResult.INVALID_INPUT
+        }
         val passwordUtf16 = password.toCharArray()
         var signatureBytes: ByteArray? = null
         var signatureBase64: ByteArray? = null
         try {
+            ensureSigningKey()
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER).apply { load(null) }
+            val entry =
+                keyStore.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
+                    ?: return EncryptResult.SIGNING_FAILURE
+
             val signer = Signature.getInstance(SIGNATURE_ALGORITHM)
             signer.initSign(entry.privateKey)
             CboxSignatureV2.update(authorUtf8, xmlUtf8, signer::update)
             signatureBytes = signer.sign()
             signatureBase64 = Base64.encode(signatureBytes, Base64.NO_WRAP)
 
-            check(
+            return when (
                 NativeCrypto.encryptAndSave(
                     noBackupDirectory,
                     filename,
@@ -79,8 +100,21 @@ internal object MobileCrypto {
                     xmlUtf8,
                     signatureBase64,
                     passwordUtf16,
-                ),
-            ) { "Native encryption rejected the request" }
+                )
+            ) {
+                NativeCrypto.ENCRYPT_OK -> EncryptResult.SUCCESS
+                NativeCrypto.ENCRYPT_INVALID_INPUT -> EncryptResult.INVALID_INPUT
+                NativeCrypto.ENCRYPT_RANDOM_UNAVAILABLE -> EncryptResult.RANDOM_UNAVAILABLE
+                NativeCrypto.ENCRYPT_CRYPTO_FAILURE -> EncryptResult.CRYPTO_FAILURE
+                NativeCrypto.ENCRYPT_STORAGE_FAILURE -> EncryptResult.STORAGE_FAILURE
+                else -> EncryptResult.INTERNAL_FAILURE
+            }
+        } catch (_: ProviderException) {
+            return EncryptResult.SIGNING_FAILURE
+        } catch (_: GeneralSecurityException) {
+            return EncryptResult.SIGNING_FAILURE
+        } catch (_: IOException) {
+            return EncryptResult.SIGNING_FAILURE
         } finally {
             authorUtf8.fill(0)
             passwordUtf16.fill('\u0000')
