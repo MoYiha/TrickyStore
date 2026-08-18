@@ -26,11 +26,8 @@ internal object MobileCrypto {
     internal enum class EncryptResult {
         SUCCESS,
         INVALID_INPUT,
-        RANDOM_UNAVAILABLE,
-        CRYPTO_FAILURE,
-        STORAGE_FAILURE,
         SIGNING_FAILURE,
-        INTERNAL_FAILURE,
+        NATIVE_FAILURE,
     }
 
     fun ensureSigningKey() {
@@ -92,7 +89,7 @@ internal object MobileCrypto {
             signatureBytes = signer.sign()
             signatureBase64 = Base64.encode(signatureBytes, Base64.NO_WRAP)
 
-            return when (
+            return if (
                 NativeCrypto.encryptAndSave(
                     noBackupDirectory,
                     filename,
@@ -102,12 +99,9 @@ internal object MobileCrypto {
                     passwordUtf16,
                 )
             ) {
-                NativeCrypto.ENCRYPT_OK -> EncryptResult.SUCCESS
-                NativeCrypto.ENCRYPT_INVALID_INPUT -> EncryptResult.INVALID_INPUT
-                NativeCrypto.ENCRYPT_RANDOM_UNAVAILABLE -> EncryptResult.RANDOM_UNAVAILABLE
-                NativeCrypto.ENCRYPT_CRYPTO_FAILURE -> EncryptResult.CRYPTO_FAILURE
-                NativeCrypto.ENCRYPT_STORAGE_FAILURE -> EncryptResult.STORAGE_FAILURE
-                else -> EncryptResult.INTERNAL_FAILURE
+                EncryptResult.SUCCESS
+            } else {
+                EncryptResult.NATIVE_FAILURE
             }
         } catch (_: ProviderException) {
             return EncryptResult.SIGNING_FAILURE
@@ -115,6 +109,8 @@ internal object MobileCrypto {
             return EncryptResult.SIGNING_FAILURE
         } catch (_: IOException) {
             return EncryptResult.SIGNING_FAILURE
+        } catch (_: IllegalStateException) {
+            return EncryptResult.NATIVE_FAILURE
         } finally {
             authorUtf8.fill(0)
             passwordUtf16.fill('\u0000')
