@@ -39,6 +39,27 @@ class GenerateKeyTimingFastPathTest {
         assertTrue(backendRewrite > localExtensionGuard)
     }
 
+    @Test
+    fun `getKeyEntry rejects non-attested leaf before Rust certificate backend`() {
+        val root = locateRoot()
+        val source =
+            File(
+                root,
+                "service/src/main/java/cleveres/tricky/cleverestech/KeystoreInterceptor.kt",
+            ).readText()
+        val postTransact = source.indexOf("override fun onPostTransact")
+        val chainRead = source.indexOf("val originalChain = Utils.getCertificateChain(response)", postTransact)
+        val localExtensionGuard =
+            source.indexOf("!Utils.hasAndroidAttestationExtension(originalLeaf)", chainRead)
+        val backendRewrite =
+            source.indexOf("CertHack.hackCertificateChain(originalChain, callingUid)", chainRead)
+
+        assertTrue(postTransact >= 0)
+        assertTrue(chainRead > postTransact)
+        assertTrue(localExtensionGuard > chainRead)
+        assertTrue(backendRewrite > localExtensionGuard)
+    }
+
     private fun locateRoot(): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(6) {
