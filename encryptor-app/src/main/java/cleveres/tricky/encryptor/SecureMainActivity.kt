@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -120,6 +119,7 @@ class SecureMainActivity : ComponentActivity() {
 private fun SecureEncryptorApp() {
     var creating by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+
     Box(
         modifier =
             Modifier
@@ -194,28 +194,25 @@ private fun VaultScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Row(
+            Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
                         .padding(start = 20.dp, top = 10.dp, end = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.vault_title),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(text = stringResource(R.string.vault_subtitle))
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.size })),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.vault_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(text = stringResource(R.string.vault_subtitle))
+                Text(
+                    text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.size })),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 LanguagePicker()
             }
         },
@@ -245,24 +242,30 @@ private fun VaultScreen(
             ) {
                 items(files, key = { it.file.name }) { item ->
                     val file = item.file
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(formatBytes(item.size), style = MaterialTheme.typography.bodySmall)
-                        }
-                        IconButton(
-                            onClick = {
-                                exportTarget = file
-                                exportLauncher.launch(file.name)
-                            },
-                        ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.export_file, file.name))
-                        }
-                        IconButton(onClick = { deleteTarget = file }) {
-                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_file, file.name))
+                        Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(formatBytes(item.size), style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    exportTarget = file
+                                    exportLauncher.launch(file.name)
+                                },
+                            ) {
+                                Icon(
+                                    Icons.Default.UploadFile,
+                                    contentDescription = stringResource(R.string.export_file, file.name),
+                                )
+                            }
+                            IconButton(onClick = { deleteTarget = file }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = stringResource(R.string.delete_file, file.name),
+                                )
+                            }
                         }
                     }
                 }
@@ -354,7 +357,7 @@ private fun CreateScreen(
                     withContext(Dispatchers.IO) {
                         try {
                             val bytes =
-                                context.contentResolver.openInputStream(uri)?.use(::readBytes)
+                                context.contentResolver.openInputStream(uri)?.use(::readKeyboxBytes)
                                     ?: throw IOException("input unavailable")
                             if (!NativeCrypto.validateKeyboxXml(bytes)) {
                                 bytes.fill(0)
@@ -428,7 +431,9 @@ private fun CreateScreen(
                 }
                 MobileCrypto.EncryptResult.INVALID_INPUT -> snackbar.showSnackbar(xmlFailed)
                 MobileCrypto.EncryptResult.SIGNING_FAILURE -> snackbar.showSnackbar(signingUnavailable)
-                MobileCrypto.EncryptResult.NATIVE_FAILURE, null -> {
+                MobileCrypto.EncryptResult.NATIVE_FAILURE,
+                null,
+                -> {
                     Log.w(LOG_TAG, "Native keybox encryption failed")
                     snackbar.showSnackbar(encryptFailed)
                 }
@@ -443,7 +448,10 @@ private fun CreateScreen(
                 title = { Text(stringResource(R.string.create_keybox)) },
                 navigationIcon = {
                     IconButton(onClick = onBack, enabled = !saving) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
+                        )
                     }
                 },
                 colors =
@@ -465,7 +473,6 @@ private fun CreateScreen(
                     Text(stringResource(R.string.security_body), style = MaterialTheme.typography.bodySmall)
                 }
             }
-
             item {
                 OutlinedTextField(
                     value = author,
@@ -477,13 +484,11 @@ private fun CreateScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = publicKey ?: signingUnavailable,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
                     IconButton(
@@ -499,7 +504,6 @@ private fun CreateScreen(
                     }
                 }
             }
-
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedButton(
@@ -512,7 +516,6 @@ private fun CreateScreen(
                     Text(stringResource(R.string.xml_limit), style = MaterialTheme.typography.bodySmall)
                 }
             }
-
             item {
                 OutlinedTextField(
                     value = password,
@@ -523,7 +526,10 @@ private fun CreateScreen(
                         IconButton(onClick = { showPassword = !showPassword }) {
                             Icon(
                                 if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = stringResource(if (showPassword) R.string.hide_password else R.string.show_password),
+                                contentDescription =
+                                    stringResource(
+                                        if (showPassword) R.string.hide_password else R.string.show_password,
+                                    ),
                             )
                         }
                     },
@@ -533,7 +539,6 @@ private fun CreateScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-
             item {
                 OutlinedTextField(
                     value = confirmation,
@@ -546,7 +551,6 @@ private fun CreateScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = { save(false) }, enabled = canSave, modifier = Modifier.fillMaxWidth()) {
@@ -595,7 +599,7 @@ private fun displayName(
     return null
 }
 
-private fun readBytes(input: InputStream): ByteArray {
+private fun readKeyboxBytes(input: InputStream): ByteArray {
     val output = ByteArrayOutputStream(minOf(MAX_XML_BYTES, 64 * 1024))
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     var total = 0
