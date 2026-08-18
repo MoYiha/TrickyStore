@@ -201,12 +201,29 @@ internal class RustSecureFileOperations : SecureFileOperations {
         if (!absolute.startsWith(prefix)) throw IOException("File is outside the Rust config root")
         val relative = absolute.substring(prefix.length)
         val components = relative.split('/')
-        if (components.isEmpty() || components.size > 2) throw IOException("Config path depth exceeds bound")
+        if (components.isEmpty() || components.size > 3) throw IOException("Config path depth exceeds bound")
         components.forEach(::requireComponent)
-        if (components.size == 2 && components[0] != KEYBOX_DIRECTORY) {
-            throw IOException("Only the keybox directory may contain child files")
-        }
+
+        val allowed =
+            when (components.size) {
+                1 -> true
+                2 ->
+                    components[0] == KEYBOX_DIRECTORY ||
+                        (components[0] == WEBUI_DIRECTORY && components[1] == WEBUI_STAGING_DIRECTORY)
+                3 ->
+                    components[0] == WEBUI_DIRECTORY &&
+                        components[1] == WEBUI_STAGING_DIRECTORY &&
+                        isWebUiDownloadName(components[2])
+                else -> false
+            }
+        if (!allowed) throw IOException("Config path is outside an allowed capability subtree")
         return components.joinToString("/")
+    }
+
+    private fun isWebUiDownloadName(value: String): Boolean {
+        if (!value.endsWith(WEBUI_DOWNLOAD_SUFFIX)) return false
+        val id = value.removeSuffix(WEBUI_DOWNLOAD_SUFFIX)
+        return id.length == 32 && id.all { it in '0'..'9' || it in 'a'..'f' }
     }
 
     private fun requireComponent(component: String) {
@@ -263,28 +280,6 @@ internal class RustSecureFileOperations : SecureFileOperations {
         }
     }
 
-    private fun copyDeclaredBody(
-        input: InputStream,
-        output: OutputStream,
-        declaredBodyLength: Int,
-        scratch: ByteArray,
-    ) {
-        var remaining = declaredBodyLength
-        var emptyReads = 0
-        while (remaining > 0) {
-            val count = input.read(scratch, 0, minOf(scratch.size, remaining))
-            if (count < 0) throw IOException("Rust file request body ended early")
-            if (count == 0) {
-                if (++emptyReads > MAX_EMPTY_READS) throw IOException("Rust file request body stalled")
-                continue
-            }
-            emptyReads = 0
-            output.write(scratch, 0, count)
-            remaining -= count
-        }
-        if (input.read() != -1) throw IOException("Rust file request body exceeds declared length")
-    }
-
     private fun readU16(
         bytes: ByteArray,
         offset: Int,
@@ -327,6 +322,9 @@ internal class RustSecureFileOperations : SecureFileOperations {
     private companion object {
         const val CONFIG_ROOT = "/data/adb/cleverestricky"
         const val KEYBOX_DIRECTORY = "keyboxes"
+        const val WEBUI_DIRECTORY = "webui_bridge"
+        const val WEBUI_STAGING_DIRECTORY = "staging"
+        const val WEBUI_DOWNLOAD_SUFFIX = ".download"
         const val FILE_SOCKET_NAME = "cleverestrickyd.files.v1"
         const val IPC_VERSION = 1
         const val OP_FILE_WRITE = 10
