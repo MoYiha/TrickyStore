@@ -66,7 +66,7 @@ pub struct PreparedCertificateRewriteRequest<'a> {
 
 enum PreparedSigner {
     Ec(EcSigningKey),
-    Rsa(RsaSigningKey<Sha256>),
+    Rsa(Box<RsaSigningKey<Sha256>>),
 }
 
 /// Keybox-owned issuer state that is expensive to validate but invariant across generated keys.
@@ -134,7 +134,7 @@ impl PreparedIssuer {
                 verifier
                     .verify(PREPARED_ISSUER_VALIDATION_MESSAGE, &signature)
                     .map_err(|_| Error::IssuerKeyMismatch)?;
-                PreparedSigner::Rsa(signer)
+                PreparedSigner::Rsa(Box::new(signer))
             }
         };
 
