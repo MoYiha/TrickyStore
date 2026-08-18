@@ -6,20 +6,26 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -47,6 +53,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +77,18 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
+private const val LOG_TAG = "CleveresEncryptor"
+
+private data class VaultItem(
+    val file: File,
+    val size: Long,
+)
+
+private data class SaveOutcome(
+    val exists: Boolean = false,
+    val result: MobileCrypto.EncryptResult? = null,
+)
+
 class SecureMainActivity : ComponentActivity() {
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(LocaleController.wrap(newBase))
@@ -78,6 +97,7 @@ class SecureMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             MaterialTheme(colorScheme = CleveresVaultColors) {
                 SecureEncryptorApp()
@@ -90,14 +110,25 @@ class SecureMainActivity : ComponentActivity() {
 private fun SecureEncryptorApp() {
     var creating by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (creating) {
-                CreateScreen(onBack = { creating = false }, snackbar = snackbar)
-            } else {
-                VaultScreen(onCreate = { creating = true }, snackbar = snackbar)
-            }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+    ) {
+        if (creating) {
+            CreateScreen(onBack = { creating = false }, snackbar = snackbar)
+        } else {
+            VaultScreen(onCreate = { creating = true }, snackbar = snackbar)
         }
+        SnackbarHost(
+            hostState = snackbar,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
     }
 }
 
@@ -112,7 +143,7 @@ private fun VaultScreen(
     val exportFailed = stringResource(R.string.export_failed)
     val deleted = stringResource(R.string.keybox_deleted)
     val deleteFailed = stringResource(R.string.delete_failed)
-    var files by remember { mutableStateOf<List<File>>(emptyList()) }
+    var files by remember { mutableStateOf<List<VaultItem>>(emptyList()) }
     var refresh by remember { mutableIntStateOf(0) }
     var exportTarget by remember { mutableStateOf<File?>(null) }
     var deleteTarget by remember { mutableStateOf<File?>(null) }
@@ -125,11 +156,14 @@ private fun VaultScreen(
             scope.launch {
                 val success =
                     withContext(Dispatchers.IO) {
-                        runCatching {
+                        try {
                             context.contentResolver.openOutputStream(uri)?.use { output ->
                                 VaultStore.export(source, output)
                             } ?: throw IOException("output unavailable")
-                        }.isSuccess
+                            true
+                        } catch (_: Exception) {
+                            false
+                        }
                     }
                 snackbar.showSnackbar(if (success) exportSuccess else exportFailed)
             }
@@ -138,17 +172,24 @@ private fun VaultScreen(
     LaunchedEffect(refresh) {
         files =
             withContext(Dispatchers.IO) {
-                runCatching {
+                try {
                     VaultStore.migrateLegacy(context)
-                    VaultStore.list(context)
-                }.getOrDefault(emptyList())
+                    VaultStore.list(context).map { file -> VaultItem(file, file.length()) }
+                } catch (_: Exception) {
+                    emptyList()
+                }
             }
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(start = 20.dp, top = 10.dp, end = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -158,14 +199,14 @@ private fun VaultScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(text = stringResource(R.string.vault_subtitle))
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    LanguagePicker()
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.length() })),
+                        text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.size })),
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                LanguagePicker()
             }
         },
         floatingActionButton = {
@@ -192,14 +233,15 @@ private fun VaultScreen(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(files, key = { it.name }) { file ->
+                items(files, key = { it.file.name }) { item ->
+                    val file = item.file
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(formatBytes(file.length()), style = MaterialTheme.typography.bodySmall)
+                            Text(formatBytes(item.size), style = MaterialTheme.typography.bodySmall)
                         }
                         IconButton(
                             onClick = {
@@ -229,7 +271,14 @@ private fun VaultScreen(
                     onClick = {
                         deleteTarget = null
                         scope.launch {
-                            val success = withContext(Dispatchers.IO) { runCatching { VaultStore.delete(file) }.getOrDefault(false) }
+                            val success =
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        VaultStore.delete(file)
+                                    } catch (_: Exception) {
+                                        false
+                                    }
+                                }
                             snackbar.showSnackbar(if (success) deleted else deleteFailed)
                             if (success) refresh++
                         }
@@ -254,6 +303,7 @@ private fun CreateScreen(
     val xmlFailed = stringResource(R.string.xml_use_failed)
     val encryptFailed = stringResource(R.string.encryption_failed)
     val encryptSuccess = stringResource(R.string.encrypted_success)
+    val signingUnavailable = stringResource(R.string.signing_key_unavailable)
     val signingPublicKey = stringResource(R.string.signing_public_key)
     val publicKeyCopied = stringResource(R.string.public_key_copied)
     var author by remember { mutableStateOf("") }
@@ -277,10 +327,12 @@ private fun CreateScreen(
     LaunchedEffect(Unit) {
         publicKey =
             withContext(Dispatchers.IO) {
-                runCatching {
+                try {
                     MobileCrypto.ensureSigningKey()
                     MobileCrypto.publicKeyBase64()
-                }.getOrNull()
+                } catch (_: Exception) {
+                    null
+                }
             }
     }
 
@@ -290,10 +342,19 @@ private fun CreateScreen(
             scope.launch {
                 val selected =
                     withContext(Dispatchers.IO) {
-                        runCatching {
-                            context.contentResolver.openInputStream(uri)?.use(::readBytes)
-                                ?: throw IOException("input unavailable")
-                        }.getOrNull()
+                        try {
+                            val bytes =
+                                context.contentResolver.openInputStream(uri)?.use(::readBytes)
+                                    ?: throw IOException("input unavailable")
+                            if (!NativeCrypto.validateKeyboxXml(bytes)) {
+                                bytes.fill(0)
+                                null
+                            } else {
+                                bytes
+                            }
+                        } catch (_: Exception) {
+                            null
+                        }
                     }
                 if (selected == null || selected.isEmpty()) {
                     selected?.fill(0)
@@ -314,41 +375,57 @@ private fun CreateScreen(
     fun save(replace: Boolean) {
         val selectedXml = xml ?: return
         val filename = VaultStore.filenameFor(author)
-        if (!replace && File(VaultStore.directory(context), filename).exists()) {
-            overwriteFilename = filename
-            return
-        }
         saving = true
         val selectedAuthor = author
         val selectedPassword = password
         scope.launch {
-            val success =
+            val outcome =
                 withContext(Dispatchers.IO) {
-                    runCatching {
-                        MobileCrypto.encryptAndSave(
-                            noBackupDirectory = context.noBackupFilesDir.absolutePath,
-                            filename = filename,
-                            author = selectedAuthor,
-                            xmlUtf8 = selectedXml,
-                            password = selectedPassword,
-                        )
-                    }.isSuccess
+                    try {
+                        if (!replace && VaultStore.exists(context, filename)) {
+                            SaveOutcome(exists = true)
+                        } else {
+                            SaveOutcome(
+                                result =
+                                    MobileCrypto.encryptAndSave(
+                                        noBackupDirectory = context.noBackupFilesDir.absolutePath,
+                                        filename = filename,
+                                        author = selectedAuthor,
+                                        xmlUtf8 = selectedXml,
+                                        password = selectedPassword,
+                                    ),
+                            )
+                        }
+                    } catch (_: Exception) {
+                        SaveOutcome(result = MobileCrypto.EncryptResult.NATIVE_FAILURE)
+                    }
                 }
             saving = false
-            if (success) {
-                selectedXml.fill(0)
-                xml = null
-                password = ""
-                confirmation = ""
-                snackbar.showSnackbar(encryptSuccess)
-                onBack()
-            } else {
-                snackbar.showSnackbar(encryptFailed)
+            if (outcome.exists) {
+                overwriteFilename = filename
+                return@launch
+            }
+            when (outcome.result) {
+                MobileCrypto.EncryptResult.SUCCESS -> {
+                    selectedXml.fill(0)
+                    xml = null
+                    password = ""
+                    confirmation = ""
+                    snackbar.showSnackbar(encryptSuccess)
+                    onBack()
+                }
+                MobileCrypto.EncryptResult.INVALID_INPUT -> snackbar.showSnackbar(xmlFailed)
+                MobileCrypto.EncryptResult.SIGNING_FAILURE -> snackbar.showSnackbar(signingUnavailable)
+                MobileCrypto.EncryptResult.NATIVE_FAILURE, null -> {
+                    Log.w(LOG_TAG, "Native keybox encryption failed")
+                    snackbar.showSnackbar(encryptFailed)
+                }
             }
         }
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.create_keybox)) },
@@ -357,93 +434,119 @@ private fun CreateScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    ),
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
+            contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(stringResource(R.string.security_title), fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.security_body), style = MaterialTheme.typography.bodySmall)
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(stringResource(R.string.security_title), fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.security_body), style = MaterialTheme.typography.bodySmall)
+                }
+            }
 
-            OutlinedTextField(
-                value = author,
-                onValueChange = { author = it.take(1024) },
-                label = { Text(stringResource(R.string.author_label)) },
-                supportingText = { if (!authorValid) Text(stringResource(R.string.author_required)) },
-                singleLine = true,
-                enabled = !saving,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = publicKey ?: stringResource(R.string.signing_key_unavailable),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+            item {
+                OutlinedTextField(
+                    value = author,
+                    onValueChange = { author = it.take(1024) },
+                    label = { Text(stringResource(R.string.author_label)) },
+                    supportingText = { if (!authorValid) Text(stringResource(R.string.author_required)) },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                IconButton(
-                    onClick = {
-                        val key = publicKey ?: return@IconButton
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText(signingPublicKey, key))
-                        scope.launch { snackbar.showSnackbar(publicKeyCopied) }
-                    },
-                    enabled = publicKey != null,
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.copy_public_key))
-                }
             }
 
-            OutlinedButton(
-                onClick = { picker.launch(arrayOf("text/xml", "application/xml", "text/plain")) },
-                enabled = !saving,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(xmlName ?: stringResource(R.string.choose_xml))
-            }
-            Text(stringResource(R.string.xml_limit), style = MaterialTheme.typography.bodySmall)
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it.take(1024) },
-                label = { Text(stringResource(R.string.password)) },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                trailingIcon = {
-                    IconButton(onClick = { showPassword = !showPassword }) {
-                        Icon(
-                            if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = stringResource(if (showPassword) R.string.hide_password else R.string.show_password),
-                        )
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = publicKey ?: signingUnavailable,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    IconButton(
+                        onClick = {
+                            val key = publicKey ?: return@IconButton
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText(signingPublicKey, key))
+                            scope.launch { snackbar.showSnackbar(publicKeyCopied) }
+                        },
+                        enabled = publicKey != null,
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.copy_public_key))
                     }
-                },
-                supportingText = { if (!passwordValid) Text(stringResource(R.string.password_minimum)) },
-                singleLine = true,
-                enabled = !saving,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            OutlinedTextField(
-                value = confirmation,
-                onValueChange = { confirmation = it.take(1024) },
-                label = { Text(stringResource(R.string.confirm_password)) },
-                visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                supportingText = { if (!confirmationValid) Text(stringResource(R.string.passwords_mismatch)) },
-                singleLine = true,
-                enabled = !saving,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Button(onClick = { save(false) }, enabled = canSave, modifier = Modifier.fillMaxWidth()) {
-                if (saving) {
-                    CircularProgressIndicator(modifier = Modifier.height(20.dp))
-                } else {
-                    Text(stringResource(R.string.encrypt_save))
                 }
             }
-            Text(stringResource(R.string.crypto_summary), style = MaterialTheme.typography.bodySmall)
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(
+                        onClick = { picker.launch(arrayOf("text/xml", "application/xml", "text/plain")) },
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(xmlName ?: stringResource(R.string.choose_xml))
+                    }
+                    Text(stringResource(R.string.xml_limit), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it.take(1024) },
+                    label = { Text(stringResource(R.string.password)) },
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = stringResource(if (showPassword) R.string.hide_password else R.string.show_password),
+                            )
+                        }
+                    },
+                    supportingText = { if (!passwordValid) Text(stringResource(R.string.password_minimum)) },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            item {
+                OutlinedTextField(
+                    value = confirmation,
+                    onValueChange = { confirmation = it.take(1024) },
+                    label = { Text(stringResource(R.string.confirm_password)) },
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    supportingText = { if (!confirmationValid) Text(stringResource(R.string.passwords_mismatch)) },
+                    singleLine = true,
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { save(false) }, enabled = canSave, modifier = Modifier.fillMaxWidth()) {
+                        if (saving) {
+                            CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                        } else {
+                            Text(stringResource(R.string.encrypt_save))
+                        }
+                    }
+                    Text(stringResource(R.string.crypto_summary), style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
     }
 
