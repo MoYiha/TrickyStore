@@ -9,5 +9,5 @@ rust_status=1
 final_status=1
 
 ```text
-Config reset contract changed: expected 2, found 0
+ConfigObserver anchor count=0
 ```
