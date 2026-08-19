@@ -340,16 +340,14 @@ function isAutoPatch() {
 }
 
 function buildFeatureCenterMarkup(prefix) {
-  const features = policyState ? policyState.features : {};
-  const patchOn = Boolean(features && features.securityPatch);
   const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
-  const patchChildren = `<div class="ct-subcontrols" id="${prefix}_patch_children" ${patchOn ? '' : 'hidden'}><div class="row"><label for="${prefix}_auto_patch" style="flex:1;padding-right:10px"><strong>Auto Security Patch</strong><span class="res-desc">Use automatic mode for stale captured patch values.</span></label>${switchMarkup(`${prefix}_auto_patch`,isAutoPatch())}</div><button type="button" data-open-tab="patch" style="width:100%;margin-top:5px">Advanced Security Patch</button></div>`;
+  const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
   return `<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
-    ${cardMarkup(`${prefix}_patch`,'Security Patch','Independent attestation patch policy. Default is off unless stale-ROM policy enables it.',patchOn,patchChildren + helpMarkup('Security Patch is independent from Identity.'))}
+    ${identityCards}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
     <div class="ct-feature-card"><strong>Keybox / TEE path</strong><p>Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.</p>${helpMarkup('The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.')}<button type="button" data-open-tab="keys" style="width:100%;margin-top:10px">Open keyboxes</button></div>
@@ -396,6 +394,7 @@ function bindFeatureCenter(panel, prefix) {
       else if (current.mode === 'automatic') next.securityPatch[key] = {mode:'device_default'};
     }), enabled ? 'Auto Security Patch enabled' : 'Auto Security Patch disabled');
   }
+  bindIdentityControls(panel, `${prefix}_identity`);
   panel.querySelectorAll('[data-open-tab]').forEach(button => { button.onclick = () => global.switchTab && global.switchTab(button.dataset.openTab); });
 }
 
@@ -441,14 +440,18 @@ function installFeatureCenter() {
   }
 }
 
-function identityControlsMarkup(prefix) {
+function identityFeatureCardsMarkup(prefix) {
   const features = policyState ? policyState.features : {};
   const identityOn = policyIdentityEnabled();
   const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
   const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
   const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}</div>${helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.')}</div>`;
   const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
-  return `<div class="ct-feature-grid">${core}${camera}</div>`;
+  return `${core}${camera}`;
+}
+
+function identityControlsMarkup(prefix) {
+  return `<div class="ct-feature-grid">${identityFeatureCardsMarkup(prefix)}</div>`;
 }
 
 function bindIdentityControls(panel, prefix) {
@@ -470,23 +473,12 @@ function bindIdentityControls(panel, prefix) {
 }
 
 function installIdentityControls() {
-  const spoof = document.getElementById('spoof');
-  if (!spoof || document.getElementById('ct_identity_controls')) return;
-  const panel = document.createElement('div');
-  panel.id = 'ct_identity_controls';
-  panel.className = 'panel';
-  panel.innerHTML = '<h3>Identity Controls</h3><div class="scope-note">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</div><div class="ct-control-host"></div>';
-  spoof.prepend(panel);
+  const stale = document.getElementById('ct_identity_controls');
+  if (stale) stale.remove();
 }
 
 function renderIdentityControls() {
-  if (!policyState) return;
   installIdentityControls();
-  const panel = document.getElementById('ct_identity_controls');
-  const host = panel && panel.querySelector('.ct-control-host');
-  if (!panel || !host) return;
-  host.innerHTML = identityControlsMarkup('ct_identity');
-  bindIdentityControls(panel,'ct_identity');
 }
 
 function installIdentityBanner() {
@@ -652,13 +644,24 @@ function staticPages() {
   if (tabs && dashboardTab && keyboxTab && dashboardTab.nextElementSibling !== keyboxTab) tabs.insertBefore(keyboxTab,dashboardTab.nextSibling);
   const staleEffectiveTab = document.getElementById('tab_effective');
   if (staleEffectiveTab) staleEffectiveTab.remove();
-  makeTab('patch','Security Patch','spoof');
-  makeTab('profiles','Profiles','patch');
+  const stalePatchTab = document.getElementById('tab_patch');
+  if (stalePatchTab) stalePatchTab.remove();
+  const stalePatchPage = document.getElementById('patch');
+  if (stalePatchPage) stalePatchPage.remove();
+  makeTab('profiles','Profiles','spoof');
 
-  const patchPage = makePage('patch','spoof');
-  patchPage.innerHTML = `<div class="panel"><h3>Security Patch</h3><div class="row"><label for="ct_patch_master" style="flex:1;padding-right:12px"><strong style="color:#fff">Security Patch</strong><span class="res-desc">Independent from Identity. Child controls appear only while this feature is enabled.</span></label>${switchMarkup('ct_patch_master',false)}</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
+  const spoofPage = document.getElementById('spoof');
+  let patchHost = document.getElementById('ct_identity_patch');
+  if (!patchHost && spoofPage) {
+    patchHost = document.createElement('div');
+    patchHost.id = 'ct_identity_patch';
+    patchHost.innerHTML = `<div class="panel"><h3>Security Patch</h3><div class="row"><label for="ct_patch_master" style="flex:1;padding-right:12px"><strong style="color:#fff">Security Patch</strong></label>${switchMarkup('ct_patch_master',false)}</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
+    const identityManager = [...spoofPage.querySelectorAll('.panel')].find(panel => /^Identity Manager$/i.test((panel.querySelector('h3')?.textContent || '').trim()));
+    if (identityManager) identityManager.insertAdjacentElement('afterend', patchHost);
+    else spoofPage.prepend(patchHost);
+  }
 
-  const profilesPage = makePage('profiles','patch');
+  const profilesPage = makePage('profiles','spoof');
   profilesPage.innerHTML = `<div class="panel"><h3>Profiles</h3><div class="scope-note">App-centric configuration. Assign installed apps or wildcards, then choose privacy, identity, keybox and feature overrides.</div><div class="ct-toolbar"><button id="ct_profile_new" type="button" class="primary">New profile</button><button id="ct_profile_export" type="button">Export</button><button id="ct_profile_import" type="button">Import</button><input id="ct_profile_import_file" type="file" accept="application/json,.json" hidden></div><div id="ct_profile_list" style="margin-top:12px"></div></div><div class="panel" id="ct_profile_editor_panel" hidden><h3>Profile Editor</h3><div class="ct-choice-grid"><div><label for="ct_profile_name">Name</label><input id="ct_profile_name" type="text" maxlength="64"></div><div><label for="ct_profile_privacy">DRM / privacy mode</label><select id="ct_profile_privacy"><option value="inherit">Inherit</option><option value="isolate">Isolate - app-scoped pseudonymous DRM ID</option><option value="redact">Redact</option></select></div></div><div style="margin-top:12px"><label for="ct_profile_app_picker">Add installed app</label><div class="ct-toolbar"><input id="ct_profile_app_picker" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_profile_add_app" type="button">Add app</button></div><label for="ct_profile_apps" style="display:block;margin-top:10px">Assignments (one package or wildcard per line)</label><textarea id="ct_profile_apps" rows="4" maxlength="16384" placeholder="com.example.app&#10;com.example.*"></textarea><div id="ct_profile_app_chips" class="ct-chip-wrap"></div></div><div class="ct-choice-grid" style="margin-top:12px"><div><label for="ct_profile_template">Identity template</label><select id="ct_profile_template"><option value="">Inherit / none</option></select></div><div><label for="ct_profile_keybox">Keybox</label><select id="ct_profile_keybox"><option value="">Inherit / none</option></select></div></div><div class="section-header">Feature overrides</div><div id="ct_profile_features"></div><div class="section-header">Security Patch override</div><div class="row"><label for="ct_profile_patch_master" style="flex:1">Security Patch</label><select id="ct_profile_patch_master" style="max-width:180px"><option value="inherit">Inherit</option><option value="true">Enabled</option><option value="false">Disabled</option></select></div><div id="ct_profile_patch_children" hidden></div><div class="ct-toolbar" style="margin-top:16px"><button id="ct_profile_save" type="button" class="primary">Save profile</button><button id="ct_profile_clone" type="button">Clone</button><button id="ct_profile_delete" type="button" class="danger">Delete</button></div></div>`;
 
   const appsPage = document.getElementById('apps');
