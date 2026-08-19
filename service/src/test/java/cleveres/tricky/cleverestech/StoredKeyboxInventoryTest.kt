@@ -25,12 +25,16 @@ class StoredKeyboxInventoryTest {
     }
 
     @Test
-    fun `duplicate basename across scopes fails closed for runtime`() {
+    fun `duplicate basename across scopes remains runtime compatible`() {
         val root = temp.newFolder("duplicate")
         File(root, "same.xml").writeText("root")
         val managed = File(root, "keyboxes").also { assertTrue(it.mkdirs()) }
         File(managed, "same.xml").writeText("managed")
-        assertThrows(IllegalArgumentException::class.java) { StoredKeyboxInventory.runtimeXmlSources(root) }
+
+        assertEquals(
+            listOf("keyboxes:same.xml", "root:same.xml"),
+            StoredKeyboxInventory.runtimeXmlSources(root).map { it.id }.sorted(),
+        )
     }
 
     @Test
