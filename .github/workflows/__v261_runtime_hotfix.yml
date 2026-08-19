@@ -18,7 +18,7 @@ jobs:
           ref: fix/v261-runtime-hotfix
           fetch-depth: 0
 
-      - name: Apply V2.6.1 runtime hotfix
+      - name: Apply V2.6.1 WebUI hotfix
         shell: bash
         run: |
           set -euo pipefail
@@ -35,53 +35,6 @@ jobs:
           if ux.count(old) != 1:
               raise SystemExit(f'expected exactly one statusLabel assignment, found {ux.count(old)}')
           ux_path.write_text(ux.replace(old, new, 1))
-
-          inventory_path = Path('service/src/main/java/cleveres/tricky/cleverestech/StoredKeyboxInventory.kt')
-          inventory = inventory_path.read_text()
-          old = """        val seen = HashSet<String>()
-          sources.forEach { source ->
-              require(seen.add(source.filename.lowercase(Locale.ROOT))) {
-                  \"Duplicate keybox filename across storage scopes\"
-              }
-          }
-          return sources
-"""
-          new = """        // Preserve V2.6.0 compatibility: root and managed XML sources with the same
-          // basename may coexist. CertHack groups same-name sources into one selectable pool,
-          // while source IDs remain scope-qualified for inventory, caching and deletion.
-          return sources
-"""
-          if inventory.count(old) != 1:
-              raise SystemExit(f'expected exactly one duplicate-name guard, found {inventory.count(old)}')
-          inventory_path.write_text(inventory.replace(old, new, 1))
-
-          test_path = Path('service/src/test/java/cleveres/tricky/cleverestech/StoredKeyboxInventoryTest.kt')
-          test = test_path.read_text()
-          old = """    @Test
-          fun `duplicate basename across scopes fails closed for runtime`() {
-              val root = temp.newFolder(\"duplicate\")
-              File(root, \"same.xml\").writeText(\"root\")
-              val managed = File(root, \"keyboxes\").also { assertTrue(it.mkdirs()) }
-              File(managed, \"same.xml\").writeText(\"managed\")
-              assertThrows(IllegalArgumentException::class.java) { StoredKeyboxInventory.runtimeXmlSources(root) }
-          }
-"""
-          new = """    @Test
-          fun `duplicate basename across scopes remains runtime compatible`() {
-              val root = temp.newFolder(\"duplicate\")
-              File(root, \"same.xml\").writeText(\"root\")
-              val managed = File(root, \"keyboxes\").also { assertTrue(it.mkdirs()) }
-              File(managed, \"same.xml\").writeText(\"managed\")
-
-              assertEquals(
-                  listOf(\"keyboxes:same.xml\", \"root:same.xml\"),
-                  StoredKeyboxInventory.runtimeXmlSources(root).map { it.id }.sorted(),
-              )
-          }
-"""
-          if test.count(old) != 1:
-              raise SystemExit(f'expected exactly one duplicate runtime test, found {test.count(old)}')
-          test_path.write_text(test.replace(old, new, 1))
 
           observer_test = Path('module/webui-tests/keybox-status-observer.test.js')
           observer_test.write_text("""'use strict';
@@ -107,7 +60,6 @@ jobs:
               const end = source.indexOf('function filtered()', start);
               assert.ok(start >= 0 && end > start, 'statusLabel block must exist');
               const block = source.slice(start, end);
-
               assert.match(block, /const value = t\('keyboxesLoaded', \{ count: match\[1\] \}\);/);
               assert.match(block, /if \(node\.textContent !== value\) node\.textContent = value;/);
               assert.doesNotMatch(block, /if \(match\) node\.textContent =/);
@@ -116,12 +68,11 @@ jobs:
           PY
 
           git diff --check
-          git add module/template/webroot/ux.js \
-                  module/webui-tests/keybox-status-observer.test.js \
-                  service/src/main/java/cleveres/tricky/cleverestech/StoredKeyboxInventory.kt \
-                  service/src/test/java/cleveres/tricky/cleverestech/StoredKeyboxInventoryTest.kt
+          node --check module/template/webroot/ux.js
+          node --test module/webui-tests/keybox-status-observer.test.js
+          git add module/template/webroot/ux.js module/webui-tests/keybox-status-observer.test.js
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix: restore V2.6.1 runtime interaction [hotfix-applied]"
+          git commit -m "fix: stop WebUI keybox observer loop [hotfix-applied]"
           git push origin HEAD:fix/v261-runtime-hotfix
