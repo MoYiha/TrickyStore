@@ -43,4 +43,12 @@
     <string name="language">اللغة</string>
     <string name="system_default">إعداد النظام الافتراضي</string>
     <string name="encrypting">جارٍ التشفير والحفظ…</string>
+    <string name="selected_count">%1$d محدد</string>
+    <string name="export_selected_zip">تصدير المحدد كملف ZIP</string>
+    <string name="delete_selected">حذف المحدد</string>
+    <string name="delete_selected_title">حذف ملفات CBOX المحددة؟</string>
+    <string name="delete_selected_message">سيتم حذف %1$d من ملفات CBOX المحددة نهائيا من هذا الجهاز.</string>
+    <string name="bulk_delete_result">تم حذف %1$d، وفشل %2$d</string>
+    <string name="zip_export_success">تم تصدير ملفات CBOX المحددة كملف ZIP</string>
+    <string name="zip_export_failed">فشل تصدير ZIP</string>
 </resources>

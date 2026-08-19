@@ -403,24 +403,13 @@ object Config {
             Logger.e("failed to update target files", it)
         }
 
-    @Volatile
-    private var cachedLegacyKeyboxes: List<CertHack.KeyBox> = emptyList()
-
-    @Volatile
-    private var lastKeyboxModified: Long = 0
-
-    @Volatile
-    private var lastKeyboxLength: Long = 0
-
     private data class KeyboxFileCache(
         val lastModified: Long,
         val length: Long,
         val keyboxes: List<CertHack.KeyBox>,
     )
 
-    private val directoryKeyboxCache = ConcurrentHashMap<String, KeyboxFileCache>()
-    private const val MAX_KEYBOX_XML_BYTES = 10L * 1024 * 1024
-    private const val MAX_KEYBOX_FILES = 64
+    private val storedKeyboxCache = ConcurrentHashMap<String, KeyboxFileCache>()
 
     fun updateKeyBoxes() =
         scope.launch {
@@ -446,10 +435,7 @@ object Config {
     ): Boolean = updateKeyBoxesSyncWith({ revokedSerials }, verifier)
 
     internal fun rebuildBackendKeyboxesAfterRestart(crl: CrlWire.Handle): Boolean {
-        cachedLegacyKeyboxes = emptyList()
-        lastKeyboxModified = 0
-        lastKeyboxLength = 0
-        directoryKeyboxCache.clear()
+        storedKeyboxCache.clear()
         return updateKeyBoxesSyncWith(
             revocationProvider = { crl },
             verifier = { keybox, handle -> KeyboxVerifier.verifyKeybox(keybox, handle) },
@@ -468,75 +454,45 @@ object Config {
             Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
             val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
-            val legacyFile = File(root, KEYBOX_FILE)
-            Logger.d("updateKeyBoxes: checking legacy ${legacyFile.absolutePath} (exists=${legacyFile.exists()})")
-            if (Files.isRegularFile(legacyFile.toPath(), LinkOption.NOFOLLOW_LINKS) &&
-                legacyFile.length() in 1..MAX_KEYBOX_XML_BYTES
-            ) {
-                val currentModified = legacyFile.lastModified()
-                val currentLength = legacyFile.length()
-                if (currentModified != lastKeyboxModified || currentLength != lastKeyboxLength) {
-                    cachedLegacyKeyboxes = KeyboxLoader.parseFile(KeyboxLoader.FileScope.CONFIG_ROOT, KEYBOX_FILE)
-                    lastKeyboxModified = currentModified
-                    lastKeyboxLength = currentLength
-                    Logger.i("Reloaded keybox.xml (modified: $currentModified, keys: ${cachedLegacyKeyboxes.size})")
-                }
-                allKeyboxes.addAll(cachedLegacyKeyboxes)
-            } else {
-                Logger.d("updateKeyBoxes: legacy keybox.xml is missing, non-regular, or oversized")
-                cachedLegacyKeyboxes = emptyList()
-                lastKeyboxModified = 0
-                lastKeyboxLength = 0
+            val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
+    Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
+    val currentFiles = HashSet<String>()
+    storedSources.forEach { source ->
+        currentFiles.add(source.id)
+        val file = source.file
+        if (file.length() !in 1..StoredKeyboxInventory.MAX_XML_BYTES) {
+            storedKeyboxCache.remove(source.id)
+            Logger.w("Ignoring empty or oversized keybox file: ${source.filename}")
+            return@forEach
+        }
+        val lastMod = file.lastModified()
+        val length = file.length()
+        val cached = storedKeyboxCache[source.id]
+        if (cached != null && cached.lastModified == lastMod && cached.length == length) {
+            allKeyboxes.addAll(cached.keyboxes)
+        } else {
+            try {
+                val parsed = KeyboxLoader.parseFile(
+                    requireNotNull(source.scope.fileScope),
+                    source.filename,
+                )
+                storedKeyboxCache[source.id] = KeyboxFileCache(lastMod, length, parsed)
+                allKeyboxes.addAll(parsed)
+                Logger.i("Reloaded keybox source: ${source.id}")
+            } catch (error: RustBackendUnavailableException) {
+                throw error
+            } catch (error: Exception) {
+                storedKeyboxCache.remove(source.id)
+                Logger.e("Failed to parse keybox source: ${source.id}", error)
             }
+        }
+    }
+    val cacheIterator = storedKeyboxCache.keys.iterator()
+    while (cacheIterator.hasNext()) {
+        if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
+    }
 
-            if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                val files = ArrayList<File>(MAX_KEYBOX_FILES)
-                Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
-                    for (entry in entries) {
-                        if (!entry.fileName.toString().endsWith(".xml", ignoreCase = true)) continue
-                        require(files.size < MAX_KEYBOX_FILES) { "Too many keybox files" }
-                        files.add(entry.toFile())
-                    }
-                }
-                files.sortBy { it.name }
-                Logger.d("updateKeyBoxes: scanning keybox dir ${keyboxDir.absolutePath} (${files.size} xml files)")
-                val currentFiles = HashSet<String>()
-
-                files.forEach { file ->
-                    val filename = file.name
-                    currentFiles.add(filename)
-                    if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                        file.length() !in 1..MAX_KEYBOX_XML_BYTES
-                    ) {
-                        directoryKeyboxCache.remove(filename)
-                        Logger.w("Ignoring non-regular or oversized keybox file: $filename")
-                        return@forEach
-                    }
-                    val lastMod = file.lastModified()
-                    val length = file.length()
-                    val cached = directoryKeyboxCache[filename]
-                    if (cached != null && cached.lastModified == lastMod && cached.length == length) {
-                        allKeyboxes.addAll(cached.keyboxes)
-                    } else {
-                        try {
-                            val parsed = KeyboxLoader.parseFile(KeyboxLoader.FileScope.KEYBOX_DIRECTORY, filename)
-                            directoryKeyboxCache[filename] = KeyboxFileCache(lastMod, length, parsed)
-                            allKeyboxes.addAll(parsed)
-                            Logger.i("Reloaded keybox file: $filename")
-                        } catch (e: Exception) {
-                            Logger.e("Failed to parse keybox file: $filename", e)
-                        }
-                    }
-                }
-                val iterator = directoryKeyboxCache.keys.iterator()
-                while (iterator.hasNext()) {
-                    if (!currentFiles.contains(iterator.next())) iterator.remove()
-                }
-            } else {
-                directoryKeyboxCache.clear()
-            }
-
-            if (refreshExternalSources) CboxManager.refresh()
+    if (refreshExternalSources) CboxManager.refresh()
             allKeyboxes.addAll(CboxManager.getUnlockedKeyboxes())
             allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
 
@@ -2080,10 +2036,7 @@ object Config {
         isDrmPassthroughEnabled = false
         drmState = DrmState(PackageTrie())
         clockSource = { System.currentTimeMillis() }
-        cachedLegacyKeyboxes = emptyList()
-        lastKeyboxModified = 0
-        lastKeyboxLength = 0
-        directoryKeyboxCache.clear()
+        storedKeyboxCache.clear()
         KeyboxLoader.resetForTesting()
         BackendRecovery.resetForTesting()
         NativeBackend.resetIdentityForTesting()

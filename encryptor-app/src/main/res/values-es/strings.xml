@@ -43,4 +43,12 @@
     <string name="language">Idioma</string>
     <string name="system_default">Predeterminado del sistema</string>
     <string name="encrypting">Cifrando y guardando…</string>
+    <string name="selected_count">%1$d seleccionados</string>
+    <string name="export_selected_zip">Exportar selección como ZIP</string>
+    <string name="delete_selected">Eliminar selección</string>
+    <string name="delete_selected_title">¿Eliminar los CBOX seleccionados?</string>
+    <string name="delete_selected_message">Se eliminarán permanentemente %1$d archivos CBOX seleccionados de este dispositivo.</string>
+    <string name="bulk_delete_result">%1$d eliminados, %2$d fallidos</string>
+    <string name="zip_export_success">CBOX seleccionados exportados como ZIP</string>
+    <string name="zip_export_failed">Error al exportar ZIP</string>
 </resources>

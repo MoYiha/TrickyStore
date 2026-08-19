@@ -43,4 +43,12 @@
     <string name="language">Язык</string>
     <string name="system_default">Системный язык</string>
     <string name="encrypting">Шифрование и сохранение…</string>
+    <string name="selected_count">Выбрано: %1$d</string>
+    <string name="export_selected_zip">Экспорт выбранного в ZIP</string>
+    <string name="delete_selected">Удалить выбранное</string>
+    <string name="delete_selected_title">Удалить выбранные CBOX?</string>
+    <string name="delete_selected_message">Выбранные файлы CBOX (%1$d) будут навсегда удалены с устройства.</string>
+    <string name="bulk_delete_result">Удалено: %1$d, ошибок: %2$d</string>
+    <string name="zip_export_success">Выбранные CBOX экспортированы в ZIP</string>
+    <string name="zip_export_failed">Ошибка экспорта ZIP</string>
 </resources>

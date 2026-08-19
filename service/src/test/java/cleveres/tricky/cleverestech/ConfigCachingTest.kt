@@ -97,10 +97,16 @@ class ConfigCachingTest {
         }
     }
 
-    private fun getCachedLegacyKeyboxes(): List<*> {
-        val field = Config::class.java.getDeclaredField("cachedLegacyKeyboxes")
+    private fun getCachedKeyboxCount(): Int {
+        val field = Config::class.java.getDeclaredField("storedKeyboxCache")
         field.isAccessible = true
-        return field.get(Config) as List<*>
+        val cache = field.get(Config) as Map<*, *>
+        return cache.values.sumOf { entry ->
+            requireNotNull(entry)
+            val keyboxesField = entry.javaClass.getDeclaredField("keyboxes")
+            keyboxesField.isAccessible = true
+            (keyboxesField.get(entry) as List<*>).size
+        }
     }
 
     @Test
@@ -111,23 +117,23 @@ class ConfigCachingTest {
 
         callUpdateKeyBoxes()
 
-        val cached1 = getCachedLegacyKeyboxes()
-        assertEquals("Should load 1 keybox", 1, cached1.size)
+        val cached1 = getCachedKeyboxCount()
+        assertEquals("Should load 1 keybox", 1, cached1)
 
         keyboxFile.writeText(xmlV2)
         keyboxFile.setLastModified(initialTime)
 
         callUpdateKeyBoxes()
 
-        val cached2 = getCachedLegacyKeyboxes()
-        assertEquals("Should reload the changed keybox", 0, cached2.size)
+        val cached2 = getCachedKeyboxCount()
+        assertEquals("Should reload the changed keybox", 0, cached2)
 
         val newTime = 20000L
         keyboxFile.setLastModified(newTime)
 
         callUpdateKeyBoxes()
 
-        val cached3 = getCachedLegacyKeyboxes()
-        assertEquals("Should still have 0 keyboxes", 0, cached3.size)
+        val cached3 = getCachedKeyboxCount()
+        assertEquals("Should still have 0 keyboxes", 0, cached3)
     }
 }

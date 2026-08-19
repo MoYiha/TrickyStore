@@ -102,7 +102,7 @@ class KeyboxVerifierTest {
 
             assertEquals(1, results.size)
             assertEquals(KeyboxVerifier.Status.ERROR, results.single().status)
-            assertEquals("Too many keybox files", results.single().details)
+            assertEquals("Too many keybox XML files", results.single().details)
         } finally {
             configDir.deleteRecursively()
         }

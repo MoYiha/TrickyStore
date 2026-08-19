@@ -43,4 +43,12 @@
     <string name="language">Bahasa</string>
     <string name="system_default">Default sistem</string>
     <string name="encrypting">Mengenkripsi dan menyimpan…</string>
+    <string name="selected_count">%1$d dipilih</string>
+    <string name="export_selected_zip">Ekspor pilihan sebagai ZIP</string>
+    <string name="delete_selected">Hapus pilihan</string>
+    <string name="delete_selected_title">Hapus CBOX terpilih?</string>
+    <string name="delete_selected_message">%1$d file CBOX terpilih akan dihapus permanen dari perangkat ini.</string>
+    <string name="bulk_delete_result">%1$d dihapus, %2$d gagal</string>
+    <string name="zip_export_success">CBOX terpilih diekspor sebagai ZIP</string>
+    <string name="zip_export_failed">Ekspor ZIP gagal</string>
 </resources>

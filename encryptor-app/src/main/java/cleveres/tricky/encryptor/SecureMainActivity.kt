@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -137,12 +138,17 @@ private fun VaultScreen(
     val scope = rememberCoroutineScope()
     val exportSuccess = stringResource(R.string.export_success)
     val exportFailed = stringResource(R.string.export_failed)
+    val zipExportSuccess = stringResource(R.string.zip_export_success)
+    val zipExportFailed = stringResource(R.string.zip_export_failed)
     val deleted = stringResource(R.string.keybox_deleted)
     val deleteFailed = stringResource(R.string.delete_failed)
     var files by remember { mutableStateOf<List<VaultItem>>(emptyList()) }
     var refresh by remember { mutableIntStateOf(0) }
     var exportTarget by remember { mutableStateOf<File?>(null) }
+    var zipTargets by remember { mutableStateOf<List<File>>(emptyList()) }
     var deleteTarget by remember { mutableStateOf<File?>(null) }
+    var showBulkDelete by remember { mutableStateOf(false) }
+    var selectedNames by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     val exportLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -150,49 +156,53 @@ private fun VaultScreen(
             exportTarget = null
             if (uri == null || source == null) return@rememberLauncherForActivityResult
             scope.launch {
-                val success =
-                    withContext(Dispatchers.IO) {
-                        try {
-                            context.contentResolver.openOutputStream(uri)?.use { output ->
-                                VaultStore.export(source, output)
-                            } ?: throw IOException("output unavailable")
-                            true
-                        } catch (_: Exception) {
-                            false
-                        }
-                    }
+                val success = withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openOutputStream(uri)?.use { output -> VaultStore.export(source, output) }
+                            ?: throw IOException("output unavailable")
+                        true
+                    } catch (_: Exception) { false }
+                }
                 snackbar.showSnackbar(if (success) exportSuccess else exportFailed)
             }
         }
 
-    LaunchedEffect(refresh) {
-        files =
-            withContext(Dispatchers.IO) {
-                try {
-                    VaultStore.migrateLegacy(context)
-                    VaultStore.list(context).map { file -> VaultItem(file, file.length()) }
-                } catch (_: Exception) {
-                    emptyList()
+    val zipExportLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            val selected = zipTargets
+            zipTargets = emptyList()
+            if (uri == null || selected.isEmpty()) return@rememberLauncherForActivityResult
+            scope.launch {
+                val success = withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openOutputStream(uri)?.use { output -> VaultStore.exportZip(selected, output) }
+                            ?: throw IOException("output unavailable")
+                        true
+                    } catch (_: Exception) { false }
                 }
+                snackbar.showSnackbar(if (success) zipExportSuccess else zipExportFailed)
             }
+        }
+
+    LaunchedEffect(refresh) {
+        files = withContext(Dispatchers.IO) {
+            try {
+                VaultStore.migrateLegacy(context)
+                VaultStore.list(context).map { file -> VaultItem(file, file.length()) }
+            } catch (_: Exception) { emptyList() }
+        }
+        val available = files.mapTo(HashSet()) { it.file.name }
+        selectedNames = selectedNames.filterTo(LinkedHashSet()) { it in available }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(start = 20.dp, top = 10.dp, end = 12.dp, bottom = 12.dp),
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 20.dp, top = 10.dp, end = 12.dp, bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.vault_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Text(text = stringResource(R.string.vault_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                 Text(text = stringResource(R.string.vault_subtitle))
                 Text(
                     text = stringResource(R.string.vault_summary, files.size, formatBytes(files.sumOf { it.size })),
@@ -203,9 +213,7 @@ private fun VaultScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreate) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_encrypted_keybox))
-            }
+            FloatingActionButton(onClick = onCreate) { Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create_encrypted_keybox)) }
         },
     ) { padding ->
         if (files.isEmpty()) {
@@ -226,32 +234,43 @@ private fun VaultScreen(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (selectedNames.isNotEmpty()) {
+                    item(key = "bulk-actions") {
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.selected_count, selectedNames.size), fontWeight = FontWeight.SemiBold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        zipTargets = files.filter { it.file.name in selectedNames }.map { it.file }
+                                        zipExportLauncher.launch("cleveres-keyboxes.zip")
+                                    },
+                                ) { Text(stringResource(R.string.export_selected_zip)) }
+                                OutlinedButton(onClick = { showBulkDelete = true }) { Text(stringResource(R.string.delete_selected)) }
+                            }
+                        }
+                    }
+                }
                 items(files, key = { it.file.name }) { item ->
                     val file = item.file
-                    Column(
+                    Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(formatBytes(item.size), style = MaterialTheme.typography.bodySmall)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    exportTarget = file
-                                    exportLauncher.launch(file.name)
-                                },
-                            ) {
-                                Icon(
-                                    Icons.Default.UploadFile,
-                                    contentDescription = stringResource(R.string.export_file, file.name),
-                                )
-                            }
-                            IconButton(onClick = { deleteTarget = file }) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = stringResource(R.string.delete_file, file.name),
-                                )
-                            }
+                        Checkbox(
+                            checked = file.name in selectedNames,
+                            onCheckedChange = { checked ->
+                                selectedNames = if (checked) selectedNames + file.name else selectedNames - file.name
+                            },
+                        )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(file.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(formatBytes(item.size), style = MaterialTheme.typography.bodySmall)
+                        }
+                        IconButton(onClick = { exportTarget = file; exportLauncher.launch(file.name) }) {
+                            Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.export_file, file.name))
+                        }
+                        IconButton(onClick = { deleteTarget = file }) {
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete_file, file.name))
                         }
                     }
                 }
@@ -266,30 +285,48 @@ private fun VaultScreen(
             title = { Text(stringResource(R.string.delete_keybox_title)) },
             text = { Text(stringResource(R.string.delete_keybox_message, file.name)) },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        deleteTarget = null
-                        scope.launch {
-                            val success =
-                                withContext(Dispatchers.IO) {
-                                    try {
-                                        VaultStore.delete(file)
-                                    } catch (_: Exception) {
-                                        false
-                                    }
-                                }
-                            snackbar.showSnackbar(if (success) deleted else deleteFailed)
-                            if (success) refresh++
+                TextButton(onClick = {
+                    deleteTarget = null
+                    scope.launch {
+                        val success = withContext(Dispatchers.IO) { try { VaultStore.delete(file) } catch (_: Exception) { false } }
+                        snackbar.showSnackbar(if (success) deleted else deleteFailed)
+                        if (success) { selectedNames = selectedNames - file.name; refresh++ }
+                    }
+                }) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showBulkDelete) {
+        AlertDialog(
+            onDismissRequest = { showBulkDelete = false },
+            title = { Text(stringResource(R.string.delete_selected_title)) },
+            text = { Text(stringResource(R.string.delete_selected_message, selectedNames.size)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBulkDelete = false
+                    val names = selectedNames
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            var success = 0
+                            var failed = 0
+                            files.filter { it.file.name in names }.forEach { item ->
+                                if (try { VaultStore.delete(item.file) } catch (_: Exception) { false }) success++ else failed++
+                            }
+                            success to failed
                         }
-                    },
-                ) { Text(stringResource(R.string.delete)) }
+                        selectedNames = emptySet()
+                        snackbar.showSnackbar(context.getString(R.string.bulk_delete_result, result.first, result.second))
+                        refresh++
+                    }
+                }) { Text(stringResource(R.string.delete)) }
             },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.cancel)) }
-            },
+            dismissButton = { TextButton(onClick = { showBulkDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -384,7 +421,8 @@ private fun CreateScreen(
                                         displayName = selectedName,
                                         validateXml = NativeCrypto::validateKeyboxXml,
                                     ) { displayName, bytes ->
-                                        encryptOne(allocator.allocate(displayName), bytes)
+                                        val certificateSerial = KeyboxCertificateIdentity.thirdCertificateSerial(bytes)
+                                    encryptOne(allocator.allocate(displayName, certificateSerial), bytes)
                                     }
                                 } catch (error: IOException) {
                                     throw IllegalArgumentException("invalid keybox source", error)

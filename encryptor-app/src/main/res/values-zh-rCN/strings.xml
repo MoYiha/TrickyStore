@@ -43,4 +43,12 @@
     <string name="language">语言</string>
     <string name="system_default">系统默认</string>
     <string name="encrypting">正在加密并保存…</string>
+    <string name="selected_count">已选择 %1$d 个</string>
+    <string name="export_selected_zip">将所选导出为 ZIP</string>
+    <string name="delete_selected">删除所选</string>
+    <string name="delete_selected_title">删除所选 CBOX 文件？</string>
+    <string name="delete_selected_message">将从此设备永久删除 %1$d 个所选 CBOX 文件。</string>
+    <string name="bulk_delete_result">已删除 %1$d 个，失败 %2$d 个</string>
+    <string name="zip_export_success">所选 CBOX 已导出为 ZIP</string>
+    <string name="zip_export_failed">ZIP 导出失败</string>
 </resources>

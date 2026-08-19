@@ -38,6 +38,9 @@ class MobileSecurityContractTest {
         assertTrue(activity.contains("readOnly = true"))
         assertTrue(activity.contains("MobileCrypto.encryptAndSaveStreaming"))
         assertTrue(activity.contains("VaultStore.newBatchNameAllocator"))
+            assertTrue(activity.contains("KeyboxCertificateIdentity.thirdCertificateSerial"))
+            assertTrue(activity.contains("VaultStore.exportZip"))
+            assertTrue(activity.contains("R.string.delete_selected"))
         assertTrue(activity.contains(".imePadding()"))
         assertFalse(activity.contains("getExternalFilesDir"))
 
@@ -74,6 +77,8 @@ class MobileSecurityContractTest {
         assertTrue(vault.contains("newBatchNameAllocator"))
         assertTrue(vault.contains("MAX_FILES = 10_000"))
         assertTrue(vault.contains("lowercase(Locale.ROOT)"))
+            assertTrue(vault.contains("ZipOutputStream"))
+            assertTrue(vault.contains("certificateSerial"))
 
         val native = File(root, "rust/encryptor-native/src/lib.rs").readText()
         assertTrue(native.contains("#![deny(unsafe_code)]"))

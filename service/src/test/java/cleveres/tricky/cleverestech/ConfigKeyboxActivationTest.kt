@@ -11,6 +11,17 @@ import org.junit.Test
 
 class ConfigKeyboxActivationTest {
     @Test
+    fun `arbitrary direct root XML is activated like legacy keybox xml`() {
+        withKeyboxRoot { root ->
+            File(root, "A1B2C3.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+            ManagedKeyboxParserOracle.install()
+            KeyboxLoader.activeSetOverride = { ids -> ids.size == 1 && ids.all(ManagedOpaqueKeyOracle::contains) }
+            assertTrue(Config.updateKeyBoxesSync(emptySet()) { _, _ -> KeyboxVerifier.Status.VALID })
+            assertEquals(1, CertHack.getKeyboxSourceCount())
+        }
+    }
+
+    @Test
     fun `mixed validity keybox pool is rejected as a unit and commits empty active set`() {
         withKeyboxRoot { root ->
             val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }

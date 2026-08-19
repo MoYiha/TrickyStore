@@ -3,7 +3,7 @@ const fs = require('fs');
 const vm = require('vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-assert.ok(source.includes('const MAX_SUPPORTED_FILES = 10000;'), 'ZIP keybox limit must be 10000');
+assert.ok(source.includes('const MAX_SUPPORTED_FILES = 64;'), 'module ZIP keybox limit must match runtime bound');
 assert.ok(source.includes('const MAX_FILE_BYTES = 10 * 1024 * 1024;'), 'per-keybox limit must remain 10 MiB');
 assert.ok(!source.includes('MAX_TOTAL_XML_BYTES'), 'ZIP importer must not retain the old aggregate XML cap');
 assert.ok(!source.includes('MAX_ARCHIVE_BYTES'), 'ZIP importer must not retain the old aggregate archive cap');
@@ -22,7 +22,7 @@ vm.createContext(context);
 vm.runInContext(source, context, { filename: 'zip-import.js' });
 const api = context.CleveresZipImport;
 assert.ok(api, 'ZIP importer API must be exposed for regression tests');
-assert.strictEqual(api.limits.MAX_SUPPORTED_FILES, 10000);
+assert.strictEqual(api.limits.MAX_SUPPORTED_FILES, 64);
 assert.strictEqual(api.limits.MAX_FILE_BYTES, 10 * 1024 * 1024);
 assert.ok(api.limits.MAX_ARCHIVE_ENTRIES >= api.limits.MAX_SUPPORTED_FILES);
 

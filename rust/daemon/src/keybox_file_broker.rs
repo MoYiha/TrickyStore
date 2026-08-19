@@ -12,7 +12,6 @@ pub const MAX_KEYBOX_XML_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_REQUEST_BYTES: usize = 1 + 255;
 pub const OP_KEYBOX_BROKER_OPEN: u16 = 30;
 const KEYBOX_DIRECTORY: &str = "keyboxes";
-const LEGACY_KEYBOX: &str = "keybox.xml";
 const SCOPE_CONFIG_ROOT: u8 = 0;
 const SCOPE_KEYBOX_DIRECTORY: u8 = 1;
 const MAX_ERROR_BYTES: usize = 64;
@@ -71,22 +70,12 @@ fn open_requested_from(root: &TrustedDir, payload: &[u8]) -> io::Result<OpenedKe
         return Err(invalid("empty keybox filename"));
     }
 
+    if !safe_xml_basename(name) {
+        return Err(invalid("keybox request must target a safe XML basename"));
+    }
     let directory = match scope {
-        SCOPE_CONFIG_ROOT => {
-            if name != LEGACY_KEYBOX {
-                return Err(invalid("root keybox request is not whitelisted"));
-            }
-            None
-        }
-        SCOPE_KEYBOX_DIRECTORY => {
-            if !name
-                .get(name.len().saturating_sub(4)..)
-                .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".xml"))
-            {
-                return Err(invalid("keybox directory request must target XML"));
-            }
-            Some(root.open_child(KEYBOX_DIRECTORY)?)
-        }
+        SCOPE_CONFIG_ROOT => None,
+        SCOPE_KEYBOX_DIRECTORY => Some(root.open_child(KEYBOX_DIRECTORY)?),
         _ => return Err(invalid("unknown keybox file scope")),
     };
 
@@ -96,6 +85,19 @@ fn open_requested_from(root: &TrustedDir, payload: &[u8]) -> io::Result<OpenedKe
         return Err(invalid("empty keybox file"));
     }
     Ok(OpenedKeybox { file, size })
+}
+
+fn safe_xml_basename(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name
+            .bytes()
+            .any(|byte| byte == 0 || byte < 0x20 || byte == 0x7f)
+        && name
+            .get(name.len().saturating_sub(4)..)
+            .is_some_and(|suffix| suffix.eq_ignore_ascii_case(".xml"))
 }
 
 fn snapshot_opened_keybox(opened: OpenedKeybox) -> io::Result<File> {
@@ -302,9 +304,10 @@ mod tests {
     }
 
     #[test]
-    fn opens_only_whitelisted_legacy_and_directory_xml_files() {
+    fn opens_root_and_directory_xml_basenames_only() {
         let test = TestRoot::new();
-        fs::write(test.path.join(LEGACY_KEYBOX), b"legacy").unwrap();
+        fs::write(test.path.join("keybox.xml"), b"legacy").unwrap();
+        fs::write(test.path.join("A1B2C3.xml"), b"named-root").unwrap();
         fs::write(
             test.path.join(KEYBOX_DIRECTORY).join("A B.XML"),
             b"directory",
@@ -312,14 +315,28 @@ mod tests {
         .unwrap();
         let root = TrustedDir::open(&test.path).unwrap();
 
-        let legacy =
-            open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, LEGACY_KEYBOX)).unwrap();
-        assert_eq!(legacy.size, 6);
-        let directory =
-            open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "A B.XML")).unwrap();
-        assert_eq!(directory.size, 9);
+        assert_eq!(
+            open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "keybox.xml"))
+                .unwrap()
+                .size,
+            6
+        );
+        assert_eq!(
+            open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "A1B2C3.xml"))
+                .unwrap()
+                .size,
+            10
+        );
+        assert_eq!(
+            open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "A B.XML"))
+                .unwrap()
+                .size,
+            9
+        );
 
-        assert!(open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, "other.xml")).is_err());
+        for name in ["../root.xml", "sub/root.xml", ".hidden.xml", "not-cbox.txt"] {
+            assert!(open_requested_from(&root, &request(SCOPE_CONFIG_ROOT, name)).is_err());
+        }
         assert!(
             open_requested_from(&root, &request(SCOPE_KEYBOX_DIRECTORY, "not-cbox.txt")).is_err()
         );

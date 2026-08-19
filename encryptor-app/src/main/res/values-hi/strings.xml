@@ -43,4 +43,12 @@
     <string name="language">भाषा</string>
     <string name="system_default">सिस्टम डिफ़ॉल्ट</string>
     <string name="encrypting">एन्क्रिप्ट और सेव किया जा रहा है…</string>
+    <string name="selected_count">%1$d चयनित</string>
+    <string name="export_selected_zip">चयनित को ZIP में निर्यात करें</string>
+    <string name="delete_selected">चयनित हटाएँ</string>
+    <string name="delete_selected_title">चयनित CBOX फ़ाइलें हटाएँ?</string>
+    <string name="delete_selected_message">%1$d चयनित CBOX फ़ाइलें इस डिवाइस से स्थायी रूप से हट जाएँगी।</string>
+    <string name="bulk_delete_result">%1$d हटाई गईं, %2$d विफल</string>
+    <string name="zip_export_success">चयनित CBOX फ़ाइलें ZIP के रूप में निर्यात हुईं</string>
+    <string name="zip_export_failed">ZIP निर्यात विफल</string>
 </resources>

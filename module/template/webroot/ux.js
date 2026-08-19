@@ -2069,8 +2069,8 @@
 (function (global) {
     'use strict';
 
-    const MAX_SUPPORTED_FILES = 10000;
-    const MAX_ARCHIVE_ENTRIES = 20000;
+    const MAX_SUPPORTED_FILES = 64;
+    const MAX_ARCHIVE_ENTRIES = 256;
     const MAX_FILE_BYTES = 10 * 1024 * 1024;
     const MAX_COMPRESSED_FILE_BYTES = MAX_FILE_BYTES + 64 * 1024;
     const MAX_NAME_BYTES = 4096;
@@ -2090,7 +2090,7 @@
             partial: 'ZIP import finished: {ok} imported, {failed} failed.',
             select: 'Select a non-empty XML, CBOX or ZIP file.',
             entryLimit: 'ZIP contains too many entries.',
-            fileCountLimit: 'ZIP contains more than 10000 supported XML/CBOX files.',
+            fileCountLimit: 'ZIP contains more than 64 supported XML/CBOX files.',
             fileLimit: 'A supported XML/CBOX file is empty or larger than 10 MiB.',
             noSupported: 'ZIP does not contain supported .xml or .cbox files.',
             encrypted: 'Encrypted ZIP entries are not supported.',
@@ -2111,7 +2111,7 @@
             partial: 'ZIP içe aktarma bitti: {ok} eklendi, {failed} başarısız.',
             select: 'Boş olmayan bir XML, CBOX veya ZIP dosyası seçin.',
             entryLimit: 'ZIP çok fazla girdi içeriyor.',
-            fileCountLimit: 'ZIP 10000 adetten fazla desteklenen XML/CBOX dosyası içeriyor.',
+            fileCountLimit: 'ZIP 64 adetten fazla desteklenen XML/CBOX dosyası içeriyor.',
             fileLimit: 'Desteklenen bir XML/CBOX dosyası boş veya 10 MiB sınırını aşıyor.',
             noSupported: 'ZIP desteklenen .xml veya .cbox dosyası içermiyor.',
             encrypted: 'Şifreli ZIP girdileri desteklenmiyor.',
@@ -2125,7 +2125,7 @@
             prompt: '点击选择 .xml、.cbox 或 .zip', ready: 'ZIP 已就绪：{name}', summary: '{count} 个支持的 XML/CBOX 文件 · {size}',
             confirm: '我了解此 ZIP 中所有受支持的 XML/CBOX 文件都会逐个导入。', import: '导入 ZIP 文件', importing: '正在导入 ZIP 文件… {done}/{total}',
             success: 'ZIP 导入完成：已导入 {ok}/{total} 个文件。', partial: 'ZIP 导入结束：成功 {ok} 个，失败 {failed} 个。',
-            select: '请选择非空的 XML、CBOX 或 ZIP 文件。', entryLimit: 'ZIP 中的条目过多。', fileCountLimit: 'ZIP 中受支持的 XML/CBOX 文件超过 10000 个。',
+            select: '请选择非空的 XML、CBOX 或 ZIP 文件。', entryLimit: 'ZIP 中的条目过多。', fileCountLimit: 'ZIP 中受支持的 XML/CBOX 文件超过 64 个。',
             fileLimit: '受支持的 XML/CBOX 文件为空或超过 10 MiB。', noSupported: 'ZIP 中没有受支持的 .xml 或 .cbox 文件。', encrypted: '不支持加密的 ZIP 条目。',
             compression: 'ZIP 使用了不支持的压缩方式。', malformed: 'ZIP 已损坏，或使用了不支持的 ZIP64/多磁盘功能。',
             decompressor: '此 Android WebView 无法解压标准 ZIP。请更新 Android System WebView 后重试。', changed: 'ZIP 选择已更改。请重新检查文件并确认。', busy: '已有 ZIP 导入任务正在运行。'
@@ -2134,7 +2134,7 @@
             prompt: 'Toca para elegir .xml, .cbox o .zip', ready: 'ZIP listo: {name}', summary: '{count} archivos XML/CBOX compatibles · {size}',
             confirm: 'Entiendo que todos los archivos XML/CBOX compatibles de este ZIP se importarán individualmente.', import: 'Importar archivos ZIP', importing: 'Importando archivos ZIP… {done}/{total}',
             success: 'Importación ZIP completada: {ok}/{total} archivos importados.', partial: 'Importación ZIP finalizada: {ok} importados, {failed} fallidos.',
-            select: 'Selecciona un archivo XML, CBOX o ZIP no vacío.', entryLimit: 'El ZIP contiene demasiadas entradas.', fileCountLimit: 'El ZIP contiene más de 10000 archivos XML/CBOX compatibles.',
+            select: 'Selecciona un archivo XML, CBOX o ZIP no vacío.', entryLimit: 'El ZIP contiene demasiadas entradas.', fileCountLimit: 'El ZIP contiene más de 64 archivos XML/CBOX compatibles.',
             fileLimit: 'Un XML/CBOX compatible está vacío o supera 10 MiB.', noSupported: 'El ZIP no contiene archivos .xml o .cbox compatibles.', encrypted: 'No se admiten entradas ZIP cifradas.',
             compression: 'El ZIP usa un método de compresión no compatible.', malformed: 'El ZIP está dañado o usa ZIP64/múltiples discos no compatibles.',
             decompressor: 'Este Android WebView no puede descomprimir ZIP estándar. Actualiza Android System WebView y vuelve a intentarlo.', changed: 'La selección ZIP cambió. Revisa los archivos y confirma de nuevo.', busy: 'Ya hay una importación ZIP en curso.'
@@ -2143,7 +2143,7 @@
             prompt: 'Tippen, um .xml, .cbox oder .zip auszuwählen', ready: 'ZIP bereit: {name}', summary: '{count} unterstützte XML/CBOX-Dateien · {size}',
             confirm: 'Ich verstehe, dass alle unterstützten XML/CBOX-Dateien in diesem ZIP einzeln importiert werden.', import: 'ZIP-Dateien importieren', importing: 'ZIP-Dateien werden importiert… {done}/{total}',
             success: 'ZIP-Import abgeschlossen: {ok}/{total} Dateien importiert.', partial: 'ZIP-Import beendet: {ok} importiert, {failed} fehlgeschlagen.',
-            select: 'Wähle eine nicht leere XML-, CBOX- oder ZIP-Datei.', entryLimit: 'Das ZIP enthält zu viele Einträge.', fileCountLimit: 'Das ZIP enthält mehr als 10000 unterstützte XML/CBOX-Dateien.',
+            select: 'Wähle eine nicht leere XML-, CBOX- oder ZIP-Datei.', entryLimit: 'Das ZIP enthält zu viele Einträge.', fileCountLimit: 'Das ZIP enthält mehr als 64 unterstützte XML/CBOX-Dateien.',
             fileLimit: 'Eine unterstützte XML/CBOX-Datei ist leer oder größer als 10 MiB.', noSupported: 'Das ZIP enthält keine unterstützten .xml- oder .cbox-Dateien.', encrypted: 'Verschlüsselte ZIP-Einträge werden nicht unterstützt.',
             compression: 'Das ZIP verwendet eine nicht unterstützte Komprimierung.', malformed: 'Das ZIP ist beschädigt oder verwendet nicht unterstützte ZIP64-/Multi-Disk-Funktionen.',
             decompressor: 'Dieses Android WebView kann Standard-ZIP-Dateien nicht entpacken. Aktualisiere Android System WebView und versuche es erneut.', changed: 'Die ZIP-Auswahl wurde geändert. Prüfe die Dateien erneut und bestätige noch einmal.', busy: 'Ein ZIP-Import läuft bereits.'
@@ -2152,7 +2152,7 @@
             prompt: 'Нажмите, чтобы выбрать .xml, .cbox или .zip', ready: 'ZIP готов: {name}', summary: '{count} поддерживаемых XML/CBOX · {size}',
             confirm: 'Я понимаю, что все поддерживаемые XML/CBOX-файлы из этого ZIP будут импортированы по отдельности.', import: 'Импортировать файлы ZIP', importing: 'Импорт файлов ZIP… {done}/{total}',
             success: 'Импорт ZIP завершён: импортировано {ok}/{total}.', partial: 'Импорт ZIP завершён: {ok} успешно, {failed} с ошибкой.',
-            select: 'Выберите непустой XML, CBOX или ZIP.', entryLimit: 'В ZIP слишком много записей.', fileCountLimit: 'В ZIP больше 10000 поддерживаемых XML/CBOX-файлов.',
+            select: 'Выберите непустой XML, CBOX или ZIP.', entryLimit: 'В ZIP слишком много записей.', fileCountLimit: 'В ZIP больше 64 поддерживаемых XML/CBOX-файлов.',
             fileLimit: 'Поддерживаемый XML/CBOX пуст или больше 10 MiB.', noSupported: 'В ZIP нет поддерживаемых .xml или .cbox.', encrypted: 'Зашифрованные записи ZIP не поддерживаются.',
             compression: 'ZIP использует неподдерживаемый метод сжатия.', malformed: 'ZIP повреждён или использует неподдерживаемые ZIP64/многодисковые функции.',
             decompressor: 'Этот Android WebView не может распаковать стандартный ZIP. Обновите Android System WebView и повторите попытку.', changed: 'Выбран другой ZIP. Снова проверьте файлы и подтвердите импорт.', busy: 'Импорт ZIP уже выполняется.'
@@ -2161,7 +2161,7 @@
             prompt: 'Ketuk untuk memilih .xml, .cbox, atau .zip', ready: 'ZIP siap: {name}', summary: '{count} file XML/CBOX yang didukung · {size}',
             confirm: 'Saya memahami bahwa semua file XML/CBOX yang didukung di ZIP ini akan diimpor satu per satu.', import: 'Impor file ZIP', importing: 'Mengimpor file ZIP… {done}/{total}',
             success: 'Impor ZIP selesai: {ok}/{total} file diimpor.', partial: 'Impor ZIP selesai: {ok} berhasil, {failed} gagal.',
-            select: 'Pilih file XML, CBOX, atau ZIP yang tidak kosong.', entryLimit: 'ZIP berisi terlalu banyak entri.', fileCountLimit: 'ZIP berisi lebih dari 10000 file XML/CBOX yang didukung.',
+            select: 'Pilih file XML, CBOX, atau ZIP yang tidak kosong.', entryLimit: 'ZIP berisi terlalu banyak entri.', fileCountLimit: 'ZIP berisi lebih dari 64 file XML/CBOX yang didukung.',
             fileLimit: 'File XML/CBOX yang didukung kosong atau lebih dari 10 MiB.', noSupported: 'ZIP tidak berisi file .xml atau .cbox yang didukung.', encrypted: 'Entri ZIP terenkripsi tidak didukung.',
             compression: 'ZIP memakai metode kompresi yang tidak didukung.', malformed: 'ZIP rusak atau memakai fitur ZIP64/multi-disk yang tidak didukung.',
             decompressor: 'Android WebView ini tidak dapat mengekstrak ZIP standar. Perbarui Android System WebView lalu coba lagi.', changed: 'Pilihan ZIP berubah. Tinjau file dan konfirmasi lagi.', busy: 'Impor ZIP sedang berjalan.'
@@ -2170,7 +2170,7 @@
             prompt: '.xml, .cbox या .zip चुनने के लिए टैप करें', ready: 'ZIP तैयार: {name}', summary: '{count} समर्थित XML/CBOX फ़ाइलें · {size}',
             confirm: 'मैं समझता/समझती हूँ कि इस ZIP की हर समर्थित XML/CBOX फ़ाइल अलग-अलग आयात होगी।', import: 'ZIP फ़ाइलें आयात करें', importing: 'ZIP फ़ाइलें आयात हो रही हैं… {done}/{total}',
             success: 'ZIP आयात पूरा: {ok}/{total} फ़ाइलें आयात हुईं।', partial: 'ZIP आयात समाप्त: {ok} आयात हुईं, {failed} विफल।',
-            select: 'कोई खाली न होने वाली XML, CBOX या ZIP फ़ाइल चुनें।', entryLimit: 'ZIP में बहुत अधिक प्रविष्टियाँ हैं।', fileCountLimit: 'ZIP में 10000 से अधिक समर्थित XML/CBOX फ़ाइलें हैं।',
+            select: 'कोई खाली न होने वाली XML, CBOX या ZIP फ़ाइल चुनें।', entryLimit: 'ZIP में बहुत अधिक प्रविष्टियाँ हैं।', fileCountLimit: 'ZIP में 64 से अधिक समर्थित XML/CBOX फ़ाइलें हैं।',
             fileLimit: 'कोई समर्थित XML/CBOX फ़ाइल खाली है या 10 MiB से बड़ी है।', noSupported: 'ZIP में समर्थित .xml या .cbox फ़ाइल नहीं है।', encrypted: 'एन्क्रिप्टेड ZIP प्रविष्टियाँ समर्थित नहीं हैं।',
             compression: 'ZIP असमर्थित संपीड़न विधि उपयोग करता है।', malformed: 'ZIP खराब है या असमर्थित ZIP64/मल्टी-डिस्क सुविधा उपयोग करता है।',
             decompressor: 'यह Android WebView सामान्य ZIP फ़ाइल नहीं खोल सकता। Android System WebView अपडेट करके फिर कोशिश करें।', changed: 'ZIP चयन बदल गया। फ़ाइलों की दोबारा जाँच करके फिर पुष्टि करें।', busy: 'ZIP आयात पहले से चल रहा है।'
@@ -2179,7 +2179,7 @@
             prompt: 'اضغط لاختيار .xml أو .cbox أو .zip', ready: 'ZIP جاهز: {name}', summary: '{count} من ملفات XML/CBOX المدعومة · {size}',
             confirm: 'أفهم أن كل ملفات XML/CBOX المدعومة داخل ZIP ستُستورد واحداً تلو الآخر.', import: 'استيراد ملفات ZIP', importing: 'جار استيراد ملفات ZIP… {done}/{total}',
             success: 'اكتمل استيراد ZIP: تم استيراد {ok}/{total} ملفاً.', partial: 'انتهى استيراد ZIP: نجح {ok} وفشل {failed}.',
-            select: 'اختر ملف XML أو CBOX أو ZIP غير فارغ.', entryLimit: 'يحتوي ZIP على عدد كبير جداً من العناصر.', fileCountLimit: 'يحتوي ZIP على أكثر من 10000 ملف XML/CBOX مدعوماً.',
+            select: 'اختر ملف XML أو CBOX أو ZIP غير فارغ.', entryLimit: 'يحتوي ZIP على عدد كبير جداً من العناصر.', fileCountLimit: 'يحتوي ZIP على أكثر من 64 ملف XML/CBOX مدعوماً.',
             fileLimit: 'أحد ملفات XML/CBOX المدعومة فارغ أو أكبر من 10 MiB.', noSupported: 'لا يحتوي ZIP على ملفات .xml أو .cbox مدعومة.', encrypted: 'عناصر ZIP المشفرة غير مدعومة.',
             compression: 'يستخدم ZIP طريقة ضغط غير مدعومة.', malformed: 'ملف ZIP تالف أو يستخدم ZIP64/أقراصاً متعددة غير مدعومة.',
             decompressor: 'لا يستطيع Android WebView هذا فك ZIP القياسي. حدّث Android System WebView ثم أعد المحاولة.', changed: 'تغير ملف ZIP المحدد. راجع الملفات وأكّد مرة أخرى.', busy: 'هناك عملية استيراد ZIP قيد التشغيل بالفعل.'
@@ -2685,4 +2685,71 @@
         if (document.readyState === 'complete') global.setTimeout(install, 0);
         else global.addEventListener('load', install, { once: true });
     }
+})(window);
+
+
+// Source-aware Stored Keyboxes and Verification UX. Runtime ownership stays in ux.js.
+(function (global) {
+    'use strict';
+    if (typeof document === 'undefined') return;
+    const PAGE_SIZE = 5;
+    const COPY = {
+        en: { selected:'selected', deleteSelected:'Delete selected', previous:'Previous', next:'Next', page:'Page {page} / {pages}', root:'Module root', managed:'Managed folder', cert:'Certificate #3 serial', certMissing:'Certificate #3 serial unavailable', deleteConfirm:'Delete this stored keybox?', bulkConfirm:'Delete {count} selected keyboxes?', bulkDone:'Deleted {count} keyboxes', keyboxesLoaded:'{count} Keyboxes Loaded' },
+        tr: { selected:'seçili', deleteSelected:'Seçilileri sil', previous:'Önceki', next:'Sonraki', page:'Sayfa {page} / {pages}', root:'Modül kökü', managed:'Yönetilen klasör', cert:'3. sertifika seri no', certMissing:'3. sertifika seri no yok', deleteConfirm:'Bu kayıtlı keybox silinsin mi?', bulkConfirm:'Seçili {count} keybox silinsin mi?', bulkDone:'{count} keybox silindi', keyboxesLoaded:'{count} Keybox Yüklendi' },
+        'zh-CN': { selected:'已选择', deleteSelected:'删除所选', previous:'上一页', next:'下一页', page:'第 {page} / {pages} 页', root:'模块根目录', managed:'受管目录', cert:'第 3 个证书序列号', certMissing:'无第 3 个证书序列号', deleteConfirm:'删除此已存储密钥盒？', bulkConfirm:'删除选中的 {count} 个密钥盒？', bulkDone:'已删除 {count} 个密钥盒', keyboxesLoaded:'已加载 {count} 个 Keybox' },
+        es: { selected:'seleccionados', deleteSelected:'Eliminar seleccionados', previous:'Anterior', next:'Siguiente', page:'Página {page} / {pages}', root:'Raíz del módulo', managed:'Carpeta administrada', cert:'Serie del certificado n.º 3', certMissing:'Serie del certificado n.º 3 no disponible', deleteConfirm:'¿Eliminar esta keybox guardada?', bulkConfirm:'¿Eliminar {count} keyboxes seleccionadas?', bulkDone:'Se eliminaron {count} keyboxes', keyboxesLoaded:'{count} Keyboxes cargadas' },
+        de: { selected:'ausgewählt', deleteSelected:'Auswahl löschen', previous:'Zurück', next:'Weiter', page:'Seite {page} / {pages}', root:'Modulstamm', managed:'Verwalteter Ordner', cert:'Seriennummer Zertifikat Nr. 3', certMissing:'Seriennummer Zertifikat Nr. 3 nicht verfügbar', deleteConfirm:'Diese gespeicherte Keybox löschen?', bulkConfirm:'{count} ausgewählte Keyboxen löschen?', bulkDone:'{count} Keyboxen gelöscht', keyboxesLoaded:'{count} Keyboxen geladen' },
+        ru: { selected:'выбрано', deleteSelected:'Удалить выбранные', previous:'Назад', next:'Далее', page:'Страница {page} / {pages}', root:'Корень модуля', managed:'Управляемая папка', cert:'Серийный номер сертификата №3', certMissing:'Серийный номер сертификата №3 недоступен', deleteConfirm:'Удалить этот сохраненный keybox?', bulkConfirm:'Удалить выбранные keybox: {count}?', bulkDone:'Удалено keybox: {count}', keyboxesLoaded:'Загружено Keybox: {count}' },
+        id: { selected:'dipilih', deleteSelected:'Hapus pilihan', previous:'Sebelumnya', next:'Berikutnya', page:'Halaman {page} / {pages}', root:'Root modul', managed:'Folder terkelola', cert:'Serial sertifikat #3', certMissing:'Serial sertifikat #3 tidak tersedia', deleteConfirm:'Hapus keybox tersimpan ini?', bulkConfirm:'Hapus {count} keybox terpilih?', bulkDone:'{count} keybox dihapus', keyboxesLoaded:'{count} Keybox dimuat' },
+        hi: { selected:'चयनित', deleteSelected:'चयनित हटाएँ', previous:'पिछला', next:'अगला', page:'पृष्ठ {page} / {pages}', root:'मॉड्यूल रूट', managed:'प्रबंधित फ़ोल्डर', cert:'सर्टिफिकेट #3 सीरियल', certMissing:'सर्टिफिकेट #3 सीरियल उपलब्ध नहीं', deleteConfirm:'यह सहेजा Keybox हटाएँ?', bulkConfirm:'चयनित {count} Keybox हटाएँ?', bulkDone:'{count} Keybox हटाए गए', keyboxesLoaded:'{count} Keybox लोड हुए' },
+        ar: { selected:'محدد', deleteSelected:'حذف المحدد', previous:'السابق', next:'التالي', page:'الصفحة {page} / {pages}', root:'جذر الوحدة', managed:'المجلد المدار', cert:'الرقم التسلسلي للشهادة 3', certMissing:'الرقم التسلسلي للشهادة 3 غير متاح', deleteConfirm:'حذف Keybox المحفوظ هذا؟', bulkConfirm:'حذف {count} من Keybox المحددة؟', bulkDone:'تم حذف {count} من Keybox', keyboxesLoaded:'تم تحميل {count} Keybox' }
+    };
+    let inventory = [];
+    let selected = new Set();
+    let page = 1;
+    let installed = false;
+    let loading = false;
+    let originalLoad = null;
+    function locale() { try { const value = global.CleveresI18n && global.CleveresI18n.locale; return COPY[value] ? value : 'en'; } catch (_) { return 'en'; } }
+    function t(key, values) { let value=(COPY[locale()]||COPY.en)[key]||COPY.en[key]||key; Object.entries(values||{}).forEach(([name,replacement])=>{ value=value.split('{'+name+'}').join(String(replacement)); }); return value; }
+    function statusLabel() { const node=document.getElementById('keyboxStatus'); if(!node)return; const match=(node.textContent||'').match(/(\d+)/); if(match)node.textContent=t('keyboxesLoaded',{count:match[1]}); }
+    function ensureControls() {
+        const list=document.getElementById('storedKeyboxesList'); if(!list||document.getElementById('ct_keybox_bulk'))return;
+        list.style.maxHeight='none'; list.style.overflowY='visible';
+        const toolbar=document.createElement('div'); toolbar.id='ct_keybox_bulk'; toolbar.style.cssText='display:flex;gap:8px;align-items:center;justify-content:space-between;margin:8px 0;flex-wrap:wrap;';
+        const count=document.createElement('span'); count.id='ct_keybox_selected_count'; count.style.cssText='font-size:.82em;color:#888;';
+        const button=document.createElement('button'); button.id='ct_keybox_delete_selected'; button.type='button'; button.className='danger'; button.style.cssText='padding:8px 12px;font-size:.82em;'; button.addEventListener('click',bulkDelete);
+        toolbar.append(count,button); list.parentNode.insertBefore(toolbar,list);
+        const pager=document.createElement('div'); pager.id='ct_keybox_pager'; pager.style.cssText='display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;'; list.insertAdjacentElement('afterend',pager);
+    }
+    function updateControls(pages) {
+        ensureControls(); const count=document.getElementById('ct_keybox_selected_count'); const button=document.getElementById('ct_keybox_delete_selected');
+        if(count)count.textContent=selected.size+' '+t('selected'); if(button){button.textContent=t('deleteSelected');button.disabled=selected.size===0;}
+        const pager=document.getElementById('ct_keybox_pager'); if(!pager)return; pager.innerHTML='';
+        const prev=document.createElement('button'); prev.type='button'; prev.textContent=t('previous'); prev.disabled=page<=1; prev.addEventListener('click',()=>{page--;render();});
+        const label=document.createElement('span'); label.style.cssText='font-size:.82em;color:#888;'; label.textContent=t('page',{page,pages});
+        const next=document.createElement('button'); next.type='button'; next.textContent=t('next'); next.disabled=page>=pages; next.addEventListener('click',()=>{page++;render();}); pager.append(prev,label,next);
+    }
+    function filtered() { const filter=(document.getElementById('keyboxFilter')?.value||'').toLowerCase(); return filter?inventory.filter(item=>(item.filename+' '+(item.certificate_serial||'')).toLowerCase().includes(filter)):inventory.slice(); }
+    function render() {
+        const list=document.getElementById('storedKeyboxesList'); if(!list)return; ensureControls();
+        const clear=document.getElementById('clearKeyboxFilterBtn'); const filter=document.getElementById('keyboxFilter'); if(clear)clear.style.display=filter&&filter.value?'flex':'none';
+        const items=filtered(); const pages=Math.max(1,Math.ceil(items.length/PAGE_SIZE)); page=Math.min(Math.max(1,page),pages); list.innerHTML='';
+        if(loading){const n=document.createElement('div');n.style.cssText='padding:10px;text-align:center;color:#888';n.textContent='Loading...';list.appendChild(n);updateControls(pages);return;}
+        if(items.length===0){const n=document.createElement('div');n.style.cssText='padding:10px;text-align:center;color:#666';n.textContent=inventory.length?'No keyboxes match your filter.':'No keyboxes stored.';list.appendChild(n);updateControls(pages);return;}
+        items.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE).forEach(item=>{
+            const row=document.createElement('div');row.className='row';row.style.cssText='padding:10px;border-bottom:1px solid var(--border);gap:10px;align-items:center;';
+            const box=document.createElement('input');box.type='checkbox';box.checked=selected.has(item.id);box.setAttribute('aria-label','Select '+item.filename);box.addEventListener('change',()=>{if(box.checked)selected.add(item.id);else selected.delete(item.id);updateControls(pages);});
+            const body=document.createElement('div');body.style.cssText='flex:1;min-width:0;';const name=document.createElement('div');name.style.cssText='overflow-wrap:anywhere;font-weight:500';name.textContent=String(item.filename||'');
+            const meta=document.createElement('div');meta.style.cssText='font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere';const scope=item.scope==='root'?t('root'):t('managed');const cert=item.certificate_serial?t('cert')+': '+item.certificate_serial:t('certMissing');meta.textContent=scope+' | '+cert;body.append(name,meta);
+            const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.style.cssText='padding:8px 12px;font-size:.82em;';remove.textContent='Delete';remove.addEventListener('click',()=>deleteOne(item));row.append(box,body,remove);list.appendChild(row);
+        }); updateControls(pages);
+    }
+    async function refreshInventory(){if(typeof global.fetchAuth!=='function')return;loading=true;render();try{const response=await global.fetchAuth('/api/keybox_inventory');if(!response.ok)throw new Error(await response.text());const data=await response.json();inventory=Array.isArray(data)?data:[];const ids=new Set(inventory.map(item=>item.id));selected=new Set(Array.from(selected).filter(id=>ids.has(id)));}catch(error){if(typeof global.notify==='function')global.notify('Error: '+error.message,'error');}finally{loading=false;render();statusLabel();}}
+    async function deleteOne(item){if(typeof global.confirm==='function'&&!global.confirm(t('deleteConfirm')))return;const body=new URLSearchParams();body.set('filename',item.filename);body.set('scope',item.scope);const response=await global.fetchAuth('/api/delete_keybox',{method:'POST',body});if(!response.ok){if(typeof global.notify==='function')global.notify('Error: '+await response.text(),'error');return;}selected.delete(item.id);await reloadAll();}
+    async function bulkDelete(){const items=inventory.filter(item=>selected.has(item.id));if(!items.length)return;if(typeof global.confirm==='function'&&!global.confirm(t('bulkConfirm',{count:items.length})))return;const body=new URLSearchParams();body.set('items',JSON.stringify(items.map(item=>({filename:item.filename,scope:item.scope}))));const response=await global.fetchAuth('/api/delete_keyboxes',{method:'POST',body});let payload=null;try{payload=await response.clone().json();}catch(_){}if(!response.ok&&!payload){if(typeof global.notify==='function')global.notify('Error: '+await response.text(),'error');return;}if(typeof global.notify==='function')global.notify(t('bulkDone',{count:payload?.deleted??items.length}),payload?.failed?'error':'normal');selected.clear();await reloadAll();}
+    async function reloadAll(){if(typeof originalLoad==='function')await originalLoad();await refreshInventory();if(typeof global.loadKeyInfo==='function')global.loadKeyInfo();}
+    async function verify(){const result=document.getElementById('verifyResult');if(result)result.textContent='Verifying...';const response=await global.fetchAuth('/api/verify_keyboxes',{method:'POST'});if(!response.ok)throw new Error(await response.text());const data=await response.json();if(!result)return;result.innerHTML='';if(!Array.isArray(data)||data.length===0){result.textContent='No keyboxes to verify';return;}data.forEach(item=>{const row=document.createElement('div');row.style.cssText='padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere';const title=document.createElement('div');title.style.fontWeight='600';title.textContent=String(item.filename||'')+' - '+String(item.status||'');const meta=document.createElement('div');meta.style.cssText='font-size:.8em;color:#888;margin-top:2px';meta.textContent=item.certificate_serial?t('cert')+': '+item.certificate_serial:t('certMissing');const details=document.createElement('div');details.style.cssText='font-size:.8em;color:#aaa;margin-top:2px';details.textContent=String(item.details||'');row.append(title,meta,details);result.appendChild(row);});}
+    function install(){if(installed||!document.getElementById('storedKeyboxesList')||typeof global.loadKeyboxes!=='function'){global.setTimeout(install,50);return;}installed=true;originalLoad=global.loadKeyboxes;global.renderKeyboxes=render;global.loadKeyboxes=async function(){const value=await originalLoad.apply(this,arguments);await refreshInventory();return value;};global.verifyKeyboxes=verify;const filter=document.getElementById('keyboxFilter');if(filter)filter.addEventListener('input',()=>{page=1;render();});ensureControls();refreshInventory();statusLabel();const status=document.getElementById('keyboxStatus');if(status&&typeof global.MutationObserver==='function')new global.MutationObserver(statusLabel).observe(status,{childList:true,characterData:true,subtree:true});}
+    if(document.readyState==='complete')global.setTimeout(install,0);else if(typeof global.addEventListener==='function')global.addEventListener('load',install,{once:true});
 })(window);

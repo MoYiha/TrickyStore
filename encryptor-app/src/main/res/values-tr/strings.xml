@@ -43,4 +43,12 @@
     <string name="language">Dil</string>
     <string name="system_default">Sistem varsayılanı</string>
     <string name="encrypting">Şifreleniyor ve kaydediliyor…</string>
+    <string name="selected_count">%1$d seçili</string>
+    <string name="export_selected_zip">Seçilileri ZIP olarak dışa aktar</string>
+    <string name="delete_selected">Seçilileri sil</string>
+    <string name="delete_selected_title">Seçili CBOX dosyaları silinsin mi?</string>
+    <string name="delete_selected_message">Seçili %1$d CBOX dosyası bu cihazdan kalıcı olarak silinecek.</string>
+    <string name="bulk_delete_result">%1$d silindi, %2$d başarısız</string>
+    <string name="zip_export_success">Seçili CBOX dosyaları ZIP olarak dışa aktarıldı</string>
+    <string name="zip_export_failed">ZIP dışa aktarma başarısız</string>
 </resources>

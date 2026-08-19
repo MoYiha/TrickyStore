@@ -9,6 +9,9 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
 import java.util.Locale
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 internal object VaultStore {
     private const val VAULT_DIR = "vault"
@@ -28,9 +31,12 @@ internal object VaultStore {
         private val occupied: MutableSet<String>,
         private var remaining: Int,
     ) {
-        fun allocate(sourceName: String): String {
+        fun allocate(
+            sourceName: String,
+            certificateSerial: String? = null,
+        ): String {
             if (remaining <= 0) throw IOException("Vault capacity exceeded")
-            val base = VaultStore.batchBaseName(author, sourceName)
+            val base = VaultStore.batchBaseName(author, sourceName, certificateSerial)
             var sequence = 1
             var candidate = "$base$CBOX_SUFFIX"
             while (!occupied.add(candidate.lowercase(Locale.ROOT))) {
@@ -82,9 +88,16 @@ internal object VaultStore {
     internal fun batchBaseName(
         author: String,
         sourceName: String,
+        certificateSerial: String? = null,
     ): String {
+        val serial =
+            certificateSerial
+                ?.trim()
+                ?.uppercase(Locale.ROOT)
+                ?.takeIf { value -> value.isNotEmpty() && value.all { it in '0'..'9' || it in 'A'..'F' } }
+        if (serial != null) return serial.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
         val safeAuthor = sanitizeComponent(author, 48).ifEmpty { "keybox" }
-        val basename = sourceName.substringAfterLast('/').substringAfterLast('\\')
+        val basename = sourceName.substringAfterLast('/').substringAfterLast(92.toChar())
         val sourceBase = basename.substringBeforeLast('.', basename)
         val safeSource = sanitizeComponent(sourceBase, 64).ifEmpty { "keybox" }
         return "$safeAuthor-$safeSource".take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
@@ -145,6 +158,32 @@ internal object VaultStore {
     ) {
         val root = noBackupRootFor(file) ?: throw IOException("Vault entry is invalid")
         exportFromRoot(root, file, output)
+    }
+
+    fun exportZip(
+        files: List<File>,
+        output: OutputStream,
+    ) {
+        require(files.isNotEmpty() && files.size <= MAX_FILES) { "Invalid export selection" }
+        val unique = HashSet<String>()
+        val selected = files.sortedBy { it.name.lowercase(Locale.ROOT) }
+        selected.forEach { file ->
+            require(validName(file.name) && unique.add(file.name.lowercase(Locale.ROOT))) {
+                "Vault export selection is invalid"
+            }
+        }
+        val zip = ZipOutputStream(output)
+        zip.setLevel(Deflater.NO_COMPRESSION)
+        selected.forEach { file ->
+            zip.putNextEntry(ZipEntry(file.name))
+            try {
+                export(file, zip)
+            } finally {
+                zip.closeEntry()
+            }
+        }
+        zip.finish()
+        zip.flush()
     }
 
     /** Imports legacy app-specific external ciphertext only after bounded native validation. */
