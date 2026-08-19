@@ -25,7 +25,7 @@ static INSTANCE: OnceLock<BackendInstance> = OnceLock::new();
 impl BackendInstance {
     fn generate(auth: [u8; BACKEND_AUTH_BYTES]) -> io::Result<Self> {
         let mut epoch = [0u8; EPOCH_BYTES];
-        getrandom::getrandom(&mut epoch).map_err(|error| {
+        getrandom::fill(&mut epoch).map_err(|error| {
             io::Error::other(format!("backend instance entropy unavailable: {error}"))
         })?;
         if epoch.iter().all(|byte| *byte == 0) {
