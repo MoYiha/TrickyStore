@@ -16,9 +16,6 @@ updates:
         applies-to: version-updates
         patterns:
           - "org.bouncycastle:*"
-        update-types:
-          - "minor"
-          - "patch"
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -26,6 +23,7 @@ updates:
       interval: "daily"
     labels:
       - "dependencies"
+    open-pull-requests-limit: 10
 
   - package-ecosystem: "cargo"
     directory: "/rust"
@@ -33,7 +31,7 @@ updates:
       interval: "daily"
     labels:
       - "dependencies"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     groups:
       storage-crypto-stack:
         applies-to: version-updates
@@ -41,9 +39,6 @@ updates:
           - "aes-gcm"
           - "getrandom"
           - "pbkdf2"
-        update-types:
-          - "minor"
-          - "patch"
       signing-x509-stack:
         applies-to: version-updates
         patterns:
@@ -53,52 +48,3 @@ updates:
           - "sha2"
           - "signature"
           - "x509-cert"
-        update-types:
-          - "minor"
-          - "patch"
-    ignore:
-      # Compatibility ceilings are deliberate. RustCrypto 0.x minor releases can
-      # be API-breaking even though Dependabot labels them semver-minor. Lifting
-      # a ceiling is a source migration, not a routine dependency refresh.
-      - dependency-name: "aes-gcm"
-        versions:
-          - ">=0.12.0"
-      - dependency-name: "pbkdf2"
-        versions:
-          - ">=0.14.0"
-      - dependency-name: "getrandom"
-        versions:
-          - ">=0.5.0"
-
-      # The signing/X.509 family is a single compatibility lane. Keep current
-      # API lines patched, but move to the next line only in a planned migration.
-      - dependency-name: "der"
-        versions:
-          - ">=0.9.0"
-        update-types:
-          - "version-update:semver-major"
-      - dependency-name: "p256"
-        versions:
-          - ">=0.14.0"
-        update-types:
-          - "version-update:semver-major"
-      - dependency-name: "rsa"
-        versions:
-          - ">=0.10.0"
-        update-types:
-          - "version-update:semver-major"
-      - dependency-name: "sha2"
-        versions:
-          - ">=0.11.0"
-        update-types:
-          - "version-update:semver-major"
-      - dependency-name: "signature"
-        versions:
-          - ">=3.0.0"
-        update-types:
-          - "version-update:semver-major"
-      - dependency-name: "x509-cert"
-        versions:
-          - ">=0.4.0"
-        update-types:
-          - "version-update:semver-major"
