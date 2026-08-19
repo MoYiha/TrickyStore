@@ -1,0 +1,339 @@
+name: Apply deep V2.6.1 keybox fixes v6
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [master]
+permissions:
+  contents: write
+jobs:
+  apply-fixes:
+    if: github.event.pull_request.head.ref == 'feat/v2.6.1-webui-zip-import'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: feat/v2.6.1-webui-zip-import
+      - name: Setup Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - name: Apply structural source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, content):
+              Path(path).write_text(content, encoding='utf-8')
+
+          # Config is patched with concrete block boundaries. No broad DOTALL regex is allowed here.
+          config_path = Path('service/src/main/java/cleveres/tricky/cleverestech/Config.kt')
+          config = config_path.read_text(encoding='utf-8')
+
+          decl_start = config.index('    @Volatile\n    private var cachedLegacyKeyboxes: List<CertHack.KeyBox> = emptyList()\n')
+          decl_end_marker = '    fun updateKeyBoxes() =\n'
+          decl_end = config.index(decl_end_marker, decl_start)
+          declaration = '''    private data class KeyboxFileCache(
+              val lastModified: Long,
+              val length: Long,
+              val keyboxes: List<CertHack.KeyBox>,
+          )
+
+          private val storedKeyboxCache = ConcurrentHashMap<String, KeyboxFileCache>()
+
+          '''
+          config = config[:decl_start] + textwrap.dedent(declaration) + config[decl_end:]
+
+          old_reset = '''        cachedLegacyKeyboxes = emptyList()
+              lastKeyboxModified = 0
+              lastKeyboxLength = 0
+              directoryKeyboxCache.clear()
+          '''
+          if config.count(old_reset) != 2:
+              raise SystemExit(f'Config reset contract changed: expected 2, found {config.count(old_reset)}')
+          config = config.replace(old_reset, '        storedKeyboxCache.clear()\n', 2)
+
+          scan_start_marker = '            val legacyFile = File(root, KEYBOX_FILE)\n'
+          scan_end_marker = '            if (refreshExternalSources) CboxManager.refresh()\n'
+          if config.count(scan_start_marker) != 1 or config.count(scan_end_marker) != 1:
+              raise SystemExit('Config keybox scan boundary changed')
+          scan_start = config.index(scan_start_marker)
+          scan_end = config.index(scan_end_marker, scan_start)
+          scan = '''            val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
+              Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
+              val currentFiles = HashSet<String>()
+              storedSources.forEach { source ->
+                  currentFiles.add(source.id)
+                  val file = source.file
+                  if (file.length() !in 1..StoredKeyboxInventory.MAX_XML_BYTES) {
+                      storedKeyboxCache.remove(source.id)
+                      Logger.w("Ignoring empty or oversized keybox file: ${source.filename}")
+                      return@forEach
+                  }
+                  val lastMod = file.lastModified()
+                  val length = file.length()
+                  val cached = storedKeyboxCache[source.id]
+                  if (cached != null && cached.lastModified == lastMod && cached.length == length) {
+                      allKeyboxes.addAll(cached.keyboxes)
+                  } else {
+                      try {
+                          val parsed =
+                              KeyboxLoader.parseFile(
+                                  requireNotNull(source.scope.fileScope),
+                                  source.filename,
+                              )
+                          storedKeyboxCache[source.id] = KeyboxFileCache(lastMod, length, parsed)
+                          allKeyboxes.addAll(parsed)
+                          Logger.i("Reloaded keybox source: ${source.id}")
+                      } catch (error: RustBackendUnavailableException) {
+                          throw error
+                      } catch (error: Exception) {
+                          storedKeyboxCache.remove(source.id)
+                          Logger.e("Failed to parse keybox source: ${source.id}", error)
+                      }
+                  }
+              }
+              val cacheIterator = storedKeyboxCache.keys.iterator()
+              while (cacheIterator.hasNext()) {
+                  if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
+              }
+
+          '''
+          config = config[:scan_start] + textwrap.dedent(scan) + config[scan_end:]
+
+          observer_anchor = '''                AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
+                  APPLY_PROFILE_FILE -> applyProfileFromFile(f)
+              }
+          '''
+          observer_replacement = '''                AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
+                  APPLY_PROFILE_FILE -> applyProfileFromFile(f)
+                  else -> if (path.endsWith(".xml", ignoreCase = true)) updateKeyBoxes()
+              }
+          '''
+          if config.count(observer_anchor) != 1:
+              raise SystemExit(f'ConfigObserver anchor count={config.count(observer_anchor)}')
+          config = config.replace(observer_anchor, observer_replacement, 1)
+          config_path.write_text(config, encoding='utf-8')
+
+          # VaultStore is also patched structurally; the Kotlin backslash literal is deliberately
+          # not used as a Python exact-string anchor.
+          vault_path = Path('encryptor-app/src/main/java/cleveres/tricky/encryptor/VaultStore.kt')
+          vault = vault_path.read_text(encoding='utf-8')
+          vault = vault.replace(
+              'import java.util.Locale\n',
+              'import java.util.Locale\nimport java.util.zip.Deflater\nimport java.util.zip.ZipEntry\nimport java.util.zip.ZipOutputStream\n',
+              1,
+          )
+          vault, count = re.subn(
+              r'        fun allocate\(sourceName: String\): String \{\n            if \(remaining <= 0\) throw IOException\("Vault capacity exceeded"\)\n            val base = VaultStore\.batchBaseName\(author, sourceName\)',
+              '''        fun allocate(
+                  sourceName: String,
+                  certificateSerial: String? = null,
+              ): String {
+                  if (remaining <= 0) throw IOException("Vault capacity exceeded")
+                  val base = VaultStore.batchBaseName(author, sourceName, certificateSerial)''',
+              vault,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'Vault allocator contract changed: {count}')
+          vault, count = re.subn(
+              r'    internal fun batchBaseName\(\n        author: String,\n        sourceName: String,\n    \): String \{.*?\n    \}\n\n    fun exists\(',
+              '''    internal fun batchBaseName(
+                  author: String,
+                  sourceName: String,
+                  certificateSerial: String? = null,
+              ): String {
+                  val serial =
+                      certificateSerial
+                          ?.trim()
+                          ?.uppercase(Locale.ROOT)
+                          ?.takeIf { value -> value.isNotEmpty() && value.all { it in '0'..'9' || it in 'A'..'F' } }
+                  if (serial != null) return serial.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
+                  val safeAuthor = sanitizeComponent(author, 48).ifEmpty { "keybox" }
+                  val basename = sourceName.substringAfterLast('/').substringAfterLast('\\\\')
+                  val sourceBase = basename.substringBeforeLast('.', basename)
+                  val safeSource = sanitizeComponent(sourceBase, 64).ifEmpty { "keybox" }
+                  return "$safeAuthor-$safeSource".take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
+              }
+
+              fun exists(''',
+              vault,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'Vault base-name contract changed: {count}')
+          export_anchor = '''    fun export(
+              file: File,
+              output: OutputStream,
+          ) {
+              val root = noBackupRootFor(file) ?: throw IOException("Vault entry is invalid")
+              exportFromRoot(root, file, output)
+          }
+          '''
+          if vault.count(export_anchor) != 1:
+              raise SystemExit(f'Vault export anchor count={vault.count(export_anchor)}')
+          vault = vault.replace(
+              export_anchor,
+              export_anchor + '''
+          fun exportZip(
+              files: List<File>,
+              output: OutputStream,
+          ) {
+              require(files.isNotEmpty() && files.size <= MAX_FILES) { "Invalid export selection" }
+              val unique = HashSet<String>()
+              val selected = files.sortedBy { it.name.lowercase(Locale.ROOT) }
+              selected.forEach { file ->
+                  require(validName(file.name) && unique.add(file.name.lowercase(Locale.ROOT))) {
+                      "Vault export selection is invalid"
+                  }
+              }
+              val zip = ZipOutputStream(output)
+              zip.setLevel(Deflater.NO_COMPRESSION)
+              selected.forEach { file ->
+                  zip.putNextEntry(ZipEntry(file.name))
+                  try {
+                      export(file, zip)
+                  } finally {
+                      zip.closeEntry()
+                  }
+              }
+              zip.finish()
+              zip.flush()
+          }
+          ''',
+              1,
+          )
+          vault_path.write_text(vault, encoding='utf-8')
+
+          # Reuse the already-reviewed source patch, but remove the two sections patched above.
+          runner = Path('.github/workflows/__v261_pr_fix_runner.yml').read_text(encoding='utf-8')
+          start = "          python3 - <<'PY'\n"
+          end = "\n          PY\n\n      - name: Targeted validation"
+          program = textwrap.dedent(runner.split(start, 1)[1].split(end, 1)[0])
+
+          old_helper = '''def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: exact anchor count={count}: {old[:100]!r}')
+              write(path, text.replace(old, new, 1))
+          '''
+          new_helper = r'''def replace_once(path, old, new):
+              text = read(path)
+              count = text.count(old)
+              if count == 1:
+                  write(path, text.replace(old, new, 1))
+                  return
+              lines = old.splitlines()
+              if not lines:
+                  raise SystemExit(f'{path}: empty replacement anchor')
+              pattern = r'(?m)^' + r'\n'.join(r'[ \t]*' + re.escape(line.lstrip(' \t')) for line in lines)
+              if old.endswith('\n'):
+                  pattern += r'\n'
+              matches = list(re.finditer(pattern, text))
+              if len(matches) != 1:
+                  raise SystemExit(f'{path}: semantic anchor count={len(matches)}: {old[:100]!r}')
+              match = matches[0]
+              base = re.match(r'[ \t]*', match.group(0)).group(0)
+              normalized = textwrap.dedent(new)
+              replacement = '\n'.join((base + line) if line else '' for line in normalized.split('\n'))
+              write(path, text[:match.start()] + replacement + text[match.end():])
+          '''
+          if program.count(old_helper) != 1:
+              raise SystemExit('replace_once helper contract changed')
+          program = program.replace(old_helper, textwrap.dedent(new_helper), 1)
+
+          config_section = program.index('# Config: root/*.xml and keyboxes/*.xml use the same bounded source cache.')
+          rust_section = program.index('# Rust file broker: root scope accepts safe XML basenames, not only keybox.xml.', config_section)
+          program = program[:config_section] + program[rust_section:]
+
+          vault_section = program.index("vault = 'encryptor-app/src/main/java/cleveres/tricky/encryptor/VaultStore.kt'")
+          activity_section = program.index("activity = 'encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt'", vault_section)
+          program = program[:vault_section] + program[activity_section:]
+          exec(compile(program, '<v261-keybox-source-patch>', 'exec'), {'__name__': '__main__'})
+
+          # Lock the first-check regression: CRL lookup must occur after keybox parsing/recovery.
+          test_path = Path('service/src/test/java/cleveres/tricky/cleverestech/util/KeyboxVerifierTest.kt')
+          test = test_path.read_text(encoding='utf-8')
+          if 'import org.junit.Assert.assertTrue\n' not in test:
+              test = test.replace('import org.junit.Assert.assertThrows\n', 'import org.junit.Assert.assertThrows\nimport org.junit.Assert.assertTrue\n', 1)
+          class_anchor = 'class KeyboxVerifierTest {\n'
+          regression = '''class KeyboxVerifierTest {
+              @Test
+              fun `verification resolves revocation source after parser recovery boundary`() {
+                  val configDir = Files.createTempDirectory("keybox-verifier-order").toFile()
+                  val file = configDir.resolve("serial.xml")
+                  file.writeText("placeholder")
+                  val mockCert = Mockito.mock(X509Certificate::class.java)
+                  Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger.ONE)
+                  val publicKey = Mockito.mock(java.security.PublicKey::class.java)
+                  Mockito.`when`(publicKey.encoded).thenReturn(byteArrayOf(1, 2, 3))
+                  Mockito.`when`(mockCert.publicKey).thenReturn(publicKey)
+                  val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+                  Mockito.`when`(mockKeyBox.certificates()).thenReturn(listOf(mockCert))
+                  var parserBoundaryCrossed = false
+                  var crlFetchedAfterParse = false
+                  KeyboxLoader.fileParserOverride = { _, _ ->
+                      parserBoundaryCrossed = true
+                      listOf(mockKeyBox)
+                  }
+                  try {
+                      val result =
+                          KeyboxVerifier.verify(configDir) {
+                              crlFetchedAfterParse = parserBoundaryCrossed
+                              emptySet()
+                          }.single()
+                      assertTrue("CRL lookup must happen after parse/recovery", crlFetchedAfterParse)
+                      assertEquals(KeyboxVerifier.Status.VALID, result.status)
+                  } finally {
+                      KeyboxLoader.resetForTesting()
+                      configDir.deleteRecursively()
+                  }
+              }
+
+          '''
+          if test.count(class_anchor) != 1:
+              raise SystemExit('KeyboxVerifierTest class anchor changed')
+          test = test.replace(class_anchor, textwrap.dedent(regression), 1)
+          test = test.replace('assertEquals("Too many keybox files", results.single().details)', 'assertEquals("Too many keybox XML files", results.single().details)')
+          test_path.write_text(test, encoding='utf-8')
+          PY
+      - name: Format and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check module/template/webroot/ux.js
+          node module/webui-tests/zip-import.test.js
+          ./gradlew :service:ktlintFormat :encryptor-app:ktlintFormat --no-daemon
+          ./gradlew :service:ktlintCheck :service:testDebugUnitTest :encryptor-app:ktlintCheck :encryptor-app:testDebugUnitTest --no-daemon
+          (cd rust && cargo fmt --all && cargo test -p cleverestricky-daemon)
+          git diff --check
+      - name: Commit validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/__v261_keybox_runtime_fix.yml \
+            .github/workflows/__v261_runner_repair.yml \
+            .github/workflows/__v261_pr_fix_runner.yml \
+            .github/workflows/__v261_pr_fix_runner2.yml \
+            .github/workflows/__v261_pr_fix_runner3.yml \
+            .github/workflows/__v261_pr_fix_runner4.yml \
+            .github/workflows/__v261_pr_fix_runner5.yml \
+            .github/workflows/__v261_pr_fix_runner6.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat(keybox): unify storage identity and vault management"
+          git push origin HEAD:feat/v2.6.1-webui-zip-import
