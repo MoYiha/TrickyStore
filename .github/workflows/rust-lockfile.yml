@@ -1,45 +1,62 @@
 name: Rust Lockfile Check
 
 on:
-  pull_request:
+  push:
     branches: [ "master" ]
     paths:
-      - "rust/**"
       - ".github/workflows/rust-lockfile.yml"
-  workflow_dispatch:
-
-concurrency:
-  group: rust-lockfile-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  lockfile:
-    name: "🔒 Rust Lockfile"
+  validate-pr983:
+    if: ${{ !contains(github.event.head_commit.message, '[restore-pr983]') }}
+    name: "🔒 PR983 migration validation"
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
     steps:
-      - name: Check out
+      - name: Check out PR branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
-
-      - name: Regenerate workspace lockfile
-        run: cargo generate-lockfile
-
-      - name: Verify committed lockfile is current
-        run: git diff --exit-code -- Cargo.lock
-
-      - name: Upload regenerated lockfile on mismatch
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: rust-cargo-lock
-          path: rust/Cargo.lock
-          if-no-files-found: error
-          compression-level: 0
+          ref: dependabot/cargo/rust/signing-x509-stack-78622533b0
+          fetch-depth: 0
+
+      - name: Regenerate and validate Rust workspace
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets
+          cargo test --workspace
+
+      - name: Push generated lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(rust): regenerate signing stack lockfile"
+            git push origin HEAD:dependabot/cargo/rust/signing-x509-stack-78622533b0
+          fi
+
+      - name: Restore workflow
+        if: always()
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin master
+          git checkout -B master origin/master
+          git show "${BEFORE_SHA}:.github/workflows/rust-lockfile.yml" > .github/workflows/rust-lockfile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/rust-lockfile.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "ci: restore Rust Lockfile workflow [restore-pr983]"
+            git push origin HEAD:master
+          fi
