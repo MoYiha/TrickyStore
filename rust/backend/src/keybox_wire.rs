@@ -134,7 +134,7 @@ fn instance_handshake(request: &[u8]) -> Result<Vec<u8>, &'static str> {
 fn backend_instance_epoch() -> Result<&'static [u8; INSTANCE_EPOCH_BYTES], &'static str> {
     match INSTANCE_EPOCH.get_or_init(|| {
         let mut epoch = [0u8; INSTANCE_EPOCH_BYTES];
-        if getrandom::getrandom(&mut epoch).is_err() || epoch.iter().all(|byte| *byte == 0) {
+        if getrandom::fill(&mut epoch).is_err() || epoch.iter().all(|byte| *byte == 0) {
             epoch.zeroize();
             Err(())
         } else {
