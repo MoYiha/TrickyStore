@@ -197,9 +197,7 @@ fn verify_cbox_signature_der(
         };
         let verifier = RsaVerifyingKey::<RsaSha256>::new(public_key);
         return rsa_signature::hazmat::PrehashVerifier::verify_prehash(
-            &verifier,
-            &digest,
-            &signature,
+            &verifier, &digest, &signature,
         )
         .is_ok();
     }
