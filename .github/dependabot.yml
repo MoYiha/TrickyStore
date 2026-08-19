@@ -49,9 +49,23 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      # These crates form one signing/X.509 compatibility stack. Their next
+      # pre-1.0/major lines must move together instead of being bumped alone.
+      - dependency-name: "der"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "p256"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "rsa"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "sha2"
+        update-types:
+          - "version-update:semver-major"
       - dependency-name: "signature"
         update-types:
           - "version-update:semver-major"
-      - dependency-name: "der"
+      - dependency-name: "x509-cert"
         update-types:
           - "version-update:semver-major"
