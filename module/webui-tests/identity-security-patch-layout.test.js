@@ -33,3 +33,18 @@ assert.ok(policy.includes("document.getElementById('ct_patch_save')"), 'existing
 assert.ok(!policy.includes("data-open-tab=\"patch\""), 'no UI control may navigate to the retired Security Patch tab');
 
 console.log('Identity / Security Patch layout compatibility checks passed');
+
+const bindStart = policy.indexOf('function bindFeatureCenter(panel, prefix)');
+const bindEnd = policy.indexOf('async function setLegacyToggle', bindStart);
+const bindBlock = policy.slice(bindStart, bindEnd);
+assert.ok(!bindBlock.includes('patchToggle'), 'Dashboard binding must not retain retired Security Patch wiring');
+assert.ok(!bindBlock.includes('autoPatch'), 'Dashboard binding must not retain retired auto-patch wiring');
+assert.ok(bindBlock.includes('bindIdentityControls(panel, `${prefix}_identity`)'), 'Dashboard must bind Identity master and child controls');
+
+const bannerStart = policy.indexOf('function installIdentityBanner()');
+const bannerEnd = policy.indexOf('function installConfigurationActions()', bannerStart);
+const bannerBlock = policy.slice(bannerStart, bannerEnd);
+assert.ok(bannerBlock.includes("document.getElementById('ct_identity_disabled_banner')"), 'stale Identity page banner must be removed');
+assert.ok(!bannerBlock.includes('Enable only the identity paths you need below.'), 'Identity page must not reference Dashboard-owned controls as local controls');
+assert.ok(!policy.includes('#profiles,#patch,#effective'), 'retired Security Patch page must not remain in layout selectors');
+

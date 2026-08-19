@@ -195,7 +195,7 @@ function injectStyles() {
     input[type="checkbox"].ct-switch:checked::after{transform:translateX(20px)!important;background:#ecfdf5!important}
     input[type="checkbox"].ct-switch:focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px!important}
     input[type="checkbox"].ct-switch:disabled{opacity:.5!important;cursor:not-allowed!important}
-    #dashboard,#info,#spoof,#profiles,#patch,#effective,#apps{padding-bottom:max(120px,calc(78px + env(safe-area-inset-bottom)))!important}
+    #dashboard,#info,#spoof,#profiles,#effective,#apps{padding-bottom:max(120px,calc(78px + env(safe-area-inset-bottom)))!important}
     @media(max-width:640px){.ct-feature-grid,.ct-choice-grid{grid-template-columns:1fr}.ct-action-grid{grid-template-columns:1fr!important}.identity-actions{display:grid!important;grid-template-columns:1fr!important;width:100%}.identity-actions>button{width:100%!important;min-width:0!important;white-space:normal}.grid-2{grid-template-columns:1fr!important}.panel{padding:16px}.ct-profile-item{align-items:flex-start;flex-wrap:wrap}.ct-profile-item button{width:100%}}
   `;
   document.head.appendChild(style);
@@ -369,8 +369,6 @@ function renderFeatureCenter() {
 function bindFeatureCenter(panel, prefix) {
   const globalToggle = panel.querySelector(`#${prefix}_global`);
   const keyboxToggle = panel.querySelector(`#${prefix}_keybox`);
-  const patchToggle = panel.querySelector(`#${prefix}_patch`);
-  const autoPatch = panel.querySelector(`#${prefix}_auto_patch`);
   const drmToggle = panel.querySelector(`#${prefix}_drm_passthrough`);
   const drmChildren = panel.querySelector(`#${prefix}_drm_children`);
   if (globalToggle) globalToggle.onchange = () => setLegacyToggle('global_mode',globalToggle.checked);
@@ -379,21 +377,6 @@ function bindFeatureCenter(panel, prefix) {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
     setLegacyToggle('drm_passthrough',drmToggle.checked);
   };
-  if (patchToggle) patchToggle.onchange = () => {
-    const enabled = patchToggle.checked;
-    savePolicy(next => {
-      next.features.securityPatch = enabled;
-      if (enabled && !next.securityPatch) next.securityPatch = defaultPatch();
-    }, enabled ? 'Security Patch enabled' : 'Security Patch disabled');
-  };
-  if (autoPatch) autoPatch.onchange = () => {
-    const enabled = autoPatch.checked;
-    savePolicy(next => PATCH_COMPONENTS.forEach(([key]) => {
-      const current = next.securityPatch[key] || {mode:'device_default'};
-      if (enabled) next.securityPatch[key] = {mode:'automatic'};
-      else if (current.mode === 'automatic') next.securityPatch[key] = {mode:'device_default'};
-    }), enabled ? 'Auto Security Patch enabled' : 'Auto Security Patch disabled');
-  }
   bindIdentityControls(panel, `${prefix}_identity`);
   panel.querySelectorAll('[data-open-tab]').forEach(button => { button.onclick = () => global.switchTab && global.switchTab(button.dataset.openTab); });
 }
@@ -482,17 +465,8 @@ function renderIdentityControls() {
 }
 
 function installIdentityBanner() {
-  const spoof = document.getElementById('spoof');
-  if (!spoof) return;
-  let banner = document.getElementById('ct_identity_disabled_banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'ct_identity_disabled_banner';
-    banner.className = 'ct-banner';
-    banner.textContent = 'Identity is currently disabled. Enable only the identity paths you need below.';
-    spoof.prepend(banner);
-  }
-  banner.hidden = identityEnabled();
+  const stale = document.getElementById('ct_identity_disabled_banner');
+  if (stale) stale.remove();
 }
 
 function installConfigurationActions() {
