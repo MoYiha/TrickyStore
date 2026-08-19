@@ -135,6 +135,7 @@ private fun VaultScreen(
     snackbar: SnackbarHostState,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val exportSuccess = stringResource(R.string.export_success)
     val exportFailed = stringResource(R.string.export_failed)
@@ -317,7 +318,7 @@ private fun VaultScreen(
                             success to failed
                         }
                         selectedNames = emptySet()
-                        snackbar.showSnackbar(context.getString(R.string.bulk_delete_result, result.first, result.second))
+                        snackbar.showSnackbar(resources.getString(R.string.bulk_delete_result, result.first, result.second))
                         refresh++
                     }
                 }) { Text(stringResource(R.string.delete)) }
@@ -422,7 +423,7 @@ private fun CreateScreen(
                                         validateXml = NativeCrypto::validateKeyboxXml,
                                     ) { displayName, bytes ->
                                         val certificateSerial = KeyboxCertificateIdentity.thirdCertificateSerial(bytes)
-                                    encryptOne(allocator.allocate(displayName, certificateSerial), bytes)
+                                        encryptOne(allocator.allocate(displayName, certificateSerial), bytes)
                                     }
                                 } catch (error: IOException) {
                                     throw IllegalArgumentException("invalid keybox source", error)

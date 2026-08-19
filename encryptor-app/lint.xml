@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- These count-bearing strings already have translations across the supported locales.
+         Keep the existing string resource type in V2.6.1 instead of silently changing plural
+         semantics for languages whose quantity rules need dedicated translation work. -->
+    <issue id="PluralsCandidate">
+        <ignore path="src/main/res/values/strings.xml" />
+    </issue>
+</lint>
