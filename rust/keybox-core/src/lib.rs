@@ -1,9 +1,10 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![forbid(unsafe_code)]
 
-use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey};
+use p256::pkcs8::{DecodePrivateKey as _, EncodePrivateKey as _, EncodePublicKey as _};
 use p256::SecretKey as P256SecretKey;
 use rsa::pkcs1::DecodeRsaPrivateKey;
+use rsa::pkcs8::{DecodePrivateKey as _, EncodePrivateKey as _, EncodePublicKey as _};
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use std::fmt;
 use zeroize::Zeroizing;
