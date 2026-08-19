@@ -19,7 +19,6 @@ cleverestricky-crypto-core = { path = "../crypto-core" }
 cleverestricky-keybox-core = { path = "../keybox-core" }
 cleverestricky-service-core = { path = "../service-core" }
 cleverestricky-xml-core = { path = "../xml-core" }
-der = { version = "=0.8.1", features = ["alloc", "oid"] }
 x509-der = { package = "der", version = "=0.8.1", features = ["alloc", "oid"] }
 getrandom = { workspace = true }
 libc = "0.2"
