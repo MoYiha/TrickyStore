@@ -150,6 +150,7 @@ private fun VaultScreen(
     var deleteTarget by remember { mutableStateOf<File?>(null) }
     var showBulkDelete by remember { mutableStateOf(false) }
     var selectedNames by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var searchQuery by remember { mutableStateOf("") }
 
     val exportLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -196,6 +197,16 @@ private fun VaultScreen(
         selectedNames = selectedNames.filterTo(LinkedHashSet()) { it in available }
     }
 
+    val normalizedQuery = searchQuery.trim()
+    val filteredFiles =
+        if (normalizedQuery.isEmpty()) {
+            files
+        } else {
+            files.filter { it.file.name.contains(normalizedQuery, ignoreCase = true) }
+        }
+    val filteredNames = filteredFiles.mapTo(LinkedHashSet()) { it.file.name }
+    val allFilteredSelected = filteredNames.isNotEmpty() && filteredNames.all { it in selectedNames }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -235,6 +246,43 @@ private fun VaultScreen(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                item(key = "vault-search") {
+                    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it.take(255) },
+                            label = { Text(stringResource(R.string.search_vault)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = stringResource(R.string.filtered_vault_summary, filteredFiles.size, files.size),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                enabled = filteredNames.isNotEmpty(),
+                                onClick = {
+                                    selectedNames =
+                                        if (allFilteredSelected) selectedNames - filteredNames
+                                        else selectedNames + filteredNames
+                                },
+                            ) {
+                                Text(
+                                    stringResource(
+                                        if (allFilteredSelected) R.string.clear_filtered_selection else R.string.select_filtered,
+                                    ),
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                TextButton(onClick = { searchQuery = "" }) {
+                                    Text(stringResource(R.string.clear_search))
+                                }
+                            }
+                        }
+                    }
+                }
                 if (selectedNames.isNotEmpty()) {
                     item(key = "bulk-actions") {
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -251,7 +299,17 @@ private fun VaultScreen(
                         }
                     }
                 }
-                items(files, key = { it.file.name }) { item ->
+                if (filteredFiles.isEmpty()) {
+                    item(key = "no-search-results") {
+                        Text(
+                            text = stringResource(R.string.no_vault_search_results),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                items(filteredFiles, key = { it.file.name }) { item ->
                     val file = item.file
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
@@ -327,7 +385,6 @@ private fun VaultScreen(
         )
     }
 }
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

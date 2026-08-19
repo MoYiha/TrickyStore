@@ -5,5 +5,6 @@
          semantics for languages whose quantity rules need dedicated translation work. -->
     <issue id="PluralsCandidate">
         <ignore path="src/main/res/values/strings.xml" />
+        <ignore path="src/main/res/values/vault_search.xml" />
     </issue>
 </lint>

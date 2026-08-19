@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_vault">البحث في ملفات CBOX</string>
+    <string name="filtered_vault_summary">عرض %1$d من %2$d</string>
+    <string name="select_filtered">تحديد النتائج المفلترة</string>
+    <string name="clear_filtered_selection">مسح تحديد الفلتر</string>
+    <string name="clear_search">مسح البحث</string>
+    <string name="no_vault_search_results">لا توجد ملفات CBOX تطابق البحث.</string>
+</resources>

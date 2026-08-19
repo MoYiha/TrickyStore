@@ -2692,64 +2692,517 @@
 (function (global) {
     'use strict';
     if (typeof document === 'undefined') return;
+
     const PAGE_SIZE = 5;
     const COPY = {
-        en: { selected:'selected', deleteSelected:'Delete selected', previous:'Previous', next:'Next', page:'Page {page} / {pages}', root:'Module root', managed:'Managed folder', cert:'Certificate #3 serial', certMissing:'Certificate #3 serial unavailable', deleteConfirm:'Delete this stored keybox?', bulkConfirm:'Delete {count} selected keyboxes?', bulkDone:'Deleted {count} keyboxes', keyboxesLoaded:'{count} Keyboxes Loaded' },
-        tr: { selected:'seçili', deleteSelected:'Seçilileri sil', previous:'Önceki', next:'Sonraki', page:'Sayfa {page} / {pages}', root:'Modül kökü', managed:'Yönetilen klasör', cert:'3. sertifika seri no', certMissing:'3. sertifika seri no yok', deleteConfirm:'Bu kayıtlı keybox silinsin mi?', bulkConfirm:'Seçili {count} keybox silinsin mi?', bulkDone:'{count} keybox silindi', keyboxesLoaded:'{count} Keybox Yüklendi' },
-        'zh-CN': { selected:'已选择', deleteSelected:'删除所选', previous:'上一页', next:'下一页', page:'第 {page} / {pages} 页', root:'模块根目录', managed:'受管目录', cert:'第 3 个证书序列号', certMissing:'无第 3 个证书序列号', deleteConfirm:'删除此已存储密钥盒？', bulkConfirm:'删除选中的 {count} 个密钥盒？', bulkDone:'已删除 {count} 个密钥盒', keyboxesLoaded:'已加载 {count} 个 Keybox' },
-        es: { selected:'seleccionados', deleteSelected:'Eliminar seleccionados', previous:'Anterior', next:'Siguiente', page:'Página {page} / {pages}', root:'Raíz del módulo', managed:'Carpeta administrada', cert:'Serie del certificado n.º 3', certMissing:'Serie del certificado n.º 3 no disponible', deleteConfirm:'¿Eliminar esta keybox guardada?', bulkConfirm:'¿Eliminar {count} keyboxes seleccionadas?', bulkDone:'Se eliminaron {count} keyboxes', keyboxesLoaded:'{count} Keyboxes cargadas' },
-        de: { selected:'ausgewählt', deleteSelected:'Auswahl löschen', previous:'Zurück', next:'Weiter', page:'Seite {page} / {pages}', root:'Modulstamm', managed:'Verwalteter Ordner', cert:'Seriennummer Zertifikat Nr. 3', certMissing:'Seriennummer Zertifikat Nr. 3 nicht verfügbar', deleteConfirm:'Diese gespeicherte Keybox löschen?', bulkConfirm:'{count} ausgewählte Keyboxen löschen?', bulkDone:'{count} Keyboxen gelöscht', keyboxesLoaded:'{count} Keyboxen geladen' },
-        ru: { selected:'выбрано', deleteSelected:'Удалить выбранные', previous:'Назад', next:'Далее', page:'Страница {page} / {pages}', root:'Корень модуля', managed:'Управляемая папка', cert:'Серийный номер сертификата №3', certMissing:'Серийный номер сертификата №3 недоступен', deleteConfirm:'Удалить этот сохраненный keybox?', bulkConfirm:'Удалить выбранные keybox: {count}?', bulkDone:'Удалено keybox: {count}', keyboxesLoaded:'Загружено Keybox: {count}' },
-        id: { selected:'dipilih', deleteSelected:'Hapus pilihan', previous:'Sebelumnya', next:'Berikutnya', page:'Halaman {page} / {pages}', root:'Root modul', managed:'Folder terkelola', cert:'Serial sertifikat #3', certMissing:'Serial sertifikat #3 tidak tersedia', deleteConfirm:'Hapus keybox tersimpan ini?', bulkConfirm:'Hapus {count} keybox terpilih?', bulkDone:'{count} keybox dihapus', keyboxesLoaded:'{count} Keybox dimuat' },
-        hi: { selected:'चयनित', deleteSelected:'चयनित हटाएँ', previous:'पिछला', next:'अगला', page:'पृष्ठ {page} / {pages}', root:'मॉड्यूल रूट', managed:'प्रबंधित फ़ोल्डर', cert:'सर्टिफिकेट #3 सीरियल', certMissing:'सर्टिफिकेट #3 सीरियल उपलब्ध नहीं', deleteConfirm:'यह सहेजा Keybox हटाएँ?', bulkConfirm:'चयनित {count} Keybox हटाएँ?', bulkDone:'{count} Keybox हटाए गए', keyboxesLoaded:'{count} Keybox लोड हुए' },
-        ar: { selected:'محدد', deleteSelected:'حذف المحدد', previous:'السابق', next:'التالي', page:'الصفحة {page} / {pages}', root:'جذر الوحدة', managed:'المجلد المدار', cert:'الرقم التسلسلي للشهادة 3', certMissing:'الرقم التسلسلي للشهادة 3 غير متاح', deleteConfirm:'حذف Keybox المحفوظ هذا؟', bulkConfirm:'حذف {count} من Keybox المحددة؟', bulkDone:'تم حذف {count} من Keybox', keyboxesLoaded:'تم تحميل {count} Keybox' }
+        en: {
+            selected: 'selected', deleteSelected: 'Delete selected', previous: 'Previous', next: 'Next', page: 'Page {page} / {pages}',
+            root: 'Module root', managed: 'Managed folder', cert: 'Certificate #3 serial', certMissing: 'Certificate #3 serial unavailable',
+            deleteConfirm: 'Delete this stored keybox?', bulkConfirm: 'Delete {count} selected keyboxes?', bulkDone: 'Deleted {count} keyboxes',
+            keyboxesLoaded: '{count} Keyboxes Loaded', selectFiltered: 'Select filtered', clearFiltered: 'Clear filtered selection',
+            search: 'Search', clear: 'Clear', verifySearchPlaceholder: 'Search verification results...', verifying: 'Verifying...',
+            noVerify: 'No keyboxes to verify', noVerifyMatch: 'No verification results match your search.', loading: 'Loading...',
+            noStored: 'No keyboxes stored.', noStoredMatch: 'No keyboxes match your filter.', delete: 'Delete'
+        },
+        tr: {
+            selected: 'seçili', deleteSelected: 'Seçilileri sil', previous: 'Önceki', next: 'Sonraki', page: 'Sayfa {page} / {pages}',
+            root: 'Modül kökü', managed: 'Yönetilen klasör', cert: '3. sertifika seri no', certMissing: '3. sertifika seri no yok',
+            deleteConfirm: 'Bu kayıtlı keybox silinsin mi?', bulkConfirm: 'Seçili {count} keybox silinsin mi?', bulkDone: '{count} keybox silindi',
+            keyboxesLoaded: '{count} Keybox Yüklendi', selectFiltered: 'Filtrelenenleri seç', clearFiltered: 'Filtre seçimini temizle',
+            search: 'Ara', clear: 'Temizle', verifySearchPlaceholder: 'Doğrulama sonuçlarında ara...', verifying: 'Doğrulanıyor...',
+            noVerify: 'Doğrulanacak keybox yok', noVerifyMatch: 'Aramanızla eşleşen doğrulama sonucu yok.', loading: 'Yükleniyor...',
+            noStored: 'Kayıtlı keybox yok.', noStoredMatch: 'Filtrenizle eşleşen keybox yok.', delete: 'Sil'
+        },
+        'zh-CN': {
+            selected: '已选择', deleteSelected: '删除所选', previous: '上一页', next: '下一页', page: '第 {page} / {pages} 页',
+            root: '模块根目录', managed: '受管目录', cert: '第 3 个证书序列号', certMissing: '无第 3 个证书序列号',
+            deleteConfirm: '删除此已存储密钥盒？', bulkConfirm: '删除选中的 {count} 个密钥盒？', bulkDone: '已删除 {count} 个密钥盒',
+            keyboxesLoaded: '已加载 {count} 个 Keybox', selectFiltered: '选择筛选结果', clearFiltered: '清除筛选选择',
+            search: '搜索', clear: '清除', verifySearchPlaceholder: '搜索验证结果...', verifying: '正在验证...',
+            noVerify: '没有可验证的 Keybox', noVerifyMatch: '没有符合搜索条件的验证结果。', loading: '正在加载...',
+            noStored: '没有已存储的 Keybox。', noStoredMatch: '没有符合筛选条件的 Keybox。', delete: '删除'
+        },
+        es: {
+            selected: 'seleccionados', deleteSelected: 'Eliminar seleccionados', previous: 'Anterior', next: 'Siguiente', page: 'Página {page} / {pages}',
+            root: 'Raíz del módulo', managed: 'Carpeta administrada', cert: 'Serie del certificado n.º 3', certMissing: 'Serie del certificado n.º 3 no disponible',
+            deleteConfirm: '¿Eliminar esta keybox guardada?', bulkConfirm: '¿Eliminar {count} keyboxes seleccionadas?', bulkDone: 'Se eliminaron {count} keyboxes',
+            keyboxesLoaded: '{count} Keyboxes cargadas', selectFiltered: 'Seleccionar filtradas', clearFiltered: 'Limpiar selección filtrada',
+            search: 'Buscar', clear: 'Limpiar', verifySearchPlaceholder: 'Buscar resultados de verificación...', verifying: 'Verificando...',
+            noVerify: 'No hay keyboxes para verificar', noVerifyMatch: 'Ningún resultado de verificación coincide con la búsqueda.', loading: 'Cargando...',
+            noStored: 'No hay keyboxes guardadas.', noStoredMatch: 'Ninguna keybox coincide con el filtro.', delete: 'Eliminar'
+        },
+        de: {
+            selected: 'ausgewählt', deleteSelected: 'Auswahl löschen', previous: 'Zurück', next: 'Weiter', page: 'Seite {page} / {pages}',
+            root: 'Modulstamm', managed: 'Verwalteter Ordner', cert: 'Seriennummer Zertifikat Nr. 3', certMissing: 'Seriennummer Zertifikat Nr. 3 nicht verfügbar',
+            deleteConfirm: 'Diese gespeicherte Keybox löschen?', bulkConfirm: '{count} ausgewählte Keyboxen löschen?', bulkDone: '{count} Keyboxen gelöscht',
+            keyboxesLoaded: '{count} Keyboxen geladen', selectFiltered: 'Gefilterte auswählen', clearFiltered: 'Gefilterte Auswahl löschen',
+            search: 'Suchen', clear: 'Leeren', verifySearchPlaceholder: 'Prüfergebnisse durchsuchen...', verifying: 'Prüfung läuft...',
+            noVerify: 'Keine Keyboxen zum Prüfen', noVerifyMatch: 'Keine Prüfergebnisse entsprechen der Suche.', loading: 'Wird geladen...',
+            noStored: 'Keine Keyboxen gespeichert.', noStoredMatch: 'Keine Keybox entspricht dem Filter.', delete: 'Löschen'
+        },
+        ru: {
+            selected: 'выбрано', deleteSelected: 'Удалить выбранные', previous: 'Назад', next: 'Далее', page: 'Страница {page} / {pages}',
+            root: 'Корень модуля', managed: 'Управляемая папка', cert: 'Серийный номер сертификата №3', certMissing: 'Серийный номер сертификата №3 недоступен',
+            deleteConfirm: 'Удалить этот сохраненный keybox?', bulkConfirm: 'Удалить выбранные keybox: {count}?', bulkDone: 'Удалено keybox: {count}',
+            keyboxesLoaded: 'Загружено Keybox: {count}', selectFiltered: 'Выбрать отфильтрованные', clearFiltered: 'Очистить выбор фильтра',
+            search: 'Поиск', clear: 'Очистить', verifySearchPlaceholder: 'Поиск по результатам проверки...', verifying: 'Проверка...',
+            noVerify: 'Нет keybox для проверки', noVerifyMatch: 'Нет результатов проверки, соответствующих поиску.', loading: 'Загрузка...',
+            noStored: 'Нет сохраненных keybox.', noStoredMatch: 'Нет keybox, соответствующих фильтру.', delete: 'Удалить'
+        },
+        id: {
+            selected: 'dipilih', deleteSelected: 'Hapus pilihan', previous: 'Sebelumnya', next: 'Berikutnya', page: 'Halaman {page} / {pages}',
+            root: 'Root modul', managed: 'Folder terkelola', cert: 'Serial sertifikat #3', certMissing: 'Serial sertifikat #3 tidak tersedia',
+            deleteConfirm: 'Hapus keybox tersimpan ini?', bulkConfirm: 'Hapus {count} keybox terpilih?', bulkDone: '{count} keybox dihapus',
+            keyboxesLoaded: '{count} Keybox dimuat', selectFiltered: 'Pilih yang difilter', clearFiltered: 'Hapus pilihan filter',
+            search: 'Cari', clear: 'Bersihkan', verifySearchPlaceholder: 'Cari hasil verifikasi...', verifying: 'Memverifikasi...',
+            noVerify: 'Tidak ada keybox untuk diverifikasi', noVerifyMatch: 'Tidak ada hasil verifikasi yang cocok dengan pencarian.', loading: 'Memuat...',
+            noStored: 'Tidak ada keybox tersimpan.', noStoredMatch: 'Tidak ada keybox yang cocok dengan filter.', delete: 'Hapus'
+        },
+        hi: {
+            selected: 'चयनित', deleteSelected: 'चयनित हटाएँ', previous: 'पिछला', next: 'अगला', page: 'पृष्ठ {page} / {pages}',
+            root: 'मॉड्यूल रूट', managed: 'प्रबंधित फ़ोल्डर', cert: 'सर्टिफिकेट #3 सीरियल', certMissing: 'सर्टिफिकेट #3 सीरियल उपलब्ध नहीं',
+            deleteConfirm: 'यह सहेजा Keybox हटाएँ?', bulkConfirm: 'चयनित {count} Keybox हटाएँ?', bulkDone: '{count} Keybox हटाए गए',
+            keyboxesLoaded: '{count} Keybox लोड हुए', selectFiltered: 'फ़िल्टर किए चुनें', clearFiltered: 'फ़िल्टर चयन साफ़ करें',
+            search: 'खोजें', clear: 'साफ़ करें', verifySearchPlaceholder: 'सत्यापन परिणाम खोजें...', verifying: 'सत्यापन हो रहा है...',
+            noVerify: 'सत्यापित करने के लिए Keybox नहीं', noVerifyMatch: 'खोज से मेल खाता सत्यापन परिणाम नहीं है।', loading: 'लोड हो रहा है...',
+            noStored: 'कोई सहेजा Keybox नहीं।', noStoredMatch: 'फ़िल्टर से मेल खाता Keybox नहीं है।', delete: 'हटाएँ'
+        },
+        ar: {
+            selected: 'محدد', deleteSelected: 'حذف المحدد', previous: 'السابق', next: 'التالي', page: 'الصفحة {page} / {pages}',
+            root: 'جذر الوحدة', managed: 'المجلد المدار', cert: 'الرقم التسلسلي للشهادة 3', certMissing: 'الرقم التسلسلي للشهادة 3 غير متاح',
+            deleteConfirm: 'حذف Keybox المحفوظ هذا؟', bulkConfirm: 'حذف {count} من Keybox المحددة؟', bulkDone: 'تم حذف {count} من Keybox',
+            keyboxesLoaded: 'تم تحميل {count} Keybox', selectFiltered: 'تحديد النتائج المفلترة', clearFiltered: 'مسح تحديد الفلتر',
+            search: 'بحث', clear: 'مسح', verifySearchPlaceholder: 'البحث في نتائج التحقق...', verifying: 'جارٍ التحقق...',
+            noVerify: 'لا توجد Keybox للتحقق', noVerifyMatch: 'لا توجد نتائج تحقق تطابق البحث.', loading: 'جارٍ التحميل...',
+            noStored: 'لا توجد Keybox محفوظة.', noStoredMatch: 'لا توجد Keybox تطابق الفلتر.', delete: 'حذف'
+        }
     };
+
     let inventory = [];
     let selected = new Set();
     let page = 1;
     let installed = false;
     let loading = false;
     let originalLoad = null;
-    function locale() { try { const value = global.CleveresI18n && global.CleveresI18n.locale; return COPY[value] ? value : 'en'; } catch (_) { return 'en'; } }
-    function t(key, values) { let value=(COPY[locale()]||COPY.en)[key]||COPY.en[key]||key; Object.entries(values||{}).forEach(([name,replacement])=>{ value=value.split('{'+name+'}').join(String(replacement)); }); return value; }
-    function statusLabel() { const node=document.getElementById('keyboxStatus'); if(!node)return; const match=(node.textContent||'').match(/(\d+)/); if(match)node.textContent=t('keyboxesLoaded',{count:match[1]}); }
+    let verificationItems = [];
+    let verificationPage = 1;
+    let verificationQuery = '';
+
+    function locale() {
+        try {
+            const value = global.CleveresI18n && global.CleveresI18n.locale;
+            return COPY[value] ? value : 'en';
+        } catch (_) {
+            return 'en';
+        }
+    }
+
+    function t(key, values) {
+        let value = (COPY[locale()] || COPY.en)[key] || COPY.en[key] || key;
+        Object.entries(values || {}).forEach(([name, replacement]) => {
+            value = value.split('{' + name + '}').join(String(replacement));
+        });
+        return value;
+    }
+
+    function statusLabel() {
+        const node = document.getElementById('keyboxStatus');
+        if (!node) return;
+        const match = (node.textContent || '').match(/(\d+)/);
+        if (match) node.textContent = t('keyboxesLoaded', { count: match[1] });
+    }
+
+    function filtered() {
+        const filter = (document.getElementById('keyboxFilter')?.value || '').trim().toLowerCase();
+        return filter
+            ? inventory.filter(item => (String(item.filename || '') + ' ' + String(item.certificate_serial || '')).toLowerCase().includes(filter))
+            : inventory.slice();
+    }
+
+    function toggleFilteredSelection() {
+        const items = filtered();
+        if (!items.length) return;
+        const allSelected = items.every(item => selected.has(item.id));
+        items.forEach(item => {
+            if (allSelected) selected.delete(item.id);
+            else selected.add(item.id);
+        });
+        render();
+    }
+
     function ensureControls() {
-        const list=document.getElementById('storedKeyboxesList'); if(!list||document.getElementById('ct_keybox_bulk'))return;
-        list.style.maxHeight='none'; list.style.overflowY='visible';
-        const toolbar=document.createElement('div'); toolbar.id='ct_keybox_bulk'; toolbar.style.cssText='display:flex;gap:8px;align-items:center;justify-content:space-between;margin:8px 0;flex-wrap:wrap;';
-        const count=document.createElement('span'); count.id='ct_keybox_selected_count'; count.style.cssText='font-size:.82em;color:#888;';
-        const button=document.createElement('button'); button.id='ct_keybox_delete_selected'; button.type='button'; button.className='danger'; button.style.cssText='padding:8px 12px;font-size:.82em;'; button.addEventListener('click',bulkDelete);
-        toolbar.append(count,button); list.parentNode.insertBefore(toolbar,list);
-        const pager=document.createElement('div'); pager.id='ct_keybox_pager'; pager.style.cssText='display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;'; list.insertAdjacentElement('afterend',pager);
+        const list = document.getElementById('storedKeyboxesList');
+        if (!list || document.getElementById('ct_keybox_bulk')) return;
+        list.style.maxHeight = 'none';
+        list.style.overflowY = 'visible';
+
+        const toolbar = document.createElement('div');
+        toolbar.id = 'ct_keybox_bulk';
+        toolbar.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:space-between;margin:8px 0;flex-wrap:wrap;';
+
+        const left = document.createElement('div');
+        left.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+        const count = document.createElement('span');
+        count.id = 'ct_keybox_selected_count';
+        count.style.cssText = 'font-size:.82em;color:#888;';
+        const selectFilteredButton = document.createElement('button');
+        selectFilteredButton.id = 'ct_keybox_select_filtered';
+        selectFilteredButton.type = 'button';
+        selectFilteredButton.style.cssText = 'padding:8px 12px;font-size:.82em;';
+        selectFilteredButton.addEventListener('click', toggleFilteredSelection);
+        left.append(count, selectFilteredButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.id = 'ct_keybox_delete_selected';
+        deleteButton.type = 'button';
+        deleteButton.className = 'danger';
+        deleteButton.style.cssText = 'padding:8px 12px;font-size:.82em;';
+        deleteButton.addEventListener('click', bulkDelete);
+        toolbar.append(left, deleteButton);
+        list.parentNode.insertBefore(toolbar, list);
+
+        const pager = document.createElement('div');
+        pager.id = 'ct_keybox_pager';
+        pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;';
+        list.insertAdjacentElement('afterend', pager);
     }
+
     function updateControls(pages) {
-        ensureControls(); const count=document.getElementById('ct_keybox_selected_count'); const button=document.getElementById('ct_keybox_delete_selected');
-        if(count)count.textContent=selected.size+' '+t('selected'); if(button){button.textContent=t('deleteSelected');button.disabled=selected.size===0;}
-        const pager=document.getElementById('ct_keybox_pager'); if(!pager)return; pager.innerHTML='';
-        const prev=document.createElement('button'); prev.type='button'; prev.textContent=t('previous'); prev.disabled=page<=1; prev.addEventListener('click',()=>{page--;render();});
-        const label=document.createElement('span'); label.style.cssText='font-size:.82em;color:#888;'; label.textContent=t('page',{page,pages});
-        const next=document.createElement('button'); next.type='button'; next.textContent=t('next'); next.disabled=page>=pages; next.addEventListener('click',()=>{page++;render();}); pager.append(prev,label,next);
+        ensureControls();
+        const count = document.getElementById('ct_keybox_selected_count');
+        const deleteButton = document.getElementById('ct_keybox_delete_selected');
+        const selectFilteredButton = document.getElementById('ct_keybox_select_filtered');
+        const visible = filtered();
+        const allVisibleSelected = visible.length > 0 && visible.every(item => selected.has(item.id));
+
+        if (count) count.textContent = selected.size + ' ' + t('selected');
+        if (deleteButton) {
+            deleteButton.textContent = t('deleteSelected');
+            deleteButton.disabled = selected.size === 0;
+        }
+        if (selectFilteredButton) {
+            selectFilteredButton.textContent = allVisibleSelected ? t('clearFiltered') : t('selectFiltered');
+            selectFilteredButton.disabled = visible.length === 0;
+        }
+
+        const pager = document.getElementById('ct_keybox_pager');
+        if (!pager) return;
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.textContent = t('previous');
+        prev.disabled = page <= 1;
+        prev.addEventListener('click', () => { page--; render(); });
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:.82em;color:#888;';
+        label.textContent = t('page', { page, pages });
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.textContent = t('next');
+        next.disabled = page >= pages;
+        next.addEventListener('click', () => { page++; render(); });
+        pager.append(prev, label, next);
     }
-    function filtered() { const filter=(document.getElementById('keyboxFilter')?.value||'').toLowerCase(); return filter?inventory.filter(item=>(item.filename+' '+(item.certificate_serial||'')).toLowerCase().includes(filter)):inventory.slice(); }
+
     function render() {
-        const list=document.getElementById('storedKeyboxesList'); if(!list)return; ensureControls();
-        const clear=document.getElementById('clearKeyboxFilterBtn'); const filter=document.getElementById('keyboxFilter'); if(clear)clear.style.display=filter&&filter.value?'flex':'none';
-        const items=filtered(); const pages=Math.max(1,Math.ceil(items.length/PAGE_SIZE)); page=Math.min(Math.max(1,page),pages); list.innerHTML='';
-        if(loading){const n=document.createElement('div');n.style.cssText='padding:10px;text-align:center;color:#888';n.textContent='Loading...';list.appendChild(n);updateControls(pages);return;}
-        if(items.length===0){const n=document.createElement('div');n.style.cssText='padding:10px;text-align:center;color:#666';n.textContent=inventory.length?'No keyboxes match your filter.':'No keyboxes stored.';list.appendChild(n);updateControls(pages);return;}
-        items.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE).forEach(item=>{
-            const row=document.createElement('div');row.className='row';row.style.cssText='padding:10px;border-bottom:1px solid var(--border);gap:10px;align-items:center;';
-            const box=document.createElement('input');box.type='checkbox';box.checked=selected.has(item.id);box.setAttribute('aria-label','Select '+item.filename);box.addEventListener('change',()=>{if(box.checked)selected.add(item.id);else selected.delete(item.id);updateControls(pages);});
-            const body=document.createElement('div');body.style.cssText='flex:1;min-width:0;';const name=document.createElement('div');name.style.cssText='overflow-wrap:anywhere;font-weight:500';name.textContent=String(item.filename||'');
-            const meta=document.createElement('div');meta.style.cssText='font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere';const scope=item.scope==='root'?t('root'):t('managed');const cert=item.certificate_serial?t('cert')+': '+item.certificate_serial:t('certMissing');meta.textContent=scope+' | '+cert;body.append(name,meta);
-            const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.style.cssText='padding:8px 12px;font-size:.82em;';remove.textContent='Delete';remove.addEventListener('click',()=>deleteOne(item));row.append(box,body,remove);list.appendChild(row);
-        }); updateControls(pages);
+        const list = document.getElementById('storedKeyboxesList');
+        if (!list) return;
+        ensureControls();
+        const clear = document.getElementById('clearKeyboxFilterBtn');
+        const filter = document.getElementById('keyboxFilter');
+        if (clear) clear.style.display = filter && filter.value ? 'flex' : 'none';
+
+        const items = filtered();
+        const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        page = Math.min(Math.max(1, page), pages);
+        list.innerHTML = '';
+
+        if (loading) {
+            const node = document.createElement('div');
+            node.style.cssText = 'padding:10px;text-align:center;color:#888';
+            node.textContent = t('loading');
+            list.appendChild(node);
+            updateControls(pages);
+            return;
+        }
+        if (items.length === 0) {
+            const node = document.createElement('div');
+            node.style.cssText = 'padding:10px;text-align:center;color:#666';
+            node.textContent = inventory.length ? t('noStoredMatch') : t('noStored');
+            list.appendChild(node);
+            updateControls(pages);
+            return;
+        }
+
+        items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.style.cssText = 'padding:10px;border-bottom:1px solid var(--border);gap:10px;align-items:center;';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = selected.has(item.id);
+            box.setAttribute('aria-label', 'Select ' + item.filename);
+            box.addEventListener('change', () => {
+                if (box.checked) selected.add(item.id);
+                else selected.delete(item.id);
+                updateControls(pages);
+            });
+
+            const body = document.createElement('div');
+            body.style.cssText = 'flex:1;min-width:0;';
+            const name = document.createElement('div');
+            name.style.cssText = 'overflow-wrap:anywhere;font-weight:500';
+            name.textContent = String(item.filename || '');
+            const meta = document.createElement('div');
+            meta.style.cssText = 'font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere';
+            const scope = item.scope === 'root' ? t('root') : t('managed');
+            const cert = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+            meta.textContent = scope + ' | ' + cert;
+            body.append(name, meta);
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'danger';
+            remove.style.cssText = 'padding:8px 12px;font-size:.82em;';
+            remove.textContent = t('delete');
+            remove.addEventListener('click', () => deleteOne(item));
+            row.append(box, body, remove);
+            list.appendChild(row);
+        });
+        updateControls(pages);
     }
-    async function refreshInventory(){if(typeof global.fetchAuth!=='function')return;loading=true;render();try{const response=await global.fetchAuth('/api/keybox_inventory');if(!response.ok)throw new Error(await response.text());const data=await response.json();inventory=Array.isArray(data)?data:[];const ids=new Set(inventory.map(item=>item.id));selected=new Set(Array.from(selected).filter(id=>ids.has(id)));}catch(error){if(typeof global.notify==='function')global.notify('Error: '+error.message,'error');}finally{loading=false;render();statusLabel();}}
-    async function deleteOne(item){if(typeof global.confirm==='function'&&!global.confirm(t('deleteConfirm')))return;const body=new URLSearchParams();body.set('filename',item.filename);body.set('scope',item.scope);const response=await global.fetchAuth('/api/delete_keybox',{method:'POST',body});if(!response.ok){if(typeof global.notify==='function')global.notify('Error: '+await response.text(),'error');return;}selected.delete(item.id);await reloadAll();}
-    async function bulkDelete(){const items=inventory.filter(item=>selected.has(item.id));if(!items.length)return;if(typeof global.confirm==='function'&&!global.confirm(t('bulkConfirm',{count:items.length})))return;const body=new URLSearchParams();body.set('items',JSON.stringify(items.map(item=>({filename:item.filename,scope:item.scope}))));const response=await global.fetchAuth('/api/delete_keyboxes',{method:'POST',body});let payload=null;try{payload=await response.clone().json();}catch(_){}if(!response.ok&&!payload){if(typeof global.notify==='function')global.notify('Error: '+await response.text(),'error');return;}if(typeof global.notify==='function')global.notify(t('bulkDone',{count:payload?.deleted??items.length}),payload?.failed?'error':'normal');selected.clear();await reloadAll();}
-    async function reloadAll(){if(typeof originalLoad==='function')await originalLoad();await refreshInventory();if(typeof global.loadKeyInfo==='function')global.loadKeyInfo();}
-    async function verify(){const result=document.getElementById('verifyResult');if(result)result.textContent='Verifying...';const response=await global.fetchAuth('/api/verify_keyboxes',{method:'POST'});if(!response.ok)throw new Error(await response.text());const data=await response.json();if(!result)return;result.innerHTML='';if(!Array.isArray(data)||data.length===0){result.textContent='No keyboxes to verify';return;}data.forEach(item=>{const row=document.createElement('div');row.style.cssText='padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere';const title=document.createElement('div');title.style.fontWeight='600';title.textContent=String(item.filename||'')+' - '+String(item.status||'');const meta=document.createElement('div');meta.style.cssText='font-size:.8em;color:#888;margin-top:2px';meta.textContent=item.certificate_serial?t('cert')+': '+item.certificate_serial:t('certMissing');const details=document.createElement('div');details.style.cssText='font-size:.8em;color:#aaa;margin-top:2px';details.textContent=String(item.details||'');row.append(title,meta,details);result.appendChild(row);});}
-    function install(){if(installed||!document.getElementById('storedKeyboxesList')||typeof global.loadKeyboxes!=='function'){global.setTimeout(install,50);return;}installed=true;originalLoad=global.loadKeyboxes;global.renderKeyboxes=render;global.loadKeyboxes=async function(){const value=await originalLoad.apply(this,arguments);await refreshInventory();return value;};global.verifyKeyboxes=verify;const filter=document.getElementById('keyboxFilter');if(filter)filter.addEventListener('input',()=>{page=1;render();});ensureControls();refreshInventory();statusLabel();const status=document.getElementById('keyboxStatus');if(status&&typeof global.MutationObserver==='function')new global.MutationObserver(statusLabel).observe(status,{childList:true,characterData:true,subtree:true});}
-    if(document.readyState==='complete')global.setTimeout(install,0);else if(typeof global.addEventListener==='function')global.addEventListener('load',install,{once:true});
+
+    async function refreshInventory() {
+        if (typeof global.fetchAuth !== 'function') return;
+        loading = true;
+        render();
+        try {
+            const response = await global.fetchAuth('/api/keybox_inventory');
+            if (!response.ok) throw new Error(await response.text());
+            const data = await response.json();
+            inventory = Array.isArray(data) ? data : [];
+            const ids = new Set(inventory.map(item => item.id));
+            selected = new Set(Array.from(selected).filter(id => ids.has(id)));
+        } catch (error) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + error.message, 'error');
+        } finally {
+            loading = false;
+            render();
+            statusLabel();
+        }
+    }
+
+    async function deleteOne(item) {
+        if (typeof global.confirm === 'function' && !global.confirm(t('deleteConfirm'))) return;
+        const body = new URLSearchParams();
+        body.set('filename', item.filename);
+        body.set('scope', item.scope);
+        const response = await global.fetchAuth('/api/delete_keybox', { method: 'POST', body });
+        if (!response.ok) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error');
+            return;
+        }
+        selected.delete(item.id);
+        await reloadAll();
+    }
+
+    async function bulkDelete() {
+        const items = inventory.filter(item => selected.has(item.id));
+        if (!items.length) return;
+        if (typeof global.confirm === 'function' && !global.confirm(t('bulkConfirm', { count: items.length }))) return;
+        const body = new URLSearchParams();
+        body.set('items', JSON.stringify(items.map(item => ({ filename: item.filename, scope: item.scope }))));
+        const response = await global.fetchAuth('/api/delete_keyboxes', { method: 'POST', body });
+        let payload = null;
+        try { payload = await response.clone().json(); } catch (_) {}
+        if (!response.ok && !payload) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error');
+            return;
+        }
+        if (typeof global.notify === 'function') {
+            global.notify(t('bulkDone', { count: payload?.deleted ?? items.length }), payload?.failed ? 'error' : 'normal');
+        }
+        selected.clear();
+        await reloadAll();
+    }
+
+    async function reloadAll() {
+        if (typeof originalLoad === 'function') await originalLoad();
+        await refreshInventory();
+        if (typeof global.loadKeyInfo === 'function') global.loadKeyInfo();
+    }
+
+    function ensureVerificationControls() {
+        const result = document.getElementById('verifyResult');
+        if (!result || document.getElementById('ct_verify_controls')) return;
+
+        const controls = document.createElement('div');
+        controls.id = 'ct_verify_controls';
+        controls.style.cssText = 'display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap;';
+        const input = document.createElement('input');
+        input.id = 'ct_verify_filter';
+        input.type = 'search';
+        input.placeholder = t('verifySearchPlaceholder');
+        input.setAttribute('aria-label', t('verifySearchPlaceholder'));
+        input.spellcheck = false;
+        input.autocomplete = 'off';
+        input.style.cssText = 'flex:1;min-width:180px;';
+
+        const searchButton = document.createElement('button');
+        searchButton.id = 'ct_verify_search';
+        searchButton.type = 'button';
+        searchButton.textContent = t('search');
+        const applySearch = () => {
+            verificationQuery = input.value.trim().toLowerCase();
+            verificationPage = 1;
+            renderVerification();
+        };
+        searchButton.addEventListener('click', applySearch);
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applySearch();
+            }
+        });
+
+        const clearButton = document.createElement('button');
+        clearButton.id = 'ct_verify_clear';
+        clearButton.type = 'button';
+        clearButton.textContent = t('clear');
+        clearButton.addEventListener('click', () => {
+            input.value = '';
+            verificationQuery = '';
+            verificationPage = 1;
+            renderVerification();
+            input.focus();
+        });
+        controls.append(input, searchButton, clearButton);
+        result.parentNode.insertBefore(controls, result);
+
+        const pager = document.createElement('div');
+        pager.id = 'ct_verify_pager';
+        pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;';
+        result.insertAdjacentElement('afterend', pager);
+    }
+
+    function filteredVerification() {
+        if (!verificationQuery) return verificationItems.slice();
+        return verificationItems.filter(item => {
+            const haystack = [item.filename, item.status, item.certificate_serial, item.details]
+                .map(value => String(value || ''))
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(verificationQuery);
+        });
+    }
+
+    function updateVerificationPager(pages) {
+        ensureVerificationControls();
+        const pager = document.getElementById('ct_verify_pager');
+        if (!pager) return;
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.textContent = t('previous');
+        prev.disabled = verificationPage <= 1;
+        prev.addEventListener('click', () => { verificationPage--; renderVerification(); });
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:.82em;color:#888;';
+        label.textContent = t('page', { page: verificationPage, pages });
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.textContent = t('next');
+        next.disabled = verificationPage >= pages;
+        next.addEventListener('click', () => { verificationPage++; renderVerification(); });
+        pager.append(prev, label, next);
+    }
+
+    function renderVerification() {
+        const result = document.getElementById('verifyResult');
+        if (!result) return;
+        ensureVerificationControls();
+        const input = document.getElementById('ct_verify_filter');
+        if (input) input.placeholder = t('verifySearchPlaceholder');
+        const searchButton = document.getElementById('ct_verify_search');
+        if (searchButton) searchButton.textContent = t('search');
+        const clearButton = document.getElementById('ct_verify_clear');
+        if (clearButton) clearButton.textContent = t('clear');
+
+        const items = filteredVerification();
+        const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        verificationPage = Math.min(Math.max(1, verificationPage), pages);
+        result.innerHTML = '';
+
+        if (verificationItems.length === 0) {
+            result.textContent = t('noVerify');
+            updateVerificationPager(pages);
+            return;
+        }
+        if (items.length === 0) {
+            result.textContent = t('noVerifyMatch');
+            updateVerificationPager(pages);
+            return;
+        }
+
+        items.slice((verificationPage - 1) * PAGE_SIZE, verificationPage * PAGE_SIZE).forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere';
+            const title = document.createElement('div');
+            title.style.fontWeight = '600';
+            title.textContent = String(item.filename || '') + ' - ' + String(item.status || '');
+            const meta = document.createElement('div');
+            meta.style.cssText = 'font-size:.8em;color:#888;margin-top:2px';
+            meta.textContent = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+            const details = document.createElement('div');
+            details.style.cssText = 'font-size:.8em;color:#aaa;margin-top:2px';
+            details.textContent = String(item.details || '');
+            row.append(title, meta, details);
+            result.appendChild(row);
+        });
+        updateVerificationPager(pages);
+    }
+
+    async function verify() {
+        const result = document.getElementById('verifyResult');
+        ensureVerificationControls();
+        if (result) result.textContent = t('verifying');
+        const response = await global.fetchAuth('/api/verify_keyboxes', { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        verificationItems = Array.isArray(data) ? data : [];
+        verificationPage = 1;
+        verificationQuery = '';
+        const input = document.getElementById('ct_verify_filter');
+        if (input) input.value = '';
+        renderVerification();
+    }
+
+    function install() {
+        if (installed || !document.getElementById('storedKeyboxesList') || typeof global.loadKeyboxes !== 'function') {
+            global.setTimeout(install, 50);
+            return;
+        }
+        installed = true;
+        originalLoad = global.loadKeyboxes;
+        global.renderKeyboxes = render;
+        global.loadKeyboxes = async function () {
+            const value = await originalLoad.apply(this, arguments);
+            await refreshInventory();
+            return value;
+        };
+        global.verifyKeyboxes = verify;
+        const filter = document.getElementById('keyboxFilter');
+        if (filter) filter.addEventListener('input', () => { page = 1; render(); });
+        ensureControls();
+        ensureVerificationControls();
+        refreshInventory();
+        statusLabel();
+        const status = document.getElementById('keyboxStatus');
+        if (status && typeof global.MutationObserver === 'function') {
+            new global.MutationObserver(statusLabel).observe(status, { childList: true, characterData: true, subtree: true });
+        }
+    }
+
+    if (document.readyState === 'complete') global.setTimeout(install, 0);
+    else if (typeof global.addEventListener === 'function') global.addEventListener('load', install, { once: true });
 })(window);

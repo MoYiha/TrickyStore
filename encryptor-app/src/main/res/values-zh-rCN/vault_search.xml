@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_vault">搜索 CBOX 文件</string>
+    <string name="filtered_vault_summary">显示 %1$d / %2$d</string>
+    <string name="select_filtered">选择筛选结果</string>
+    <string name="clear_filtered_selection">清除筛选选择</string>
+    <string name="clear_search">清除搜索</string>
+    <string name="no_vault_search_results">没有符合搜索条件的 CBOX 文件。</string>
+</resources>
