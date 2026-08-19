@@ -118,7 +118,7 @@ function stateForSave(source) {
       telephonyIdentity: Boolean(features.telephonyIdentity),
       regionIdentity: Boolean(features.regionIdentity),
       identityRefresh: Boolean(features.identityRefresh),
-      securityPatch: Boolean(features.securityPatch)
+      securityPatch: FEATURE_KEYS.some(([key]) => Boolean(features[key]))
     },
     securityPatch: {
       automaticThresholdMonths: Math.min(24, Math.max(1, Number(patch.automaticThresholdMonths) || 6)),
@@ -343,11 +343,12 @@ function buildFeatureCenterMarkup(prefix) {
   const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
-  const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
+  const identityOn = policyIdentityEnabled();
+  const identityCard = `<div class="ct-feature-card"><div class="row"><div style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Configure Identity features, Security Patch and camera visibility in one place.</span></div><span class="ct-readonly-state">${identityOn ? 'Enabled' : 'Disabled'}</span></div>${helpMarkup('Identity owns its switches on the Identity page. Security Patch follows the Identity master state instead of exposing a second master toggle.')}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity</button></div>`;
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
   return `<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
-    ${identityCards}
+    ${identityCard}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
     <div class="ct-feature-card"><strong>Keybox / TEE path</strong><p>Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.</p>${helpMarkup('The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.')}<button type="button" data-open-tab="keys" style="width:100%;margin-top:10px">Open keyboxes</button></div>
@@ -377,7 +378,6 @@ function bindFeatureCenter(panel, prefix) {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
     setLegacyToggle('drm_passthrough',drmToggle.checked);
   };
-  bindIdentityControls(panel, `${prefix}_identity`);
   panel.querySelectorAll('[data-open-tab]').forEach(button => { button.onclick = () => global.switchTab && global.switchTab(button.dataset.openTab); });
 }
 
@@ -445,7 +445,10 @@ function bindIdentityControls(panel, prefix) {
   if (master) master.onchange = () => {
     const enabled = master.checked;
     if (children) children.hidden = !enabled;
-    savePolicy(next => FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; }), enabled ? 'Identity enabled' : 'Identity disabled');
+    savePolicy(next => {
+      FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; });
+      next.features.securityPatch = enabled;
+    }, enabled ? 'Identity enabled' : 'Identity disabled');
   };
   panel.querySelectorAll('[data-policy-feature]').forEach(toggle => {
     toggle.onchange = () => {
@@ -456,12 +459,28 @@ function bindIdentityControls(panel, prefix) {
 }
 
 function installIdentityControls() {
-  const stale = document.getElementById('ct_identity_controls');
-  if (stale) stale.remove();
+  const spoof = document.getElementById('spoof');
+  if (!spoof) return;
+  let panel = document.getElementById('ct_identity_controls');
+  if (panel) return;
+  panel = document.createElement('div');
+  panel.id = 'ct_identity_controls';
+  panel.className = 'panel';
+  panel.innerHTML = '<h3>Identity Controls</h3><div class="scope-note">Identity is enabled here. Its child identity paths appear under the master switch, and Security Patch uses the same master state.</div><div class="ct-control-host"></div>';
+  const identityManager = [...spoof.querySelectorAll('.panel')].find(item => /^Identity Manager$/i.test((item.querySelector('h3')?.textContent || '').trim()));
+  if (identityManager) spoof.insertBefore(panel, identityManager);
+  else spoof.prepend(panel);
 }
 
 function renderIdentityControls() {
+  if (!policyState) return;
   installIdentityControls();
+  const panel = document.getElementById('ct_identity_controls');
+  if (!panel) return;
+  const host = panel.querySelector('.ct-control-host');
+  if (!host) return;
+  host.innerHTML = identityControlsMarkup('ct_identity_page');
+  bindIdentityControls(panel,'ct_identity_page');
 }
 
 function installIdentityBanner() {
@@ -629,7 +648,7 @@ function staticPages() {
   if (!patchHost && spoofPage) {
     patchHost = document.createElement('div');
     patchHost.id = 'ct_identity_patch';
-    patchHost.innerHTML = `<div class="panel"><h3>Security Patch</h3><div class="row"><label for="ct_patch_master" style="flex:1;padding-right:12px"><strong style="color:#fff">Security Patch</strong></label>${switchMarkup('ct_patch_master',false)}</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
+    patchHost.innerHTML = `<div class="panel"><h3>Security Patch</h3><div id="ct_patch_identity_state" class="scope-note">Security Patch follows the Identity master switch.</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
     const identityManager = [...spoofPage.querySelectorAll('.panel')].find(panel => /^Identity Manager$/i.test((panel.querySelector('h3')?.textContent || '').trim()));
     if (identityManager) identityManager.insertAdjacentElement('afterend', patchHost);
     else spoofPage.prepend(patchHost);
@@ -677,25 +696,35 @@ function readPatchEditor(prefix, component, allowInherit) {
 
 function renderPatchPage() {
   if (!policyState) return;
-  const master = document.getElementById('ct_patch_master');
   const children = document.getElementById('ct_patch_children');
+  const identityState = document.getElementById('ct_patch_identity_state');
   const auto = document.getElementById('ct_patch_auto');
   const threshold = document.getElementById('ct_patch_threshold');
   const host = document.getElementById('ct_patch_components');
-  if (!master || !children || !auto || !threshold || !host) return;
-  const enabled = Boolean(policyState.features.securityPatch);
-  master.checked = enabled;
-  children.hidden = !enabled;
+  const saveButton = document.getElementById('ct_patch_save');
+  if (!children || !identityState || !auto || !threshold || !host || !saveButton) return;
+  const identityOn = policyIdentityEnabled();
+  children.hidden = !identityOn;
+  identityState.textContent = identityOn
+    ? 'Security Patch is an Identity setting and follows the Identity master switch above.'
+    : 'Enable Identity above to configure Security Patch.';
   auto.checked = isAutoPatch();
   threshold.value = String(policyState.securityPatch.automaticThresholdMonths || 6);
   host.innerHTML = PATCH_COMPONENTS.map(([key,title]) => patchEditor('ct_patch',key,title,policyState.securityPatch[key],false)).join('');
   PATCH_COMPONENTS.forEach(([key]) => bindPatchEditor('ct_patch',key));
-  master.onchange = event => savePolicy(next => { next.features.securityPatch = event.target.checked; },event.target.checked ? 'Security Patch enabled' : 'Security Patch disabled');
-  auto.onchange = event => savePolicy(next => PATCH_COMPONENTS.forEach(([key]) => {
-    if (event.target.checked) next.securityPatch[key] = {mode:'automatic'};
-    else if ((next.securityPatch[key] || {}).mode === 'automatic') next.securityPatch[key] = {mode:'device_default'};
-  }),event.target.checked ? 'Auto Security Patch enabled' : 'Auto Security Patch disabled');
-  document.getElementById('ct_patch_save').onclick = () => savePolicy(next => {
+  auto.disabled = !identityOn;
+  threshold.disabled = !identityOn;
+  saveButton.disabled = !identityOn;
+  host.querySelectorAll('select,input').forEach(control => { control.disabled = !identityOn; });
+  auto.onchange = event => savePolicy(next => {
+    next.features.securityPatch = true;
+    PATCH_COMPONENTS.forEach(([key]) => {
+      if (event.target.checked) next.securityPatch[key] = {mode:'automatic'};
+      else if ((next.securityPatch[key] || {}).mode === 'automatic') next.securityPatch[key] = {mode:'device_default'};
+    });
+  },event.target.checked ? 'Auto Security Patch enabled' : 'Auto Security Patch disabled');
+  saveButton.onclick = () => savePolicy(next => {
+    next.features.securityPatch = true;
     next.securityPatch.automaticThresholdMonths = Number(threshold.value) || 6;
     PATCH_COMPONENTS.forEach(([key]) => { next.securityPatch[key] = readPatchEditor('ct_patch',key,false); });
   },'Security Patch policy saved');

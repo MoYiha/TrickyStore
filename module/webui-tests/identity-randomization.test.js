@@ -22,11 +22,11 @@ const featureStart = policy.indexOf('function buildFeatureCenterMarkup(prefix)')
 const featureEnd = policy.indexOf('function renderFeatureCenter()', featureStart);
 assert.ok(featureStart >= 0 && featureEnd > featureStart, 'Feature Center function is missing');
 const featureCenter = policy.slice(featureStart, featureEnd);
-assert.ok(featureCenter.includes('identityFeatureCardsMarkup(`${prefix}_identity`)'), 'Identity master and child controls must live on Dashboard');
-assert.ok(policy.includes('bindIdentityControls(panel, `${prefix}_identity`)'), 'Dashboard Identity controls must be bound');
-assert.ok(!policy.includes("panel.id = 'ct_identity_controls'"), 'Identity Controls must not return as a separate Identity-page panel');
-assert.ok(policy.includes("const stale = document.getElementById('ct_identity_controls')"), 'legacy Identity Controls panel cleanup is missing');
-assert.ok(policy.includes('function renderIdentityControls()'), 'Identity Controls cleanup renderer is missing');
+assert.ok(featureCenter.includes('Open Identity'), 'Dashboard must navigate into Identity');
+assert.ok(!featureCenter.includes('identityFeatureCardsMarkup(`${prefix}_identity`)'), 'Identity switches must not remain on Dashboard');
+assert.ok(policy.includes("panel.id = 'ct_identity_controls'"), 'Identity Controls panel must live on the Identity page');
+assert.ok(policy.includes("host.innerHTML = identityControlsMarkup('ct_identity_page')"), 'Identity page must render Identity master and child controls');
+assert.ok(policy.includes("bindIdentityControls(panel,'ct_identity_page')"), 'Identity page controls must be bound');
 
 console.log('Identity randomization and placement regression tests passed');
 
