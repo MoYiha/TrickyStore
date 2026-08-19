@@ -43,6 +43,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           def replace_exact(path, old, new, expected=1):
               p = Path(path)
@@ -112,6 +113,24 @@ jobs:
               '"Too many keybox files"',
               '"Too many keybox XML files"',
           )
+
+          replace_exact(
+              'encryptor-app/src/main/java/cleveres/tricky/encryptor/SecureMainActivity.kt',
+              'import androidx.compose.foundation.layout.weight\n',
+              '',
+          )
+
+          vault_path = Path('encryptor-app/src/main/java/cleveres/tricky/encryptor/VaultStore.kt')
+          vault_text = vault_path.read_text(encoding='utf-8')
+          vault_text, count = re.subn(
+              r"val basename = sourceName\.substringAfterLast\('/'\)\.substringAfterLast\([^\n]*\)",
+              "val basename = sourceName.substringAfterLast('/').substringAfterLast(92.toChar())",
+              vault_text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'Vault basename repair count={count}')
+          vault_path.write_text(vault_text, encoding='utf-8')
           PY
       - name: Format and validate
         shell: bash
