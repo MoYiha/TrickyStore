@@ -50,12 +50,10 @@ internal object StoredKeyboxInventory {
     fun runtimeXmlSources(configDir: File): List<Source> {
         val sources = list(configDir).filter { it.isXml }
         require(sources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
-        val seen = HashSet<String>()
-        sources.forEach { source ->
-            require(seen.add(source.filename.lowercase(Locale.ROOT))) {
-                "Duplicate keybox filename across storage scopes"
-            }
-        }
+        // Preserve the V2.6.0 upgrade contract: a legacy XML in the module root and a
+        // managed XML in keyboxes/ may share the same basename. Source IDs remain
+        // scope-qualified for cache, inventory and deletion, while CertHack intentionally
+        // groups same-name keyboxes into one selectable filename pool.
         return sources
     }
 
