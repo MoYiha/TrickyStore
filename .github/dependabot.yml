@@ -31,3 +31,27 @@ updates:
       interval: "daily"
     labels:
       - "dependencies"
+    groups:
+      rustcrypto-stack:
+        applies-to: version-updates
+        patterns:
+          - "aes-gcm"
+          - "der"
+          - "getrandom"
+          - "p256"
+          - "pbkdf2"
+          - "rsa"
+          - "sha2"
+          - "signature"
+          - "x509-cert"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "signature"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "der"
+        update-types:
+          - "version-update:semver-major"

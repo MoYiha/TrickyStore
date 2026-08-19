@@ -1,11 +1,11 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![forbid(unsafe_code)]
 
-use aes_gcm::aead::{AeadInPlace, KeyInit};
-use aes_gcm::{Aes256Gcm, Nonce, Tag};
+use aes_gcm::aead::{AeadInOut, KeyInit};
+use aes_gcm::Aes256Gcm;
 use base64::Engine as _;
 use p256::ecdsa::{Signature as EcSignature, VerifyingKey as EcVerifyingKey};
-use pbkdf2::pbkdf2_hmac;
+use pbkdf2::{pbkdf2_hmac, sha2::Sha256 as Pbkdf2Sha256};
 use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey as RsaVerifyingKey};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::RsaPublicKey;
@@ -364,8 +364,7 @@ fn encrypt_backup_owned_with_nonce(
     };
     key.zeroize();
 
-    let nonce = Nonce::from_slice(iv);
-    let tag = match cipher.encrypt_in_place_detached(nonce, header, body) {
+    let tag = match cipher.encrypt_inout_detached(iv.into(), header, body.into()) {
         Ok(tag) => tag,
         Err(_) => {
             output.zeroize();
@@ -415,15 +414,17 @@ fn decrypt_body_in_place(
     };
     key.zeroize();
 
-    let nonce = Nonce::from_slice(&iv);
-    let tag = Tag::from_slice(&tag_bytes);
     let aad: &[u8] = if version == VERSION_CURRENT {
         &header
     } else {
         &[]
     };
-    let decrypted =
-        cipher.decrypt_in_place_detached(nonce, aad, &mut bytes[HEADER_BYTES..body_end], tag);
+    let decrypted = cipher.decrypt_inout_detached(
+        (&iv).into(),
+        aad,
+        (&mut bytes[HEADER_BYTES..body_end]).into(),
+        (&tag_bytes).into(),
+    );
 
     salt.zeroize();
     iv.zeroize();
@@ -434,7 +435,7 @@ fn decrypt_body_in_place(
 }
 
 fn derive_key(password: &str, salt: &[u8], output: &mut [u8; KEY_BYTES]) {
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, output);
+    pbkdf2_hmac::<Pbkdf2Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, output);
 }
 
 fn read_version(bytes: &[u8]) -> Result<u32, CryptoError> {

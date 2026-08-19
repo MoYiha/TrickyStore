@@ -1,16 +1,15 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 #![deny(unsafe_code)]
 
-use aes_gcm::aead::{AeadInPlace, KeyInit};
-use aes_gcm::{Aes256Gcm, Nonce};
+use aes_gcm::aead::{AeadInOut, KeyInit};
+use aes_gcm::Aes256Gcm;
 use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_xml_core::parse_keybox_xml_bytes;
 use jni::objects::{JByteArray, JCharArray, JObject, JString};
 use jni::sys::{jboolean, jbyteArray, JNI_FALSE, JNI_TRUE};
 use jni::{Env, EnvUnowned, Outcome};
-use pbkdf2::pbkdf2_hmac;
+use pbkdf2::{pbkdf2_hmac, sha2::Sha256 as Pbkdf2Sha256};
 use serde::Serialize;
-use sha2::Sha256;
 use std::io;
 use std::path::Path;
 use std::ptr;
@@ -137,10 +136,10 @@ fn encrypt_cbox_v2_with_nonce(
     header[8 + SALT_BYTES..].copy_from_slice(iv);
 
     let mut key = Zeroizing::new([0u8; KEY_BYTES]);
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, &mut *key);
+    pbkdf2_hmac::<Pbkdf2Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, &mut *key);
     let cipher = Aes256Gcm::new_from_slice(&*key).map_err(|_| EncryptError::EncryptionFailed)?;
     let tag = cipher
-        .encrypt_in_place_detached(Nonce::from_slice(iv), &header, &mut plaintext)
+        .encrypt_inout_detached(iv.into(), &header, plaintext.as_mut_slice().into())
         .map_err(|_| EncryptError::EncryptionFailed)?;
 
     let output_len = HEADER_BYTES
