@@ -1,0 +1,101 @@
+name: Dependabot Auto Merge
+
+on:
+  workflow_run:
+    workflows:
+      - "Build"
+      - "Security Regression"
+      - "Native Hardening"
+      - "Rust Fuzz Smoke"
+      - "Rust Lockfile Check"
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+jobs:
+  merge-if-green:
+    name: "Merge fully green Dependabot PR"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every check is green and merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          pr_number="$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")"
+          if [[ -z "$pr_number" ]]; then
+            echo "No pull request is associated with this workflow run."
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/${repo}/pulls/${pr_number}")"
+          author="$(jq -r '.user.login' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+          draft="$(jq -r '.draft' <<<"$pr_json")"
+          base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+          current_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+
+          if [[ "$author" != "dependabot[bot]" || "$state" != "open" || "$draft" != "false" || "$base_ref" != "master" ]]; then
+            echo "Not an open Dependabot PR targeting master."
+            exit 0
+          fi
+          if [[ "$current_sha" != "$HEAD_SHA" ]]; then
+            echo "PR head moved; waiting for checks on the new head."
+            exit 0
+          fi
+
+          # Give GitHub enough time to register all workflows/check suites for this SHA.
+          sleep 30
+
+          runs_json="$(gh api "repos/${repo}/actions/runs?head_sha=${HEAD_SHA}&event=pull_request&per_page=100")"
+
+          # These two workflows run for every PR and are the minimum safety gate.
+          for required in "Build" "Security Regression"; do
+            count="$(jq --arg name "$required" '[.workflow_runs[] | select(.name == $name)] | length' <<<"$runs_json")"
+            if [[ "$count" -lt 1 ]]; then
+              echo "Required workflow has not appeared yet: $required"
+              exit 0
+            fi
+          done
+
+          pending_or_failed_runs="$(jq -r '.workflow_runs[] | select(.status != "completed" or .conclusion != "success") | "\(.name): status=\(.status) conclusion=\(.conclusion)"' <<<"$runs_json")"
+          if [[ -n "$pending_or_failed_runs" ]]; then
+            echo "Workflow gate is not fully green:"
+            printf '%s\n' "$pending_or_failed_runs"
+            exit 0
+          fi
+
+          checks_json="$(gh api -H 'Accept: application/vnd.github+json' "repos/${repo}/commits/${HEAD_SHA}/check-runs?per_page=100")"
+          bad_checks="$(jq -r '.check_runs[] | select(.status != "completed" or (.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped")) | "\(.name): status=\(.status) conclusion=\(.conclusion)"' <<<"$checks_json")"
+          if [[ -n "$bad_checks" ]]; then
+            echo "Check gate is not fully green:"
+            printf '%s\n' "$bad_checks"
+            exit 0
+          fi
+
+          status_json="$(gh api "repos/${repo}/commits/${HEAD_SHA}/status")"
+          status_count="$(jq -r '.total_count' <<<"$status_json")"
+          status_state="$(jq -r '.state' <<<"$status_json")"
+          if [[ "$status_count" -gt 0 && "$status_state" != "success" ]]; then
+            echo "Legacy commit statuses are not fully green: $status_state"
+            exit 0
+          fi
+
+          # Re-check the PR immediately before merging to avoid racing a Dependabot rebase.
+          latest_pr="$(gh api "repos/${repo}/pulls/${pr_number}")"
+          if [[ "$(jq -r '.state' <<<"$latest_pr")" != "open" || "$(jq -r '.head.sha' <<<"$latest_pr")" != "$HEAD_SHA" ]]; then
+            echo "PR changed while checks were being verified; leaving it open."
+            exit 0
+          fi
+
+          echo "Every registered workflow, check run, and commit status is green. Merging Dependabot PR #${pr_number}."
+          gh pr merge "$pr_number" --repo "$repo" --squash --delete-branch
