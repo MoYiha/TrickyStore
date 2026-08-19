@@ -131,6 +131,50 @@ jobs:
           if count != 1:
               raise SystemExit(f'Vault basename repair count={count}')
           vault_path.write_text(vault_text, encoding='utf-8')
+
+          identity_test_path = Path('encryptor-app/src/test/java/cleveres/tricky/encryptor/KeyboxCertificateIdentityTest.kt')
+          identity_test = identity_test_path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'''    @Test\n    fun `real keybox fixture exposes certificate three serial`\(\) \{.*?\n    \}\n\n    @Test\n    fun `fewer than three certificate PEM blocks has no identity`''',
+              re.DOTALL,
+          )
+          replacement = '''    @Test
+              fun `real single certificate fixture has no third certificate identity`() {
+                  val root = locateRoot()
+                  val xml = File(root, "service/src/test/resources/keybox/valid_ec.xml").readBytes()
+                  try {
+                      assertNull(KeyboxCertificateIdentity.thirdCertificateSerial(xml))
+                  } finally {
+                      xml.fill(0)
+                  }
+              }
+
+              @Test
+              fun `three real certificate PEM blocks expose certificate three serial`() {
+                  val root = locateRoot()
+                  val fixture = File(root, "service/src/test/resources/keybox/valid_ec.xml").readText()
+                  val beginMarker = "-----BEGIN CERTIFICATE-----"
+                  val endMarker = "-----END CERTIFICATE-----"
+                  val begin = fixture.indexOf(beginMarker)
+                  val end = fixture.indexOf(endMarker, begin) + endMarker.length
+                  require(begin >= 0 && end >= endMarker.length)
+                  val pem = fixture.substring(begin, end)
+                  val xml = "<CertificateChain><Certificate>$pem</Certificate><Certificate>$pem</Certificate><Certificate>$pem</Certificate></CertificateChain>".toByteArray()
+                  try {
+                      val serial = KeyboxCertificateIdentity.thirdCertificateSerial(xml)
+                      assertNotNull(serial)
+                      assertTrue(requireNotNull(serial).matches(Regex("[0-9A-F]+")))
+                  } finally {
+                      xml.fill(0)
+                  }
+              }
+
+              @Test
+              fun `fewer than three certificate PEM blocks has no identity`'''
+          identity_test, count = pattern.subn(replacement, identity_test, count=1)
+          if count != 1:
+              raise SystemExit(f'Identity fixture test repair count={count}')
+          identity_test_path.write_text(identity_test, encoding='utf-8')
           PY
       - name: Format and validate
         shell: bash
