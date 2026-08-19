@@ -7,7 +7,7 @@ assert.deepStrictEqual(runtimeScripts, ['bridge.js', 'policy.js', 'ux.js'], 'Web
 
 const ux = fs.readFileSync(`${root}/ux.js`, 'utf8');
 const index = fs.readFileSync(`${root}/index.html`, 'utf8');
-assert.ok(ux.includes('const MAX_SUPPORTED_FILES = 10000;'), 'ZIP keybox limit must remain 10000');
+assert.ok(ux.includes('const MAX_SUPPORTED_FILES = 64;'), 'module ZIP import must respect the 64 active XML source runtime limit');
 assert.ok(ux.includes('const MAX_FILE_BYTES = 10 * 1024 * 1024;'), 'per-keybox ZIP limit must remain 10 MiB');
 assert.ok(ux.includes('I understand that every supported XML/CBOX file in this ZIP will be imported individually.'), 'ZIP confirmation copy is missing');
 assert.ok(index.includes('accept=".xml,.cbox,.zip"'), 'keybox picker must accept ZIP');
