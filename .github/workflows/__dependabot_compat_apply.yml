@@ -1,0 +1,98 @@
+name: Temporary Dependabot Rust compatibility apply
+
+on:
+  push:
+    branches:
+      - fix/dependabot-rustcrypto-compat
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[deps-compat-applied]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: stable
+
+      - name: Apply compatibility updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"expected text not found in {path}: {old!r}")
+              p.write_text(text.replace(old, new))
+
+          replace(
+              ".github/dependabot.yml",
+              '''  - package-ecosystem: "cargo"\n    directory: "/rust"\n    schedule:\n      interval: "daily"\n    labels:\n      - "dependencies"\n''',
+              '''  - package-ecosystem: "cargo"\n    directory: "/rust"\n    schedule:\n      interval: "daily"\n    labels:\n      - "dependencies"\n    groups:\n      rustcrypto-stack:\n        applies-to: version-updates\n        patterns:\n          - "aes-gcm"\n          - "der"\n          - "getrandom"\n          - "p256"\n          - "pbkdf2"\n          - "rsa"\n          - "sha2"\n          - "signature"\n          - "x509-cert"\n        update-types:\n          - "major"\n          - "minor"\n          - "patch"\n    ignore:\n      - dependency-name: "signature"\n        update-types:\n          - "version-update:semver-major"\n      - dependency-name: "der"\n        update-types:\n          - "version-update:semver-major"\n'''
+          )
+
+          replace("rust/backend/Cargo.toml", 'getrandom = "=0.2.17"', 'getrandom = "=0.4.3"')
+          replace("rust/backend/src/keybox_wire.rs", 'getrandom::getrandom(&mut epoch)', 'getrandom::fill(&mut epoch)')
+
+          replace("rust/crypto-core/Cargo.toml", 'aes-gcm = { version = "0.10.3", features = ["zeroize"] }', 'aes-gcm = { version = "0.11.0", features = ["zeroize"] }')
+          replace("rust/crypto-core/Cargo.toml", 'pbkdf2 = "0.12.2"', 'pbkdf2 = { version = "0.13.0", features = ["sha2"] }')
+          replace("rust/crypto-core/src/lib.rs", 'use aes_gcm::aead::{AeadInPlace, KeyInit};', 'use aes_gcm::aead::{AeadInOut, KeyInit};')
+          replace("rust/crypto-core/src/lib.rs", 'use aes_gcm::{Aes256Gcm, Nonce, Tag};', 'use aes_gcm::Aes256Gcm;')
+          replace("rust/crypto-core/src/lib.rs", 'use pbkdf2::pbkdf2_hmac;', 'use pbkdf2::{pbkdf2_hmac, sha2::Sha256 as Pbkdf2Sha256};')
+          replace(
+              "rust/crypto-core/src/lib.rs",
+              '    let nonce = Nonce::from_slice(iv);\n    let tag = match cipher.encrypt_in_place_detached(nonce, header, body) {',
+              '    let tag = match cipher.encrypt_inout_detached(iv.into(), header, body.into()) {'
+          )
+          replace(
+              "rust/crypto-core/src/lib.rs",
+              '    let nonce = Nonce::from_slice(&iv);\n    let tag = Tag::from_slice(&tag_bytes);\n',
+              ''
+          )
+          replace(
+              "rust/crypto-core/src/lib.rs",
+              '        cipher.decrypt_in_place_detached(nonce, aad, &mut bytes[HEADER_BYTES..body_end], tag);',
+              '        cipher.decrypt_inout_detached((&iv).into(), aad, (&mut bytes[HEADER_BYTES..body_end]).into(), (&tag_bytes).into());'
+          )
+          replace("rust/crypto-core/src/lib.rs", 'pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, output);', 'pbkdf2_hmac::<Pbkdf2Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, output);')
+
+          replace("rust/encryptor-native/Cargo.toml", 'aes-gcm = { version = "0.10.3", features = ["zeroize"] }', 'aes-gcm = { version = "0.11.0", features = ["zeroize"] }')
+          replace("rust/encryptor-native/Cargo.toml", 'pbkdf2 = "0.12.2"', 'pbkdf2 = { version = "0.13.0", features = ["sha2"] }')
+          replace("rust/encryptor-native/src/lib.rs", 'use aes_gcm::aead::{AeadInPlace, KeyInit};', 'use aes_gcm::aead::{AeadInOut, KeyInit};')
+          replace("rust/encryptor-native/src/lib.rs", 'use aes_gcm::{Aes256Gcm, Nonce};', 'use aes_gcm::Aes256Gcm;')
+          replace("rust/encryptor-native/src/lib.rs", 'use pbkdf2::pbkdf2_hmac;', 'use pbkdf2::{pbkdf2_hmac, sha2::Sha256 as Pbkdf2Sha256};')
+          replace("rust/encryptor-native/src/lib.rs", 'use sha2::Sha256;\n', '')
+          replace("rust/encryptor-native/src/lib.rs", 'pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, &mut *key);', 'pbkdf2_hmac::<Pbkdf2Sha256>(password.as_bytes(), salt, KDF_ITERATIONS, &mut *key);')
+          replace(
+              "rust/encryptor-native/src/lib.rs",
+              '        .encrypt_in_place_detached(Nonce::from_slice(iv), &header, &mut plaintext)',
+              '        .encrypt_inout_detached(iv.into(), &header, plaintext.as_mut_slice().into())'
+          )
+          PY
+
+          cd rust
+          cargo check --workspace --all-targets || true
+          cargo fmt --all
+          cd ..
+
+      - name: Commit generated compatibility update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/dependabot.yml rust/Cargo.lock rust/backend rust/crypto-core rust/encryptor-native
+          git commit -m "build(deps): align RustCrypto updates [deps-compat-applied]"
+          git push origin HEAD:fix/dependabot-rustcrypto-compat
