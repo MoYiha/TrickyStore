@@ -1,0 +1,174 @@
+name: Apply deep V2.6.1 keybox fixes v7
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [master]
+permissions:
+  contents: write
+jobs:
+  apply-fixes:
+    if: github.event.pull_request.head.ref == 'feat/v2.6.1-webui-zip-import'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: feat/v2.6.1-webui-zip-import
+      - name: Setup Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
+      - name: Apply and validate with deterministic diagnostics
+        shell: bash
+        run: |
+          set +e
+          LOG=/tmp/v261-validation.log
+          : > "$LOG"
+
+          python3 - <<'PY' >>"$LOG" 2>&1
+          from pathlib import Path
+          import textwrap
+
+          runner = Path('.github/workflows/__v261_pr_fix_runner6.yml').read_text(encoding='utf-8')
+          start = "          python3 - <<'PY'\n"
+          end = "\n          PY\n      - name: Format and validate"
+          if runner.count(start) != 1 or runner.count(end) != 1:
+              raise SystemExit('Could not extract v6 structural source patch')
+          program = textwrap.dedent(runner.split(start, 1)[1].split(end, 1)[0])
+          exec(compile(program, '<v261-v6-source-patch>', 'exec'), {'__name__': '__main__'})
+
+          # The shared valid_ec fixture intentionally has one certificate. It is a valid fallback
+          # case, not a positive certificate-#3 identity case. Build a positive test by repeating
+          # the already-valid public PEM three times in a minimal naming-only CertificateChain.
+          test_path = Path('encryptor-app/src/test/java/cleveres/tricky/encryptor/KeyboxCertificateIdentityTest.kt')
+          if test_path.exists():
+              test = test_path.read_text(encoding='utf-8')
+              old = '''    @Test
+              fun `real keybox fixture exposes certificate three serial`() {
+                  val root = locateRoot()
+                  val xml = File(root, "service/src/test/resources/keybox/valid_ec.xml").readBytes()
+                  try {
+                      val serial = KeyboxCertificateIdentity.thirdCertificateSerial(xml)
+                      assertNotNull(serial)
+                      assertTrue(requireNotNull(serial).matches(Regex("[0-9A-F]+")))
+                  } finally {
+                      xml.fill(0)
+                  }
+              }
+          '''
+              new = '''    @Test
+              fun `third public certificate serial is used when the chain contains three certificates`() {
+                  val root = locateRoot()
+                  val fixture = File(root, "service/src/test/resources/keybox/valid_ec.xml").readText()
+                  val begin = fixture.indexOf("-----BEGIN CERTIFICATE-----")
+                  val endMarker = "-----END CERTIFICATE-----"
+                  val end = fixture.indexOf(endMarker, begin) + endMarker.length
+                  require(begin >= 0 && end >= endMarker.length)
+                  val pem = fixture.substring(begin, end)
+                  val xml = ("<CertificateChain>" + pem + pem + pem + "</CertificateChain>").toByteArray()
+                  try {
+                      val serial = KeyboxCertificateIdentity.thirdCertificateSerial(xml)
+                      assertNotNull(serial)
+                      assertTrue(requireNotNull(serial).matches(Regex("[0-9A-F]+")))
+                  } finally {
+                      xml.fill(0)
+                  }
+              }
+
+              @Test
+              fun `single certificate real fixture keeps the existing filename fallback`() {
+                  val root = locateRoot()
+                  val xml = File(root, "service/src/test/resources/keybox/valid_ec.xml").readBytes()
+                  try {
+                      assertNull(KeyboxCertificateIdentity.thirdCertificateSerial(xml))
+                  } finally {
+                      xml.fill(0)
+                  }
+              }
+          '''
+              if test.count(old) == 1:
+                  test = test.replace(old, new, 1)
+              test_path.write_text(test, encoding='utf-8')
+          PY
+          PATCH_STATUS=$?
+
+          if [ "$PATCH_STATUS" -eq 0 ]; then
+            node --check module/template/webroot/ux.js >>"$LOG" 2>&1
+            NODE_STATUS=$?
+          else
+            NODE_STATUS=$PATCH_STATUS
+          fi
+          if [ "$NODE_STATUS" -eq 0 ]; then
+            node module/webui-tests/zip-import.test.js >>"$LOG" 2>&1
+            ZIP_STATUS=$?
+          else
+            ZIP_STATUS=$NODE_STATUS
+          fi
+          if [ "$ZIP_STATUS" -eq 0 ]; then
+            ./gradlew :service:ktlintFormat :encryptor-app:ktlintFormat --no-daemon >>"$LOG" 2>&1
+            FORMAT_STATUS=$?
+          else
+            FORMAT_STATUS=$ZIP_STATUS
+          fi
+          if [ "$FORMAT_STATUS" -eq 0 ]; then
+            ./gradlew :service:ktlintCheck :service:testDebugUnitTest :encryptor-app:ktlintCheck :encryptor-app:testDebugUnitTest --no-daemon >>"$LOG" 2>&1
+            GRADLE_STATUS=$?
+          else
+            GRADLE_STATUS=$FORMAT_STATUS
+          fi
+          if [ "$GRADLE_STATUS" -eq 0 ]; then
+            (cd rust && cargo fmt --all && cargo test -p cleverestricky-daemon) >>"$LOG" 2>&1
+            RUST_STATUS=$?
+          else
+            RUST_STATUS=$GRADLE_STATUS
+          fi
+          if [ "$RUST_STATUS" -eq 0 ]; then
+            git diff --check >>"$LOG" 2>&1
+            FINAL_STATUS=$?
+          else
+            FINAL_STATUS=$RUST_STATUS
+          fi
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          if [ "$FINAL_STATUS" -ne 0 ]; then
+            {
+              echo '# V2.6.1 validation failure'
+              echo
+              echo "patch_status=$PATCH_STATUS"
+              echo "node_status=$NODE_STATUS"
+              echo "zip_status=$ZIP_STATUS"
+              echo "format_status=$FORMAT_STATUS"
+              echo "gradle_status=$GRADLE_STATUS"
+              echo "rust_status=$RUST_STATUS"
+              echo "final_status=$FINAL_STATUS"
+              echo
+              echo '```text'
+              tail -n 240 "$LOG"
+              echo '```'
+            } > .github/V261_VALIDATION_FAILURE.md
+            git add .github/V261_VALIDATION_FAILURE.md
+            git commit -m "ci: capture V2.6.1 validation failure"
+            git push origin HEAD:feat/v2.6.1-webui-zip-import
+            exit "$FINAL_STATUS"
+          fi
+
+          rm -f \
+            .github/V261_VALIDATION_FAILURE.md \
+            .github/workflows/__v261_keybox_runtime_fix.yml \
+            .github/workflows/__v261_runner_repair.yml \
+            .github/workflows/__v261_pr_fix_runner.yml \
+            .github/workflows/__v261_pr_fix_runner2.yml \
+            .github/workflows/__v261_pr_fix_runner3.yml \
+            .github/workflows/__v261_pr_fix_runner4.yml \
+            .github/workflows/__v261_pr_fix_runner5.yml \
+            .github/workflows/__v261_pr_fix_runner6.yml \
+            .github/workflows/__v261_pr_fix_runner7.yml
+          git add -A
+          git commit -m "feat(keybox): unify storage identity and vault management"
+          git push origin HEAD:feat/v2.6.1-webui-zip-import
+          exit 0
