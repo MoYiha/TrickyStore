@@ -99,10 +99,12 @@ jobs:
           replace_exact(
               'service/src/test/java/cleveres/tricky/cleverestech/WebServerKeyboxUXTest.kt',
               'val html = conn.inputStream.bufferedReader().readText()',
-              '''val html =
-                  conn.inputStream.bufferedReader().readText() +
-                      "\\n" +
-                      File("module/template/webroot/ux.js").readText()''',
+              '''val uxSource =
+                  listOf(
+                      File("module/template/webroot/ux.js"),
+                      File("../module/template/webroot/ux.js"),
+                  ).first { it.isFile }.readText()
+              val html = conn.inputStream.bufferedReader().readText() + "\\n" + uxSource''',
           )
 
           replace_exact(
