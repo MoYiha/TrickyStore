@@ -5,13 +5,14 @@ use aes_gcm::aead::{AeadInOut, KeyInit};
 use aes_gcm::Aes256Gcm;
 use base64::Engine as _;
 use p256::ecdsa::{Signature as EcSignature, VerifyingKey as EcVerifyingKey};
+use p256::pkcs8::DecodePublicKey as _;
 use pbkdf2::{pbkdf2_hmac, sha2::Sha256 as Pbkdf2Sha256};
 use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey as RsaVerifyingKey};
-use rsa::pkcs8::DecodePublicKey;
+use rsa::pkcs8::DecodePublicKey as _;
 use rsa::RsaPublicKey;
+use rsa_sha2::Sha256 as RsaSha256;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use signature::hazmat::PrehashVerifier;
 use std::fmt;
 use zeroize::Zeroize;
 
@@ -194,9 +195,13 @@ fn verify_cbox_signature_der(
             Ok(signature) => signature,
             Err(_) => return false,
         };
-        return RsaVerifyingKey::<Sha256>::new(public_key)
-            .verify_prehash(&digest, &signature)
-            .is_ok();
+        let verifier = RsaVerifyingKey::<RsaSha256>::new(public_key);
+        return rsa_signature::hazmat::PrehashVerifier::verify_prehash(
+            &verifier,
+            &digest,
+            &signature,
+        )
+        .is_ok();
     }
 
     let public_key = match EcVerifyingKey::from_public_key_der(public_key_der) {
@@ -207,7 +212,7 @@ fn verify_cbox_signature_der(
         Ok(signature) => signature,
         Err(_) => return false,
     };
-    public_key.verify_prehash(&digest, &signature).is_ok()
+    signature::hazmat::PrehashVerifier::verify_prehash(&public_key, &digest, &signature).is_ok()
 }
 
 fn cbox_signature_digest(payload: &CboxPayload) -> Option<[u8; 32]> {
