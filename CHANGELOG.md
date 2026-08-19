@@ -18,6 +18,20 @@
 - Real keyboxes use certificate #3 serial as the preferred collision-safe CBOX filename, with the existing sanitized source-name fallback when that public certificate is unavailable.
 - Vault entries can be selected in bulk, deleted together, or exported together as a ZIP without decrypting the CBOX payloads.
 
+### WebUI structure and Identity controls
+
+- Dashboard is the single owner for feature enable/disable controls.
+- Identity keeps its master toggle on Dashboard. Enabling it reveals the Build identity, Attestation identity, Telephony identity, Region identity and Identity refresh child toggles in the same Dashboard card.
+- Security Patch is shown inside the expanded Identity group for feature ownership clarity, but it has no separate enable/disable toggle and follows the Identity master state.
+- The Identity page contains Identity and Security Patch detail configuration only; the duplicate Identity toggle panel and stale disabled-state banner were removed.
+- Security Patch remains removed from the top-level Dashboard cards and navigation while existing policy/profile storage remains compatible.
+
+### Reliability hotfixes
+
+- Fixed the keybox FileObserver refresh loop that could repeatedly trigger WebUI/runtime reload work after the V2.6.1 keybox changes.
+- Preserved legacy root-level keybox basename compatibility while keeping managed-directory, symlink and duplicate-name safety rules intact.
+- Updated WebUI and Security Regression coverage for the final Dashboard-owned Identity layout so duplicate or misplaced Security Patch controls are caught by CI.
+
 ## V2.6.0
 
 ### A new core for CleveresTricky
