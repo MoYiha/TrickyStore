@@ -118,7 +118,7 @@ function stateForSave(source) {
       telephonyIdentity: Boolean(features.telephonyIdentity),
       regionIdentity: Boolean(features.regionIdentity),
       identityRefresh: Boolean(features.identityRefresh),
-      securityPatch: FEATURE_KEYS.some(([key]) => Boolean(features[key]))
+      securityPatch: Boolean(features.securityPatch) || FEATURE_KEYS.some(([key]) => Boolean(features[key]))
     },
     securityPatch: {
       automaticThresholdMonths: Math.min(24, Math.max(1, Number(patch.automaticThresholdMonths) || 6)),
@@ -311,7 +311,7 @@ function markIdentityActionGroups() {
 
 function policyIdentityEnabled() {
   if (!policyState || !policyState.features) return false;
-  return FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
+  return Boolean(policyState.features.securityPatch) || FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
 }
 
 function identityEnabled() {
@@ -343,12 +343,11 @@ function buildFeatureCenterMarkup(prefix) {
   const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
-  const identityOn = policyIdentityEnabled();
-  const identityCard = `<div class="ct-feature-card"><div class="row"><div style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Configure Identity features, Security Patch and camera visibility in one place.</span></div><span class="ct-readonly-state">${identityOn ? 'Enabled' : 'Disabled'}</span></div>${helpMarkup('Identity owns its switches on the Identity page. Security Patch follows the Identity master state instead of exposing a second master toggle.')}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity</button></div>`;
+  const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
   return `<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
-    ${identityCard}
+    ${identityCards}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
     <div class="ct-feature-card"><strong>Keybox / TEE path</strong><p>Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.</p>${helpMarkup('The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.')}<button type="button" data-open-tab="keys" style="width:100%;margin-top:10px">Open keyboxes</button></div>
@@ -378,6 +377,7 @@ function bindFeatureCenter(panel, prefix) {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
     setLegacyToggle('drm_passthrough',drmToggle.checked);
   };
+  bindIdentityControls(panel, `${prefix}_identity`);
   panel.querySelectorAll('[data-open-tab]').forEach(button => { button.onclick = () => global.switchTab && global.switchTab(button.dataset.openTab); });
 }
 
@@ -427,8 +427,9 @@ function identityFeatureCardsMarkup(prefix) {
   const features = policyState ? policyState.features : {};
   const identityOn = policyIdentityEnabled();
   const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
-  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
-  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">Enable only the identity paths you need. Disabled paths do not start optional interceptors.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}</div>${helpMarkup('Identity is optional. Core Keystore/TEE protection is independent from this switch.')}</div>`;
+  const securityPatchRow = `<div class="row"><div style="flex:1;min-width:0;padding-right:10px"><strong>Security Patch</strong><span class="res-desc">Part of Identity. It follows the Identity master switch and has no separate enable/disable toggle.</span></div><span class="ct-readonly-state">${identityOn ? 'Enabled with Identity' : 'Disabled'}</span></div>`;
+  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('') + securityPatchRow;
+  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('Security Patch follows this Identity master switch; its detailed modes are configured on the Identity page without a second master toggle.')}</div>`;
   const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
   return `${core}${camera}`;
 }
@@ -459,28 +460,12 @@ function bindIdentityControls(panel, prefix) {
 }
 
 function installIdentityControls() {
-  const spoof = document.getElementById('spoof');
-  if (!spoof) return;
-  let panel = document.getElementById('ct_identity_controls');
-  if (panel) return;
-  panel = document.createElement('div');
-  panel.id = 'ct_identity_controls';
-  panel.className = 'panel';
-  panel.innerHTML = '<h3>Identity Controls</h3><div class="scope-note">Identity is enabled here. Its child identity paths appear under the master switch, and Security Patch uses the same master state.</div><div class="ct-control-host"></div>';
-  const identityManager = [...spoof.querySelectorAll('.panel')].find(item => /^Identity Manager$/i.test((item.querySelector('h3')?.textContent || '').trim()));
-  if (identityManager) spoof.insertBefore(panel, identityManager);
-  else spoof.prepend(panel);
+  const stale = document.getElementById('ct_identity_controls');
+  if (stale) stale.remove();
 }
 
 function renderIdentityControls() {
-  if (!policyState) return;
   installIdentityControls();
-  const panel = document.getElementById('ct_identity_controls');
-  if (!panel) return;
-  const host = panel.querySelector('.ct-control-host');
-  if (!host) return;
-  host.innerHTML = identityControlsMarkup('ct_identity_page');
-  bindIdentityControls(panel,'ct_identity_page');
 }
 
 function installIdentityBanner() {
@@ -706,8 +691,8 @@ function renderPatchPage() {
   const identityOn = policyIdentityEnabled();
   children.hidden = !identityOn;
   identityState.textContent = identityOn
-    ? 'Security Patch is an Identity setting and follows the Identity master switch above.'
-    : 'Enable Identity above to configure Security Patch.';
+    ? 'Security Patch follows the Dashboard Identity master switch. Configure only its patch modes here.'
+    : 'Enable Identity on Dashboard to configure Security Patch.';
   auto.checked = isAutoPatch();
   threshold.value = String(policyState.securityPatch.automaticThresholdMonths || 6);
   host.innerHTML = PATCH_COMPONENTS.map(([key,title]) => patchEditor('ct_patch',key,title,policyState.securityPatch[key],false)).join('');

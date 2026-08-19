@@ -22,13 +22,13 @@ const featureStart = policy.indexOf('function buildFeatureCenterMarkup(prefix)')
 const featureEnd = policy.indexOf('function renderFeatureCenter()', featureStart);
 assert.ok(featureStart >= 0 && featureEnd > featureStart, 'Feature Center function is missing');
 const featureCenter = policy.slice(featureStart, featureEnd);
-assert.ok(featureCenter.includes('Open Identity'), 'Dashboard must navigate into Identity');
-assert.ok(!featureCenter.includes('identityFeatureCardsMarkup(`${prefix}_identity`)'), 'Identity switches must not remain on Dashboard');
-assert.ok(policy.includes("panel.id = 'ct_identity_controls'"), 'Identity Controls panel must live on the Identity page');
-assert.ok(policy.includes("host.innerHTML = identityControlsMarkup('ct_identity_page')"), 'Identity page must render Identity master and child controls');
-assert.ok(policy.includes("bindIdentityControls(panel,'ct_identity_page')"), 'Identity page controls must be bound');
+assert.ok(featureCenter.includes('identityFeatureCardsMarkup(`${prefix}_identity`)'), 'Identity master and child switches must live on Dashboard');
+assert.ok(policy.includes('bindIdentityControls(panel, `${prefix}_identity`)'), 'Dashboard Identity controls must be bound');
+assert.ok(!policy.includes("panel.id = 'ct_identity_controls'"), 'Identity Controls must not return as a separate Identity-page panel');
+assert.ok(policy.includes("const stale = document.getElementById('ct_identity_controls')"), 'legacy Identity Controls panel cleanup is missing');
+assert.ok(policy.includes('Open Identity settings'), 'Dashboard must navigate into Identity detail settings');
 
-console.log('Identity randomization and placement regression tests passed');
+console.log('Identity randomization and Dashboard placement regression tests passed');
 
 assert(index.includes('id="inputVisibleSimCount"'), 'visible SIM count control must exist');
 assert(index.includes("randomizeIdentityField('visible_sim_count')"), 'visible SIM count must support single-field randomization');
