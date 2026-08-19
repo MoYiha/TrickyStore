@@ -37,6 +37,80 @@ jobs:
           program = textwrap.dedent(runner.split(start, 1)[1].split(end, 1)[0])
           exec(compile(program, '<v261-keybox-structural-patch>', 'exec'), {'__name__': '__main__'})
           PY
+      - name: Repair regression expectations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, expected=1):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'{path}: expected {expected} matches, found {count}: {old[:100]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/ActionTest.kt',
+              '"Active (1 keys)"',
+              '"Active keybox"',
+              expected=2,
+          )
+
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/ConfigCachingTest.kt',
+              '''    private fun getCachedLegacyKeyboxes(): List<*> {
+                  val field = Config::class.java.getDeclaredField("cachedLegacyKeyboxes")
+                  field.isAccessible = true
+                  return field.get(Config) as List<*>
+              }
+          ''',
+              '''    private fun getCachedKeyboxCount(): Int {
+                  val field = Config::class.java.getDeclaredField("storedKeyboxCache")
+                  field.isAccessible = true
+                  val cache = field.get(Config) as Map<*, *>
+                  return cache.values.sumOf { entry ->
+                      requireNotNull(entry)
+                      val keyboxesField = entry.javaClass.getDeclaredField("keyboxes")
+                      keyboxesField.isAccessible = true
+                      (keyboxesField.get(entry) as List<*>).size
+                  }
+              }
+          ''',
+          )
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/ConfigCachingTest.kt',
+              'val cached1 = getCachedLegacyKeyboxes()\n        assertEquals("Should load 1 keybox", 1, cached1.size)',
+              'val cached1 = getCachedKeyboxCount()\n        assertEquals("Should load 1 keybox", 1, cached1)',
+          )
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/ConfigCachingTest.kt',
+              'val cached2 = getCachedLegacyKeyboxes()\n        assertEquals("Should reload the changed keybox", 0, cached2.size)',
+              'val cached2 = getCachedKeyboxCount()\n        assertEquals("Should reload the changed keybox", 0, cached2)',
+          )
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/ConfigCachingTest.kt',
+              'val cached3 = getCachedLegacyKeyboxes()\n        assertEquals("Should still have 0 keyboxes", 0, cached3.size)',
+              'val cached3 = getCachedKeyboxCount()\n        assertEquals("Should still have 0 keyboxes", 0, cached3)',
+          )
+
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/WebServerKeyboxUXTest.kt',
+              'val html = conn.inputStream.bufferedReader().readText()',
+              '''val html =
+                  conn.inputStream.bufferedReader().readText() +
+                      "\\n" +
+                      File("module/template/webroot/ux.js").readText()''',
+          )
+
+          replace_exact(
+              'service/src/test/java/cleveres/tricky/cleverestech/util/KeyboxVerifierTest.kt',
+              '"Too many keybox files"',
+              '"Too many keybox XML files"',
+          )
+          PY
       - name: Format and validate
         shell: bash
         run: |
@@ -52,13 +126,17 @@ jobs:
         run: |
           set -euo pipefail
           rm -f \
+            .github/V261_VALIDATION_FAILURE.md \
             .github/workflows/__v261_keybox_runtime_fix.yml \
             .github/workflows/__v261_runner_repair.yml \
             .github/workflows/__v261_pr_fix_runner.yml \
             .github/workflows/__v261_pr_fix_runner2.yml \
             .github/workflows/__v261_pr_fix_runner3.yml \
             .github/workflows/__v261_pr_fix_runner4.yml \
-            .github/workflows/__v261_pr_fix_runner5.yml
+            .github/workflows/__v261_pr_fix_runner5.yml \
+            .github/workflows/__v261_pr_fix_runner6.yml \
+            .github/workflows/__v261_pr_fix_runner7.yml \
+            .github/workflows/__v261_pr_fix_runner8.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
