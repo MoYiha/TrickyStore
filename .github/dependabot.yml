@@ -32,6 +32,10 @@ updates:
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
+    # Keep Cargo manifests moving forward with upstream releases, including
+    # semver-breaking major/minor transitions. CI is the compatibility gate;
+    # breaking dependency APIs are migrated in source instead of being ignored.
+    versioning-strategy: "increase"
     groups:
       storage-crypto-stack:
         applies-to: version-updates
