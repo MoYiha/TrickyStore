@@ -164,7 +164,9 @@ private fun verifyRuntimePayloadContract(
                 File(moduleRoot, "webroot/index.html").length() +
                 File(moduleRoot, "webroot/bridge.js").length() +
                 File(moduleRoot, "webroot/policy.js").length() +
-                File(moduleRoot, "webroot/ux.js").length()
+                File(moduleRoot, "webroot/ux.js").length() +
+                File(moduleRoot, "webroot/ux-core.js").length() +
+                File(moduleRoot, "webroot/zip-import.js").length()
         if (runtimeBytes < 2_500_000L) {
             throw GradleException(
                 "Runtime contract aggregate payload for $abi is unexpectedly small: $runtimeBytes bytes",

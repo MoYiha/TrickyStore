@@ -30,8 +30,8 @@
     <string name="signing_key_unavailable">हस्ताक्षर कुंजी उपलब्ध नहीं</string>
     <string name="public_key_copied">सार्वजनिक कुंजी कॉपी की गई</string>
     <string name="copy_public_key">सार्वजनिक कुंजी कॉपी करें</string>
-    <string name="choose_xml">XML या ZIP चुनें</string>
-    <string name="xml_limit">एक XML · अधिकतम 10 MiB, या ZIP · अधिकतम 64 XML · प्रत्येक 10 MiB · कुल 48 MiB</string>
+    <string name="choose_xml">XML keybox या ZIP चुनें</string>
+    <string name="xml_limit">एक XML या ZIP · अधिकतम 10,000 keybox · प्रति XML 10 MiB</string>
     <string name="password">पासवर्ड</string>
     <string name="hide_password">पासवर्ड छिपाएँ</string>
     <string name="show_password">पासवर्ड दिखाएँ</string>
@@ -39,7 +39,16 @@
     <string name="encrypt_save">एन्क्रिप्ट और सहेजें</string>
     <string name="crypto_summary">Rust AES-256-GCM · PBKDF2-HMAC-SHA256 · Android Keystore हस्ताक्षर</string>
     <string name="security_title">स्थानीय और मजबूत एन्क्रिप्शन</string>
-    <string name="security_body">चुनी गई Keybox XML फ़ाइलें ऐप से बाहर नहीं जातीं। हर CBOX स्थानीय रूप से हस्ताक्षरित और एन्क्रिप्ट होता है; निजी वॉल्ट में परमाणु लेखन सीमित Rust परत में चलता है।</string>
+    <string name="security_body">चुनी गई keybox XML फ़ाइलें इस ऐप से बाहर नहीं जातीं। XML या ZIP इनपुट एक समय में एक keybox के रूप में प्रोसेस होता है; हर CBOX स्थानीय रूप से साइन और एन्क्रिप्ट होता है और निजी vault की atomic writes सीमित Rust layer में होती हैं।</string>
     <string name="language">भाषा</string>
     <string name="system_default">सिस्टम डिफ़ॉल्ट</string>
+    <string name="encrypting">एन्क्रिप्ट और सेव किया जा रहा है…</string>
+    <string name="selected_count">%1$d चयनित</string>
+    <string name="export_selected_zip">चयनित को ZIP में निर्यात करें</string>
+    <string name="delete_selected">चयनित हटाएँ</string>
+    <string name="delete_selected_title">चयनित CBOX फ़ाइलें हटाएँ?</string>
+    <string name="delete_selected_message">%1$d चयनित CBOX फ़ाइलें इस डिवाइस से स्थायी रूप से हट जाएँगी।</string>
+    <string name="bulk_delete_result">%1$d हटाई गईं, %2$d विफल</string>
+    <string name="zip_export_success">चयनित CBOX फ़ाइलें ZIP के रूप में निर्यात हुईं</string>
+    <string name="zip_export_failed">ZIP निर्यात विफल</string>
 </resources>

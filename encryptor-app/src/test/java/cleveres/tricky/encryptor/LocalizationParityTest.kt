@@ -9,7 +9,7 @@ class LocalizationParityTest {
     @Test
     fun `all supported mobile locales have identical string and placeholder contracts`() {
         val resources = locate("src/main/res", "encryptor-app/src/main/res")
-        val defaultStrings = parseStrings(File(resources, "values/strings.xml"))
+        val defaultStrings = parseStrings(File(resources, "values"))
         assertTrue(defaultStrings.isNotEmpty())
 
         val localeDirectories =
@@ -24,7 +24,7 @@ class LocalizationParityTest {
                 "values-ar" to "ar",
             )
         for (directory in localeDirectories.keys) {
-            val translated = parseStrings(File(resources, "$directory/strings.xml"))
+            val translated = parseStrings(File(resources, directory))
             assertEquals("String keys differ for $directory", defaultStrings.keys, translated.keys)
             for (key in defaultStrings.keys) {
                 assertEquals(
@@ -44,10 +44,19 @@ class LocalizationParityTest {
         assertEquals(setOf("en") + localeDirectories.values, configured)
     }
 
-    private fun parseStrings(file: File): Map<String, String> {
-        assertTrue("Missing ${file.path}", file.isFile)
+    private fun parseStrings(directory: File): Map<String, String> {
+        assertTrue("Missing ${directory.path}", directory.isDirectory)
         val expression = Regex("<string\\s+name=\"([^\"]+)\">([\\s\\S]*?)</string>")
-        return expression.findAll(file.readText()).associate { it.groupValues[1] to it.groupValues[2] }
+        val result = linkedMapOf<String, String>()
+        directory.listFiles { file -> file.isFile && file.extension == "xml" }
+            ?.sortedBy { it.name }
+            ?.forEach { file ->
+                expression.findAll(file.readText()).forEach { match ->
+                    val previous = result.put(match.groupValues[1], match.groupValues[2])
+                    check(previous == null) { "Duplicate string ${match.groupValues[1]} in ${directory.path}" }
+                }
+            }
+        return result
     }
 
     private fun placeholders(value: String): List<String> =

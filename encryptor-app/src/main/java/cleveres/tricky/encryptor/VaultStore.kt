@@ -9,10 +9,13 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
 import java.util.Locale
+import java.util.zip.Deflater
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 internal object VaultStore {
     private const val VAULT_DIR = "vault"
-    private const val MAX_FILES = 256
+    internal const val MAX_FILES = 10_000
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
     private const val MAX_FILENAME_CHARS = 128
     private const val CBOX_SUFFIX = ".cbox"
@@ -22,6 +25,30 @@ internal object VaultStore {
         val names: MutableSet<String>,
         val entryCount: Int,
     )
+
+    internal class BatchNameAllocator(
+        private val author: String,
+        private val occupied: MutableSet<String>,
+        private var remaining: Int,
+    ) {
+        fun allocate(
+            sourceName: String,
+            certificateSerial: String? = null,
+        ): String {
+            if (remaining <= 0) throw IOException("Vault capacity exceeded")
+            val base = VaultStore.batchBaseName(author, sourceName, certificateSerial)
+            var sequence = 1
+            var candidate = "$base$CBOX_SUFFIX"
+            while (!occupied.add(candidate.lowercase(Locale.ROOT))) {
+                sequence++
+                if (sequence > MAX_FILES) throw IOException("Could not allocate a unique vault filename")
+                val suffix = "_$sequence"
+                candidate = "${base.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length - suffix.length)}$suffix$CBOX_SUFFIX"
+            }
+            remaining--
+            return candidate
+        }
+    }
 
     fun directory(context: Context): File {
         check(NativeCrypto.ensureVault(context.noBackupFilesDir.absolutePath)) {
@@ -35,37 +62,42 @@ internal object VaultStore {
         return "${safe.ifEmpty { "keybox" }}$CBOX_SUFFIX"
     }
 
+    fun newBatchNameAllocator(
+        context: Context,
+        author: String,
+    ): BatchNameAllocator {
+        val snapshot = vaultNameSnapshot(context)
+        return BatchNameAllocator(
+            author = author,
+            occupied = snapshot.names,
+            remaining = MAX_FILES - snapshot.entryCount,
+        )
+    }
+
     fun allocateBatchFilenames(
         context: Context,
         author: String,
         sourceNames: List<String>,
     ): List<String> {
         require(sourceNames.isNotEmpty()) { "Batch is empty" }
-        val snapshot = vaultNameSnapshot(context)
-        if (sourceNames.size > MAX_FILES - snapshot.entryCount) {
-            throw IOException("Vault capacity exceeded")
-        }
-        val existing = snapshot.names
-
-        return sourceNames.map { sourceName ->
-            val base = batchBaseName(author, sourceName)
-            var sequence = 1
-            var candidate = "$base$CBOX_SUFFIX"
-            while (!existing.add(candidate.lowercase(Locale.ROOT))) {
-                sequence++
-                val suffix = "_$sequence"
-                candidate = "${base.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length - suffix.length)}$suffix$CBOX_SUFFIX"
-            }
-            candidate
-        }
+        if (sourceNames.size > MAX_FILES) throw IOException("Vault capacity exceeded")
+        val allocator = newBatchNameAllocator(context, author)
+        return sourceNames.map(allocator::allocate)
     }
 
     internal fun batchBaseName(
         author: String,
         sourceName: String,
+        certificateSerial: String? = null,
     ): String {
+        val serial =
+            certificateSerial
+                ?.trim()
+                ?.uppercase(Locale.ROOT)
+                ?.takeIf { value -> value.isNotEmpty() && value.all { it in '0'..'9' || it in 'A'..'F' } }
+        if (serial != null) return serial.take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
         val safeAuthor = sanitizeComponent(author, 48).ifEmpty { "keybox" }
-        val basename = sourceName.substringAfterLast('/').substringAfterLast('\\')
+        val basename = sourceName.substringAfterLast('/').substringAfterLast(92.toChar())
         val sourceBase = basename.substringBeforeLast('.', basename)
         val safeSource = sanitizeComponent(sourceBase, 64).ifEmpty { "keybox" }
         return "$safeAuthor-$safeSource".take(MAX_FILENAME_CHARS - CBOX_SUFFIX.length)
@@ -82,7 +114,7 @@ internal object VaultStore {
 
     fun list(context: Context): List<File> {
         val vault = directory(context)
-        val files = ArrayList<File>(MAX_FILES)
+        val files = ArrayList<File>()
         Files.newDirectoryStream(vault.toPath()).use { entries ->
             for (entry in entries) {
                 if (files.size == MAX_FILES) break
@@ -96,7 +128,7 @@ internal object VaultStore {
         }
         return files.sortedWith(
             compareByDescending<File> { it.lastModified() }
-                .thenBy { it.name.lowercase() },
+                .thenBy { it.name.lowercase(Locale.ROOT) },
         )
     }
 
@@ -126,6 +158,32 @@ internal object VaultStore {
     ) {
         val root = noBackupRootFor(file) ?: throw IOException("Vault entry is invalid")
         exportFromRoot(root, file, output)
+    }
+
+    fun exportZip(
+        files: List<File>,
+        output: OutputStream,
+    ) {
+        require(files.isNotEmpty() && files.size <= MAX_FILES) { "Invalid export selection" }
+        val unique = HashSet<String>()
+        val selected = files.sortedBy { it.name.lowercase(Locale.ROOT) }
+        selected.forEach { file ->
+            require(validName(file.name) && unique.add(file.name.lowercase(Locale.ROOT))) {
+                "Vault export selection is invalid"
+            }
+        }
+        val zip = ZipOutputStream(output)
+        zip.setLevel(Deflater.NO_COMPRESSION)
+        selected.forEach { file ->
+            zip.putNextEntry(ZipEntry(file.name))
+            try {
+                export(file, zip)
+            } finally {
+                zip.closeEntry()
+            }
+        }
+        zip.finish()
+        zip.flush()
     }
 
     /** Imports legacy app-specific external ciphertext only after bounded native validation. */
@@ -171,7 +229,7 @@ internal object VaultStore {
     }
 
     private fun vaultNameSnapshot(context: Context): VaultNameSnapshot {
-        val names = linkedSetOf<String>()
+        val names = HashSet<String>()
         var entryCount = 0
         Files.newDirectoryStream(directory(context).toPath()).use { entries ->
             for (entry in entries) {

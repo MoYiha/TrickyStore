@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.security.KeyPair;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -182,6 +183,32 @@ public final class CertHack {
             throw new IllegalStateException("Rust keybox backend activation is unavailable");
         }
         return getPublishedKeyboxCountForTesting();
+    }
+
+    /** Counts active keybox sources, not EC/RSA key records inside each source. */
+    public static int getKeyboxSourceCount() {
+        if (!KeyboxLoader.isActiveSetHealthy()) {
+            throw new IllegalStateException("Rust keybox backend activation is unavailable");
+        }
+        return state.keyboxFiles.size();
+    }
+
+    public static String getDeviceCertificateSerial(String filename) {
+        if (filename == null) return null;
+        List<KeyBox> boxes = state.keyboxFiles.get(filename);
+        if (boxes == null) return null;
+        for (KeyBox box : boxes) {
+            String serial = getDeviceCertificateSerial(box);
+            if (serial != null) return serial;
+        }
+        return null;
+    }
+
+    public static String getDeviceCertificateSerial(KeyBox keybox) {
+        if (keybox == null || keybox.certificates().size() < 3) return null;
+        Certificate certificate = keybox.certificates().get(2);
+        if (!(certificate instanceof X509Certificate x509)) return null;
+        return x509.getSerialNumber().toString(16).toUpperCase(Locale.ROOT);
     }
 
     /**

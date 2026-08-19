@@ -4,4 +4,11 @@
     <issue id="TrustAllX509TrustManager">
         <ignore regexp=".*bcpkix-jdk18on-[^/]*\.jar.*" />
     </issue>
+
+    <!-- External CBOX refresh is conditional, while already-unlocked CBOX and server keyboxes
+         are intentionally merged into the candidate pool unconditionally. The compact control
+         flow is covered by the keybox snapshot tests; keep this warning scoped to Config only. -->
+    <issue id="SuspiciousIndentation">
+        <ignore path="src/main/java/cleveres/tricky/cleverestech/Config.kt" />
+    </issue>
 </lint>

@@ -2064,3 +2064,1145 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
     else start();
 })(window);
+
+// ZIP keybox import UX; single-owner compatibility hook for the legacy inline upload controller.
+(function (global) {
+    'use strict';
+
+    const MAX_SUPPORTED_FILES = 64;
+    const MAX_ARCHIVE_ENTRIES = 256;
+    const MAX_FILE_BYTES = 10 * 1024 * 1024;
+    const MAX_COMPRESSED_FILE_BYTES = MAX_FILE_BYTES + 64 * 1024;
+    const MAX_NAME_BYTES = 4096;
+    const MAX_CENTRAL_DIRECTORY_BYTES = 64 * 1024 * 1024;
+    const STORAGE_KEY = 'cleverestricky.language.v1';
+    const SUPPORTED_LOCALES = new Set(['en', 'tr', 'zh-CN', 'es', 'de', 'ru', 'id', 'hi', 'ar']);
+
+    const COPY = {
+        en: {
+            prompt: 'Or click to select .xml, .cbox or .zip',
+            ready: 'ZIP ready: {name}',
+            summary: '{count} supported XML/CBOX files · {size}',
+            confirm: 'I understand that every supported XML/CBOX file in this ZIP will be imported individually.',
+            import: 'Import ZIP files',
+            importing: 'Importing ZIP files… {done}/{total}',
+            success: 'ZIP import complete: {ok}/{total} files imported.',
+            partial: 'ZIP import finished: {ok} imported, {failed} failed.',
+            select: 'Select a non-empty XML, CBOX or ZIP file.',
+            entryLimit: 'ZIP contains too many entries.',
+            fileCountLimit: 'ZIP contains more than 64 supported XML/CBOX files.',
+            fileLimit: 'A supported XML/CBOX file is empty or larger than 10 MiB.',
+            noSupported: 'ZIP does not contain supported .xml or .cbox files.',
+            encrypted: 'Encrypted ZIP entries are not supported.',
+            compression: 'ZIP uses an unsupported compression method.',
+            malformed: 'ZIP is malformed or uses unsupported ZIP64/multi-disk features.',
+            decompressor: 'This Android WebView cannot decompress standard ZIP files. Update Android System WebView and try again.',
+            changed: 'ZIP selection changed. Review the files and confirm again.',
+            busy: 'A ZIP import is already running.'
+        },
+        tr: {
+            prompt: '.xml, .cbox veya .zip seçmek için dokunun',
+            ready: 'ZIP hazır: {name}',
+            summary: '{count} desteklenen XML/CBOX dosyası · {size}',
+            confirm: 'Bu ZIP içindeki desteklenen tüm XML/CBOX dosyalarının tek tek içe aktarılacağını anlıyorum.',
+            import: 'ZIP dosyalarını içe aktar',
+            importing: 'ZIP dosyaları içe aktarılıyor… {done}/{total}',
+            success: 'ZIP içe aktarma tamamlandı: {ok}/{total} dosya eklendi.',
+            partial: 'ZIP içe aktarma bitti: {ok} eklendi, {failed} başarısız.',
+            select: 'Boş olmayan bir XML, CBOX veya ZIP dosyası seçin.',
+            entryLimit: 'ZIP çok fazla girdi içeriyor.',
+            fileCountLimit: 'ZIP 64 adetten fazla desteklenen XML/CBOX dosyası içeriyor.',
+            fileLimit: 'Desteklenen bir XML/CBOX dosyası boş veya 10 MiB sınırını aşıyor.',
+            noSupported: 'ZIP desteklenen .xml veya .cbox dosyası içermiyor.',
+            encrypted: 'Şifreli ZIP girdileri desteklenmiyor.',
+            compression: 'ZIP desteklenmeyen bir sıkıştırma yöntemi kullanıyor.',
+            malformed: 'ZIP bozuk veya desteklenmeyen ZIP64/çoklu disk özellikleri kullanıyor.',
+            decompressor: 'Bu Android WebView standart ZIP dosyalarını açamıyor. Android System WebView uygulamasını güncelleyip yeniden deneyin.',
+            changed: 'ZIP seçimi değişti. Dosyaları yeniden kontrol edip onaylayın.',
+            busy: 'Bir ZIP içe aktarma işlemi zaten çalışıyor.'
+        },
+        'zh-CN': {
+            prompt: '点击选择 .xml、.cbox 或 .zip', ready: 'ZIP 已就绪：{name}', summary: '{count} 个支持的 XML/CBOX 文件 · {size}',
+            confirm: '我了解此 ZIP 中所有受支持的 XML/CBOX 文件都会逐个导入。', import: '导入 ZIP 文件', importing: '正在导入 ZIP 文件… {done}/{total}',
+            success: 'ZIP 导入完成：已导入 {ok}/{total} 个文件。', partial: 'ZIP 导入结束：成功 {ok} 个，失败 {failed} 个。',
+            select: '请选择非空的 XML、CBOX 或 ZIP 文件。', entryLimit: 'ZIP 中的条目过多。', fileCountLimit: 'ZIP 中受支持的 XML/CBOX 文件超过 64 个。',
+            fileLimit: '受支持的 XML/CBOX 文件为空或超过 10 MiB。', noSupported: 'ZIP 中没有受支持的 .xml 或 .cbox 文件。', encrypted: '不支持加密的 ZIP 条目。',
+            compression: 'ZIP 使用了不支持的压缩方式。', malformed: 'ZIP 已损坏，或使用了不支持的 ZIP64/多磁盘功能。',
+            decompressor: '此 Android WebView 无法解压标准 ZIP。请更新 Android System WebView 后重试。', changed: 'ZIP 选择已更改。请重新检查文件并确认。', busy: '已有 ZIP 导入任务正在运行。'
+        },
+        es: {
+            prompt: 'Toca para elegir .xml, .cbox o .zip', ready: 'ZIP listo: {name}', summary: '{count} archivos XML/CBOX compatibles · {size}',
+            confirm: 'Entiendo que todos los archivos XML/CBOX compatibles de este ZIP se importarán individualmente.', import: 'Importar archivos ZIP', importing: 'Importando archivos ZIP… {done}/{total}',
+            success: 'Importación ZIP completada: {ok}/{total} archivos importados.', partial: 'Importación ZIP finalizada: {ok} importados, {failed} fallidos.',
+            select: 'Selecciona un archivo XML, CBOX o ZIP no vacío.', entryLimit: 'El ZIP contiene demasiadas entradas.', fileCountLimit: 'El ZIP contiene más de 64 archivos XML/CBOX compatibles.',
+            fileLimit: 'Un XML/CBOX compatible está vacío o supera 10 MiB.', noSupported: 'El ZIP no contiene archivos .xml o .cbox compatibles.', encrypted: 'No se admiten entradas ZIP cifradas.',
+            compression: 'El ZIP usa un método de compresión no compatible.', malformed: 'El ZIP está dañado o usa ZIP64/múltiples discos no compatibles.',
+            decompressor: 'Este Android WebView no puede descomprimir ZIP estándar. Actualiza Android System WebView y vuelve a intentarlo.', changed: 'La selección ZIP cambió. Revisa los archivos y confirma de nuevo.', busy: 'Ya hay una importación ZIP en curso.'
+        },
+        de: {
+            prompt: 'Tippen, um .xml, .cbox oder .zip auszuwählen', ready: 'ZIP bereit: {name}', summary: '{count} unterstützte XML/CBOX-Dateien · {size}',
+            confirm: 'Ich verstehe, dass alle unterstützten XML/CBOX-Dateien in diesem ZIP einzeln importiert werden.', import: 'ZIP-Dateien importieren', importing: 'ZIP-Dateien werden importiert… {done}/{total}',
+            success: 'ZIP-Import abgeschlossen: {ok}/{total} Dateien importiert.', partial: 'ZIP-Import beendet: {ok} importiert, {failed} fehlgeschlagen.',
+            select: 'Wähle eine nicht leere XML-, CBOX- oder ZIP-Datei.', entryLimit: 'Das ZIP enthält zu viele Einträge.', fileCountLimit: 'Das ZIP enthält mehr als 64 unterstützte XML/CBOX-Dateien.',
+            fileLimit: 'Eine unterstützte XML/CBOX-Datei ist leer oder größer als 10 MiB.', noSupported: 'Das ZIP enthält keine unterstützten .xml- oder .cbox-Dateien.', encrypted: 'Verschlüsselte ZIP-Einträge werden nicht unterstützt.',
+            compression: 'Das ZIP verwendet eine nicht unterstützte Komprimierung.', malformed: 'Das ZIP ist beschädigt oder verwendet nicht unterstützte ZIP64-/Multi-Disk-Funktionen.',
+            decompressor: 'Dieses Android WebView kann Standard-ZIP-Dateien nicht entpacken. Aktualisiere Android System WebView und versuche es erneut.', changed: 'Die ZIP-Auswahl wurde geändert. Prüfe die Dateien erneut und bestätige noch einmal.', busy: 'Ein ZIP-Import läuft bereits.'
+        },
+        ru: {
+            prompt: 'Нажмите, чтобы выбрать .xml, .cbox или .zip', ready: 'ZIP готов: {name}', summary: '{count} поддерживаемых XML/CBOX · {size}',
+            confirm: 'Я понимаю, что все поддерживаемые XML/CBOX-файлы из этого ZIP будут импортированы по отдельности.', import: 'Импортировать файлы ZIP', importing: 'Импорт файлов ZIP… {done}/{total}',
+            success: 'Импорт ZIP завершён: импортировано {ok}/{total}.', partial: 'Импорт ZIP завершён: {ok} успешно, {failed} с ошибкой.',
+            select: 'Выберите непустой XML, CBOX или ZIP.', entryLimit: 'В ZIP слишком много записей.', fileCountLimit: 'В ZIP больше 64 поддерживаемых XML/CBOX-файлов.',
+            fileLimit: 'Поддерживаемый XML/CBOX пуст или больше 10 MiB.', noSupported: 'В ZIP нет поддерживаемых .xml или .cbox.', encrypted: 'Зашифрованные записи ZIP не поддерживаются.',
+            compression: 'ZIP использует неподдерживаемый метод сжатия.', malformed: 'ZIP повреждён или использует неподдерживаемые ZIP64/многодисковые функции.',
+            decompressor: 'Этот Android WebView не может распаковать стандартный ZIP. Обновите Android System WebView и повторите попытку.', changed: 'Выбран другой ZIP. Снова проверьте файлы и подтвердите импорт.', busy: 'Импорт ZIP уже выполняется.'
+        },
+        id: {
+            prompt: 'Ketuk untuk memilih .xml, .cbox, atau .zip', ready: 'ZIP siap: {name}', summary: '{count} file XML/CBOX yang didukung · {size}',
+            confirm: 'Saya memahami bahwa semua file XML/CBOX yang didukung di ZIP ini akan diimpor satu per satu.', import: 'Impor file ZIP', importing: 'Mengimpor file ZIP… {done}/{total}',
+            success: 'Impor ZIP selesai: {ok}/{total} file diimpor.', partial: 'Impor ZIP selesai: {ok} berhasil, {failed} gagal.',
+            select: 'Pilih file XML, CBOX, atau ZIP yang tidak kosong.', entryLimit: 'ZIP berisi terlalu banyak entri.', fileCountLimit: 'ZIP berisi lebih dari 64 file XML/CBOX yang didukung.',
+            fileLimit: 'File XML/CBOX yang didukung kosong atau lebih dari 10 MiB.', noSupported: 'ZIP tidak berisi file .xml atau .cbox yang didukung.', encrypted: 'Entri ZIP terenkripsi tidak didukung.',
+            compression: 'ZIP memakai metode kompresi yang tidak didukung.', malformed: 'ZIP rusak atau memakai fitur ZIP64/multi-disk yang tidak didukung.',
+            decompressor: 'Android WebView ini tidak dapat mengekstrak ZIP standar. Perbarui Android System WebView lalu coba lagi.', changed: 'Pilihan ZIP berubah. Tinjau file dan konfirmasi lagi.', busy: 'Impor ZIP sedang berjalan.'
+        },
+        hi: {
+            prompt: '.xml, .cbox या .zip चुनने के लिए टैप करें', ready: 'ZIP तैयार: {name}', summary: '{count} समर्थित XML/CBOX फ़ाइलें · {size}',
+            confirm: 'मैं समझता/समझती हूँ कि इस ZIP की हर समर्थित XML/CBOX फ़ाइल अलग-अलग आयात होगी।', import: 'ZIP फ़ाइलें आयात करें', importing: 'ZIP फ़ाइलें आयात हो रही हैं… {done}/{total}',
+            success: 'ZIP आयात पूरा: {ok}/{total} फ़ाइलें आयात हुईं।', partial: 'ZIP आयात समाप्त: {ok} आयात हुईं, {failed} विफल।',
+            select: 'कोई खाली न होने वाली XML, CBOX या ZIP फ़ाइल चुनें।', entryLimit: 'ZIP में बहुत अधिक प्रविष्टियाँ हैं।', fileCountLimit: 'ZIP में 64 से अधिक समर्थित XML/CBOX फ़ाइलें हैं।',
+            fileLimit: 'कोई समर्थित XML/CBOX फ़ाइल खाली है या 10 MiB से बड़ी है।', noSupported: 'ZIP में समर्थित .xml या .cbox फ़ाइल नहीं है।', encrypted: 'एन्क्रिप्टेड ZIP प्रविष्टियाँ समर्थित नहीं हैं।',
+            compression: 'ZIP असमर्थित संपीड़न विधि उपयोग करता है।', malformed: 'ZIP खराब है या असमर्थित ZIP64/मल्टी-डिस्क सुविधा उपयोग करता है।',
+            decompressor: 'यह Android WebView सामान्य ZIP फ़ाइल नहीं खोल सकता। Android System WebView अपडेट करके फिर कोशिश करें।', changed: 'ZIP चयन बदल गया। फ़ाइलों की दोबारा जाँच करके फिर पुष्टि करें।', busy: 'ZIP आयात पहले से चल रहा है।'
+        },
+        ar: {
+            prompt: 'اضغط لاختيار .xml أو .cbox أو .zip', ready: 'ZIP جاهز: {name}', summary: '{count} من ملفات XML/CBOX المدعومة · {size}',
+            confirm: 'أفهم أن كل ملفات XML/CBOX المدعومة داخل ZIP ستُستورد واحداً تلو الآخر.', import: 'استيراد ملفات ZIP', importing: 'جار استيراد ملفات ZIP… {done}/{total}',
+            success: 'اكتمل استيراد ZIP: تم استيراد {ok}/{total} ملفاً.', partial: 'انتهى استيراد ZIP: نجح {ok} وفشل {failed}.',
+            select: 'اختر ملف XML أو CBOX أو ZIP غير فارغ.', entryLimit: 'يحتوي ZIP على عدد كبير جداً من العناصر.', fileCountLimit: 'يحتوي ZIP على أكثر من 64 ملف XML/CBOX مدعوماً.',
+            fileLimit: 'أحد ملفات XML/CBOX المدعومة فارغ أو أكبر من 10 MiB.', noSupported: 'لا يحتوي ZIP على ملفات .xml أو .cbox مدعومة.', encrypted: 'عناصر ZIP المشفرة غير مدعومة.',
+            compression: 'يستخدم ZIP طريقة ضغط غير مدعومة.', malformed: 'ملف ZIP تالف أو يستخدم ZIP64/أقراصاً متعددة غير مدعومة.',
+            decompressor: 'لا يستطيع Android WebView هذا فك ZIP القياسي. حدّث Android System WebView ثم أعد المحاولة.', changed: 'تغير ملف ZIP المحدد. راجع الملفات وأكّد مرة أخرى.', busy: 'هناك عملية استيراد ZIP قيد التشغيل بالفعل.'
+        }
+    };
+
+    class ZipImportError extends Error {
+        constructor(code) {
+            super(code);
+            this.name = 'ZipImportError';
+            this.code = code;
+        }
+    }
+
+    function fail(code) {
+        throw new ZipImportError(code);
+    }
+
+    function readLocale() {
+        try {
+            const value = global.localStorage && global.localStorage.getItem(STORAGE_KEY);
+            return SUPPORTED_LOCALES.has(value) ? value : 'en';
+        } catch (_) {
+            return 'en';
+        }
+    }
+
+    function text(key, values) {
+        const locale = readLocale();
+        let value = (COPY[locale] && COPY[locale][key]) || COPY.en[key] || key;
+        Object.entries(values || {}).forEach(([name, replacement]) => {
+            value = value.split('{' + name + '}').join(String(replacement));
+        });
+        return value;
+    }
+
+    function formatBytes(size) {
+        if (size < 1024) return size + ' B';
+        if (size < 1024 * 1024) return Math.ceil(size / 1024) + ' KiB';
+        if (size < 1024 * 1024 * 1024) return (size / (1024 * 1024)).toFixed(size % (1024 * 1024) === 0 ? 0 : 1) + ' MiB';
+        return (size / (1024 * 1024 * 1024)).toFixed(1) + ' GiB';
+    }
+
+    function u16(view, offset) {
+        if (offset < 0 || offset + 2 > view.byteLength) fail('malformed');
+        return view.getUint16(offset, true);
+    }
+
+    function u32(view, offset) {
+        if (offset < 0 || offset + 4 > view.byteLength) fail('malformed');
+        return view.getUint32(offset, true);
+    }
+
+    function decodeName(bytes, utf8) {
+        if (bytes.length === 0 || bytes.length > MAX_NAME_BYTES) fail('malformed');
+        let value;
+        try {
+            value = utf8
+                ? new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+                : Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+        } catch (_) {
+            fail('malformed');
+        }
+        if (!value || value.indexOf('\u0000') >= 0 || /[\u0000-\u001f\u007f]/.test(value)) fail('malformed');
+        return value;
+    }
+
+    function isSupportedName(name) {
+        const lower = name.toLowerCase();
+        return lower.endsWith('.xml') || lower.endsWith('.cbox');
+    }
+
+    function safeBasename(name) {
+        let base = name.replace(/\\/g, '/').split('/').pop() || 'keybox.xml';
+        base = base.replace(/[\u0000-\u001f\u007f]/g, '_').trim();
+        if (!base) base = 'keybox.xml';
+        if (base.length > 120) {
+            const dot = base.lastIndexOf('.');
+            const ext = dot >= 0 ? base.slice(dot).slice(0, 8) : '';
+            base = base.slice(0, Math.max(1, 120 - ext.length)) + ext;
+        }
+        return base;
+    }
+
+    function allocateUploadNames(entries) {
+        const used = new Set();
+        return entries.map(entry => {
+            const base = safeBasename(entry.name);
+            const dot = base.lastIndexOf('.');
+            const stem = dot > 0 ? base.slice(0, dot) : base;
+            const ext = dot > 0 ? base.slice(dot) : '';
+            let candidate = base;
+            let suffix = 2;
+            while (used.has(candidate.toLowerCase())) {
+                const suffixText = '-' + suffix++;
+                candidate = stem.slice(0, Math.max(1, 120 - ext.length - suffixText.length)) + suffixText + ext;
+            }
+            used.add(candidate.toLowerCase());
+            return Object.assign({}, entry, { uploadName: candidate });
+        });
+    }
+
+    async function readRange(blob, start, length) {
+        if (!(blob instanceof Blob) || !Number.isSafeInteger(start) || !Number.isSafeInteger(length) || start < 0 || length < 0 || start > blob.size || length > blob.size - start) fail('malformed');
+        return new Uint8Array(await blob.slice(start, start + length).arrayBuffer());
+    }
+
+    async function findEocd(file) {
+        if (!(file instanceof Blob) || !Number.isSafeInteger(file.size) || file.size < 22) fail('malformed');
+        const tailStart = Math.max(0, file.size - 65557);
+        const tail = await readRange(file, tailStart, file.size - tailStart);
+        try {
+            const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+            for (let offset = tail.length - 22; offset >= 0; offset--) {
+                if (u32(view, offset) !== 0x06054b50) continue;
+                const commentLength = u16(view, offset + 20);
+                if (offset + 22 + commentLength !== tail.length) continue;
+                return {
+                    absoluteOffset: tailStart + offset,
+                    disk: u16(view, offset + 4),
+                    centralDisk: u16(view, offset + 6),
+                    diskEntries: u16(view, offset + 8),
+                    totalEntries: u16(view, offset + 10),
+                    centralSize: u32(view, offset + 12),
+                    centralOffset: u32(view, offset + 16)
+                };
+            }
+            fail('malformed');
+        } finally {
+            tail.fill(0);
+        }
+    }
+
+    async function parseZipFile(file) {
+        if (!(file instanceof Blob) || file.size <= 0) fail('select');
+        const eocd = await findEocd(file);
+        if (eocd.disk !== 0 || eocd.centralDisk !== 0 || eocd.diskEntries !== eocd.totalEntries || eocd.totalEntries === 0xffff || eocd.centralSize === 0xffffffff || eocd.centralOffset === 0xffffffff) fail('malformed');
+        if (eocd.totalEntries > MAX_ARCHIVE_ENTRIES) fail('entryLimit');
+        if (eocd.centralSize > MAX_CENTRAL_DIRECTORY_BYTES || eocd.centralOffset > eocd.absoluteOffset || eocd.centralSize > eocd.absoluteOffset - eocd.centralOffset) fail('malformed');
+
+        const central = await readRange(file, eocd.centralOffset, eocd.centralSize);
+        try {
+            const view = new DataView(central.buffer, central.byteOffset, central.byteLength);
+            const entries = [];
+            let cursor = 0;
+            for (let index = 0; index < eocd.totalEntries; index++) {
+                if (cursor + 46 > central.length || u32(view, cursor) !== 0x02014b50) fail('malformed');
+                const flags = u16(view, cursor + 8);
+                const method = u16(view, cursor + 10);
+                const crc = u32(view, cursor + 16);
+                const compressedSize = u32(view, cursor + 20);
+                const uncompressedSize = u32(view, cursor + 24);
+                const nameLength = u16(view, cursor + 28);
+                const extraLength = u16(view, cursor + 30);
+                const commentLength = u16(view, cursor + 32);
+                const diskStart = u16(view, cursor + 34);
+                const localOffset = u32(view, cursor + 42);
+                const end = cursor + 46 + nameLength + extraLength + commentLength;
+                if (end > central.length || diskStart !== 0 || compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localOffset === 0xffffffff) fail('malformed');
+                if ((flags & 0x0041) !== 0) fail('encrypted');
+                if (method !== 0 && method !== 8) fail('compression');
+                const name = decodeName(central.subarray(cursor + 46, cursor + 46 + nameLength), (flags & 0x0800) !== 0);
+                if (!name.endsWith('/') && isSupportedName(name)) {
+                    if (uncompressedSize <= 0 || uncompressedSize > MAX_FILE_BYTES || compressedSize <= 0 || compressedSize > MAX_COMPRESSED_FILE_BYTES) fail('fileLimit');
+                    entries.push({ name, flags, method, crc, compressedSize, uncompressedSize, localOffset });
+                    if (entries.length > MAX_SUPPORTED_FILES) fail('fileCountLimit');
+                }
+                cursor = end;
+            }
+            if (cursor !== central.length) fail('malformed');
+            if (entries.length === 0) fail('noSupported');
+            const named = allocateUploadNames(entries);
+            const totalBytes = named.reduce((sum, entry) => sum + entry.uncompressedSize, 0);
+            return { entries: named, centralOffset: eocd.centralOffset, totalBytes };
+        } finally {
+            central.fill(0);
+        }
+    }
+
+    let crcTable = null;
+    function crc32(bytes) {
+        if (!crcTable) {
+            crcTable = new Uint32Array(256);
+            for (let n = 0; n < 256; n++) {
+                let value = n;
+                for (let k = 0; k < 8; k++) value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+                crcTable[n] = value >>> 0;
+            }
+        }
+        let crc = 0xffffffff;
+        for (let index = 0; index < bytes.length; index++) crc = crcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+        return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    async function inflateRawBounded(compressed, expectedSize) {
+        if (typeof global.DecompressionStream !== 'function') fail('decompressor');
+        let stream;
+        try {
+            stream = new Blob([compressed]).stream().pipeThrough(new global.DecompressionStream('deflate-raw'));
+        } catch (_) {
+            fail('decompressor');
+        }
+        const reader = stream.getReader();
+        const chunks = [];
+        let total = 0;
+        try {
+            while (true) {
+                const result = await reader.read();
+                if (result.done) break;
+                const chunk = result.value instanceof Uint8Array ? result.value : new Uint8Array(result.value);
+                if (chunk.length > expectedSize - total || total + chunk.length > MAX_FILE_BYTES) fail('fileLimit');
+                chunks.push(chunk);
+                total += chunk.length;
+            }
+        } catch (error) {
+            try { await reader.cancel(); } catch (_) {}
+            chunks.forEach(chunk => chunk.fill(0));
+            if (error instanceof ZipImportError) throw error;
+            fail('malformed');
+        }
+        if (total !== expectedSize) {
+            chunks.forEach(chunk => chunk.fill(0));
+            fail('malformed');
+        }
+        const output = new Uint8Array(total);
+        let offset = 0;
+        chunks.forEach(chunk => {
+            output.set(chunk, offset);
+            offset += chunk.length;
+            chunk.fill(0);
+        });
+        return output;
+    }
+
+    async function extractEntry(file, entry, centralOffset) {
+        const header = await readRange(file, entry.localOffset, 30);
+        let compressed = null;
+        try {
+            const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+            if (u32(view, 0) !== 0x04034b50) fail('malformed');
+            const flags = u16(view, 6);
+            const method = u16(view, 8);
+            const nameLength = u16(view, 26);
+            const extraLength = u16(view, 28);
+            if ((flags & 0x0041) !== 0) fail('encrypted');
+            if (method !== entry.method || (flags & 0x0809) !== (entry.flags & 0x0809) || nameLength <= 0 || nameLength > MAX_NAME_BYTES) fail('malformed');
+            const dataOffset = entry.localOffset + 30 + nameLength + extraLength;
+            if (!Number.isSafeInteger(dataOffset) || dataOffset > centralOffset || entry.compressedSize > centralOffset - dataOffset) fail('malformed');
+            const localNameBytes = await readRange(file, entry.localOffset + 30, nameLength);
+            try {
+                if (decodeName(localNameBytes, (flags & 0x0800) !== 0) !== entry.name) fail('malformed');
+            } finally {
+                localNameBytes.fill(0);
+            }
+            compressed = await readRange(file, dataOffset, entry.compressedSize);
+            let output;
+            if (entry.method === 0) {
+                if (entry.compressedSize !== entry.uncompressedSize) fail('malformed');
+                output = compressed;
+                compressed = null;
+            } else {
+                output = await inflateRawBounded(compressed, entry.uncompressedSize);
+            }
+            if (output.length !== entry.uncompressedSize || crc32(output) !== entry.crc) {
+                output.fill(0);
+                fail('malformed');
+            }
+            return output;
+        } finally {
+            header.fill(0);
+            if (compressed) compressed.fill(0);
+        }
+    }
+
+    function notify(message, type) {
+        if (typeof global.notify === 'function') global.notify(message, type);
+    }
+
+    function errorMessage(error) {
+        if (error instanceof ZipImportError) return text(error.code);
+        return text('malformed');
+    }
+
+    let pendingZip = null;
+    let busy = false;
+    let ui = null;
+    let originalLoadFileContent = null;
+    let originalResetDropZone = null;
+
+    function clearPending() {
+        pendingZip = null;
+        if (!ui) return;
+        ui.confirm.checked = false;
+        ui.button.disabled = true;
+        ui.panel.hidden = true;
+        ui.summary.textContent = '';
+    }
+
+    function updatePrompt() {
+        if (!ui) return;
+        const content = document.getElementById('dropZoneContent');
+        if (content && !pendingZip && !busy) {
+            content.innerHTML = '';
+            const drag = document.createElement('div');
+            drag.style.cssText = 'font-size:1.5em;margin-bottom:10px;color:#888;';
+            drag.textContent = '[ Drag & Drop ]';
+            const prompt = document.createElement('div');
+            prompt.style.cssText = 'font-size:0.9em;color:#888;';
+            prompt.textContent = text('prompt');
+            content.appendChild(drag);
+            content.appendChild(prompt);
+        }
+        ui.confirmLabel.textContent = text('confirm');
+        ui.button.textContent = text('import');
+        if (pendingZip) ui.summary.textContent = text('summary', { count: pendingZip.count, size: formatBytes(pendingZip.totalBytes) });
+    }
+
+    async function prepareZip(file) {
+        if (busy) {
+            notify(text('busy'), 'error');
+            return;
+        }
+        clearPending();
+        try {
+            const parsed = await parseZipFile(file);
+            pendingZip = {
+                file,
+                count: parsed.entries.length,
+                totalBytes: parsed.totalBytes,
+                identity: file.name + ':' + file.size + ':' + file.lastModified
+            };
+            ui.panel.hidden = false;
+            ui.confirm.checked = false;
+            ui.button.disabled = true;
+            const content = document.getElementById('dropZoneContent');
+            if (content) {
+                content.innerHTML = '';
+                const ready = document.createElement('div');
+                ready.style.cssText = 'font-size:1.05em;color:var(--accent);font-weight:600;overflow-wrap:anywhere;';
+                ready.textContent = text('ready', { name: file.name });
+                content.appendChild(ready);
+            }
+            updatePrompt();
+        } catch (error) {
+            clearPending();
+            notify(errorMessage(error), 'error');
+            updatePrompt();
+        }
+    }
+
+    async function uploadEntry(entry, bytes) {
+        if (typeof global.fetchAuth !== 'function') throw new Error('upload unavailable');
+        const formData = new FormData();
+        const type = entry.uploadName.toLowerCase().endsWith('.cbox') ? 'application/octet-stream' : 'application/xml';
+        const file = new File([bytes], entry.uploadName, { type });
+        formData.append('file', file);
+        formData.append('filename', entry.uploadName);
+        const response = await global.fetchAuth('/api/upload_keybox', { method: 'POST', body: formData, timeoutMs: 120000 });
+        if (response.ok) return { ok: true, name: entry.uploadName };
+        let detail = '';
+        try { detail = (await response.text()).replace(/[\r\n]+/g, ' ').trim().slice(0, 160); } catch (_) {}
+        return { ok: false, name: entry.uploadName, detail };
+    }
+
+    async function importPendingZip() {
+        if (busy || !pendingZip) return;
+        if (!ui.confirm.checked) {
+            ui.button.disabled = true;
+            return;
+        }
+        const selection = pendingZip;
+        busy = true;
+        ui.button.disabled = true;
+        const picker = document.getElementById('kbFilePicker');
+        if (picker) picker.disabled = true;
+        const results = [];
+        try {
+            const parsed = await parseZipFile(selection.file);
+            const identity = selection.file.name + ':' + selection.file.size + ':' + selection.file.lastModified;
+            if (identity !== selection.identity || parsed.entries.length !== selection.count || parsed.totalBytes !== selection.totalBytes) fail('changed');
+            for (let index = 0; index < parsed.entries.length; index++) {
+                const entry = parsed.entries[index];
+                const progress = text('importing', { done: index, total: parsed.entries.length });
+                ui.summary.textContent = progress;
+                notify(progress, 'working');
+                let bytes = null;
+                try {
+                    bytes = await extractEntry(selection.file, entry, parsed.centralOffset);
+                    results.push(await uploadEntry(entry, bytes));
+                } catch (error) {
+                    results.push({ ok: false, name: entry.uploadName, detail: errorMessage(error) });
+                } finally {
+                    if (bytes) bytes.fill(0);
+                }
+                ui.summary.textContent = text('importing', { done: index + 1, total: parsed.entries.length });
+            }
+            const ok = results.filter(result => result.ok).length;
+            const failed = results.length - ok;
+            const message = failed === 0
+                ? text('success', { ok, total: results.length })
+                : text('partial', { ok, failed });
+            const failures = results.filter(result => !result.ok).slice(0, 4).map(result => result.name + (result.detail ? ': ' + result.detail : '')).join(' | ');
+            notify(failures ? message + ' ' + failures : message, failed === 0 ? 'normal' : 'error');
+            if (typeof global.loadKeyInfo === 'function') global.loadKeyInfo();
+            if (typeof global.loadKeyboxes === 'function') global.loadKeyboxes();
+        } catch (error) {
+            notify(errorMessage(error), 'error');
+        } finally {
+            busy = false;
+            if (picker) picker.disabled = false;
+            clearPending();
+            if (typeof originalResetDropZone === 'function') originalResetDropZone();
+            updatePrompt();
+        }
+    }
+
+    function createUi(dropZone) {
+        const panel = document.createElement('div');
+        panel.id = 'ct_zip_confirmation';
+        panel.hidden = true;
+        panel.style.cssText = 'grid-column:1 / -1;border:1px solid var(--border);border-radius:8px;padding:12px;margin:0 0 10px 0;';
+        const summary = document.createElement('div');
+        summary.id = 'ct_zip_summary';
+        summary.style.cssText = 'font-size:0.85em;color:#aaa;margin-bottom:10px;overflow-wrap:anywhere;';
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex;gap:10px;align-items:flex-start;line-height:1.45;cursor:pointer;margin-bottom:10px;';
+        const confirm = document.createElement('input');
+        confirm.type = 'checkbox';
+        confirm.id = 'ct_zip_confirm';
+        confirm.style.cssText = 'width:20px;height:20px;min-width:20px;margin-top:1px;';
+        const confirmLabel = document.createElement('span');
+        confirmLabel.id = 'ct_zip_confirm_label';
+        row.appendChild(confirm);
+        row.appendChild(confirmLabel);
+        const button = document.createElement('button');
+        button.id = 'ct_zip_import_btn';
+        button.className = 'primary';
+        button.type = 'button';
+        button.disabled = true;
+        button.style.width = '100%';
+        panel.appendChild(summary);
+        panel.appendChild(row);
+        panel.appendChild(button);
+        dropZone.parentNode.appendChild(panel);
+        confirm.addEventListener('change', function () { button.disabled = !confirm.checked || busy || !pendingZip; });
+        button.addEventListener('click', function (event) { event.preventDefault(); event.stopPropagation(); importPendingZip(); });
+        panel.addEventListener('click', function (event) { event.stopPropagation(); });
+        return { panel, summary, confirm, confirmLabel, button };
+    }
+
+    function install() {
+        if (ui || typeof document === 'undefined') return;
+        const picker = document.getElementById('kbFilePicker');
+        const dropZone = document.getElementById('dropZone');
+        if (!picker || !dropZone || typeof global.loadFileContent !== 'function') {
+            global.setTimeout(install, 50);
+            return;
+        }
+        originalLoadFileContent = global.loadFileContent;
+        originalResetDropZone = typeof global.resetDropZone === 'function' ? global.resetDropZone : null;
+        picker.accept = '.xml,.cbox,.zip';
+        ui = createUi(dropZone);
+
+        global.loadFileContent = async function (input) {
+            const file = input instanceof File ? input : (input && input.files ? input.files[0] : null);
+            if (!file) return originalLoadFileContent(input);
+            if (busy) {
+                notify(text('busy'), 'error');
+                return;
+            }
+            if (file.name.toLowerCase().endsWith('.zip')) {
+                await prepareZip(file);
+                return;
+            }
+            clearPending();
+            updatePrompt();
+            return originalLoadFileContent(input);
+        };
+
+        if (originalResetDropZone) {
+            global.resetDropZone = function () {
+                const result = originalResetDropZone.apply(this, arguments);
+                if (!busy) clearPending();
+                updatePrompt();
+                return result;
+            };
+        }
+
+        const selector = document.getElementById('ct_language_selector');
+        if (selector) selector.addEventListener('change', function () { global.setTimeout(updatePrompt, 0); });
+        updatePrompt();
+    }
+
+    global.CleveresZipImport = Object.freeze({
+        limits: Object.freeze({ MAX_SUPPORTED_FILES, MAX_ARCHIVE_ENTRIES, MAX_FILE_BYTES }),
+        parseZipFile,
+        extractEntry,
+        allocateUploadNames,
+        translations: COPY
+    });
+
+    if (typeof document !== 'undefined') {
+        if (document.readyState === 'complete') global.setTimeout(install, 0);
+        else global.addEventListener('load', install, { once: true });
+    }
+})(window);
+
+
+// Source-aware Stored Keyboxes and Verification UX. Runtime ownership stays in ux.js.
+(function (global) {
+    'use strict';
+    if (typeof document === 'undefined') return;
+
+    const PAGE_SIZE = 5;
+    const COPY = {
+        en: {
+            selected: 'selected', deleteSelected: 'Delete selected', previous: 'Previous', next: 'Next', page: 'Page {page} / {pages}',
+            root: 'Module root', managed: 'Managed folder', cert: 'Certificate #3 serial', certMissing: 'Certificate #3 serial unavailable',
+            deleteConfirm: 'Delete this stored keybox?', bulkConfirm: 'Delete {count} selected keyboxes?', bulkDone: 'Deleted {count} keyboxes',
+            keyboxesLoaded: '{count} Keyboxes Loaded', selectFiltered: 'Select filtered', clearFiltered: 'Clear filtered selection',
+            search: 'Search', clear: 'Clear', verifySearchPlaceholder: 'Search verification results...', verifying: 'Verifying...',
+            noVerify: 'No keyboxes to verify', noVerifyMatch: 'No verification results match your search.', loading: 'Loading...',
+            noStored: 'No keyboxes stored.', noStoredMatch: 'No keyboxes match your filter.', delete: 'Delete'
+        },
+        tr: {
+            selected: 'seçili', deleteSelected: 'Seçilileri sil', previous: 'Önceki', next: 'Sonraki', page: 'Sayfa {page} / {pages}',
+            root: 'Modül kökü', managed: 'Yönetilen klasör', cert: '3. sertifika seri no', certMissing: '3. sertifika seri no yok',
+            deleteConfirm: 'Bu kayıtlı keybox silinsin mi?', bulkConfirm: 'Seçili {count} keybox silinsin mi?', bulkDone: '{count} keybox silindi',
+            keyboxesLoaded: '{count} Keybox Yüklendi', selectFiltered: 'Filtrelenenleri seç', clearFiltered: 'Filtre seçimini temizle',
+            search: 'Ara', clear: 'Temizle', verifySearchPlaceholder: 'Doğrulama sonuçlarında ara...', verifying: 'Doğrulanıyor...',
+            noVerify: 'Doğrulanacak keybox yok', noVerifyMatch: 'Aramanızla eşleşen doğrulama sonucu yok.', loading: 'Yükleniyor...',
+            noStored: 'Kayıtlı keybox yok.', noStoredMatch: 'Filtrenizle eşleşen keybox yok.', delete: 'Sil'
+        },
+        'zh-CN': {
+            selected: '已选择', deleteSelected: '删除所选', previous: '上一页', next: '下一页', page: '第 {page} / {pages} 页',
+            root: '模块根目录', managed: '受管目录', cert: '第 3 个证书序列号', certMissing: '无第 3 个证书序列号',
+            deleteConfirm: '删除此已存储密钥盒？', bulkConfirm: '删除选中的 {count} 个密钥盒？', bulkDone: '已删除 {count} 个密钥盒',
+            keyboxesLoaded: '已加载 {count} 个 Keybox', selectFiltered: '选择筛选结果', clearFiltered: '清除筛选选择',
+            search: '搜索', clear: '清除', verifySearchPlaceholder: '搜索验证结果...', verifying: '正在验证...',
+            noVerify: '没有可验证的 Keybox', noVerifyMatch: '没有符合搜索条件的验证结果。', loading: '正在加载...',
+            noStored: '没有已存储的 Keybox。', noStoredMatch: '没有符合筛选条件的 Keybox。', delete: '删除'
+        },
+        es: {
+            selected: 'seleccionados', deleteSelected: 'Eliminar seleccionados', previous: 'Anterior', next: 'Siguiente', page: 'Página {page} / {pages}',
+            root: 'Raíz del módulo', managed: 'Carpeta administrada', cert: 'Serie del certificado n.º 3', certMissing: 'Serie del certificado n.º 3 no disponible',
+            deleteConfirm: '¿Eliminar esta keybox guardada?', bulkConfirm: '¿Eliminar {count} keyboxes seleccionadas?', bulkDone: 'Se eliminaron {count} keyboxes',
+            keyboxesLoaded: '{count} Keyboxes cargadas', selectFiltered: 'Seleccionar filtradas', clearFiltered: 'Limpiar selección filtrada',
+            search: 'Buscar', clear: 'Limpiar', verifySearchPlaceholder: 'Buscar resultados de verificación...', verifying: 'Verificando...',
+            noVerify: 'No hay keyboxes para verificar', noVerifyMatch: 'Ningún resultado de verificación coincide con la búsqueda.', loading: 'Cargando...',
+            noStored: 'No hay keyboxes guardadas.', noStoredMatch: 'Ninguna keybox coincide con el filtro.', delete: 'Eliminar'
+        },
+        de: {
+            selected: 'ausgewählt', deleteSelected: 'Auswahl löschen', previous: 'Zurück', next: 'Weiter', page: 'Seite {page} / {pages}',
+            root: 'Modulstamm', managed: 'Verwalteter Ordner', cert: 'Seriennummer Zertifikat Nr. 3', certMissing: 'Seriennummer Zertifikat Nr. 3 nicht verfügbar',
+            deleteConfirm: 'Diese gespeicherte Keybox löschen?', bulkConfirm: '{count} ausgewählte Keyboxen löschen?', bulkDone: '{count} Keyboxen gelöscht',
+            keyboxesLoaded: '{count} Keyboxen geladen', selectFiltered: 'Gefilterte auswählen', clearFiltered: 'Gefilterte Auswahl löschen',
+            search: 'Suchen', clear: 'Leeren', verifySearchPlaceholder: 'Prüfergebnisse durchsuchen...', verifying: 'Prüfung läuft...',
+            noVerify: 'Keine Keyboxen zum Prüfen', noVerifyMatch: 'Keine Prüfergebnisse entsprechen der Suche.', loading: 'Wird geladen...',
+            noStored: 'Keine Keyboxen gespeichert.', noStoredMatch: 'Keine Keybox entspricht dem Filter.', delete: 'Löschen'
+        },
+        ru: {
+            selected: 'выбрано', deleteSelected: 'Удалить выбранные', previous: 'Назад', next: 'Далее', page: 'Страница {page} / {pages}',
+            root: 'Корень модуля', managed: 'Управляемая папка', cert: 'Серийный номер сертификата №3', certMissing: 'Серийный номер сертификата №3 недоступен',
+            deleteConfirm: 'Удалить этот сохраненный keybox?', bulkConfirm: 'Удалить выбранные keybox: {count}?', bulkDone: 'Удалено keybox: {count}',
+            keyboxesLoaded: 'Загружено Keybox: {count}', selectFiltered: 'Выбрать отфильтрованные', clearFiltered: 'Очистить выбор фильтра',
+            search: 'Поиск', clear: 'Очистить', verifySearchPlaceholder: 'Поиск по результатам проверки...', verifying: 'Проверка...',
+            noVerify: 'Нет keybox для проверки', noVerifyMatch: 'Нет результатов проверки, соответствующих поиску.', loading: 'Загрузка...',
+            noStored: 'Нет сохраненных keybox.', noStoredMatch: 'Нет keybox, соответствующих фильтру.', delete: 'Удалить'
+        },
+        id: {
+            selected: 'dipilih', deleteSelected: 'Hapus pilihan', previous: 'Sebelumnya', next: 'Berikutnya', page: 'Halaman {page} / {pages}',
+            root: 'Root modul', managed: 'Folder terkelola', cert: 'Serial sertifikat #3', certMissing: 'Serial sertifikat #3 tidak tersedia',
+            deleteConfirm: 'Hapus keybox tersimpan ini?', bulkConfirm: 'Hapus {count} keybox terpilih?', bulkDone: '{count} keybox dihapus',
+            keyboxesLoaded: '{count} Keybox dimuat', selectFiltered: 'Pilih yang difilter', clearFiltered: 'Hapus pilihan filter',
+            search: 'Cari', clear: 'Bersihkan', verifySearchPlaceholder: 'Cari hasil verifikasi...', verifying: 'Memverifikasi...',
+            noVerify: 'Tidak ada keybox untuk diverifikasi', noVerifyMatch: 'Tidak ada hasil verifikasi yang cocok dengan pencarian.', loading: 'Memuat...',
+            noStored: 'Tidak ada keybox tersimpan.', noStoredMatch: 'Tidak ada keybox yang cocok dengan filter.', delete: 'Hapus'
+        },
+        hi: {
+            selected: 'चयनित', deleteSelected: 'चयनित हटाएँ', previous: 'पिछला', next: 'अगला', page: 'पृष्ठ {page} / {pages}',
+            root: 'मॉड्यूल रूट', managed: 'प्रबंधित फ़ोल्डर', cert: 'सर्टिफिकेट #3 सीरियल', certMissing: 'सर्टिफिकेट #3 सीरियल उपलब्ध नहीं',
+            deleteConfirm: 'यह सहेजा Keybox हटाएँ?', bulkConfirm: 'चयनित {count} Keybox हटाएँ?', bulkDone: '{count} Keybox हटाए गए',
+            keyboxesLoaded: '{count} Keybox लोड हुए', selectFiltered: 'फ़िल्टर किए चुनें', clearFiltered: 'फ़िल्टर चयन साफ़ करें',
+            search: 'खोजें', clear: 'साफ़ करें', verifySearchPlaceholder: 'सत्यापन परिणाम खोजें...', verifying: 'सत्यापन हो रहा है...',
+            noVerify: 'सत्यापित करने के लिए Keybox नहीं', noVerifyMatch: 'खोज से मेल खाता सत्यापन परिणाम नहीं है।', loading: 'लोड हो रहा है...',
+            noStored: 'कोई सहेजा Keybox नहीं।', noStoredMatch: 'फ़िल्टर से मेल खाता Keybox नहीं है।', delete: 'हटाएँ'
+        },
+        ar: {
+            selected: 'محدد', deleteSelected: 'حذف المحدد', previous: 'السابق', next: 'التالي', page: 'الصفحة {page} / {pages}',
+            root: 'جذر الوحدة', managed: 'المجلد المدار', cert: 'الرقم التسلسلي للشهادة 3', certMissing: 'الرقم التسلسلي للشهادة 3 غير متاح',
+            deleteConfirm: 'حذف Keybox المحفوظ هذا؟', bulkConfirm: 'حذف {count} من Keybox المحددة؟', bulkDone: 'تم حذف {count} من Keybox',
+            keyboxesLoaded: 'تم تحميل {count} Keybox', selectFiltered: 'تحديد النتائج المفلترة', clearFiltered: 'مسح تحديد الفلتر',
+            search: 'بحث', clear: 'مسح', verifySearchPlaceholder: 'البحث في نتائج التحقق...', verifying: 'جارٍ التحقق...',
+            noVerify: 'لا توجد Keybox للتحقق', noVerifyMatch: 'لا توجد نتائج تحقق تطابق البحث.', loading: 'جارٍ التحميل...',
+            noStored: 'لا توجد Keybox محفوظة.', noStoredMatch: 'لا توجد Keybox تطابق الفلتر.', delete: 'حذف'
+        }
+    };
+
+    let inventory = [];
+    let selected = new Set();
+    let page = 1;
+    let installed = false;
+    let loading = false;
+    let originalLoad = null;
+    let verificationItems = [];
+    let verificationPage = 1;
+    let verificationQuery = '';
+
+    function locale() {
+        try {
+            const value = global.CleveresI18n && global.CleveresI18n.locale;
+            return COPY[value] ? value : 'en';
+        } catch (_) {
+            return 'en';
+        }
+    }
+
+    function t(key, values) {
+        let value = (COPY[locale()] || COPY.en)[key] || COPY.en[key] || key;
+        Object.entries(values || {}).forEach(([name, replacement]) => {
+            value = value.split('{' + name + '}').join(String(replacement));
+        });
+        return value;
+    }
+
+    function statusLabel() {
+        const node = document.getElementById('keyboxStatus');
+        if (!node) return;
+        const match = (node.textContent || '').match(/(\d+)/);
+        if (match) node.textContent = t('keyboxesLoaded', { count: match[1] });
+    }
+
+    function filtered() {
+        const filter = (document.getElementById('keyboxFilter')?.value || '').trim().toLowerCase();
+        return filter
+            ? inventory.filter(item => (String(item.filename || '') + ' ' + String(item.certificate_serial || '')).toLowerCase().includes(filter))
+            : inventory.slice();
+    }
+
+    function toggleFilteredSelection() {
+        const items = filtered();
+        if (!items.length) return;
+        const allSelected = items.every(item => selected.has(item.id));
+        items.forEach(item => {
+            if (allSelected) selected.delete(item.id);
+            else selected.add(item.id);
+        });
+        render();
+    }
+
+    function ensureControls() {
+        const list = document.getElementById('storedKeyboxesList');
+        if (!list || document.getElementById('ct_keybox_bulk')) return;
+        list.style.maxHeight = 'none';
+        list.style.overflowY = 'visible';
+
+        const toolbar = document.createElement('div');
+        toolbar.id = 'ct_keybox_bulk';
+        toolbar.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:space-between;margin:8px 0;flex-wrap:wrap;';
+
+        const left = document.createElement('div');
+        left.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
+        const count = document.createElement('span');
+        count.id = 'ct_keybox_selected_count';
+        count.style.cssText = 'font-size:.82em;color:#888;';
+        const selectFilteredButton = document.createElement('button');
+        selectFilteredButton.id = 'ct_keybox_select_filtered';
+        selectFilteredButton.type = 'button';
+        selectFilteredButton.style.cssText = 'padding:8px 12px;font-size:.82em;';
+        selectFilteredButton.addEventListener('click', toggleFilteredSelection);
+        left.append(count, selectFilteredButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.id = 'ct_keybox_delete_selected';
+        deleteButton.type = 'button';
+        deleteButton.className = 'danger';
+        deleteButton.style.cssText = 'padding:8px 12px;font-size:.82em;';
+        deleteButton.addEventListener('click', bulkDelete);
+        toolbar.append(left, deleteButton);
+        list.parentNode.insertBefore(toolbar, list);
+
+        const pager = document.createElement('div');
+        pager.id = 'ct_keybox_pager';
+        pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;';
+        list.insertAdjacentElement('afterend', pager);
+    }
+
+    function updateControls(pages) {
+        ensureControls();
+        const count = document.getElementById('ct_keybox_selected_count');
+        const deleteButton = document.getElementById('ct_keybox_delete_selected');
+        const selectFilteredButton = document.getElementById('ct_keybox_select_filtered');
+        const visible = filtered();
+        const allVisibleSelected = visible.length > 0 && visible.every(item => selected.has(item.id));
+
+        if (count) count.textContent = selected.size + ' ' + t('selected');
+        if (deleteButton) {
+            deleteButton.textContent = t('deleteSelected');
+            deleteButton.disabled = selected.size === 0;
+        }
+        if (selectFilteredButton) {
+            selectFilteredButton.textContent = allVisibleSelected ? t('clearFiltered') : t('selectFiltered');
+            selectFilteredButton.disabled = visible.length === 0;
+        }
+
+        const pager = document.getElementById('ct_keybox_pager');
+        if (!pager) return;
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.textContent = t('previous');
+        prev.disabled = page <= 1;
+        prev.addEventListener('click', () => { page--; render(); });
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:.82em;color:#888;';
+        label.textContent = t('page', { page, pages });
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.textContent = t('next');
+        next.disabled = page >= pages;
+        next.addEventListener('click', () => { page++; render(); });
+        pager.append(prev, label, next);
+    }
+
+    function render() {
+        const list = document.getElementById('storedKeyboxesList');
+        if (!list) return;
+        ensureControls();
+        const clear = document.getElementById('clearKeyboxFilterBtn');
+        const filter = document.getElementById('keyboxFilter');
+        if (clear) clear.style.display = filter && filter.value ? 'flex' : 'none';
+
+        const items = filtered();
+        const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        page = Math.min(Math.max(1, page), pages);
+        list.innerHTML = '';
+
+        if (loading) {
+            const node = document.createElement('div');
+            node.style.cssText = 'padding:10px;text-align:center;color:#888';
+            node.textContent = t('loading');
+            list.appendChild(node);
+            updateControls(pages);
+            return;
+        }
+        if (items.length === 0) {
+            const node = document.createElement('div');
+            node.style.cssText = 'padding:10px;text-align:center;color:#666';
+            node.textContent = inventory.length ? t('noStoredMatch') : t('noStored');
+            list.appendChild(node);
+            updateControls(pages);
+            return;
+        }
+
+        items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.style.cssText = 'padding:10px;border-bottom:1px solid var(--border);gap:10px;align-items:center;';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = selected.has(item.id);
+            box.setAttribute('aria-label', 'Select ' + item.filename);
+            box.addEventListener('change', () => {
+                if (box.checked) selected.add(item.id);
+                else selected.delete(item.id);
+                updateControls(pages);
+            });
+
+            const body = document.createElement('div');
+            body.style.cssText = 'flex:1;min-width:0;';
+            const name = document.createElement('div');
+            name.style.cssText = 'overflow-wrap:anywhere;font-weight:500';
+            name.textContent = String(item.filename || '');
+            const meta = document.createElement('div');
+            meta.style.cssText = 'font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere';
+            const scope = item.scope === 'root' ? t('root') : t('managed');
+            const cert = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+            meta.textContent = scope + ' | ' + cert;
+            body.append(name, meta);
+
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'danger';
+            remove.style.cssText = 'padding:8px 12px;font-size:.82em;';
+            remove.textContent = t('delete');
+            remove.addEventListener('click', () => deleteOne(item));
+            row.append(box, body, remove);
+            list.appendChild(row);
+        });
+        updateControls(pages);
+    }
+
+    async function refreshInventory() {
+        if (typeof global.fetchAuth !== 'function') return;
+        loading = true;
+        render();
+        try {
+            const response = await global.fetchAuth('/api/keybox_inventory');
+            if (!response.ok) throw new Error(await response.text());
+            const data = await response.json();
+            inventory = Array.isArray(data) ? data : [];
+            const ids = new Set(inventory.map(item => item.id));
+            selected = new Set(Array.from(selected).filter(id => ids.has(id)));
+        } catch (error) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + error.message, 'error');
+        } finally {
+            loading = false;
+            render();
+            statusLabel();
+        }
+    }
+
+    async function deleteOne(item) {
+        if (typeof global.confirm === 'function' && !global.confirm(t('deleteConfirm'))) return;
+        const body = new URLSearchParams();
+        body.set('filename', item.filename);
+        body.set('scope', item.scope);
+        const response = await global.fetchAuth('/api/delete_keybox', { method: 'POST', body });
+        if (!response.ok) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error');
+            return;
+        }
+        selected.delete(item.id);
+        await reloadAll();
+    }
+
+    async function bulkDelete() {
+        const items = inventory.filter(item => selected.has(item.id));
+        if (!items.length) return;
+        if (typeof global.confirm === 'function' && !global.confirm(t('bulkConfirm', { count: items.length }))) return;
+        const body = new URLSearchParams();
+        body.set('items', JSON.stringify(items.map(item => ({ filename: item.filename, scope: item.scope }))));
+        const response = await global.fetchAuth('/api/delete_keyboxes', { method: 'POST', body });
+        let payload = null;
+        try { payload = await response.clone().json(); } catch (_) {}
+        if (!response.ok && !payload) {
+            if (typeof global.notify === 'function') global.notify('Error: ' + await response.text(), 'error');
+            return;
+        }
+        if (typeof global.notify === 'function') {
+            global.notify(t('bulkDone', { count: payload?.deleted ?? items.length }), payload?.failed ? 'error' : 'normal');
+        }
+        selected.clear();
+        await reloadAll();
+    }
+
+    async function reloadAll() {
+        if (typeof originalLoad === 'function') await originalLoad();
+        await refreshInventory();
+        if (typeof global.loadKeyInfo === 'function') global.loadKeyInfo();
+    }
+
+    function ensureVerificationControls() {
+        const result = document.getElementById('verifyResult');
+        if (!result || document.getElementById('ct_verify_controls')) return;
+
+        const controls = document.createElement('div');
+        controls.id = 'ct_verify_controls';
+        controls.style.cssText = 'display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap;';
+        const input = document.createElement('input');
+        input.id = 'ct_verify_filter';
+        input.type = 'search';
+        input.placeholder = t('verifySearchPlaceholder');
+        input.setAttribute('aria-label', t('verifySearchPlaceholder'));
+        input.spellcheck = false;
+        input.autocomplete = 'off';
+        input.style.cssText = 'flex:1;min-width:180px;';
+
+        const searchButton = document.createElement('button');
+        searchButton.id = 'ct_verify_search';
+        searchButton.type = 'button';
+        searchButton.textContent = t('search');
+        const applySearch = () => {
+            verificationQuery = input.value.trim().toLowerCase();
+            verificationPage = 1;
+            renderVerification();
+        };
+        searchButton.addEventListener('click', applySearch);
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                applySearch();
+            }
+        });
+
+        const clearButton = document.createElement('button');
+        clearButton.id = 'ct_verify_clear';
+        clearButton.type = 'button';
+        clearButton.textContent = t('clear');
+        clearButton.addEventListener('click', () => {
+            input.value = '';
+            verificationQuery = '';
+            verificationPage = 1;
+            renderVerification();
+            input.focus();
+        });
+        controls.append(input, searchButton, clearButton);
+        result.parentNode.insertBefore(controls, result);
+
+        const pager = document.createElement('div');
+        pager.id = 'ct_verify_pager';
+        pager.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin-top:10px;';
+        result.insertAdjacentElement('afterend', pager);
+    }
+
+    function filteredVerification() {
+        if (!verificationQuery) return verificationItems.slice();
+        return verificationItems.filter(item => {
+            const haystack = [item.filename, item.status, item.certificate_serial, item.details]
+                .map(value => String(value || ''))
+                .join(' ')
+                .toLowerCase();
+            return haystack.includes(verificationQuery);
+        });
+    }
+
+    function updateVerificationPager(pages) {
+        ensureVerificationControls();
+        const pager = document.getElementById('ct_verify_pager');
+        if (!pager) return;
+        pager.innerHTML = '';
+        const prev = document.createElement('button');
+        prev.type = 'button';
+        prev.textContent = t('previous');
+        prev.disabled = verificationPage <= 1;
+        prev.addEventListener('click', () => { verificationPage--; renderVerification(); });
+        const label = document.createElement('span');
+        label.style.cssText = 'font-size:.82em;color:#888;';
+        label.textContent = t('page', { page: verificationPage, pages });
+        const next = document.createElement('button');
+        next.type = 'button';
+        next.textContent = t('next');
+        next.disabled = verificationPage >= pages;
+        next.addEventListener('click', () => { verificationPage++; renderVerification(); });
+        pager.append(prev, label, next);
+    }
+
+    function renderVerification() {
+        const result = document.getElementById('verifyResult');
+        if (!result) return;
+        ensureVerificationControls();
+        const input = document.getElementById('ct_verify_filter');
+        if (input) input.placeholder = t('verifySearchPlaceholder');
+        const searchButton = document.getElementById('ct_verify_search');
+        if (searchButton) searchButton.textContent = t('search');
+        const clearButton = document.getElementById('ct_verify_clear');
+        if (clearButton) clearButton.textContent = t('clear');
+
+        const items = filteredVerification();
+        const pages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+        verificationPage = Math.min(Math.max(1, verificationPage), pages);
+        result.innerHTML = '';
+
+        if (verificationItems.length === 0) {
+            result.textContent = t('noVerify');
+            updateVerificationPager(pages);
+            return;
+        }
+        if (items.length === 0) {
+            result.textContent = t('noVerifyMatch');
+            updateVerificationPager(pages);
+            return;
+        }
+
+        items.slice((verificationPage - 1) * PAGE_SIZE, verificationPage * PAGE_SIZE).forEach(item => {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere';
+            const title = document.createElement('div');
+            title.style.fontWeight = '600';
+            title.textContent = String(item.filename || '') + ' - ' + String(item.status || '');
+            const meta = document.createElement('div');
+            meta.style.cssText = 'font-size:.8em;color:#888;margin-top:2px';
+            meta.textContent = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
+            const details = document.createElement('div');
+            details.style.cssText = 'font-size:.8em;color:#aaa;margin-top:2px';
+            details.textContent = String(item.details || '');
+            row.append(title, meta, details);
+            result.appendChild(row);
+        });
+        updateVerificationPager(pages);
+    }
+
+    async function verify() {
+        const result = document.getElementById('verifyResult');
+        ensureVerificationControls();
+        if (result) result.textContent = t('verifying');
+        const response = await global.fetchAuth('/api/verify_keyboxes', { method: 'POST' });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        verificationItems = Array.isArray(data) ? data : [];
+        verificationPage = 1;
+        verificationQuery = '';
+        const input = document.getElementById('ct_verify_filter');
+        if (input) input.value = '';
+        renderVerification();
+    }
+
+    function install() {
+        if (installed || !document.getElementById('storedKeyboxesList') || typeof global.loadKeyboxes !== 'function') {
+            global.setTimeout(install, 50);
+            return;
+        }
+        installed = true;
+        originalLoad = global.loadKeyboxes;
+        global.renderKeyboxes = render;
+        global.loadKeyboxes = async function () {
+            const value = await originalLoad.apply(this, arguments);
+            await refreshInventory();
+            return value;
+        };
+        global.verifyKeyboxes = verify;
+        const filter = document.getElementById('keyboxFilter');
+        if (filter) filter.addEventListener('input', () => { page = 1; render(); });
+        ensureControls();
+        ensureVerificationControls();
+        refreshInventory();
+        statusLabel();
+        const status = document.getElementById('keyboxStatus');
+        if (status && typeof global.MutationObserver === 'function') {
+            new global.MutationObserver(statusLabel).observe(status, { childList: true, characterData: true, subtree: true });
+        }
+    }
+
+    if (document.readyState === 'complete') global.setTimeout(install, 0);
+    else if (typeof global.addEventListener === 'function') global.addEventListener('load', install, { once: true });
+})(window);

@@ -5,6 +5,7 @@ import cleveres.tricky.cleverestech.CrlWire
 import cleveres.tricky.cleverestech.KeyboxLoader
 import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.RustBackendUnavailableException
+import cleveres.tricky.cleverestech.StoredKeyboxInventory
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -25,6 +26,8 @@ object KeyboxVerifier {
         val filename: String,
         val status: Status,
         val details: String,
+        val storageId: String = "",
+        val certificateSerial: String? = null,
     )
 
     enum class Status {
@@ -145,42 +148,27 @@ object KeyboxVerifier {
         configDir: File,
         crlFetcher: () -> RevocationSource?,
     ): List<Result> {
-        val results = ArrayList<Result>()
-        val crl =
-            crlFetcher()
-                ?: return listOf(Result(File(""), "Global", Status.ERROR, "Failed to initialize CRL index"))
-
         if (!Files.isDirectory(configDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             return listOf(Result(File(""), "Global", Status.ERROR, "Config directory not found"))
         }
-
-        val legacyFile = File(configDir, "keybox.xml")
-        if (isSafeKeyboxFile(legacyFile)) {
-            results.add(checkFile(legacyFile, KeyboxLoader.FileScope.CONFIG_ROOT, "keybox.xml", crl))
-        }
-
-        val keyboxDir = File(configDir, "keyboxes")
-        if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            val files = ArrayList<File>(MAX_KEYBOX_FILES)
+        val sources =
             try {
-                Files.newDirectoryStream(keyboxDir.toPath()).use { entries ->
-                    for (path in entries) {
-                        val file = path.toFile()
-                        if (!file.name.endsWith(".xml", ignoreCase = true) || !isSafeKeyboxFile(file)) continue
-                        if (files.size >= MAX_KEYBOX_FILES) {
-                            return listOf(Result(File(""), "Global", Status.ERROR, "Too many keybox files"))
-                        }
-                        files.add(file)
-                    }
-                }
-            } catch (error: IOException) {
-                Logger.e("Failed to scan keybox directory", error)
-                return listOf(Result(File(""), "Global", Status.ERROR, "Failed to scan keybox directory"))
+                StoredKeyboxInventory.runtimeXmlSources(configDir)
+            } catch (error: Exception) {
+                Logger.e("Failed to enumerate stored keyboxes", error)
+                return listOf(Result(File(""), "Global", Status.ERROR, error.message ?: "Failed to scan keyboxes"))
             }
-            files.sortBy { it.name }
-            for (file in files) {
-                results.add(checkFile(file, KeyboxLoader.FileScope.KEYBOX_DIRECTORY, file.name, crl))
-            }
+        val results = ArrayList<Result>(sources.size)
+        for (source in sources) {
+            results.add(
+                checkFile(
+                    source.file,
+                    requireNotNull(source.scope.fileScope),
+                    source.filename,
+                    source.id,
+                    crlFetcher,
+                ),
+            )
         }
         return results
     }
@@ -347,16 +335,23 @@ object KeyboxVerifier {
         file: File,
         scope: KeyboxLoader.FileScope,
         filename: String,
-        crl: RevocationSource,
+        storageId: String,
+        crlFetcher: () -> RevocationSource?,
     ): Result =
         try {
             if (!isSafeKeyboxFile(file)) {
                 return Result(file, file.name, Status.ERROR, "Unsafe or oversized keybox file")
             }
-            val keyboxes = KeyboxLoader.parseFile(scope, filename)
+                val keyboxes = KeyboxLoader.parseFile(scope, filename)
             if (keyboxes.isEmpty()) {
-                return Result(file, file.name, Status.INVALID, "No valid keyboxes found or parse error")
+                return Result(file, file.name, Status.INVALID, "No valid keybox found or parse error", storageId)
             }
+            // parseFile can discover a Rust backend restart and rebuild backend-owned CRL state.
+            // Resolve the handle only after that recovery boundary so this request never keeps
+            // using the pre-recovery generation on its first manual verification attempt.
+            val crl = crlFetcher()
+                ?: return Result(file, file.name, Status.ERROR, "Failed to initialize CRL index", storageId)
+            val deviceSerial = keyboxes.asSequence().mapNotNull(CertHack::getDeviceCertificateSerial).firstOrNull()
 
             for (keybox in keyboxes) {
                 val status =
@@ -373,18 +368,18 @@ object KeyboxVerifier {
                             } else {
                                 "unknown"
                             }
-                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked")
+                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked", storageId, deviceSerial)
                     }
-                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid")
-                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable")
+                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid", storageId, deviceSerial)
+                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable", storageId, deviceSerial)
                     Status.VALID -> Unit
                 }
             }
-            Result(file, file.name, Status.VALID, "Active (${keyboxes.size} keys)")
+            Result(file, file.name, Status.VALID, "Active keybox", storageId, deviceSerial)
         } catch (_: RustBackendUnavailableException) {
-            Result(file, file.name, Status.ERROR, "Rust backend unavailable")
+            Result(file, file.name, Status.ERROR, "Rust backend unavailable", storageId)
         } catch (error: Exception) {
-            Result(file, file.name, Status.ERROR, "Error: ${error.javaClass.simpleName}")
+            Result(file, file.name, Status.ERROR, "Error: ${error.javaClass.simpleName}", storageId)
         }
 
     private fun isSafeKeyboxFile(file: File): Boolean =

@@ -536,15 +536,24 @@ class WebServer(
         }
     }
 
-    private fun listKeyboxes(): List<String> {
-        synchronized(fileLock) {
-            val keyboxDir = File(configDir, "keyboxes")
-            if (Files.isDirectory(keyboxDir.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                return listBoundedKeyboxFiles(keyboxDir, MAX_LISTED_KEYBOX_FILES)
-                    .map { it.name }
-            }
-            return emptyList()
+    private fun listKeyboxes(): List<String> =
+    StoredKeyboxInventory.list(configDir)
+        .map { it.filename }
+        .distinct()
+
+    private fun keyboxInventoryJson(): String {
+        val array = JSONArray()
+        StoredKeyboxInventory.list(configDir).forEach { source ->
+            array.put(
+                JSONObject()
+                    .put("id", source.id)
+                    .put("scope", source.scope.apiValue)
+                    .put("filename", source.filename)
+                    .put("type", if (source.isCbox) "cbox" else "xml")
+                    .put("certificate_serial", CertHack.getDeviceCertificateSerial(source.filename) ?: ""),
+            )
         }
+        return array.toString()
     }
 
     private enum class KeyboxUploadValidation {
@@ -1077,17 +1086,26 @@ class WebServer(
             files.put("drm_packages.txt")
             files.put("boot_props_mode")
             json.put("files", files)
-            json.put("keybox_count", CertHack.getKeyboxCount())
+            json.put("keybox_count", CertHack.getKeyboxSourceCount())
             val templates = JSONArray()
             Config.getTemplateNames().forEach { name -> templates.put(name) }
             json.put("templates", templates)
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
-        if (uri == "/api/keyboxes" && method == Method.GET) {
+            if (uri == "/api/keyboxes" && method == Method.GET) {
             val keyboxes = listKeyboxes()
             val array = JSONArray(keyboxes)
             return secureResponse(Response.Status.OK, "application/json", array.toString())
+        }
+
+        if (uri == "/api/keybox_inventory" && method == Method.GET) {
+            return try {
+                secureResponse(Response.Status.OK, "application/json", keyboxInventoryJson())
+            } catch (error: Exception) {
+                Logger.e("Failed to enumerate stored keyboxes", error)
+                secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to enumerate stored keyboxes")
+            }
         }
 
         if (uri == "/api/cbox_status" && method == Method.GET) {
@@ -1615,7 +1633,7 @@ class WebServer(
                         if (!updateKeyboxesFromConfiguredRevocationSource()) {
                             return keyboxActivationFailureResponse()
                         }
-                        val count = CertHack.getKeyboxCount()
+                        val count = CertHack.getKeyboxSourceCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     }
                 } finally {
@@ -1643,7 +1661,7 @@ class WebServer(
                         if (!updateKeyboxesFromConfiguredRevocationSource()) {
                             return keyboxActivationFailureResponse()
                         }
-                        val count = CertHack.getKeyboxCount()
+                        val count = CertHack.getKeyboxSourceCount()
                         return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
                     } catch (e: Exception) {
                         Logger.e("Failed to save keybox", e)
@@ -1655,40 +1673,80 @@ class WebServer(
         }
 
         if (uri == "/api/delete_keybox" && method == Method.POST) {
-            val map = HashMap<String, String>()
-            try {
-                session.parseBody(map)
-            } catch (e: Exception) {
-                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+        val map = HashMap<String, String>()
+        try {
+            session.parseBody(map)
+        } catch (error: Exception) {
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+        }
+        val filename = getParam(session, "filename")
+        val scope = getParam(session, "scope") ?: "keyboxes"
+        if (filename != null) {
+            synchronized(fileLock) {
+                val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                    ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox source")
+                if (source.file.delete()) {
+                    if (source.isCbox) {
+                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                        CboxManager.refresh()
+                    }
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) return keyboxActivationFailureResponse()
+                    return secureResponse(Response.Status.OK, "text/plain", "Deleted")
+                }
+                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
             }
-            val filename = getParam(session, "filename")
-            if (filename != null && isValidKeyboxFilename(filename)) {
-                synchronized(fileLock) {
-                    val keyboxDir = File(configDir, "keyboxes")
-                    val f = getSafeFile(keyboxDir, filename)
-                    if (f != null && Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        if (f.delete()) {
-                            if (filename.endsWith(".cbox", ignoreCase = true)) {
-                                val cacheFile = File(keyboxDir, "$filename.cache")
-                                if (Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                                    Files.deleteIfExists(cacheFile.toPath())
-                                }
-                                CboxManager.refresh()
-                            }
-                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                                return keyboxActivationFailureResponse()
-                            }
-                            return secureResponse(Response.Status.OK, "text/plain", "Deleted")
-                        } else {
-                            return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
-                        }
+        }
+        return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+    }
+
+    if (uri == "/api/delete_keyboxes" && method == Method.POST) {
+        val map = HashMap<String, String>()
+        try {
+            session.parseBody(map)
+        } catch (error: Exception) {
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+        }
+        val rawItems = getParam(session, "items")
+            ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing items")
+        return synchronized(fileLock) {
+            try {
+                val items = JSONArray(rawItems)
+                if (items.length() !in 1..StoredKeyboxInventory.MAX_STORED_SOURCES) {
+                    return@synchronized secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid item count")
+                }
+                var deleted = 0
+                var failed = 0
+                var cboxChanged = false
+                for (index in 0 until items.length()) {
+                    val item = items.optJSONObject(index)
+                    val filename = item?.optString("filename").orEmpty()
+                    val scope = item?.optString("scope").orEmpty()
+                    val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                    if (source == null || !source.file.delete()) {
+                        failed++
+                        continue
+                    }
+                    deleted++
+                    if (source.isCbox) {
+                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                        cboxChanged = true
                     }
                 }
+                if (cboxChanged) CboxManager.refresh()
+                if (!updateKeyboxesFromConfiguredRevocationSource()) return@synchronized keyboxActivationFailureResponse()
+                secureResponse(
+                    if (failed == 0) Response.Status.OK else Response.Status.INTERNAL_ERROR,
+                    "application/json",
+                    JSONObject().put("deleted", deleted).put("failed", failed).toString(),
+                )
+            } catch (error: Exception) {
+                Logger.e("Failed to bulk-delete keyboxes", error)
+                secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox selection")
             }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
         }
+    }
 
-        if (uri == "/api/verify_keyboxes" && method == Method.POST) {
+    if (uri == "/api/verify_keyboxes" && method == Method.POST) {
             try {
                 synchronized(fileLock) {
                     val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
@@ -1891,7 +1949,7 @@ class WebServer(
             val json = JSONObject()
             json.put("version_name", BuildConfig.VERSION_NAME)
             json.put("version_code", BuildConfig.VERSION_CODE)
-            val keyboxCount = CertHack.getKeyboxCount()
+            val keyboxCount = CertHack.getKeyboxSourceCount()
             json.put("keybox_count", keyboxCount)
             val appConfig = File(configDir, "app_config")
             val appConfigSize =
@@ -2546,6 +2604,8 @@ class WebServer(
             results.forEach { r ->
                 val obj = JSONObject()
                 obj.put("filename", r.filename)
+            obj.put("storage_id", r.storageId)
+            obj.put("certificate_serial", r.certificateSerial ?: "")
                 obj.put("status", r.status.name)
                 obj.put("details", r.details)
                 array.put(obj)

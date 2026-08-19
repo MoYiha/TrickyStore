@@ -61,7 +61,12 @@ class WebServerKeyboxUXTest {
         val token = server.token
         val url = URL("http://localhost:$port/?token=$token")
         val conn = url.openConnection() as HttpURLConnection
-        val html = conn.inputStream.bufferedReader().readText()
+        val uxSource =
+        listOf(
+            File("module/template/webroot/ux.js"),
+            File("../module/template/webroot/ux.js"),
+        ).first { it.isFile }.readText()
+    val html = conn.inputStream.bufferedReader().readText() + "\n" + uxSource
 
         assertTrue(
             "HTML should contain Stored Keyboxes panel",
@@ -87,5 +92,9 @@ class WebServerKeyboxUXTest {
             html.contains("if (!res.ok) throw new Error(await res.text());") ||
                 html.contains("if (!res.ok) {"),
         )
+        assertTrue("Stored list must use source-aware inventory", html.contains("/api/keybox_inventory"))
+        assertTrue("Stored list must support bulk deletion", html.contains("/api/delete_keyboxes"))
+        assertTrue("Stored list must page five entries at a time", html.contains("const PAGE_SIZE = 5;"))
+        assertTrue("Verification must display certificate #3 serial", html.contains("Certificate #3 serial"))
     }
 }

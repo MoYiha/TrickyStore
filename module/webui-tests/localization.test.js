@@ -23,7 +23,8 @@ function loadI18n(locale) {
         localStorage: { getItem: () => locale, setItem() {} },
         CleveresBridge: {},
         setTimeout() {},
-        clearTimeout() {}
+        clearTimeout() {},
+        addEventListener() {}
     };
     context.window = context;
     vm.createContext(context);

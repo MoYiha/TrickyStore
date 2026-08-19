@@ -202,9 +202,9 @@ class ActionTest {
         val resultsByFilename = results.associateBy { it.filename }
 
         assertEquals(KeyboxVerifier.Status.VALID, resultsByFilename.getValue("keybox.xml").status)
-        assertEquals("Active (1 keys)", resultsByFilename.getValue("keybox.xml").details)
+        assertEquals("Active keybox", resultsByFilename.getValue("keybox.xml").details)
         assertEquals(KeyboxVerifier.Status.VALID, resultsByFilename.getValue("stored.xml").status)
-        assertEquals("Active (1 keys)", resultsByFilename.getValue("stored.xml").details)
+        assertEquals("Active keybox", resultsByFilename.getValue("stored.xml").details)
     }
 
     @Test

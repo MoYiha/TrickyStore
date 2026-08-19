@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_vault">CBOX फ़ाइलें खोजें</string>
+    <string name="filtered_vault_summary">%1$d / %2$d दिखाए गए</string>
+    <string name="select_filtered">फ़िल्टर किए चुनें</string>
+    <string name="clear_filtered_selection">फ़िल्टर चयन साफ़ करें</string>
+    <string name="clear_search">खोज साफ़ करें</string>
+    <string name="no_vault_search_results">खोज से मेल खाती CBOX फ़ाइल नहीं है।</string>
+</resources>

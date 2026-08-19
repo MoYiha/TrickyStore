@@ -5,7 +5,6 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -13,26 +12,33 @@ import org.junit.Test
 
 class KeyboxZipReaderTest {
     @Test
-    fun `reads a single XML keybox directly`() {
+    fun `streams a single XML keybox directly and wipes its buffer`() {
         val xml = "<AndroidAttestation><Keybox/></AndroidAttestation>".toByteArray()
+        val observed = mutableListOf<Pair<String, ByteArray>>()
 
-        val selected =
-            KeyboxImportReader.read(ByteArrayInputStream(xml), "single-keybox.xml") { bytes ->
-                bytes.isNotEmpty() && bytes[0] == '<'.code.toByte()
-            }
+        val count =
+            KeyboxImportReader.process(
+                ByteArrayInputStream(xml),
+                "single-keybox.xml",
+                validateXml = { it.isNotEmpty() && it[0] == '<'.code.toByte() },
+                onKeybox = { name, bytes -> observed += name to bytes },
+            )
 
-        assertEquals(1, selected.size)
-        assertEquals("single-keybox.xml", selected.single().displayName)
-        assertArrayEquals(xml, selected.single().bytes)
+        assertEquals(1, count)
+        assertEquals("single-keybox.xml", observed.single().first)
+        assertTrue(observed.single().second.all { it == 0.toByte() })
     }
 
     @Test
     fun `single XML import strips path-like display names`() {
-        val xml = "<keybox/>".toByteArray()
-
-        val selected = KeyboxImportReader.read(ByteArrayInputStream(xml), "../nested/keybox.xml") { true }
-
-        assertEquals("keybox.xml", selected.single().displayName)
+        val observed = mutableListOf<String>()
+        KeyboxImportReader.process(
+            ByteArrayInputStream("<keybox/>".toByteArray()),
+            "../nested/keybox.xml",
+            validateXml = { true },
+            onKeybox = { name, _ -> observed += name },
+        )
+        assertEquals(listOf("keybox.xml"), observed)
     }
 
     @Test
@@ -40,10 +46,12 @@ class KeyboxZipReaderTest {
         val observed = mutableListOf<ByteArray>()
 
         assertThrows(IOException::class.java) {
-            KeyboxImportReader.read(ByteArrayInputStream("not xml".toByteArray()), "bad.xml") { bytes ->
-                observed += bytes
-                false
-            }
+            KeyboxImportReader.process(
+                ByteArrayInputStream("not xml".toByteArray()),
+                "bad.xml",
+                validateXml = { bytes -> observed += bytes; false },
+                onKeybox = { _, _ -> error("must not emit invalid XML") },
+            )
         }
 
         assertEquals(1, observed.size)
@@ -56,121 +64,83 @@ class KeyboxZipReaderTest {
         var validationCalls = 0
 
         assertThrows(IOException::class.java) {
-            KeyboxImportReader.read(ByteArrayInputStream(oversized), "large.xml") {
-                validationCalls++
-                true
-            }
+            KeyboxImportReader.process(
+                ByteArrayInputStream(oversized),
+                "large.xml",
+                validateXml = { validationCalls++; true },
+                onKeybox = { _, _ -> },
+            )
         }
 
         assertEquals(0, validationCalls)
     }
 
     @Test
-    fun `import reader detects ZIP batches by signature`() {
-        val archive =
-            zipOf(
-                "first.xml" to "<first/>".toByteArray(),
-                "second.xml" to "<second/>".toByteArray(),
-            )
-
-        val selected = KeyboxImportReader.read(ByteArrayInputStream(archive), "anything.bin") { true }
-
-        assertEquals(listOf("first.xml", "second.xml"), selected.map { it.displayName })
-    }
-
-    @Test
-    fun `reads multiple XML entries and ignores unrelated ZIP content`() {
-        val first = "<AndroidAttestation><Keybox/></AndroidAttestation>".toByteArray()
-        val second = "<AndroidAttestation><Keybox id=\"2\"/></AndroidAttestation>".toByteArray()
-        val archive =
-            zipOf(
-                "nested/first.xml" to first,
-                "notes.txt" to "ignore me".toByteArray(),
-                "../second.XML" to second,
-            )
-
-        val selected =
-            KeyboxZipReader.read(ByteArrayInputStream(archive)) { bytes ->
-                bytes.isNotEmpty() && bytes[0] == '<'.code.toByte()
-            }
-
-        assertEquals(listOf("first.xml", "second.XML"), selected.map { it.displayName })
-        assertArrayEquals(first, selected[0].bytes)
-        assertArrayEquals(second, selected[1].bytes)
-    }
-
-    @Test
-    fun `rejects the whole archive and zeroizes parsed XML when one keybox is invalid`() {
-        val archive =
-            zipOf(
-                "good.xml" to "<good/>".toByteArray(),
-                "bad.xml" to "not xml".toByteArray(),
-            )
+    fun `detects ZIP batches by signature and streams entries in order`() {
+        val archive = zipOf("first.xml" to "<first/>".toByteArray(), "second.xml" to "<second/>".toByteArray())
+        val names = mutableListOf<String>()
         val observed = mutableListOf<ByteArray>()
 
-        assertThrows(IOException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(archive)) { bytes ->
-                observed += bytes
-                bytes[0] == '<'.code.toByte()
-            }
-        }
+        val count =
+            KeyboxImportReader.process(
+                ByteArrayInputStream(archive),
+                "anything.bin",
+                validateXml = { true },
+                onKeybox = { name, bytes -> names += name; observed += bytes },
+            )
 
-        assertEquals(2, observed.size)
+        assertEquals(2, count)
+        assertEquals(listOf("first.xml", "second.xml"), names)
         assertTrue(observed.all { bytes -> bytes.all { it == 0.toByte() } })
     }
 
     @Test
-    fun `zeroizes current and previous XML buffers when validator throws`() {
-        val archive =
-            zipOf(
-                "first.xml" to "<first/>".toByteArray(),
-                "second.xml" to "<second/>".toByteArray(),
-            )
-        val observed = mutableListOf<ByteArray>()
+    fun `supports batches larger than the old 64 file ceiling without retaining XML`() {
+        val entries = (0 until 80).map { "keybox-$it.xml" to "<k/>".toByteArray() }
+        var emitted = 0
 
-        assertThrows(IllegalStateException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(archive)) { bytes ->
-                observed += bytes
-                if (observed.size == 2) throw IllegalStateException("validator failure")
-                true
+        val count =
+            KeyboxZipReader.process(
+                ByteArrayInputStream(zipOf(*entries.toTypedArray())),
+                validateXml = { true },
+                onKeybox = { _, _ -> emitted++ },
+            )
+
+        assertEquals(80, count)
+        assertEquals(80, emitted)
+        assertEquals(10_000, KeyboxZipReader.MAX_KEYBOX_FILES)
+    }
+
+    @Test
+    fun `rejects the 10001st XML entry`() {
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            repeat(KeyboxZipReader.MAX_KEYBOX_FILES + 1) { index ->
+                zip.putNextEntry(ZipEntry("k$index.xml"))
+                zip.write("<k/>".toByteArray())
+                zip.closeEntry()
             }
         }
 
-        assertEquals(2, observed.size)
-        assertTrue(observed.all { bytes -> bytes.all { it == 0.toByte() } })
-    }
-
-    @Test
-    fun `rejects ZIP archives with more than the bounded keybox count`() {
-        val entries =
-            (0..KeyboxZipReader.MAX_KEYBOX_FILES).map { index ->
-                "keybox-$index.xml" to "<k/>".toByteArray()
-            }
-
         assertThrows(IOException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(zipOf(*entries.toTypedArray()))) { true }
-        }
-    }
-
-    @Test
-    fun `rejects an XML entry larger than the per-file limit`() {
-        val oversized = ByteArray(KeyboxZipReader.MAX_XML_BYTES + 1) { 'x'.code.toByte() }
-
-        assertThrows(IOException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(zipOf("large.xml" to oversized))) { true }
-        }
-    }
-
-    @Test
-    fun `rejects oversized unrelated entry expansion before later keyboxes`() {
-        val archive =
-            zipOf(
-                "padding.bin" to ByteArray(1024 * 1024 + 1),
-                "keybox.xml" to "<k/>".toByteArray(),
+            KeyboxZipReader.process(
+                ByteArrayInputStream(output.toByteArray()),
+                validateXml = { true },
+                onKeybox = { _, _ -> },
             )
+        }
+    }
+
+    @Test
+    fun `rejects oversized unrelated expansion before later keyboxes`() {
+        val archive = zipOf("padding.bin" to ByteArray(1024 * 1024 + 1), "keybox.xml" to "<k/>".toByteArray())
 
         assertThrows(IOException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(archive)) { true }
+            KeyboxZipReader.process(
+                ByteArrayInputStream(archive),
+                validateXml = { true },
+                onKeybox = { _, _ -> },
+            )
         }
     }
 
@@ -179,7 +149,11 @@ class KeyboxZipReaderTest {
         val archive = zipOf("readme.txt" to "hello".toByteArray())
 
         assertThrows(IOException::class.java) {
-            KeyboxZipReader.read(ByteArrayInputStream(archive)) { true }
+            KeyboxZipReader.process(
+                ByteArrayInputStream(archive),
+                validateXml = { true },
+                onKeybox = { _, _ -> },
+            )
         }
     }
 

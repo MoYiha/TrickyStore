@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_vault">Поиск файлов CBOX</string>
+    <string name="filtered_vault_summary">Показано %1$d из %2$d</string>
+    <string name="select_filtered">Выбрать отфильтрованные</string>
+    <string name="clear_filtered_selection">Очистить выбор фильтра</string>
+    <string name="clear_search">Очистить поиск</string>
+    <string name="no_vault_search_results">Нет файлов CBOX, соответствующих поиску.</string>
+</resources>

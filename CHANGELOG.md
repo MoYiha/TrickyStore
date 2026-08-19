@@ -1,5 +1,23 @@
 # Changelog
 
+## V2.6.1
+
+### Keybox storage and verification
+
+- Stored Keyboxes now discovers safe XML keyboxes directly under `/data/adb/cleverestricky` as well as XML/CBOX files in the managed `keyboxes` directory.
+- Stored and Verification views show the serial number of certificate #3 when present, instead of treating every source as `keybox.xml`.
+- WebUI counts active keybox sources rather than EC/RSA key records inside a keybox, so one multi-key keybox is shown as one keybox.
+- Stored Keyboxes supports bulk deletion and five-item pagination.
+- Manual verification resolves the Rust CRL generation after keybox parsing, fixing the first-check failure when parsing discovers and recovers a restarted Rust backend.
+- Direct-root XML loading remains basename-only, symlink-safe and bounded; duplicate filenames across root and `keyboxes/` fail closed because profile selection is filename-based.
+- Module ZIP import follows the module runtime's 64-source bound. The companion app vault remains a separate 10,000-CBOX store.
+
+### Cleveres Encryptor
+
+- Create CBOX accepts one XML keybox or a ZIP batch and processes XML entries one at a time.
+- Real keyboxes use certificate #3 serial as the preferred collision-safe CBOX filename, with the existing sanitized source-name fallback when that public certificate is unavailable.
+- Vault entries can be selected in bulk, deleted together, or exported together as a ZIP without decrypting the CBOX payloads.
+
 ## V2.6.0
 
 ### A new core for CleveresTricky
