@@ -305,10 +305,12 @@ fn synthetic_attestation_extension() -> Vec<u8> {
 
 fn verify_signature(output: &Certificate, issuer: &Certificate, algorithm: SigningAlgorithm) {
     use p256::ecdsa::{Signature as EcSignature, VerifyingKey as EcVerifyingKey};
+    use p256::pkcs8::DecodePublicKey as _;
     use rsa::pkcs1v15::{Signature as RsaSignature, VerifyingKey as RsaVerifyingKey};
     use rsa::pkcs8::DecodePublicKey as _;
-    use sha2::Sha256;
-    use signature::Verifier;
+    use rsa_sha2::Sha256 as RsaSha256;
+    use rsa_signature::Verifier as _;
+    use signature::Verifier as _;
 
     let tbs = output.tbs_certificate().to_der().expect("TBS DER");
     let issuer_spki = issuer
@@ -324,7 +326,7 @@ fn verify_signature(output: &Certificate, issuer: &Certificate, algorithm: Signi
         }
         SigningAlgorithm::RsaPkcs1Sha256 => {
             let key = rsa::RsaPublicKey::from_public_key_der(&issuer_spki).expect("RSA issuer key");
-            let verifying = RsaVerifyingKey::<Sha256>::new(key);
+            let verifying = RsaVerifyingKey::<RsaSha256>::new(key);
             let signature =
                 RsaSignature::try_from(output.signature().raw_bytes()).expect("RSA sig");
             verifying

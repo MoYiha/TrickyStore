@@ -13,8 +13,10 @@ use p256::pkcs8::{DecodePrivateKey as _, DecodePublicKey as _};
 use rsa::pkcs1v15::{
     Signature as RsaSignature, SigningKey as RsaSigningKey, VerifyingKey as RsaVerifyingKey,
 };
-use sha2::Sha256;
-use signature::{SignatureEncoding, Signer, Verifier};
+use rsa::pkcs8::{DecodePrivateKey as _, DecodePublicKey as _};
+use rsa_sha2::Sha256 as RsaSha256;
+use rsa_signature::{SignatureEncoding as _, Signer as _, Verifier as _};
+use signature::{Signer as _, Verifier as _};
 use std::fmt;
 use x509_cert::ext::Extensions;
 use x509_cert::spki::ObjectIdentifier;
@@ -66,7 +68,7 @@ pub struct PreparedCertificateRewriteRequest<'a> {
 
 enum PreparedSigner {
     Ec(EcSigningKey),
-    Rsa(Box<RsaSigningKey<Sha256>>),
+    Rsa(Box<RsaSigningKey<RsaSha256>>),
 }
 
 /// Keybox-owned issuer state that is expensive to validate but invariant across generated keys.
@@ -123,11 +125,11 @@ impl PreparedIssuer {
                 PreparedSigner::Ec(signer)
             }
             SigningAlgorithm::RsaPkcs1Sha256 => {
-                let signer = RsaSigningKey::<Sha256>::from_pkcs8_der(issuer_private_key_pkcs8)
+                let signer = RsaSigningKey::<RsaSha256>::from_pkcs8_der(issuer_private_key_pkcs8)
                     .map_err(|_| Error::InvalidPrivateKey)?;
                 let issuer_public = rsa::RsaPublicKey::from_public_key_der(&issuer_spki)
                     .map_err(|_| Error::IssuerKeyMismatch)?;
-                let verifier = RsaVerifyingKey::<Sha256>::new(issuer_public);
+                let verifier = RsaVerifyingKey::<RsaSha256>::new(issuer_public);
                 let signature: RsaSignature = signer
                     .try_sign(PREPARED_ISSUER_VALIDATION_MESSAGE)
                     .map_err(|_| Error::Signature)?;
