@@ -2809,7 +2809,10 @@
         const node = document.getElementById('keyboxStatus');
         if (!node) return;
         const match = (node.textContent || '').match(/(\d+)/);
-        if (match) node.textContent = t('keyboxesLoaded', { count: match[1] });
+        if (match) {
+    const value = t('keyboxesLoaded', { count: match[1] });
+    if (node.textContent !== value) node.textContent = value;
+}
     }
 
     function filtered() {
