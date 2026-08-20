@@ -262,7 +262,10 @@ mod tests {
         assert_eq!(response[1], 1);
         assert_eq!(response[2], 1);
         assert_eq!(u16::from_be_bytes(response[3..5].try_into().unwrap()), 1);
-        assert_eq!(&response[5..FIXED_HEADER_BYTES], Sha256::digest(VALID_EC).as_slice());
+        assert_eq!(
+            &response[5..FIXED_HEADER_BYTES],
+            Sha256::digest(VALID_EC).as_slice()
+        );
 
         let mut offset = FIXED_HEADER_BYTES;
         let algorithm_len = response[offset] as usize;
@@ -297,11 +300,17 @@ mod tests {
         let first = parse_and_encode(VALID_EC.to_vec()).unwrap();
         key_store::reset_for_testing();
         let mut changed = VALID_EC.to_vec();
-        let position = changed.iter().position(|byte| *byte == b' ').expect("fixture space");
+        let position = changed
+            .iter()
+            .position(|byte| *byte == b' ')
+            .expect("fixture space");
         changed[position] = b'\n';
         let expected = Sha256::digest(&changed);
         let second = parse_and_encode(changed).unwrap();
-        assert_ne!(&first[5..FIXED_HEADER_BYTES], &second[5..FIXED_HEADER_BYTES]);
+        assert_ne!(
+            &first[5..FIXED_HEADER_BYTES],
+            &second[5..FIXED_HEADER_BYTES]
+        );
         assert_eq!(&second[5..FIXED_HEADER_BYTES], expected.as_slice());
     }
 
