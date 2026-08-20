@@ -532,7 +532,7 @@ object ServerManager {
                 return commitFetchFailure(context, "HTTP_${conn.responseCode}")
             }
 
-            val maxResponseSize = 10 * 1024 * 1024
+            val maxResponseSize = CboxWireLimits.MAX_BYTES
             val contentLength = conn.contentLengthLong
             if (contentLength > maxResponseSize) {
                 return commitFetchFailure(context, "RESPONSE_TOO_LARGE")
@@ -551,7 +551,7 @@ object ServerManager {
                             if (count == 0) continue
                             totalRead += count
                             if (totalRead > maxResponseSize) {
-                                throw SecurityException("Server response exceeds 10MB limit")
+                                throw SecurityException("Server response exceeds the CBOX wire limit")
                             }
                             output.write(chunk, 0, count)
                         }

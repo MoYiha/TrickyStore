@@ -978,7 +978,6 @@ try {
 
         async function unlockCbox(filename, controlId) {
 const pwd = document.getElementById('pwd_' + controlId).value;
-if (!pwd.trim()) { notify('Password required', 'error'); return; }
 const pk = document.getElementById('pk_' + controlId).value;
 try {
     const formData = new FormData();
@@ -1117,8 +1116,9 @@ try {
 const file = input instanceof File ? input : (input && input.files ? input.files[0] : null);
 if (file) {
     const lowerName = file.name.toLowerCase();
-    if ((!lowerName.endsWith('.xml') && !lowerName.endsWith('.cbox')) || file.size <= 0 || file.size > 10 * 1024 * 1024) {
-        notify('Select a non-empty XML or CBOX file up to 10 MB', 'error');
+    const maxFileBytes = lowerName.endsWith('.cbox') ? 10 * 1024 * 1024 + 36 : 10 * 1024 * 1024;
+    if ((!lowerName.endsWith('.xml') && !lowerName.endsWith('.cbox')) || file.size <= 0 || file.size > maxFileBytes) {
+        notify('Select a non-empty XML or CBOX file within its supported size limit', 'error');
         if (!(input instanceof File)) input.value = '';
         resetDropZone();
         return;

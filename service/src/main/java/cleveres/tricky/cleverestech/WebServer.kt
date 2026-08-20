@@ -1605,8 +1605,14 @@ class WebServer(
                 val originalName = getParam(session, "filename") ?: "upload.bin"
                 val tmpFile = File(tmpFilePath)
                 val extension = originalName.substringAfterLast('.', "").lowercase()
+                val uploadLimit =
+                    if (extension == "cbox") {
+                        MAX_CBOX_UPLOAD_SIZE
+                    } else {
+                        MAX_KEYBOX_XML_UPLOAD_SIZE
+                    }
                 if (!Files.isRegularFile(tmpFile.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                    tmpFile.length() !in 1..MAX_KEYBOX_UPLOAD_SIZE
+                    tmpFile.length() !in 1..uploadLimit
                 ) {
                     if (tmpFile.exists()) tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload size")
@@ -1615,7 +1621,7 @@ class WebServer(
                     tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
                 }
-                val bytes = readFileBytesLimited(tmpFile, MAX_KEYBOX_UPLOAD_SIZE.toInt())
+                val bytes = readFileBytesLimited(tmpFile, uploadLimit.toInt())
                 try {
                     synchronized(fileLock) {
                         val keyboxDir = File(configDir, "keyboxes")
@@ -2095,10 +2101,11 @@ class WebServer(
     }
 
     companion object {
-        private const val MAX_UPLOAD_SIZE = 10 * 1024 * 1024L
+        private val MAX_UPLOAD_SIZE = CboxWireLimits.MAX_BYTES.toLong() + 1024 * 1024L
         private const val MAX_NATIVE_UPLOAD_SIZE = 20 * 1024 * 1024L
         private const val MAX_NATIVE_REQUEST_SIZE = MAX_NATIVE_UPLOAD_SIZE + 1024 * 1024L
-        private const val MAX_KEYBOX_UPLOAD_SIZE = 10 * 1024 * 1024L
+        private const val MAX_KEYBOX_XML_UPLOAD_SIZE = 10 * 1024 * 1024L
+        private val MAX_CBOX_UPLOAD_SIZE = CboxWireLimits.MAX_BYTES.toLong()
         private const val MAX_BODY_SIZE = 5 * 1024 * 1024L
         private const val MAX_CONFIG_FILE_SIZE = 1024 * 1024L
         private const val MAX_IDENTITY_REQUEST_BYTES = 8 * 1024
@@ -2112,7 +2119,8 @@ class WebServer(
         private const val MAX_BACKUP_KEYBOXES = 64
         private const val MAX_LISTED_KEYBOX_FILES = 128
         private const val MAX_BACKUP_CONFIG_ENTRY_BYTES = 1024 * 1024
-        private const val MAX_BACKUP_KEYBOX_ENTRY_BYTES = 10 * 1024 * 1024
+        private const val MAX_BACKUP_XML_ENTRY_BYTES = 10 * 1024 * 1024
+        private const val MAX_BACKUP_CBOX_ENTRY_BYTES = CboxWireLimits.MAX_BYTES
         private const val MAX_BACKUP_UNCOMPRESSED_BYTES = 16 * 1024 * 1024
         private const val MAX_SECURITY_PATCH_RULES = 512
         private const val MAX_DRM_PACKAGE_RULES = 256
@@ -2586,19 +2594,21 @@ class WebServer(
                                 isValidKeyboxBackupPath("keyboxes/${file.name}")
                             }
                         keyboxes.forEach { keybox ->
+                            val backupName = "keyboxes/${keybox.name}"
+                            val entryLimit = backupEntryLimit(backupName)
                             val size = keybox.length()
-                            if (size !in 1..MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong()) {
+                            if (size !in 1..entryLimit.toLong()) {
                                 throw IOException("Keybox exceeds size limit: ${keybox.name}")
                             }
                             val remaining = MAX_BACKUP_UNCOMPRESSED_BYTES.toLong() - totalBytes
                             if (remaining < 0) throw IOException("Backup exceeds uncompressed size limit")
-                            zos.putNextEntry(ZipEntry("keyboxes/${keybox.name}"))
+                            zos.putNextEntry(ZipEntry(backupName))
                             val copied =
                                 Files.newInputStream(keybox.toPath(), LinkOption.NOFOLLOW_LINKS).use { input ->
                                     BackupIo.copyBounded(
                                         input,
                                         zos,
-                                        MAX_BACKUP_KEYBOX_ENTRY_BYTES.toLong(),
+                                        entryLimit.toLong(),
                                         remaining,
                                     )
                                 }
@@ -2752,7 +2762,11 @@ class WebServer(
         private fun isBackupKeyboxEntry(name: String): Boolean = name == "keybox.xml" || isValidKeyboxBackupPath(name)
 
         private fun backupEntryLimit(name: String): Int =
-            if (isBackupKeyboxEntry(name)) MAX_BACKUP_KEYBOX_ENTRY_BYTES else MAX_BACKUP_CONFIG_ENTRY_BYTES
+            when {
+                name.endsWith(".cbox", ignoreCase = true) -> MAX_BACKUP_CBOX_ENTRY_BYTES
+                isBackupKeyboxEntry(name) -> MAX_BACKUP_XML_ENTRY_BYTES
+                else -> MAX_BACKUP_CONFIG_ENTRY_BYTES
+            }
 
         private fun isValidKeyboxBackupPath(name: String): Boolean {
             if (!name.startsWith("keyboxes/") || name.count { it == '/' } != 1) return false

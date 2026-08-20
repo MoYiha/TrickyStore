@@ -136,7 +136,7 @@ object CboxManager {
         password: String,
         publicKey: String?,
     ): Boolean {
-        if (!validFilename.matches(filename) || password.length !in 1..MAX_PASSWORD_CHARS) return false
+        if (!validFilename.matches(filename) || !isUnlockPasswordWithinLimit(password)) return false
         val verificationKey = publicKey?.takeUnless { it.isBlank() }
         if (!FusedCboxBackend.isPublicKeyWithinLimit(verificationKey)) return false
         val file = File(Config.keyboxDirectory, filename)
@@ -204,6 +204,9 @@ object CboxManager {
     fun getLockedFiles(): Set<String> = lockedFiles.toSortedSet()
 
     fun isLocked(filename: String): Boolean = lockedFiles.contains(filename)
+
+    /** New producers require a strong password, but decryption keeps legacy empty-password files readable. */
+    internal fun isUnlockPasswordWithinLimit(password: String): Boolean = password.length <= MAX_PASSWORD_CHARS
 
     @Throws(IOException::class)
     private fun listCboxFiles(directory: File): List<File> {
@@ -419,8 +422,8 @@ object CboxManager {
 
     private const val SHA256_BYTES = 32
     private const val RECOVERY_KEY_BYTES = 32
-    private const val MIN_CBOX_BYTES = 4L + 4L + 16L + 12L + 16L
-    private const val MAX_CBOX_BYTES = 10L * 1024 * 1024 + 36L
+    private val MIN_CBOX_BYTES = CboxWireLimits.MIN_BYTES.toLong()
+    private val MAX_CBOX_BYTES = CboxWireLimits.MAX_BYTES.toLong()
     private const val MAX_CACHE_BYTES = 64L * 1024
     private const val MAX_CBOX_FILES = 64
     private const val MAX_PASSWORD_CHARS = 1024

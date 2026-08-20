@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 
 class WebServerUploadTest {
@@ -192,6 +193,17 @@ class WebServerUploadTest {
 
         assertEquals(200, uploadMultipartKeybox("multipart.xml", content))
         assertArrayEquals(content, File(configDir, "keyboxes/multipart.xml").readBytes())
+    }
+
+    @Test
+    fun `multipart upload accepts full CBOX wire bound`() {
+        val content = ByteArray(CboxWireLimits.MAX_BYTES)
+        ByteBuffer.wrap(content)
+            .put("CBOX".toByteArray(StandardCharsets.US_ASCII))
+            .putInt(2)
+
+        assertEquals(200, uploadMultipartKeybox("full-size.cbox", content))
+        assertEquals(content.size.toLong(), File(configDir, "keyboxes/full-size.cbox").length())
     }
 
     @Test
