@@ -13,11 +13,11 @@ When finalizing or re-finalizing a release after the build has produced the actu
 2. Read the live published artifact metadata before editing release metadata. Derive the exact `versionCode`, commit/hash component, ZIP filename, URL, checksum/digest, and tag from the actual build/release; never predict them from commit counts or filenames.
 3. Do not list internal-only maintenance such as `AGENTS.md` or other agent/developer documentation-only commits as user-facing release changes unless they materially change shipped user behavior.
 4. Update `CHANGELOG.md` with a polished section based on the real diff since the previous released artifact. Group entries by user benefit and include late fixes that landed before the final shipped build.
-5. Mirror the matching changelog section in every supported localized reference under `docs/i18n/{tr,zh-CN,es,de,ru,id,hi,ar}.md`, preserving technical identifiers and numeric limits exactly.
+5. `CHANGELOG.md` is the canonical release log. Do not mirror release changelog entries into `docs/i18n/` or localized README files unless the maintainer explicitly asks for localized release notes.
 6. Update `update.json` only after the release asset exists. Its version string, `versionCode`, ZIP URL/filename, commit/hash component, and changelog target must describe that exact live artifact.
-7. Update the GitHub Release for the same tag as part of the same finalization: keep its title/body/release notes aligned with the final `CHANGELOG.md`, and include any late release-critical fixes. Do not leave generated or stale notes describing an older build.
+7. Update the GitHub Release for the same tag as part of the same finalization. Replace generated or stale `## What's Changed`, contributor-only notes, and stale `Full Changelog` compare ranges with the canonical current-version `CHANGELOG.md` section plus the correct previous-tag-to-current-tag compare link. Include every late release-critical fix that shipped.
 8. When rebuilding/reissuing the same version, replace or retire stale release assets/metadata as needed. The tag/release, published ZIP, checksums/digests, `update.json`, and release notes must all describe one coherent shipped build; never leave a mixture of old and new hashes/versionCodes/URLs.
-9. Keep changelog/localization/update metadata changes in one coherent commit when practical. Do not bump the version again merely to finalize metadata unless the maintainer explicitly asks for a new version.
+9. Keep changelog/update/release-metadata changes in one coherent commit when practical. Do not bump the version again merely to finalize metadata unless the maintainer explicitly asks for a new version.
 10. If the exact release build, tag, publish job, or expected asset is missing or failed, make no speculative release-metadata edits. Report the blocker and wait for a verified artifact.
 
 ## Repository-wide engineering contract
@@ -178,8 +178,9 @@ English is the canonical technical documentation language. User-facing documenta
 
 - Localized project overviews live in `README.<locale>.md`.
 - Localized documentation references live in `docs/i18n/<locale>.md` and use stable English anchor IDs.
-- Every canonical user-facing Markdown document must expose the same nine-language navigation.
-- When a user-visible Markdown document changes materially, update the matching sections in all localized references and update localized README files when the project overview changes.
+- Every canonical user-facing Markdown document must expose the same nine-language navigation where that navigation already exists.
+- `CHANGELOG.md` is the release-log exception: keep release entries canonical English only by default; do not duplicate them into `docs/i18n/` or localized README files unless the maintainer explicitly requests localized release notes.
+- Except for `CHANGELOG.md` release entries, when a user-visible Markdown document changes materially, update the matching sections in all localized references and update localized README files when the project overview changes.
 - Preserve code symbols, API names, config keys, commands, filenames, security behavior, and numeric limits exactly inside translations.
 - Do not localize source code, build files, CI configuration, generated files, or internal agent/developer instructions. Those remain English for deterministic tooling and review.
 

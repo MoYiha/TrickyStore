@@ -10,6 +10,7 @@
 
 ### More resilient runtime and backend recovery
 
+- **Core Keystore/TEE interception stays online when optional boot-property compatibility cannot be applied.** Startup now distinguishes fatal requirements from retryable compatibility work, so a property-compatibility failure retries in the background instead of restarting the Android adapter and leaving an active configuration in a Native Offline state on affected KernelSU/APatch devices.
 - **Backend restarts recover cleanly instead of leaving half-finished refresh work behind.** Keybox recovery, refresh and publication locking were tightened to avoid lock inversions, stale generations and reader/writer races.
 - **Server state publication is serialized.** Key material, configuration and authentication state are published consistently, while malformed or unsupported authentication headers are rejected before they reach privileged handling.
 - **Restart behavior keeps useful verified state.** The ZIP-backed server cache is preserved across backend restarts when it is still valid, reducing unnecessary reload work after recovery.
@@ -30,7 +31,7 @@
 
 - Updated the Rust signing/X.509 dependency stack with the compatibility fixes required by the current certificate pipeline.
 - Updated Rust CI compatibility for Rust 1.98, including the new Clippy requirement and rustfmt output, without weakening warnings or lint gates.
-- Expanded regression coverage around recovery ordering, keybox publication, cache identity, CBOX bounds, Auto Identity metadata and security contracts.
+- Expanded regression coverage around recovery ordering, keybox publication, cache identity, CBOX bounds, Auto Identity metadata and security contracts, including a reusable startup-liveness policy that tests fatal versus retryable components, bounded recovery and cancellation.
 
 ## V2.6.1
 

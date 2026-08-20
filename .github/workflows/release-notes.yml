@@ -1,0 +1,115 @@
+name: Release Notes Sync
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - "CHANGELOG.md"
+      - "update.json"
+      - ".github/workflows/release-notes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-release-notes:
+    name: "📝 Sync Release Notes"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^val verName = "\([vV][^"]*\)".*/\1/p' build.gradle.kts)
+          if [[ -z "$version" ]]; then
+            echo "::error::Could not read verName from build.gradle.kts"
+            exit 1
+          fi
+          echo "tag=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify live release asset matches update.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isDraft,isPrerelease,assets > "$RUNNER_TEMP/release.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import urlparse
+
+          metadata = json.loads(Path("update.json").read_text())
+          release = json.loads(Path(os.environ["RUNNER_TEMP"]).joinpath("release.json").read_text())
+          tag = os.environ["RELEASE_TAG"]
+          if release["tagName"] != tag:
+              raise SystemExit(f"release tag mismatch: {release['tagName']} != {tag}")
+          asset_name = Path(urlparse(metadata["zipUrl"]).path).name
+          assets = {asset["name"] for asset in release.get("assets", [])}
+          if asset_name not in assets:
+              raise SystemExit(f"update.json ZIP is not a live {tag} asset: {asset_name}; live assets={sorted(assets)}")
+          expected_prefix = f"{tag} ("
+          if not metadata["version"].startswith(expected_prefix):
+              raise SystemExit(f"update.json version does not describe {tag}: {metadata['version']}")
+          print(f"Verified live release asset: {asset_name}")
+          PY
+
+      - name: Prepare canonical release body
+        id: notes
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous=$(git tag --list 'V*' --sort=-version:refname | awk -v current="$RELEASE_TAG" '$0 != current { print; exit }')
+          if [[ -z "$previous" ]]; then
+            echo "::error::Could not determine previous release tag"
+            exit 1
+          fi
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          PREVIOUS_TAG="$previous" python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["RELEASE_TAG"]
+          previous = os.environ["PREVIOUS_TAG"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          changelog = Path("CHANGELOG.md").read_text()
+          match = re.search(rf"(?ms)^## {re.escape(tag)}\s*\n(?P<body>.*?)(?=^## V|\Z)", changelog)
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no section for {tag}")
+          body = match.group("body").strip()
+          release_body = (
+              "## What's Changed\n\n"
+              f"{body}\n\n"
+              f"**Full Changelog**: https://github.com/{repo}/compare/{previous}...{tag}\n"
+          )
+          Path("release-notes.md").write_text(release_body)
+          PY
+
+      - name: Update existing GitHub Release body
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Release ${{ steps.version.outputs.tag }}"
+          body_path: release-notes.md
+
+      - name: Verify canonical release body was published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' > "$RUNNER_TEMP/published-release-body.md"
+          diff -u release-notes.md "$RUNNER_TEMP/published-release-body.md"
