@@ -35,8 +35,13 @@ object CboxManager {
         refresh()
     }
 
+    fun refresh() =
+        KeyboxActivation.coordinateRefresh {
+            refreshLocked()
+        }
+
     @Synchronized
-    fun refresh() {
+    private fun refreshLocked() {
         if (KeyboxLoader.consumeBackendOutage()) {
             invalidateBackendHandles()
         }
@@ -117,8 +122,17 @@ object CboxManager {
         lockedFiles.addAll(names)
     }
 
-    @Synchronized
     fun unlock(
+        filename: String,
+        password: String,
+        publicKey: String?,
+    ): Boolean =
+        KeyboxActivation.coordinateRefresh {
+            unlockLocked(filename, password, publicKey)
+        }
+
+    @Synchronized
+    private fun unlockLocked(
         filename: String,
         password: String,
         publicKey: String?,
