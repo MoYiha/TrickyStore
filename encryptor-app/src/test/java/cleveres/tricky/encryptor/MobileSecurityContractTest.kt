@@ -111,17 +111,35 @@ class MobileSecurityContractTest {
     }
 
     @Test
-    fun `mobile and module versions come from the same 2_6_1 root source`() {
+    fun `mobile and module versions come from the same root source`() {
         val root = locateRoot()
         val rootBuild = File(root, "build.gradle.kts").readText()
         val appBuild = File(root, "encryptor-app/build.gradle.kts").readText()
-        assertTrue(rootBuild.contains("val verName = \"V2.6.1\""))
+        val moduleBuild = File(root, "module/build.gradle.kts").readText()
+        val rootVersionLines =
+            rootBuild.lineSequence()
+                .filter { it.startsWith("val verName = \"V") }
+                .toList()
+
+        assertEquals("Root build must define exactly one release version", 1, rootVersionLines.size)
+        assertTrue(
+            "Root release version must use Vx.y.z format",
+            Regex("val verName = \"V\\d+\\.\\d+\\.\\d+\"").matches(rootVersionLines.single()),
+        )
         assertTrue(appBuild.contains("versionCode = moduleVersionCode"))
         assertTrue(appBuild.contains("versionName = moduleVersionName"))
         assertTrue(appBuild.contains("rootProject.extra[\"verCode\"]"))
         assertTrue(appBuild.contains("rootProject.extra[\"verName\"]"))
-        assertFalse(appBuild.contains("versionCode = 1"))
-        assertFalse(appBuild.contains("versionName = \"1.0\""))
+        assertTrue(moduleBuild.contains("val verCode = rootProject.extra[\"verCode\"] as Int"))
+        assertTrue(moduleBuild.contains("val verName = rootProject.extra[\"verName\"] as String"))
+        assertFalse(
+            "Encryptor must not define a numeric versionCode independently",
+            Regex("(?m)^\\s*versionCode\\s*=\\s*\\d+\\s*$").containsMatchIn(appBuild),
+        )
+        assertFalse(
+            "Encryptor must not define a literal versionName independently",
+            Regex("(?m)^\\s*versionName\\s*=\\s*\"[^\"]+\"\\s*$").containsMatchIn(appBuild),
+        )
     }
 
     private fun locateRoot(): File {
