@@ -44,7 +44,8 @@ const MAX_BACKUP_REQUEST_BYTES: usize = 2 + MAX_PASSWORD_BYTES + MAX_BACKUP_BYTE
 const MAX_BACKEND_FRAME_BYTES: usize = MAX_BACKUP_REQUEST_BYTES;
 const MAX_BACKUP_RESPONSE_BYTES: usize = MAX_BACKUP_BYTES + 64;
 const MAX_KEYBOX_RESPONSE_BYTES: usize = keybox_wire::MAX_KEYBOX_RESPONSE_BYTES;
-const MAX_CBOX_AUTHOR_BYTES: usize = 1024;
+const MAX_CBOX_AUTHOR_UTF16_UNITS: usize = 1024;
+const MAX_CBOX_AUTHOR_BYTES: usize = 4 * MAX_CBOX_AUTHOR_UTF16_UNITS;
 const CBOX_RESPONSE_PREFIX_BYTES: usize = 7;
 const MAX_CBOX_RESPONSE_BYTES: usize =
     CBOX_RESPONSE_PREFIX_BYTES + MAX_CBOX_AUTHOR_BYTES + MAX_KEYBOX_RESPONSE_BYTES;
@@ -876,6 +877,26 @@ mod tests {
         assert!(!wire
             .windows(19)
             .any(|window| window == b"AndroidAttestation"));
+    }
+
+    #[test]
+    fn cbox_response_accepts_multibyte_author_within_producer_contract() {
+        let author = "é".repeat(MAX_CBOX_AUTHOR_UTF16_UNITS);
+        assert_eq!(author.encode_utf16().count(), MAX_CBOX_AUTHOR_UTF16_UNITS);
+        assert!(author.len() > 1024);
+
+        let response = encode_cbox_response(author.as_bytes(), false, b"wire").unwrap();
+        let author_len = u16::from_be_bytes(response[0..2].try_into().unwrap()) as usize;
+
+        assert_eq!(author_len, author.len());
+        assert_eq!(&response[7..7 + author_len], author.as_bytes());
+    }
+
+    #[test]
+    fn cbox_response_rejects_author_over_byte_bound() {
+        let author = vec![b'a'; MAX_CBOX_AUTHOR_BYTES + 1];
+
+        assert!(encode_cbox_response(&author, false, b"wire").is_err());
     }
 
     #[test]
