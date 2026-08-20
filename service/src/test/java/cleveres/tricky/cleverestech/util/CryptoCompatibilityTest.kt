@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.util
 
+import cleveres.tricky.cleverestech.CboxWireLimits
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -9,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 import java.util.Base64
 
 class CryptoCompatibilityTest {
@@ -112,6 +114,24 @@ class CryptoCompatibilityTest {
             assertFalse(CboxDecryptor.hasSupportedEnvelopeHeader(unsupported))
         } finally {
             current.fill(0)
+        }
+    }
+
+    @Test
+    fun `CBOX header classifier accepts the full wire bound only`() {
+        val bounded = ByteArray(CboxWireLimits.MAX_BYTES)
+        val oversized = ByteArray(CboxWireLimits.MAX_BYTES + 1)
+        try {
+            "CBOX".toByteArray(StandardCharsets.US_ASCII).copyInto(bounded)
+            bounded[7] = 2
+            "CBOX".toByteArray(StandardCharsets.US_ASCII).copyInto(oversized)
+            oversized[7] = 2
+
+            assertTrue(CboxDecryptor.hasSupportedEnvelopeHeader(bounded))
+            assertFalse(CboxDecryptor.hasSupportedEnvelopeHeader(oversized))
+        } finally {
+            bounded.fill(0)
+            oversized.fill(0)
         }
     }
 

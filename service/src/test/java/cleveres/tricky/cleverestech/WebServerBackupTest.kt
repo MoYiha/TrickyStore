@@ -119,7 +119,7 @@ class WebServerBackupTest {
         val kbDir = File(configDir, "keyboxes")
         kbDir.mkdirs()
         File(kbDir, "kb1.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
-        val cboxBytes = ByteArray(1024 * 1024 + 1)
+        val cboxBytes = ByteArray(CboxWireLimits.MAX_BYTES)
         ByteBuffer.wrap(cboxBytes)
             .put("CBOX".toByteArray(StandardCharsets.US_ASCII))
             .putInt(2)

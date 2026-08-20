@@ -230,7 +230,7 @@ internal object FusedCboxBackend {
     private const val MAX_PUBLIC_KEY_BYTES = 16 * 1024
     private const val MAX_AUTHOR_UTF16_UNITS = 1024
     private const val MAX_AUTHOR_BYTES = 4 * MAX_AUTHOR_UTF16_UNITS
-    private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
+    private const val MAX_CBOX_BYTES = CboxWireLimits.MAX_BYTES
     private const val MAX_KEYBOX_WIRE_BYTES = KeyboxWire.MAX_RESPONSE_BYTES
     private const val MAX_CBOX_RESPONSE_BYTES = RESPONSE_PREFIX_BYTES + MAX_AUTHOR_BYTES + MAX_KEYBOX_WIRE_BYTES
     private const val MAX_CBOX_UNLOCK_RESPONSE_BYTES = RECOVERY_KEY_BYTES + MAX_CBOX_RESPONSE_BYTES
