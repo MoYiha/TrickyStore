@@ -44,7 +44,6 @@ private fun startWebUiBridge(
     return null
 }
 
-
 private fun hasConfiguredKeyboxSource(configDir: File): Boolean {
     val roots =
         listOf(
@@ -95,7 +94,6 @@ fun main(args: Array<String>) {
         }
 
         while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
-
             if (Thread.currentThread().isInterrupted) {
                 Logger.i("Main: Interrupted while waiting for Rust backend")
                 return@runBlocking
@@ -113,13 +111,65 @@ fun main(args: Array<String>) {
             }
             KernelIdentityManager.initialize(configDir)
             Config.initialize()
-            check(BootLogic.run()) { "Boot property compatibility initialization failed" }
-            CertificatePolicyWatcher.start(configDir)
         } catch (e: Exception) {
-            Logger.e("Failed to initialize Config/BootLogic", e)
+            Logger.e("Failed to initialize core configuration", e)
             Logger.e("Main: Exiting so the module supervisor can retry initialization")
             return@runBlocking
         }
+
+        val startupTasks =
+            listOf(
+                RuntimeStartupTask(
+                    name = "boot property compatibility",
+                    failureMode = RuntimeStartupFailureMode.CONTINUE_AND_RETRY,
+                    attemptBlock = BootLogic::run,
+                    retryDelaysMs = listOf(1_000L, 5_000L, 15_000L, 60_000L, 300_000L),
+                ),
+            )
+        val startupResults = RuntimeStartupPolicy.evaluate(startupTasks)
+        startupResults.forEach { result ->
+            result.failure?.let { failure ->
+                Logger.e("${result.task.name} startup attempt failed", failure)
+            }
+        }
+        if (!RuntimeStartupPolicy.canEnterCoreRuntime(startupResults)) {
+            val unavailable =
+                RuntimeStartupPolicy.fatalFailures(startupResults)
+                    .joinToString { it.task.name }
+            Logger.e("Required startup components are unavailable: $unavailable")
+            Logger.e("Main: Exiting so the module supervisor can retry initialization")
+            return@runBlocking
+        }
+
+        try {
+            CertificatePolicyWatcher.start(configDir)
+        } catch (e: Exception) {
+            Logger.e("Failed to initialize certificate policy watcher", e)
+            Logger.e("Main: Exiting so the module supervisor can retry initialization")
+            return@runBlocking
+        }
+
+        val startupRetryJobs =
+            RuntimeStartupPolicy.retryableFailures(startupResults).map { result ->
+                Logger.w(
+                    "${result.task.name} is unavailable; core Keystore/TEE interception will continue while the startup task retries",
+                )
+                launch(Dispatchers.IO) {
+                    val recovered =
+                        RuntimeStartupPolicy.retryBounded(result.task) { retryResult ->
+                            retryResult.failure?.let { failure ->
+                                Logger.e("${retryResult.task.name} retry attempt failed", failure)
+                            }
+                        }
+                    if (recovered.ready) {
+                        Logger.i("${recovered.task.name} recovered without restarting the native runtime")
+                    } else {
+                        Logger.w(
+                            "${recovered.task.name} remains unavailable; core Keystore/TEE interception remains active",
+                        )
+                    }
+                }
+            }
 
         runCatching { KeyboxDirectoryRefreshWatcher.start(Config.keyboxDirectory) }
             .onFailure { Logger.e("Failed to install conflated keybox watcher; keeping legacy observer", it) }
@@ -303,6 +353,7 @@ fun main(args: Array<String>) {
                 Config.awaitRuntimeController(controllerWaitMs)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
+                startupRetryJobs.forEach { it.cancel() }
                 KeyboxDirectoryRefreshWatcher.stop()
                 CertificatePolicyWatcher.stop()
                 SubscriptionVisibilityInterceptor.stop()
