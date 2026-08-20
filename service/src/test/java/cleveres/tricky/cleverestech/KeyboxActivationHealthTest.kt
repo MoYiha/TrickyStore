@@ -1,7 +1,10 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -53,6 +56,44 @@ class KeyboxActivationHealthTest {
             KeyboxActivation.PublicationResult.COMMITTED,
             KeyboxActivation.commitAndPublish(newer, emptyList()),
         )
+        assertEquals(1, backendCommits.get())
+    }
+
+    @Test
+    fun `publication waits until active snapshot readers finish`() {
+        val backendCommits = AtomicInteger()
+        val attempting = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val result = AtomicReference<KeyboxActivation.PublicationResult>()
+        KeyboxLoader.activeSetOverride = {
+            backendCommits.incrementAndGet()
+            true
+        }
+        val ticket = KeyboxActivation.beginRefresh()
+
+        KeyboxActivation.lockPublishedSnapshot()
+        val worker =
+            Thread {
+                attempting.countDown()
+                try {
+                    result.set(KeyboxActivation.commitAndPublish(ticket, emptyList()))
+                } finally {
+                    finished.countDown()
+                }
+            }
+        worker.start()
+        try {
+            assertTrue(attempting.await(2, TimeUnit.SECONDS))
+            assertFalse(finished.await(100, TimeUnit.MILLISECONDS))
+            assertEquals(0, backendCommits.get())
+        } finally {
+            KeyboxActivation.unlockPublishedSnapshot()
+        }
+
+        assertTrue(finished.await(2, TimeUnit.SECONDS))
+        worker.join(2_000)
+        assertFalse(worker.isAlive)
+        assertEquals(KeyboxActivation.PublicationResult.COMMITTED, result.get())
         assertEquals(1, backendCommits.get())
     }
 }
