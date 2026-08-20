@@ -8,6 +8,7 @@ import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.ZipProcessor
+import cleveres.tricky.cleverestech.util.readFileSnapshotBounded
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -83,10 +84,7 @@ object ServerManager {
         val file = serverFile
         if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return
         try {
-            if (file.length() !in 1..MAX_CONFIG_BYTES) {
-                throw SecurityException("Server configuration has an invalid size")
-            }
-            val stored = file.readBytes()
+            val stored = readFileSnapshotBounded(file, 1, MAX_CONFIG_BYTES)
             val wasPlaintext = stored.firstOrNull() == '['.code.toByte()
             val plaintext =
                 if (wasPlaintext) {
@@ -371,10 +369,7 @@ object ServerManager {
                     var decrypted: ByteArray? = null
                     var cachePayload: ByteArray? = null
                     try {
-                        if (cacheFile.length() !in 1..MAX_CACHE_BYTES) {
-                            throw SecurityException("Cached keybox file has an invalid size")
-                        }
-                        val enc = cacheFile.readBytes()
+                        val enc = readFileSnapshotBounded(cacheFile, 1, MAX_CACHE_BYTES)
                         try {
                             decrypted = DeviceKeyManager.decrypt(enc)
                                 ?: throw SecurityException("Could not decrypt server cache")
