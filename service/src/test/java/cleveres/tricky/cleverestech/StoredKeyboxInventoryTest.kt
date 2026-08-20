@@ -39,17 +39,32 @@ class StoredKeyboxInventoryTest {
     }
 
     @Test
-    fun `oversized XML is rejected before content stamping`() {
+    fun `oversized XML is excluded before content stamping`() {
         val root = temp.newFolder("oversized")
         val oversized = File(root, "oversized.xml")
         RandomAccessFile(oversized, "rw").use { file ->
             file.setLength(StoredKeyboxInventory.MAX_XML_BYTES + 1)
         }
+        var stampAttempts = 0
 
-        val source = StoredKeyboxInventory.runtimeXmlSources(root).single()
+        val sources =
+            StoredKeyboxInventory.runtimeXmlSources(root) {
+                stampAttempts++
+                1L
+            }
 
-        assertEquals(File::class.java, source.file.javaClass)
-        assertEquals(StoredKeyboxInventory.MAX_XML_BYTES + 1, source.file.length())
+        assertTrue(sources.isEmpty())
+        assertEquals(0, stampAttempts)
+    }
+
+    @Test
+    fun `content stamp failure excludes source from cache admission`() {
+        val root = temp.newFolder("unstable")
+        File(root, "unstable.xml").writeText("keybox")
+
+        val sources = StoredKeyboxInventory.runtimeXmlSources(root) { null }
+
+        assertTrue(sources.isEmpty())
     }
 
     @Test

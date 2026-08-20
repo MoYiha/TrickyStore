@@ -40,7 +40,6 @@ internal object StoredKeyboxInventory {
     const val MAX_STORED_SOURCES = 256
     const val MAX_FILENAME_BYTES = 255
     const val MAX_XML_BYTES = 10L * 1024 * 1024
-    private const val UNCACHEABLE_CONTENT_STAMP = Long.MIN_VALUE
 
     fun list(configDir: File): List<Source> {
         val output = ArrayList<Source>()
@@ -56,7 +55,12 @@ internal object StoredKeyboxInventory {
         return output
     }
 
-    fun runtimeXmlSources(configDir: File): List<Source> {
+    fun runtimeXmlSources(configDir: File): List<Source> = runtimeXmlSources(configDir, ::contentStamp)
+
+    internal fun runtimeXmlSources(
+        configDir: File,
+        contentStamper: (File) -> Long?,
+    ): List<Source> {
         val sources = list(configDir).filter { it.isXml }
         require(sources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
         // Preserve the V2.6.0 upgrade contract: a legacy XML in the module root and a
@@ -65,17 +69,14 @@ internal object StoredKeyboxInventory {
         // groups same-name keyboxes into one selectable filename pool.
         //
         // Runtime cache metadata historically used only mtime + length, allowing a replaced
-        // XML with identical metadata to retain stale parsed keyboxes. Keep the public/stored
-        // Source identity stable, but expose a content-derived lastModified stamp only to the
-        // runtime scanner so content replacement always invalidates that cache.
-        return sources.map { source ->
-            val size = source.file.length()
-            if (size !in 1..MAX_XML_BYTES) {
-                source
-            } else {
-                val stamp = contentStamp(source.file) ?: UNCACHEABLE_CONTENT_STAMP
-                source.copy(file = ContentStampedFile(source.file, stamp))
-            }
+        // XML with identical metadata to retain stale parsed keyboxes. A source is cache-
+        // admissible only when its complete content can be stamped within the runtime bound.
+        // Failed or unstable stamping is propagated as non-admission; Config's current-source
+        // cleanup then evicts any older cache entry instead of reusing a synthetic identity.
+        return sources.mapNotNull { source ->
+            if (source.file.length() !in 1..MAX_XML_BYTES) return@mapNotNull null
+            val stamp = contentStamper(source.file) ?: return@mapNotNull null
+            source.copy(file = ContentStampedFile(source.file, stamp))
         }
     }
 

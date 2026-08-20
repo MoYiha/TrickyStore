@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.RandomAccessFile
 
 class ConfigCachingTest {
     private lateinit var tempDir: File
@@ -109,6 +110,12 @@ class ConfigCachingTest {
         }
     }
 
+    private fun getCachedSourceCount(): Int {
+        val field = Config::class.java.getDeclaredField("storedKeyboxCache")
+        field.isAccessible = true
+        return (field.get(Config) as Map<*, *>).size
+    }
+
     @Test
     fun testCacheReloadsWhenLengthChangesAtSameTimestamp() {
         keyboxFile.writeText(xmlV1)
@@ -154,5 +161,19 @@ class ConfigCachingTest {
         callUpdateKeyBoxes()
 
         assertEquals("Should reject the same-metadata replacement", 0, getCachedKeyboxCount())
+    }
+
+    @Test
+    fun testCacheEvictsSourceWhenRuntimeAdmissionFails() {
+        keyboxFile.writeText(xmlV1)
+        callUpdateKeyBoxes()
+        assertEquals("Source should be cached after a stable load", 1, getCachedSourceCount())
+
+        RandomAccessFile(keyboxFile, "rw").use { file ->
+            file.setLength(StoredKeyboxInventory.MAX_XML_BYTES + 1)
+        }
+        callUpdateKeyBoxes()
+
+        assertEquals("Runtime-ineligible source must evict stale cache state", 0, getCachedSourceCount())
     }
 }
