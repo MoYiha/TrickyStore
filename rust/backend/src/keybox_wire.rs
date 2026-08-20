@@ -8,14 +8,16 @@ use cleverestricky_xml_core::{
     MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX,
 };
 use key_store::{KeyId, PublicKeyRecord, KEY_ID_BYTES, MAX_STORED_KEYS};
+use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use zeroize::Zeroize;
 
 pub const MAX_KEYBOX_XML_BYTES: usize = MAX_DOCUMENT_UTF8_BYTES;
 const MAX_TOTAL_KEYS: usize = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX;
 const MAX_TOTAL_CERTIFICATES: usize = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN;
-const WIRE_VERSION: u8 = 3;
-const FIXED_HEADER_BYTES: usize = 5;
+const WIRE_VERSION: u8 = 4;
+const SNAPSHOT_SHA256_BYTES: usize = 32;
+const FIXED_HEADER_BYTES: usize = 5 + SNAPSHOT_SHA256_BYTES;
 const KEY_HEADER_BYTES: usize = 2 + KEY_ID_BYTES;
 const CERTIFICATE_HEADER_BYTES: usize = 4;
 const STORE_CONTROL_MAGIC: &[u8; 4] = b"CTKS";
@@ -53,6 +55,7 @@ pub fn parse_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
         return Err("keybox XML exceeds operation bound");
     }
 
+    let snapshot_digest: [u8; SNAPSHOT_SHA256_BYTES] = Sha256::digest(&request).into();
     let document = match parse_keybox_xml_bytes(&request) {
         Ok(document) => document,
         Err(_) => {
@@ -64,7 +67,12 @@ pub fn parse_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
     drop(request);
 
     let keys = key_store::register_document(&document)?;
-    encode_document(document.declared_keyboxes, document.keybox_count, &keys)
+    encode_document(
+        document.declared_keyboxes,
+        document.keybox_count,
+        &snapshot_digest,
+        &keys,
+    )
 }
 
 fn handle_store_control(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str> {
@@ -153,6 +161,7 @@ fn request_size_is_valid(length: usize) -> bool {
 fn encode_document(
     declared_keyboxes: usize,
     keybox_count: usize,
+    snapshot_digest: &[u8; SNAPSHOT_SHA256_BYTES],
     keys: &[PublicKeyRecord],
 ) -> Result<Vec<u8>, &'static str> {
     validate_wire_fields(declared_keyboxes, keybox_count, keys)?;
@@ -169,6 +178,7 @@ fn encode_document(
     output.push(declared_keyboxes as u8);
     output.push(keybox_count as u8);
     output.extend_from_slice(&(keys.len() as u16).to_be_bytes());
+    output.extend_from_slice(snapshot_digest);
 
     for key in keys {
         output.push(key.algorithm.len() as u8);
@@ -244,7 +254,7 @@ mod tests {
         include_bytes!("../../../service/src/test/resources/keybox/valid_ec.xml");
 
     #[test]
-    fn shared_ec_fixture_encodes_opaque_id_and_certificate_der_only() {
+    fn shared_ec_fixture_encodes_snapshot_digest_opaque_id_and_certificate_der_only() {
         let _sequence = isolate_store_sequence();
         key_store::reset_for_testing();
         let response = parse_and_encode(VALID_EC.to_vec()).unwrap();
@@ -252,6 +262,7 @@ mod tests {
         assert_eq!(response[1], 1);
         assert_eq!(response[2], 1);
         assert_eq!(u16::from_be_bytes(response[3..5].try_into().unwrap()), 1);
+        assert_eq!(&response[5..FIXED_HEADER_BYTES], Sha256::digest(VALID_EC).as_slice());
 
         let mut offset = FIXED_HEADER_BYTES;
         let algorithm_len = response[offset] as usize;
@@ -277,6 +288,21 @@ mod tests {
         offset += certificate_len;
         assert_eq!(offset, response.len());
         assert!(response.len() <= MAX_KEYBOX_RESPONSE_BYTES);
+    }
+
+    #[test]
+    fn equal_length_snapshots_have_distinct_full_digests() {
+        let _sequence = isolate_store_sequence();
+        key_store::reset_for_testing();
+        let first = parse_and_encode(VALID_EC.to_vec()).unwrap();
+        key_store::reset_for_testing();
+        let mut changed = VALID_EC.to_vec();
+        let position = changed.iter().position(|byte| *byte == b' ').expect("fixture space");
+        changed[position] = b'\n';
+        let expected = Sha256::digest(&changed);
+        let second = parse_and_encode(changed).unwrap();
+        assert_ne!(&first[5..FIXED_HEADER_BYTES], &second[5..FIXED_HEADER_BYTES]);
+        assert_eq!(&second[5..FIXED_HEADER_BYTES], expected.as_slice());
     }
 
     #[test]
