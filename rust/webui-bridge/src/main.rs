@@ -365,8 +365,7 @@ fn export_open_file(
     filename: &str,
     target: ExportDirectory,
 ) -> Result<PathBuf, String> {
-    let (destination_name, mut output) =
-        create_export_destination(&target.directory, filename)?;
+    let (destination_name, mut output) = create_export_destination(&target.directory, filename)?;
     let destination = target.display_path.join(&destination_name);
     let created_metadata = output
         .metadata()
@@ -393,7 +392,12 @@ fn export_open_file(
     })();
     if let Err(error) = export_result {
         drop(output);
-        remove_if_same_file(&target.directory, &destination_name, &created_metadata, limit);
+        remove_if_same_file(
+            &target.directory,
+            &destination_name,
+            &created_metadata,
+            limit,
+        );
         return Err(error);
     }
     drop(output);
@@ -550,12 +554,7 @@ fn safe_file_metadata(path: &Path) -> Result<fs::Metadata, String> {
     Ok(metadata)
 }
 
-fn remove_if_same_file(
-    directory: &TrustedDir,
-    name: &str,
-    expected: &fs::Metadata,
-    limit: usize,
-) {
+fn remove_if_same_file(directory: &TrustedDir, name: &str, expected: &fs::Metadata, limit: usize) {
     let Ok((file, _)) = directory.open_file_bounded(name, limit) else {
         return;
     };
