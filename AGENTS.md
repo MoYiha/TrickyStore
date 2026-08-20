@@ -3,6 +3,23 @@
 When bumping versions for the CleveresTricky module, do NOT touch `update.json`. You must leave `update.json` completely unmodified.
 Only update `build.gradle.kts` (e.g., `val verName by extra(...)`) and any other necessary files, but explicitly skip `update.json`.
 
+## Release finalization contract
+
+Treat a version bump and release finalization as separate phases. The version-bump rule above remains strict: do not edit `update.json` while merely changing the version.
+
+When finalizing or re-finalizing a release after the build has produced the actual release artifact:
+
+1. Verify the exact release commit/tag and require every release-selected workflow to pass, including the release/publish job when it applies. Never finalize from an older, queued, partially successful, or different head.
+2. Read the live published artifact metadata before editing release metadata. Derive the exact `versionCode`, commit/hash component, ZIP filename, URL, checksum/digest, and tag from the actual build/release; never predict them from commit counts or filenames.
+3. Do not list internal-only maintenance such as `AGENTS.md` or other agent/developer documentation-only commits as user-facing release changes unless they materially change shipped user behavior.
+4. Update `CHANGELOG.md` with a polished section based on the real diff since the previous released artifact. Group entries by user benefit and include late fixes that landed before the final shipped build.
+5. Mirror the matching changelog section in every supported localized reference under `docs/i18n/{tr,zh-CN,es,de,ru,id,hi,ar}.md`, preserving technical identifiers and numeric limits exactly.
+6. Update `update.json` only after the release asset exists. Its version string, `versionCode`, ZIP URL/filename, commit/hash component, and changelog target must describe that exact live artifact.
+7. Update the GitHub Release for the same tag as part of the same finalization: keep its title/body/release notes aligned with the final `CHANGELOG.md`, and include any late release-critical fixes. Do not leave generated or stale notes describing an older build.
+8. When rebuilding/reissuing the same version, replace or retire stale release assets/metadata as needed. The tag/release, published ZIP, checksums/digests, `update.json`, and release notes must all describe one coherent shipped build; never leave a mixture of old and new hashes/versionCodes/URLs.
+9. Keep changelog/localization/update metadata changes in one coherent commit when practical. Do not bump the version again merely to finalize metadata unless the maintainer explicitly asks for a new version.
+10. If the exact release build, tag, publish job, or expected asset is missing or failed, make no speculative release-metadata edits. Report the blocker and wait for a verified artifact.
+
 ## Repository-wide engineering contract
 
 CleveresTricky must be treated as one system, not as a collection of unrelated files. A change that looks local may cross Kotlin/Android, module packaging, WebUI, native Binder, Rust backend, cache/serialization, backup/restore, or CI boundaries.
