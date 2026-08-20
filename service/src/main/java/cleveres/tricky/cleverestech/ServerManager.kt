@@ -409,7 +409,8 @@ object ServerManager {
         server: ServerConfig,
     ): List<CertHack.KeyBox> {
         val isZip = bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
-        if (!isZip) return KeyboxLoader.parse(bytes, "server_${server.name}")
+        val isCbox = CboxDecryptor.hasSupportedEnvelopeHeader(bytes)
+        if (!isZip && !isCbox) return KeyboxLoader.parse(bytes, "server_${server.name}")
 
         val parsed = processContent(bytes, server)
         return try {
@@ -615,27 +616,12 @@ object ServerManager {
         bytes: ByteArray,
         server: ServerConfig,
     ): Pair<List<CertHack.KeyBox>, ByteArray?> {
-        val magic = if (bytes.size >= 4) String(bytes.copyOfRange(0, 4), StandardCharsets.US_ASCII) else ""
-
-        if (magic == "CBOX") {
+        if (CboxDecryptor.hasSupportedEnvelopeHeader(bytes)) {
             val password = server.contentPassword ?: ""
-            val payload = CboxDecryptor.decrypt(ByteArrayInputStream(bytes), password)
-            if (payload != null) {
-                if (!server.contentPublicKey.isNullOrBlank() &&
-                    !CboxDecryptor.verifySignature(payload, server.contentPublicKey!!)
-                ) {
-                    Logger.e("Signature verification failed for server ${server.name}")
-                    return Pair(emptyList(), null)
-                }
-                val xml = payload.takeXmlContentBytes()
-                if (xml.isNotEmpty()) {
-                    val cacheBytes = xml.copyOf()
-                    val keyboxes = KeyboxLoader.parse(xml, "server_${server.name}")
-                    if (keyboxes.isNotEmpty()) {
-                        return Pair(keyboxes, cacheBytes)
-                    }
-                    cacheBytes.fill(0)
-                }
+            val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
+            val keyboxes = materializeServerCbox(bytes, password, publicKey, "server_${server.name}")
+            if (keyboxes.isNotEmpty()) {
+                return Pair(keyboxes, bytes.copyOf())
             }
         } else if (bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
             val pack = ZipProcessor.process(ByteArrayInputStream(bytes))
@@ -643,29 +629,18 @@ object ServerManager {
                 try {
                     val allKeys = ArrayList<CertHack.KeyBox>()
                     val password = pack.password ?: server.contentPassword ?: ""
-                    val publicKey = server.contentPublicKey
+                    val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
 
                     for ((name, content) in pack.cboxFiles) {
-                        val payload = CboxDecryptor.decrypt(ByteArrayInputStream(content), password)
-                        if (payload == null) {
-                            Logger.e("Could not decrypt zip entry $name")
-                            return Pair(emptyList(), null)
-                        }
-                        if (!publicKey.isNullOrBlank() &&
-                            !CboxDecryptor.verifySignature(payload, publicKey)
-                        ) {
-                            Logger.e("Signature verification failed for zip entry $name")
-                            return Pair(emptyList(), null)
-                        }
-                        val xml = payload.takeXmlContentBytes()
                         val keyboxes =
-                            if (xml.isEmpty()) {
-                                emptyList()
-                            } else {
-                                KeyboxLoader.parse(xml, "server_${server.name}_$name")
-                            }
+                            materializeServerCbox(
+                                content,
+                                password,
+                                publicKey,
+                                "server_${server.name}_$name",
+                            )
                         if (keyboxes.isEmpty()) {
-                            Logger.e("Zip entry contains no valid keybox records: $name")
+                            Logger.e("Could not decrypt, verify, or materialize zip entry $name")
                             return Pair(emptyList(), null)
                         }
                         if (keyboxes.size > MAX_REMOTE_KEYBOXES - allKeys.size) {
@@ -695,6 +670,24 @@ object ServerManager {
             cacheBytes.fill(0)
         }
         return Pair(emptyList(), null)
+    }
+
+    private fun materializeServerCbox(
+        encrypted: ByteArray,
+        password: String,
+        publicKey: String?,
+        filename: String,
+    ): List<CertHack.KeyBox> {
+        val payload = FusedCboxBackend.open(encrypted, password, publicKey) ?: return emptyList()
+        if (payload.hasSignature && publicKey == null) {
+            Logger.e("Signed CBOX requires an explicit verification key: $filename")
+            return emptyList()
+        }
+        if (publicKey != null && !payload.hasSignature) {
+            Logger.e("CBOX signature verification failed closed: $filename")
+            return emptyList()
+        }
+        return KeyboxJcaAdapter.materialize(payload.document, filename)
     }
 
     private fun cacheXml(
@@ -789,59 +782,6 @@ object ServerManager {
             is Number, is Boolean -> value.toString()
             else -> JSONObject.quote(value.toString())
         }
-
-    internal fun serializeKeyboxesForCache(keyboxes: List<CertHack.KeyBox>): String {
-        require(keyboxes.isNotEmpty() && keyboxes.size <= MAX_REMOTE_KEYBOXES) {
-            "Invalid keybox cache size"
-        }
-        return buildString {
-            append("<?xml version=\"1.0\"?>\n")
-            append("<AndroidAttestation>\n")
-            append("  <NumberOfKeyboxes>${keyboxes.size}</NumberOfKeyboxes>\n")
-            keyboxes.forEach { keybox ->
-                val keyPair = keybox.keyPair
-                val algorithm =
-                    when (keyPair.public.algorithm.uppercase()) {
-                        "EC", "ECDSA" -> "ecdsa"
-                        "RSA" -> "rsa"
-                        else -> throw IllegalArgumentException("Unsupported keybox algorithm")
-                    }
-                val privateKey =
-                    requireNotNull(keyPair.private.encoded) { "Private key is not exportable" }
-                val certificates = keybox.certificates
-                require(certificates.isNotEmpty()) { "Keybox certificate chain is empty" }
-
-                append("  <Keybox>\n")
-                append("    <Key algorithm=\"$algorithm\">\n")
-                append("      <PrivateKey>\n")
-                appendPem("PRIVATE KEY", privateKey)
-                append("      </PrivateKey>\n")
-                append("      <CertificateChain>\n")
-                append("        <NumberOfCertificates>${certificates.size}</NumberOfCertificates>\n")
-                certificates.forEach { certificate ->
-                    append("        <Certificate>\n")
-                    appendPem("CERTIFICATE", certificate.encoded)
-                    append("        </Certificate>\n")
-                }
-                append("      </CertificateChain>\n")
-                append("    </Key>\n")
-                append("  </Keybox>\n")
-            }
-            append("</AndroidAttestation>\n")
-        }
-    }
-
-    private fun StringBuilder.appendPem(
-        label: String,
-        bytes: ByteArray,
-    ) {
-        val encoded =
-            java.util.Base64.getMimeEncoder(64, byteArrayOf('\n'.code.toByte()))
-                .encodeToString(bytes)
-        append("-----BEGIN $label-----\n")
-        append(encoded)
-        append("\n-----END $label-----\n")
-    }
 
     private fun deactivateServerContent(
         serverId: String,

@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import androidx.annotation.VisibleForTesting
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -20,11 +21,22 @@ internal object FusedCboxBackend {
         fun wipeRecoveryKey() = recoveryKey.fill(0)
     }
 
+    @Volatile
+    @VisibleForTesting
+    internal var openOverride: ((ByteArray, String, String?) -> Payload?)? = null
+
     fun open(
         encrypted: ByteArray,
         password: String,
         publicKey: String?,
-    ): Payload? = passwordRequest(OP_CRYPTO_CBOX_OPEN, encrypted, password, publicKey, expectRecoveryKey = false)?.payload
+    ): Payload? {
+        val override = openOverride
+        return if (override != null) {
+            override(encrypted, password, publicKey)
+        } else {
+            passwordRequest(OP_CRYPTO_CBOX_OPEN, encrypted, password, publicKey, expectRecoveryKey = false)?.payload
+        }
+    }
 
     fun unlockForRecovery(
         encrypted: ByteArray,
@@ -58,6 +70,11 @@ internal object FusedCboxBackend {
         } finally {
             if (publicKeyBytes !== EMPTY_BYTES) publicKeyBytes.fill(0)
         }
+    }
+
+    @VisibleForTesting
+    internal fun resetForTesting() {
+        openOverride = null
     }
 
     private fun passwordRequest(
@@ -197,7 +214,7 @@ internal object FusedCboxBackend {
     private const val MAX_PUBLIC_KEY_BYTES = 16 * 1024
     private const val MAX_AUTHOR_BYTES = 1024
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
-    private const val MAX_KEYBOX_WIRE_BYTES = 10 * 1024 * 1024 + 64 * 1024
+    private const val MAX_KEYBOX_WIRE_BYTES = KeyboxWire.MAX_RESPONSE_BYTES
     private const val MAX_CBOX_RESPONSE_BYTES = RESPONSE_PREFIX_BYTES + MAX_AUTHOR_BYTES + MAX_KEYBOX_WIRE_BYTES
     private const val MAX_CBOX_UNLOCK_RESPONSE_BYTES = RECOVERY_KEY_BYTES + MAX_CBOX_RESPONSE_BYTES
     private val EMPTY_BYTES = ByteArray(0)
