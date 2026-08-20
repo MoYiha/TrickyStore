@@ -224,11 +224,11 @@ copy_report_path() {
     report_file_list="$workspace/.report-files"
     : > "$report_file_list"
     if [ -d "$copy_src" ]; then
-        copy_source_kind=directory
+        copy_source_kind="directory"
         copy_source_label=${copy_src##*/}
         find "$copy_src" -xdev -type f 2>/dev/null | head -n "$remaining_files" > "$report_file_list" || true
     elif [ -f "$copy_src" ]; then
-        copy_source_kind=file
+        copy_source_kind="file"
         printf '%s\n' "$copy_src" > "$report_file_list"
     else
         rm -f "$report_file_list"
@@ -237,7 +237,9 @@ copy_report_path() {
 
     while IFS= read -r report_file; do
         [ "$report_copy_count" -lt "$REPORT_COPY_FILE_LIMIT" ] || break
-        [ -f "$report_file" ] && [ ! -L "$report_file" ] || continue
+        if [ ! -f "$report_file" ] || [ -L "$report_file" ]; then
+            continue
+        fi
         if [ "$copy_source_kind" = directory ]; then
             case "$report_file" in
                 "$copy_src"/*)
