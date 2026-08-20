@@ -28,6 +28,7 @@ object KeyboxVerifier {
         val details: String,
         val storageId: String = "",
         val certificateSerial: String? = null,
+        val snapshotSha256: String? = null,
     )
 
     enum class Status {
@@ -364,15 +365,31 @@ object KeyboxVerifier {
             if (!isSafeKeyboxFile(file)) {
                 return Result(file, file.name, Status.ERROR, "Unsafe or oversized keybox file")
             }
-            val keyboxes = KeyboxLoader.parseFile(scope, filename)
+            val parsed = KeyboxLoader.parseFileSnapshot(scope, filename)
+            val snapshotSha256 = parsed.snapshotSha256?.takeIf(FULL_SHA256_PATTERN::matches)
+            val keyboxes = parsed.keyboxes
             if (keyboxes.isEmpty()) {
-                return Result(file, file.name, Status.INVALID, "No valid keybox found or parse error", storageId)
+                return Result(
+                    file,
+                    file.name,
+                    Status.INVALID,
+                    "No valid keybox found or parse error",
+                    storageId,
+                    snapshotSha256 = snapshotSha256,
+                )
             }
-            // parseFile can discover a Rust backend restart and rebuild backend-owned CRL state.
-            // Resolve the handle only after that recovery boundary so this request never keeps
-            // using the pre-recovery generation on its first manual verification attempt.
+            // parseFileSnapshot can discover a Rust backend restart and rebuild backend-owned CRL
+            // state. Resolve the handle only after that recovery boundary so this request never
+            // keeps using the pre-recovery generation on its first manual verification attempt.
             val crl = crlFetcher()
-                ?: return Result(file, file.name, Status.ERROR, "Failed to initialize CRL index", storageId)
+                ?: return Result(
+                    file,
+                    file.name,
+                    Status.ERROR,
+                    "Failed to initialize CRL index",
+                    storageId,
+                    snapshotSha256 = snapshotSha256,
+                )
             val deviceSerial = keyboxes.asSequence().mapNotNull(CertHack::getDeviceCertificateSerial).firstOrNull()
 
             for (keybox in keyboxes) {
@@ -390,14 +407,50 @@ object KeyboxVerifier {
                             } else {
                                 "unknown"
                             }
-                        return Result(file, file.name, Status.REVOKED, "Certificate with SN $serial is revoked", storageId, deviceSerial)
+                        return Result(
+                            file,
+                            file.name,
+                            Status.REVOKED,
+                            "Certificate with SN $serial is revoked",
+                            storageId,
+                            certificateSerial = deviceSerial,
+                            snapshotSha256 = snapshotSha256,
+                        )
                     }
-                    Status.INVALID -> return Result(file, file.name, Status.INVALID, "Keybox structure is invalid", storageId, deviceSerial)
-                    Status.ERROR -> return Result(file, file.name, Status.ERROR, "Rust CRL backend unavailable", storageId, deviceSerial)
+                    Status.INVALID -> {
+                        return Result(
+                            file,
+                            file.name,
+                            Status.INVALID,
+                            "Keybox structure is invalid",
+                            storageId,
+                            certificateSerial = deviceSerial,
+                            snapshotSha256 = snapshotSha256,
+                        )
+                    }
+                    Status.ERROR -> {
+                        return Result(
+                            file,
+                            file.name,
+                            Status.ERROR,
+                            "Rust CRL backend unavailable",
+                            storageId,
+                            certificateSerial = deviceSerial,
+                            snapshotSha256 = snapshotSha256,
+                        )
+                    }
                     Status.VALID -> Unit
                 }
             }
-            Result(file, file.name, Status.VALID, "Active keybox", storageId, deviceSerial)
+            Result(
+                file,
+                file.name,
+                Status.VALID,
+                "Active keybox",
+                storageId,
+                certificateSerial = deviceSerial,
+                snapshotSha256 = snapshotSha256,
+            )
         } catch (_: RustBackendUnavailableException) {
             Result(file, file.name, Status.ERROR, "Rust backend unavailable", storageId)
         } catch (error: Exception) {
@@ -530,5 +583,6 @@ object KeyboxVerifier {
     }
 
     private val LEGACY_HASH_ALGORITHMS = arrayOf("SHA-1", "SHA-256", "MD5")
+    private val FULL_SHA256_PATTERN = Regex("[0-9a-f]{64}")
     private const val HEX = "0123456789abcdef"
 }

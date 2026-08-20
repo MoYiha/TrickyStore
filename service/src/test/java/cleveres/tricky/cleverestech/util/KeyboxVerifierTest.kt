@@ -86,6 +86,7 @@ class KeyboxVerifierTest {
             val result = KeyboxVerifier.verify(configDir) { emptySet() }.single()
 
             assertEquals(KeyboxVerifier.Status.VALID, result.status)
+            assertEquals("00".repeat(32), result.snapshotSha256)
             assertEquals(KeyboxLoader.FileScope.CONFIG_ROOT, observedScope)
             assertEquals("keybox.xml", observedFilename)
         } finally {
