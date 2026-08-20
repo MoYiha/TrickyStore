@@ -4,15 +4,15 @@ pub(crate) mod key_store;
 
 use cleverestricky_service_core::ipc::PROTOCOL_VERSION;
 use cleverestricky_xml_core::{
-    parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_DOCUMENT_UTF8_BYTES,
-    MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX,
+    parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_KEYBOXES_PER_FILE,
+    MAX_KEYS_PER_KEYBOX,
 };
 use key_store::{KeyId, PublicKeyRecord, KEY_ID_BYTES, MAX_STORED_KEYS};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 use zeroize::Zeroize;
 
-pub const MAX_KEYBOX_XML_BYTES: usize = MAX_DOCUMENT_UTF8_BYTES;
+pub const MAX_KEYBOX_XML_BYTES: usize = 10 * 1024 * 1024;
 const MAX_TOTAL_KEYS: usize = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX;
 const MAX_TOTAL_CERTIFICATES: usize = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN;
 pub(crate) const WIRE_VERSION: u8 = 4;

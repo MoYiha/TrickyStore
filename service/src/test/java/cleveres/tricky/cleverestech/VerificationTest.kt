@@ -92,6 +92,13 @@ class VerificationTest {
     }
 
     @Test
+    fun testVerificationFailsOnOversizedChecksum() {
+        File(tempDir, "test.sh.sha256").writeText("a".repeat(1025))
+
+        assertFalse(Verification.check(tempDir))
+    }
+
+    @Test
     fun testVerificationFailsOnSymbolicLink() {
         val target =
             File.createTempFile("verification-link-target", ".tmp").apply {
