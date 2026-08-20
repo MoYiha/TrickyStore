@@ -4,6 +4,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardOpenOption
@@ -30,7 +31,7 @@ internal fun readFileSnapshotBounded(
         readChannelSnapshotBounded(channel, minBytes, maxBytes)
     }
 
-/** Converts one accepted bounded byte snapshot to UTF-8 without reopening the path. */
+/** Converts one accepted bounded byte snapshot to strict UTF-8 without reopening the path. */
 @Throws(IOException::class)
 internal fun readUtf8FileSnapshotBounded(
     file: File,
@@ -39,7 +40,12 @@ internal fun readUtf8FileSnapshotBounded(
 ): String {
     val bytes = readFileSnapshotBounded(file, minBytes, maxBytes)
     return try {
-        bytes.toString(Charsets.UTF_8)
+        Charsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
     } finally {
         bytes.fill(0)
     }
