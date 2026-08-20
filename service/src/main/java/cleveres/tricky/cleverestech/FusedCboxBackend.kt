@@ -49,7 +49,13 @@ internal object FusedCboxBackend {
         recoveryKey: ByteArray,
         publicKey: String?,
     ): Payload? {
-        if (encrypted.isEmpty() || encrypted.size > MAX_CBOX_BYTES || recoveryKey.size != RECOVERY_KEY_BYTES) return null
+        if (encrypted.isEmpty() ||
+            encrypted.size > MAX_CBOX_BYTES ||
+            recoveryKey.size != RECOVERY_KEY_BYTES ||
+            !isPublicKeyWithinLimit(publicKey)
+        ) {
+            return null
+        }
         val publicKeyBytes = publicKey?.toByteArray(Charsets.UTF_8) ?: EMPTY_BYTES
         try {
             if (publicKeyBytes.size > MAX_PUBLIC_KEY_BYTES || recoveryKey.all { it == 0.toByte() }) return null
@@ -77,6 +83,14 @@ internal object FusedCboxBackend {
         openOverride = null
     }
 
+    internal fun isPublicKeyWithinLimit(publicKey: String?): Boolean {
+        if (publicKey == null) return true
+        // Every UTF-16 code unit produces at least one UTF-8 byte. Reject oversized strings
+        // before encoding so callers cannot turn validation into an unbounded allocation.
+        if (publicKey.length > MAX_PUBLIC_KEY_BYTES) return false
+        return publicKey.toByteArray(Charsets.UTF_8).size <= MAX_PUBLIC_KEY_BYTES
+    }
+
     private fun passwordRequest(
         opcode: Int,
         encrypted: ByteArray,
@@ -84,7 +98,7 @@ internal object FusedCboxBackend {
         publicKey: String?,
         expectRecoveryKey: Boolean,
     ): UnlockPayload? {
-        if (encrypted.isEmpty() || encrypted.size > MAX_CBOX_BYTES) return null
+        if (encrypted.isEmpty() || encrypted.size > MAX_CBOX_BYTES || !isPublicKeyWithinLimit(publicKey)) return null
         val passwordBytes = password.toByteArray(Charsets.UTF_8)
         val publicKeyBytes = publicKey?.toByteArray(Charsets.UTF_8) ?: EMPTY_BYTES
         try {

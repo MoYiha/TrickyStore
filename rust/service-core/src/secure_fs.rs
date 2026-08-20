@@ -104,6 +104,26 @@ impl TrustedDir {
         }
     }
 
+    /// Read at most `max_bytes` from a regular file opened relative to this pinned directory.
+    ///
+    /// Unlike [`Self::read_bounded`], this intentionally accepts a larger source and returns its
+    /// bounded prefix. The final component is opened once with `O_NOFOLLOW`; validation and reads
+    /// therefore stay attached to the same descriptor even if the path is replaced concurrently.
+    pub fn read_prefix_bounded(&self, name: &str, max_bytes: usize) -> io::Result<Vec<u8>> {
+        if max_bytes == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "read limit must be non-zero",
+            ));
+        }
+        let name = component(name)?;
+        let fd = self.open_regular(&name, libc::O_RDONLY, 0)?;
+        let mut file = File::from(fd).take(max_bytes as u64);
+        let mut output = Vec::new();
+        file.read_to_end(&mut output)?;
+        Ok(output)
+    }
+
     pub fn open_file_bounded(&self, name: &str, max_bytes: usize) -> io::Result<(File, usize)> {
         let name = component(name)?;
         let fd = self.open_regular(&name, libc::O_RDONLY, 0)?;
@@ -731,6 +751,24 @@ mod tests {
         dir.atomic_write("escape", b"inside", 0o600).unwrap();
         assert_eq!(fs::read(&outside).unwrap(), b"outside");
         assert_eq!(fs::read(root.path.join("escape")).unwrap(), b"inside");
+        let _ = fs::remove_file(outside);
+    }
+
+    #[test]
+    fn prefix_read_is_bounded_and_rejects_replaced_symlink() {
+        let root = TestDir::new();
+        let outside = root.path.with_extension("prefix-outside");
+        fs::write(root.path.join("source"), b"0123456789").unwrap();
+        fs::write(&outside, b"outside-secret").unwrap();
+        let dir = TrustedDir::open(&root.path).unwrap();
+
+        assert_eq!(dir.read_prefix_bounded("source", 4).unwrap(), b"0123");
+        assert!(dir.read_prefix_bounded("source", 0).is_err());
+
+        fs::remove_file(root.path.join("source")).unwrap();
+        symlink(&outside, root.path.join("source")).unwrap();
+        assert!(dir.read_prefix_bounded("source", 64).is_err());
+        assert_eq!(fs::read(&outside).unwrap(), b"outside-secret");
         let _ = fs::remove_file(outside);
     }
 

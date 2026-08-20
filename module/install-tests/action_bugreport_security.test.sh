@@ -39,11 +39,9 @@ assert_contains 'WEBUI_BRIDGE="$MODDIR/webui_bridge"'
 assert_contains '(ulimit -f "$REPORT_FILE_BLOCK_LIMIT" && create_archive "$staged_archive")'
 assert_contains 'out=$("$WEBUI_BRIDGE" publish-report "$report_nonce" "$filename")'
 assert_contains 'REPORT_COPY_FILE_LIMIT=128'
-assert_contains 'REPORT_COPY_BLOCK_SIZE=4096'
-assert_contains 'REPORT_COPY_BLOCK_COUNT=256'
 assert_contains 'REPORT_LOG_FILE_BLOCK_LIMIT=8192'
 assert_contains 'find "$copy_src" -xdev -type f'
-assert_contains 'dd if="$report_file" of="$report_destination"'
+assert_contains '"$WEBUI_BRIDGE" copy-report-file "$report_nonce" "$1" "$2" "$3"'
 assert_contains 'write_bounded_log "$tmp/logcat-all.log" logcat -b all -d -v threadtime'
 assert_contains 'write_bounded_log "$tmp/dmesg.log" dmesg'
 
@@ -56,6 +54,7 @@ assert_absent 'chown 2000 "$SHELL_DIR/files"'
 assert_absent 'chgrp 2000 "$SHELL_DIR/files"'
 assert_absent 'cat > '\''$out'\'''
 assert_absent 'cp -a "$copy_src"'
+assert_absent 'dd if="$report_file"'
 
 sed -n '/^copy_report_path() {$/,/^}$/p' "$ACTION_SH" > "$helper"
 sed -n '/^write_bounded_log() {$/,/^}$/p' "$ACTION_SH" >> "$helper"
@@ -66,6 +65,7 @@ print_log() { :; }
 message() { printf '%s' "$1"; }
 workspace="$test_root/workspace"
 tmp="$workspace/payload"
+report_nonce=0123456789abcdef0123456789abcdef
 mkdir -p "$tmp" "$test_root/source/nested" "$test_root/second"
 printf '0123456789abcdef' > "$test_root/source/one.log"
 printf 'abcdefghijklmnop' > "$test_root/source/nested/two.log"
@@ -73,8 +73,14 @@ printf 'ABCDEFGHIJKLMNOP' > "$test_root/source/three.log"
 printf 'must-not-be-copied' > "$test_root/second/four.log"
 
 REPORT_COPY_FILE_LIMIT=2
-REPORT_COPY_BLOCK_SIZE=4
-REPORT_COPY_BLOCK_COUNT=2
+copy_report_file() {
+  source_root=$1
+  source_relative_path=$2
+  destination_relative_path=$3
+  destination="$tmp/$destination_relative_path"
+  mkdir -p "${destination%/*}"
+  dd if="$source_root/$source_relative_path" of="$destination" bs=4 count=2 2>/dev/null
+}
 report_copy_count=0
 copy_report_path "$test_root/source" bounded
 [ "$report_copy_count" -eq 2 ] || fail "collection did not enforce the total file-count limit"
