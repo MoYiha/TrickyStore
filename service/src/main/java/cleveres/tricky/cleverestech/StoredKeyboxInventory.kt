@@ -48,9 +48,9 @@ internal object StoredKeyboxInventory {
     }
 
     fun runtimeXmlSources(configDir: File): List<Source> {
-        val sources = list(configDir).filter { it.isXml && it.file.length() in 1..MAX_XML_BYTES }
-        require(sources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
-        return sources
+        val xmlSources = list(configDir).filter { it.isXml }
+        require(xmlSources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
+        return xmlSources.filter { it.file.length() in 1..MAX_XML_BYTES }
     }
 
     fun resolve(
