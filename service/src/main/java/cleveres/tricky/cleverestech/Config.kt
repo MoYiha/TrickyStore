@@ -698,7 +698,7 @@ object Config {
                         "drm_packages.txt must be a regular file"
                     }
                     val text = readUtf8FileSnapshotBounded(f, 0, MAX_DRM_PACKAGES_BYTES)
-                    parseDrmPackages(text.lineSequence(), MAX_DRM_PACKAGE_RULES)
+                    parseDrmPackages(text.lineSequence())
                 } else {
                     PackageTrie()
                 }
