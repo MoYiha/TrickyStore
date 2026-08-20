@@ -1,7 +1,7 @@
 use cleverestricky_service_core::ipc::{
     read_header, write_header, FrameHeader, FLAG_ERROR, MAX_FRAME_BYTES, OP_WEB_REQUEST,
 };
-use cleverestricky_service_core::secure_fs::TrustedDir;
+use cleverestricky_service_core::secure_fs::{chown_file, TrustedDir};
 use cleverestricky_service_core::unix_socket::{connect_abstract, DAEMON_SOCKET_NAME};
 use std::env;
 use std::fs::{self, File};
@@ -13,11 +13,21 @@ use std::time::{Duration, SystemTime};
 
 const CONFIG_DIR: &str = "/data/adb/cleverestricky";
 const STAGING_DIR: &str = "/data/adb/cleverestricky/webui_bridge/staging";
+const SHELL_DIR: &str = "/data/user_de/0/com.android.shell";
+const SHELL_REPORT_DIR: &str = "/data/user_de/0/com.android.shell/files/bugreports";
+const DOWNLOAD_DIR: &str = "/storage/emulated/0/Download";
+const LOCAL_TMP_DIR: &str = "/data/local/tmp";
+const REPORT_WORKSPACE_PREFIX: &str = ".bugreport-";
+const REPORT_SOURCE_NAME: &str = "report.tar.gz";
+const SHELL_UID: u32 = 2000;
+const SHELL_GID: u32 = 2000;
 const MAX_REQUEST_BYTES: usize = MAX_FRAME_BYTES;
 const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES: usize = 20 * 1024 * 1024;
+const MAX_REPORT_BYTES: usize = 256 * 1024 * 1024;
 const MAX_RESPONSE_ENVELOPE_BYTES: usize = 512 * 1024;
 const MAX_CHUNK_BYTES: usize = 64 * 1024;
+const MAX_REPORT_DIRECTORY_ENTRIES: usize = 1024;
 const STALE_AGE: Duration = Duration::from_secs(10 * 60);
 
 fn main() {
@@ -53,6 +63,7 @@ fn run() -> Result<(), String> {
         }
         "stage-drop" if args.len() == 3 => stage_drop(&staging, &args[1], &args[2]),
         "export" if args.len() == 4 => export_file(&staging, &args[1], &args[2], &args[3]),
+        "publish-report" if args.len() == 3 => publish_report(&args[1], &args[2]),
         _ => Err("Invalid command".to_string()),
     }
 }
@@ -293,15 +304,81 @@ fn export_file(
         String::from_utf8(filename_bytes).map_err(|_| "Download filename is not valid UTF-8")?;
     validate_filename(&filename)?;
     let (download_path, download_dir) = select_download_dir()?;
-    let (destination_name, mut output) = create_export_destination(&download_dir, &filename)?;
-    let destination = download_path.join(&destination_name);
+    let destination = export_open_file(
+        &mut source,
+        limit,
+        &filename,
+        ExportDirectory {
+            display_path: download_path,
+            directory: download_dir,
+            mode: 0o644,
+            owner: None,
+            clean_old_reports: false,
+        },
+    )?;
+    let _ = staging.unlink_file(&source_name);
+    println!("{}", destination.display());
+    Ok(())
+}
+
+fn publish_report(id: &str, filename: &str) -> Result<(), String> {
+    validate_id(id)?;
+    validate_filename(filename)?;
+    let config = TrustedDir::open(Path::new(CONFIG_DIR))
+        .map_err(|error| format!("Configuration directory is unavailable: {error}"))?;
+    let mut source = open_report_source(&config, id)?;
+    let destination = export_open_file(
+        &mut source,
+        MAX_REPORT_BYTES,
+        filename,
+        select_report_directory()?,
+    )?;
+    println!("{}", destination.display());
+    Ok(())
+}
+
+fn open_report_source(config: &TrustedDir, id: &str) -> Result<File, String> {
+    let id = validate_id(id)?;
+    let workspace = config
+        .open_child(&format!("{REPORT_WORKSPACE_PREFIX}{id}"))
+        .map_err(|error| format!("Report workspace is unavailable: {error}"))?;
+    let (source, source_size) = workspace
+        .open_file_bounded(REPORT_SOURCE_NAME, MAX_REPORT_BYTES)
+        .map_err(|error| format!("Could not open staged report: {error}"))?;
+    if source_size == 0 {
+        return Err("Report archive is empty".to_string());
+    }
+    Ok(source)
+}
+
+struct ExportDirectory {
+    display_path: PathBuf,
+    directory: TrustedDir,
+    mode: u32,
+    owner: Option<(u32, u32)>,
+    clean_old_reports: bool,
+}
+
+fn export_open_file(
+    source: &mut File,
+    limit: usize,
+    filename: &str,
+    target: ExportDirectory,
+) -> Result<PathBuf, String> {
+    let (destination_name, mut output) =
+        create_export_destination(&target.directory, filename)?;
+    let destination = target.display_path.join(&destination_name);
     let created_metadata = output
         .metadata()
         .map_err(|error| format!("Could not inspect download descriptor: {error}"))?;
     let export_result = (|| -> Result<(), String> {
-        copy_bounded(&mut source, &mut output, limit as u64)?;
+        copy_bounded(source, &mut output, limit as u64)?;
+        if let Some((owner, group)) = target.owner {
+            chown_file(&output, owner, group)
+                .map_err(|error| format!("Could not set download ownership: {error}"))?;
+        }
         output
-            .set_permissions(fs::Permissions::from_mode(0o644))
+            .set_permissions(fs::Permissions::from_mode(target.mode))
             .map_err(|error| format!("Could not set download permissions: {error}"))?;
         output
             .sync_all()
@@ -316,20 +393,94 @@ fn export_file(
     })();
     if let Err(error) = export_result {
         drop(output);
-        remove_if_same_file(&download_dir, &destination_name, &created_metadata);
+        remove_if_same_file(&target.directory, &destination_name, &created_metadata, limit);
         return Err(error);
     }
     drop(output);
-    let _ = staging.unlink_file(&source_name);
-    println!("{}", destination.display());
-    Ok(())
+    if target.clean_old_reports {
+        cleanup_old_reports(&target.directory, &destination_name);
+    }
+    Ok(destination)
 }
 
 fn select_download_dir() -> Result<(PathBuf, TrustedDir), String> {
-    let candidate = PathBuf::from("/storage/emulated/0/Download");
+    let candidate = PathBuf::from(DOWNLOAD_DIR);
     let directory = TrustedDir::open(&candidate)
         .map_err(|error| format!("Android Download directory is unavailable: {error}"))?;
     Ok((candidate, directory))
+}
+
+fn select_report_directory() -> Result<ExportDirectory, String> {
+    match shell_report_directory() {
+        Ok(directory) => {
+            return Ok(ExportDirectory {
+                display_path: PathBuf::from(SHELL_REPORT_DIR),
+                directory,
+                mode: 0o640,
+                owner: Some((SHELL_UID, SHELL_GID)),
+                clean_old_reports: true,
+            });
+        }
+        Err(shell_error) => {
+            if let Ok((display_path, directory)) = select_download_dir() {
+                return Ok(ExportDirectory {
+                    display_path,
+                    directory,
+                    mode: 0o644,
+                    owner: None,
+                    clean_old_reports: true,
+                });
+            }
+            let display_path = PathBuf::from(LOCAL_TMP_DIR);
+            let directory = TrustedDir::open(&display_path).map_err(|tmp_error| {
+                format!(
+                    "No report destination is available (shell: {shell_error}; tmp: {tmp_error})"
+                )
+            })?;
+            Ok(ExportDirectory {
+                display_path,
+                directory,
+                mode: 0o640,
+                owner: Some((SHELL_UID, SHELL_GID)),
+                clean_old_reports: true,
+            })
+        }
+    }
+}
+
+fn shell_report_directory() -> Result<TrustedDir, String> {
+    let shell = TrustedDir::open(Path::new(SHELL_DIR))
+        .map_err(|error| format!("Android shell directory is unavailable: {error}"))?;
+    let files = shell
+        .mkdir_child("files", 0o700)
+        .map_err(|error| format!("Android shell files directory is unavailable: {error}"))?;
+    files
+        .chown(SHELL_UID, SHELL_GID)
+        .map_err(|error| format!("Could not set shell files ownership: {error}"))?;
+    let reports = files
+        .mkdir_child("bugreports", 0o700)
+        .map_err(|error| format!("Android shell report directory is unavailable: {error}"))?;
+    reports
+        .chown(SHELL_UID, SHELL_GID)
+        .map_err(|error| format!("Could not set shell report ownership: {error}"))?;
+    reports
+        .sync()
+        .map_err(|error| format!("Could not persist shell report directory: {error}"))?;
+    Ok(reports)
+}
+
+fn cleanup_old_reports(directory: &TrustedDir, keep: &str) {
+    let Ok(names) = directory.entry_names_bounded(MAX_REPORT_DIRECTORY_ENTRIES) else {
+        return;
+    };
+    for name in names {
+        if name != keep
+            && name.starts_with("CleveresTricky-bugreport-")
+            && name.ends_with(".tar.gz")
+        {
+            let _ = directory.unlink_file(&name);
+        }
+    }
 }
 
 fn validate_filename(filename: &str) -> Result<(), String> {
@@ -399,8 +550,13 @@ fn safe_file_metadata(path: &Path) -> Result<fs::Metadata, String> {
     Ok(metadata)
 }
 
-fn remove_if_same_file(directory: &TrustedDir, name: &str, expected: &fs::Metadata) {
-    let Ok((file, _)) = directory.open_file_bounded(name, MAX_DOWNLOAD_BYTES) else {
+fn remove_if_same_file(
+    directory: &TrustedDir,
+    name: &str,
+    expected: &fs::Metadata,
+    limit: usize,
+) {
+    let Ok((file, _)) = directory.open_file_bounded(name, limit) else {
         return;
     };
     let Ok(metadata) = file.metadata() else {
@@ -582,6 +738,91 @@ mod tests {
         assert!(!outside.join(&name).exists());
 
         fs::remove_file(&download).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn report_source_rejects_symlinked_workspace_and_pins_open_file() {
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let base = env::temp_dir().join(format!(
+            "ct-report-source-{}-{}",
+            process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let config_path = base.join("config");
+        let outside = base.join("outside");
+        let id = "0123456789abcdef0123456789abcdef";
+        let workspace_name = format!("{REPORT_WORKSPACE_PREFIX}{id}");
+        let workspace_path = config_path.join(&workspace_name);
+        fs::create_dir_all(&config_path).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join(REPORT_SOURCE_NAME), b"outside").unwrap();
+        let config = TrustedDir::open(&config_path).unwrap();
+
+        symlink(&outside, &workspace_path).unwrap();
+        assert!(open_report_source(&config, id).is_err());
+        fs::remove_file(&workspace_path).unwrap();
+
+        fs::create_dir(&workspace_path).unwrap();
+        fs::write(workspace_path.join(REPORT_SOURCE_NAME), b"original").unwrap();
+        let mut source = open_report_source(&config, id).unwrap();
+        let pinned = config_path.join("workspace.pinned");
+        fs::rename(&workspace_path, &pinned).unwrap();
+        symlink(&outside, &workspace_path).unwrap();
+        let mut bytes = Vec::new();
+        source.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"original");
+
+        drop(source);
+        drop(config);
+        fs::remove_file(&workspace_path).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn report_export_cleans_only_prior_report_files_after_success() {
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let base = env::temp_dir().join(format!(
+            "ct-report-cleanup-{}-{}",
+            process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let output_path = base.join("output");
+        let source_path = base.join("source.tar.gz");
+        fs::create_dir_all(&output_path).unwrap();
+        fs::write(&source_path, b"report").unwrap();
+        fs::write(
+            output_path.join("CleveresTricky-bugreport-old.tar.gz"),
+            b"old",
+        )
+        .unwrap();
+        fs::write(output_path.join("unrelated.tar.gz"), b"keep").unwrap();
+        let directory = TrustedDir::open(&output_path).unwrap();
+        let mut source = File::open(&source_path).unwrap();
+        let filename = "CleveresTricky-bugreport-new.tar.gz";
+
+        let destination = export_open_file(
+            &mut source,
+            64,
+            filename,
+            ExportDirectory {
+                display_path: output_path.clone(),
+                directory,
+                mode: 0o600,
+                owner: None,
+                clean_old_reports: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(fs::read(destination).unwrap(), b"report");
+        assert!(!output_path
+            .join("CleveresTricky-bugreport-old.tar.gz")
+            .exists());
+        assert_eq!(
+            fs::read(output_path.join("unrelated.tar.gz")).unwrap(),
+            b"keep"
+        );
         fs::remove_dir_all(&base).unwrap();
     }
 

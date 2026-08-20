@@ -114,5 +114,6 @@ assert_rejects_symlink_parent
 assert_rejects_non_regular_target
 assert_normal_extract_succeeds
 bash "$REPO_ROOT/module/install-tests/customize_bootstrap_security.test.sh"
+bash "$REPO_ROOT/module/install-tests/action_bugreport_security.test.sh"
 
 echo "installer extraction security tests passed"
