@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -294,10 +295,7 @@ object PolicyState {
     private fun parseStateFile(file: File, recovery: String): Snapshot {
         val path = file.toPath()
         require(Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) { "Policy state must be a regular file" }
-        require(file.length() in 1..MAX_STATE_BYTES) { "Policy state has an invalid size" }
-        val text = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).bufferedReader(Charsets.UTF_8).use { it.readText() }
-        require(text.toByteArray(Charsets.UTF_8).size <= MAX_STATE_BYTES) { "Policy state exceeds its size limit" }
-        return parseStateJson(text, recovery)
+        return parseStateJson(readUtf8FileSnapshotBounded(file, 1, MAX_STATE_BYTES), recovery)
     }
 
     private fun parseStateJson(
@@ -554,13 +552,11 @@ object PolicyState {
 
     private fun hasLegacyPatchRules(): Boolean {
         val file = File(root, "security_patch.txt")
-        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) || file.length() !in 1..1024L * 1024L) return false
+        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return false
         return runCatching {
-            Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.any { line ->
-                    val trimmed = line.trim()
-                    trimmed.isNotEmpty() && !trimmed.startsWith("#")
-                }
+            readUtf8FileSnapshotBounded(file, 1, 1024L * 1024L).lineSequence().any { line ->
+                val trimmed = line.trim()
+                trimmed.isNotEmpty() && !trimmed.startsWith("#")
             }
         }.getOrDefault(false)
     }
@@ -947,20 +943,18 @@ object PolicyState {
 
     private fun readLegacyAppRule(packageName: String): Config.AppSpoofConfig? {
         val file = File(root, "app_config")
-        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) || file.length() !in 1..1024L * 1024L) return null
+        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
         return runCatching {
             var matched: Config.AppSpoofConfig? = null
-            Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).bufferedReader(Charsets.UTF_8).useLines { lines ->
-                lines.take(1024).forEach { raw ->
-                    val line = raw.trim()
-                    if (matched != null || line.isEmpty() || line.startsWith("#")) return@forEach
-                    val columns = line.split(Regex("\\s+"))
-                    if (columns.isEmpty() || !wildcardMatches(columns[0], packageName)) return@forEach
-                    val template = columns.getOrNull(1)?.takeUnless { it == "null" }
-                    val keybox = columns.getOrNull(2)?.takeUnless { it == "null" }
-                    val privacy = columns.getOrNull(3)?.let(Config.AppPrivacyMode::parse) ?: Config.AppPrivacyMode.INHERIT
-                    matched = Config.AppSpoofConfig(template, keybox, privacy)
-                }
+            readUtf8FileSnapshotBounded(file, 1, 1024L * 1024L).lineSequence().take(1024).forEach { raw ->
+                val line = raw.trim()
+                if (matched != null || line.isEmpty() || line.startsWith("#")) return@forEach
+                val columns = line.split(Regex("\\s+"))
+                if (columns.isEmpty() || !wildcardMatches(columns[0], packageName)) return@forEach
+                val template = columns.getOrNull(1)?.takeUnless { it == "null" }
+                val keybox = columns.getOrNull(2)?.takeUnless { it == "null" }
+                val privacy = columns.getOrNull(3)?.let(Config.AppPrivacyMode::parse) ?: Config.AppPrivacyMode.INHERIT
+                matched = Config.AppSpoofConfig(template, keybox, privacy)
             }
             matched
         }.getOrNull()
@@ -968,11 +962,12 @@ object PolicyState {
 
     private fun readSmallSetting(filename: String, allowed: Set<String>, fallback: String): String {
         val file = File(root, filename)
-        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) || file.length() !in 1..64) return fallback
+        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return fallback
         return runCatching {
-            Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).bufferedReader(Charsets.UTF_8).use { reader ->
-                reader.readText().trim().lowercase(Locale.ROOT).takeIf { it in allowed } ?: fallback
-            }
+            readUtf8FileSnapshotBounded(file, 1, 64)
+                .trim()
+                .lowercase(Locale.ROOT)
+                .takeIf { it in allowed } ?: fallback
         }.getOrDefault(fallback)
     }
 

@@ -10,6 +10,8 @@ import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.PackageTrie
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.readFileSnapshotBounded
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -271,64 +273,60 @@ object Config {
                 require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "app_config must be a regular file"
                 }
-                require(f.length() in 0..MAX_APP_CONFIG_BYTES) {
-                    "app_config has an invalid size"
-                }
+                val text = readUtf8FileSnapshotBounded(f, 0, MAX_APP_CONFIG_BYTES)
                 var ruleCount = 0
-                f.useLines { lines ->
-                    lines.forEach { line ->
-                        if (line.isNotBlank() && !line.startsWith("#")) {
-                            require(++ruleCount <= MAX_APP_CONFIG_RULES) {
-                                "app_config contains too many rules"
-                            }
-                            val trimmed = line.trim()
-                            if (trimmed.isEmpty()) return@forEach
-                            val len = trimmed.length
-                            var idx = 0
-                            var start = idx
+                text.lineSequence().forEach { line ->
+                    if (line.isNotBlank() && !line.startsWith("#")) {
+                        require(++ruleCount <= MAX_APP_CONFIG_RULES) {
+                            "app_config contains too many rules"
+                        }
+                        val trimmed = line.trim()
+                        if (trimmed.isEmpty()) return@forEach
+                        val len = trimmed.length
+                        var idx = 0
+                        var start = idx
+                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                        val pkg = trimmed.substring(start, idx)
+                        var template: String? = null
+                        var keybox: String? = null
+                        var privacyMode = AppPrivacyMode.INHERIT
+                        while (idx < len && trimmed[idx].isWhitespace()) idx++
+                        if (idx < len) {
+                            start = idx
                             while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                            val pkg = trimmed.substring(start, idx)
-                            var template: String? = null
-                            var keybox: String? = null
-                            var privacyMode = AppPrivacyMode.INHERIT
+                            val tStr = trimmed.substring(start, idx)
+                            if (tStr != "null") template = tStr.lowercase()
                             while (idx < len && trimmed[idx].isWhitespace()) idx++
                             if (idx < len) {
                                 start = idx
                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                val tStr = trimmed.substring(start, idx)
-                                if (tStr != "null") template = tStr.lowercase()
+                                val kStr = trimmed.substring(start, idx)
+                                if (kStr != "null") keybox = kStr
                                 while (idx < len && trimmed[idx].isWhitespace()) idx++
                                 if (idx < len) {
                                     start = idx
                                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                    val kStr = trimmed.substring(start, idx)
-                                    if (kStr != "null") keybox = kStr
-                                    while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                    if (idx < len) {
-                                        start = idx
-                                        while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                        privacyMode =
-                                            AppPrivacyMode.parse(trimmed.substring(start, idx))
-                                                ?: throw IllegalArgumentException("Invalid app privacy mode")
-                                    }
+                                    privacyMode =
+                                        AppPrivacyMode.parse(trimmed.substring(start, idx))
+                                            ?: throw IllegalArgumentException("Invalid app privacy mode")
                                 }
                             }
-                            while (idx < len && trimmed[idx].isWhitespace()) idx++
-                            require(idx == len) { "app_config contains too many columns" }
-                            require(APP_PACKAGE_PATTERN.matches(pkg)) { "app_config contains an invalid package" }
-                            require(seenPackages.add(pkg)) { "app_config contains duplicate packages" }
-                            require(template == null || validTemplateName.matches(template)) {
-                                "app_config contains an invalid template"
-                            }
-                            require(keybox == null || isValidAppKeybox(keybox)) {
-                                "app_config contains an invalid keybox"
-                            }
-                            require(template != null || keybox != null || privacyMode != AppPrivacyMode.INHERIT) {
-                                "app_config contains an empty rule"
-                            }
-                            if (privacyMode != AppPrivacyMode.INHERIT) hasPrivacyRules = true
-                            newConfigs.add(pkg, AppSpoofConfig(template, keybox, privacyMode))
                         }
+                        while (idx < len && trimmed[idx].isWhitespace()) idx++
+                        require(idx == len) { "app_config contains too many columns" }
+                        require(APP_PACKAGE_PATTERN.matches(pkg)) { "app_config contains an invalid package" }
+                        require(seenPackages.add(pkg)) { "app_config contains duplicate packages" }
+                        require(template == null || validTemplateName.matches(template)) {
+                            "app_config contains an invalid template"
+                        }
+                        require(keybox == null || isValidAppKeybox(keybox)) {
+                            "app_config contains an invalid keybox"
+                        }
+                        require(template != null || keybox != null || privacyMode != AppPrivacyMode.INHERIT) {
+                            "app_config contains an empty rule"
+                        }
+                        if (privacyMode != AppPrivacyMode.INHERIT) hasPrivacyRules = true
+                        newConfigs.add(pkg, AppSpoofConfig(template, keybox, privacyMode))
                     }
                 }
             }
@@ -389,10 +387,8 @@ object Config {
                     require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         "target.txt must be a regular file"
                     }
-                    require(f.length() in 0..MAX_TARGET_FILE_BYTES) {
-                        "target.txt has an invalid size"
-                    }
-                    f.useLines { lines -> parsePackages(lines, MAX_TARGET_PACKAGE_RULES) }
+                    val text = readUtf8FileSnapshotBounded(f, 0, MAX_TARGET_FILE_BYTES)
+                    parsePackages(text.lineSequence(), MAX_TARGET_PACKAGE_RULES)
                 } else {
                     Logger.d("updateTargetPackages: target file missing or null, using empty package list")
                     parsePackages(emptySequence())
@@ -404,12 +400,12 @@ object Config {
         }
 
     private data class KeyboxFileCache(
-        val lastModified: Long,
-        val length: Long,
+        val snapshotSha256: String,
         val keyboxes: List<CertHack.KeyBox>,
     )
 
     private val storedKeyboxCache = ConcurrentHashMap<String, KeyboxFileCache>()
+    private val fullSha256Pattern = Regex("[0-9a-f]{64}")
 
     fun updateKeyBoxes() =
         scope.launch {
@@ -449,99 +445,108 @@ object Config {
         verifier: (CertHack.KeyBox, R) -> KeyboxVerifier.Status,
         allowRecovery: Boolean = true,
         refreshExternalSources: Boolean = true,
-    ): Boolean {
-        return runCatching {
-            Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
-            val allKeyboxes = ArrayList<CertHack.KeyBox>()
+    ): Boolean =
+        KeyboxActivation.coordinateRefresh {
+            val refreshTicket = KeyboxActivation.beginRefresh()
+            runCatching {
+                Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
+                val allKeyboxes = ArrayList<CertHack.KeyBox>()
 
-            val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
-    Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
-    val currentFiles = HashSet<String>()
-    storedSources.forEach { source ->
-        currentFiles.add(source.id)
-        val file = source.file
-        if (file.length() !in 1..StoredKeyboxInventory.MAX_XML_BYTES) {
-            storedKeyboxCache.remove(source.id)
-            Logger.w("Ignoring empty or oversized keybox file: ${source.filename}")
-            return@forEach
-        }
-        val lastMod = file.lastModified()
-        val length = file.length()
-        val cached = storedKeyboxCache[source.id]
-        if (cached != null && cached.lastModified == lastMod && cached.length == length) {
-            allKeyboxes.addAll(cached.keyboxes)
-        } else {
-            try {
-                val parsed = KeyboxLoader.parseFile(
-                    requireNotNull(source.scope.fileScope),
-                    source.filename,
-                )
-                storedKeyboxCache[source.id] = KeyboxFileCache(lastMod, length, parsed)
-                allKeyboxes.addAll(parsed)
-                Logger.i("Reloaded keybox source: ${source.id}")
-            } catch (error: RustBackendUnavailableException) {
-                throw error
-            } catch (error: Exception) {
-                storedKeyboxCache.remove(source.id)
-                Logger.e("Failed to parse keybox source: ${source.id}", error)
-            }
-        }
-    }
-    val cacheIterator = storedKeyboxCache.keys.iterator()
-    while (cacheIterator.hasNext()) {
-        if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
-    }
-
-    if (refreshExternalSources) CboxManager.refresh()
-            allKeyboxes.addAll(CboxManager.getUnlockedKeyboxes())
-            allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
-
-            val verifiedKeyboxes: List<CertHack.KeyBox> =
-                if (allKeyboxes.isEmpty()) {
-                    emptyList()
-                } else {
-                    val revocation = revocationProvider()
-                    if (revocation == null) {
-                        Logger.e("Keyboxes remain inactive because the revocation list is unavailable")
-                        emptyList()
-                    } else {
-                        val statuses = allKeyboxes.map { keybox -> verifier(keybox, revocation) }
-                        if (statuses.all { it == KeyboxVerifier.Status.VALID }) {
-                            allKeyboxes.toList()
-                        } else {
-                            Logger.e("Keybox pool rejected because it contains an invalid or revoked entry")
-                            emptyList()
+                val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
+                Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
+                val currentFiles = HashSet<String>()
+                storedSources.forEach { source ->
+                    currentFiles.add(source.id)
+                    try {
+                        val parsed =
+                            KeyboxLoader.parseFileSnapshot(
+                                requireNotNull(source.scope.fileScope),
+                                source.filename,
+                            )
+                        val snapshotSha256 = parsed.snapshotSha256
+                        if (snapshotSha256 == null || !fullSha256Pattern.matches(snapshotSha256)) {
+                            storedKeyboxCache.remove(source.id)
+                            Logger.w("Ignoring keybox source without a stable parsed snapshot: ${source.id}")
+                            return@forEach
                         }
+                        val cached = storedKeyboxCache[source.id]
+                        val selected =
+                            if (cached != null && cached.snapshotSha256 == snapshotSha256) {
+                                cached.keyboxes
+                            } else {
+                                parsed.keyboxes.also { keyboxes ->
+                                    storedKeyboxCache[source.id] = KeyboxFileCache(snapshotSha256, keyboxes)
+                                    Logger.i("Reloaded keybox source: ${source.id}")
+                                }
+                            }
+                        allKeyboxes.addAll(selected)
+                    } catch (error: RustBackendUnavailableException) {
+                        throw error
+                    } catch (error: Exception) {
+                        storedKeyboxCache.remove(source.id)
+                        Logger.e("Failed to parse keybox source: ${source.id}", error)
                     }
                 }
+                val cacheIterator = storedKeyboxCache.keys.iterator()
+                while (cacheIterator.hasNext()) {
+                    if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
+                }
 
-            if (KeyboxLoader.consumeBackendOutage() || NativeBackend.consumeBackendStateReset()) {
-                Logger.e("Backend state changed while preparing the keybox snapshot")
-                return@runCatching if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
-            }
+                if (refreshExternalSources) CboxManager.refresh()
+                allKeyboxes.addAll(CboxManager.getUnlockedKeyboxes())
+                allKeyboxes.addAll(ServerManager.getLoadedKeyboxes())
 
-            val committed = KeyboxLoader.commitActive(verifiedKeyboxes)
-            if (!committed) {
-                Logger.e("Rust backend rejected the active keybox set; managed snapshot not published")
-                return@runCatching if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
-            }
+                val verifiedKeyboxes: List<CertHack.KeyBox> =
+                    if (allKeyboxes.isEmpty()) {
+                        emptyList()
+                    } else {
+                        val revocation = revocationProvider()
+                        if (revocation == null) {
+                            Logger.e("Keyboxes remain inactive because the revocation list is unavailable")
+                            emptyList()
+                        } else {
+                            val statuses = allKeyboxes.map { keybox -> verifier(keybox, revocation) }
+                            if (statuses.all { it == KeyboxVerifier.Status.VALID }) {
+                                allKeyboxes.toList()
+                            } else {
+                                Logger.e("Keybox pool rejected because it contains an invalid or revoked entry")
+                                emptyList()
+                            }
+                        }
+                    }
 
-            CertHack.setKeyboxes(verifiedKeyboxes)
-            Logger.i(
-                "updateKeyBoxes: ${verifiedKeyboxes.size}/${allKeyboxes.size} verified keyboxes active",
-            )
-            true
-        }.getOrElse { error ->
-            Logger.e("failed to update keyboxes", error)
-            if (allowRecovery &&
-                (error is RustBackendUnavailableException || error is RustBackendStateException || NativeBackend.consumeBackendStateReset())
-            ) {
-                BackendRecovery.recoverOnce(force = error is RustBackendStateException)
-            } else {
-                false
+                if (KeyboxLoader.consumeBackendOutage() || NativeBackend.consumeBackendStateReset()) {
+                    Logger.e("Backend state changed while preparing the keybox snapshot")
+                    return@runCatching if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
+                }
+
+                when (KeyboxActivation.commitAndPublish(refreshTicket, verifiedKeyboxes)) {
+                    KeyboxActivation.PublicationResult.COMMITTED -> {
+                        Logger.i(
+                            "updateKeyBoxes: ${verifiedKeyboxes.size}/${allKeyboxes.size} verified keyboxes active",
+                        )
+                        true
+                    }
+                    KeyboxActivation.PublicationResult.SUPERSEDED -> {
+                        Logger.d("Keybox refresh was superseded before publication")
+                        false
+                    }
+                    KeyboxActivation.PublicationResult.FAILED -> {
+                        Logger.e("Rust backend rejected the active keybox set; managed snapshot not published")
+                        if (allowRecovery) BackendRecovery.recoverOnce(force = true) else false
+                    }
+                }
+            }.getOrElse { error ->
+                Logger.e("failed to update keyboxes", error)
+                if (allowRecovery &&
+                    (error is RustBackendUnavailableException || error is RustBackendStateException || NativeBackend.consumeBackendStateReset())
+                ) {
+                    BackendRecovery.recoverOnce(force = error is RustBackendStateException)
+                } else {
+                    false
+                }
             }
         }
-    }
 
     private fun isRegularFlagFile(f: File?): Boolean = f != null && Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)
 
@@ -692,8 +697,8 @@ object Config {
                     require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                         "drm_packages.txt must be a regular file"
                     }
-                    require(f.length() in 0..MAX_DRM_PACKAGES_BYTES) { "drm_packages.txt has an invalid size" }
-                    f.useLines { lines -> parseDrmPackages(lines, MAX_DRM_PACKAGE_RULES) }
+                    val text = readUtf8FileSnapshotBounded(f, 0, MAX_DRM_PACKAGES_BYTES)
+                    parseDrmPackages(text.lineSequence())
                 } else {
                     PackageTrie()
                 }
@@ -797,7 +802,7 @@ object Config {
                 require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                     "custom_templates must be a regular file"
                 }
-                require(f.length() in 1..MAX_CUSTOM_TEMPLATE_BYTES) { "custom_templates has an invalid size" }
+                val text = readUtf8FileSnapshotBounded(f, 1, MAX_CUSTOM_TEMPLATE_BYTES)
                 var currentTemplate: String? = null
                 var currentProps: MutableMap<String, String>? = null
                 var sectionCount = 0
@@ -806,35 +811,33 @@ object Config {
                     val properties = currentProps ?: return
                     newTemplates[name] = properties.toMap()
                 }
-                f.useLines { lines ->
-                    lines.forEach { line ->
-                        val value = line.trim()
-                        if (value.isEmpty() || value.startsWith("#")) return@forEach
-                        if (value.startsWith("[") && value.endsWith("]")) {
-                            commitCurrent()
-                            val name = value.substring(1, value.length - 1).trim().lowercase()
-                            require(validTemplateName.matches(name)) { "Invalid custom template name" }
-                            require(++sectionCount <= MAX_CUSTOM_TEMPLATES) { "Too many custom templates" }
-                            currentTemplate = name
-                            currentProps = newTemplates[name]?.toMutableMap() ?: LinkedHashMap()
-                        } else {
-                            require(currentTemplate != null) { "Template property appears before a section" }
-                            val separator = value.indexOf('=')
-                            require(separator in 1 until value.lastIndex) { "Invalid custom template property" }
-                            val key = value.substring(0, separator).trim()
-                            val propertyValue = value.substring(separator + 1).trim()
-                            require(key in supportedTemplateProperties) { "Unsupported custom template property" }
-                            require(
-                                propertyValue.isNotEmpty() &&
-                                    propertyValue.length <= MAX_TEMPLATE_VALUE_LENGTH &&
-                                    propertyValue.none(Char::isISOControl),
-                            ) { "Invalid custom template value" }
-                            val properties = requireNotNull(currentProps)
-                            require(properties.size < MAX_TEMPLATE_PROPERTIES || properties.containsKey(key)) {
-                                "Too many custom template properties"
-                            }
-                            properties[key] = propertyValue
+                text.lineSequence().forEach { line ->
+                    val value = line.trim()
+                    if (value.isEmpty() || value.startsWith("#")) return@forEach
+                    if (value.startsWith("[") && value.endsWith("]")) {
+                        commitCurrent()
+                        val name = value.substring(1, value.length - 1).trim().lowercase()
+                        require(validTemplateName.matches(name)) { "Invalid custom template name" }
+                        require(++sectionCount <= MAX_CUSTOM_TEMPLATES) { "Too many custom templates" }
+                        currentTemplate = name
+                        currentProps = newTemplates[name]?.toMutableMap() ?: LinkedHashMap()
+                    } else {
+                        require(currentTemplate != null) { "Template property appears before a section" }
+                        val separator = value.indexOf('=')
+                        require(separator in 1 until value.lastIndex) { "Invalid custom template property" }
+                        val key = value.substring(0, separator).trim()
+                        val propertyValue = value.substring(separator + 1).trim()
+                        require(key in supportedTemplateProperties) { "Unsupported custom template property" }
+                        require(
+                            propertyValue.isNotEmpty() &&
+                                propertyValue.length <= MAX_TEMPLATE_VALUE_LENGTH &&
+                                propertyValue.none(Char::isISOControl),
+                        ) { "Invalid custom template value" }
+                        val properties = requireNotNull(currentProps)
+                        require(properties.size < MAX_TEMPLATE_PROPERTIES || properties.containsKey(key)) {
+                            "Too many custom template properties"
                         }
+                        properties[key] = propertyValue
                     }
                 }
                 commitCurrent()
@@ -1169,29 +1172,32 @@ object Config {
             if (f == null || f.absoluteFile == File(root, SPOOF_BUILD_VARS_FILE).absoluteFile) discardStagedRandomization()
             val newVars = mutableMapOf<String, String>()
             val newIds = mutableMapOf<String, ByteArray>()
-            if (f?.exists() == true) {
-                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) { "spoof_build_vars must be a regular file" }
-                require(f.length() in 0..MAX_BUILD_VARS_BYTES) { "spoof_build_vars has an invalid size" }
-            }
-            f?.takeIf(File::exists)?.useLines { lines ->
-                lines.forEach { line ->
-                    if (line.isNotBlank() && !line.startsWith("#")) {
-                        val eqIdx = line.indexOf('=')
-                        if (eqIdx != -1) {
-                            val key = line.substring(0, eqIdx).trim()
-                            val value = line.substring(eqIdx + 1).trim()
-                            require(isValidBuildVarEntry(key, value)) { "Unsupported or invalid build variable" }
-                            require(newVars.size < MAX_BUILD_VAR_ENTRIES || newVars.containsKey(key)) { "Too many build variables" }
-                            if (key == "TEMPLATE") {
-                                val template = templates[value.lowercase()] ?: throw IllegalArgumentException("Unknown template")
-                                newVars[key] = value.lowercase()
-                                newVars.putAll(template.filterKeys { it in supportedTemplateProperties })
-                            } else {
-                                newVars[key] = value
-                                if (key.startsWith("ATTESTATION_ID_")) {
-                                    val tag = key.removePrefix("ATTESTATION_ID_")
-                                    newIds[tag] = value.toByteArray(Charsets.UTF_8)
-                                }
+            val text =
+                if (f?.exists() == true) {
+                    require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        "spoof_build_vars must be a regular file"
+                    }
+                    readUtf8FileSnapshotBounded(f, 0, MAX_BUILD_VARS_BYTES)
+                } else {
+                    null
+                }
+            text?.lineSequence()?.forEach { line ->
+                if (line.isNotBlank() && !line.startsWith("#")) {
+                    val eqIdx = line.indexOf('=')
+                    if (eqIdx != -1) {
+                        val key = line.substring(0, eqIdx).trim()
+                        val value = line.substring(eqIdx + 1).trim()
+                        require(isValidBuildVarEntry(key, value)) { "Unsupported or invalid build variable" }
+                        require(newVars.size < MAX_BUILD_VAR_ENTRIES || newVars.containsKey(key)) { "Too many build variables" }
+                        if (key == "TEMPLATE") {
+                            val template = templates[value.lowercase()] ?: throw IllegalArgumentException("Unknown template")
+                            newVars[key] = value.lowercase()
+                            newVars.putAll(template.filterKeys { it in supportedTemplateProperties })
+                        } else {
+                            newVars[key] = value
+                            if (key.startsWith("ATTESTATION_ID_")) {
+                                val tag = key.removePrefix("ATTESTATION_ID_")
+                                newIds[tag] = value.toByteArray(Charsets.UTF_8)
                             }
                         }
                     }
@@ -1409,44 +1415,45 @@ object Config {
                 val packageName = currentPackage ?: return
                 packageRules.add(packageName, currentRules.freeze())
             }
-            if (f != null) {
-                require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) { "security_patch.txt must be a regular file" }
-                require(f.length() in 0..MAX_SECURITY_PATCH_BYTES) { "security_patch.txt has an invalid size" }
-            }
-            f?.useLines { lines ->
-                lines.forEach { line ->
-                    val trimmed = line.trim()
-                    if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
-                        require(++ruleCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch rules" }
-                        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-                            commitSection()
-                            val packageName = trimmed.substring(1, trimmed.lastIndex).trim()
-                            require(validSecurityPatchTarget.matches(packageName)) { "Invalid security patch package section" }
-                            require(++sectionCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch package sections" }
-                            currentPackage = packageName
-                            currentRules = MutablePatchRules()
-                            return@forEach
-                        }
-                        val eqIdx = trimmed.indexOf('=')
-                        if (eqIdx != -1) {
-                            val key = trimmed.substring(0, eqIdx).trim()
-                            val value = trimmed.substring(eqIdx + 1).trim()
-                            if (key in patchComponentNames) {
-                                val parsed = parseComponentPatchSetting(value) ?: throw IllegalArgumentException("Invalid component security patch setting")
-                                currentRules.set(key, parsed)
-                                if (currentPackage == null && key in setOf("all", "system")) newDefault = parsePatchSetting(value)
-                            } else {
-                                require(currentPackage == null) { "Only all/system/vendor/boot are valid inside package sections" }
-                                require(validSecurityPatchTarget.matches(key)) { "Invalid security patch target" }
-                                val parsed = parsePatchSetting(value) ?: throw IllegalArgumentException("Invalid security patch setting")
-                                newPatch[key] = parsed
-                                legacyRules.add(key, parsed)
-                            }
+            val text =
+                f?.let { file ->
+                    require(Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        "security_patch.txt must be a regular file"
+                    }
+                    readUtf8FileSnapshotBounded(file, 0, MAX_SECURITY_PATCH_BYTES)
+                }
+            text?.lineSequence()?.forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.isNotEmpty() && !trimmed.startsWith("#")) {
+                    require(++ruleCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch rules" }
+                    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+                        commitSection()
+                        val packageName = trimmed.substring(1, trimmed.lastIndex).trim()
+                        require(validSecurityPatchTarget.matches(packageName)) { "Invalid security patch package section" }
+                        require(++sectionCount <= MAX_SECURITY_PATCH_RULES) { "Too many security patch package sections" }
+                        currentPackage = packageName
+                        currentRules = MutablePatchRules()
+                        return@forEach
+                    }
+                    val eqIdx = trimmed.indexOf('=')
+                    if (eqIdx != -1) {
+                        val key = trimmed.substring(0, eqIdx).trim()
+                        val value = trimmed.substring(eqIdx + 1).trim()
+                        if (key in patchComponentNames) {
+                            val parsed = parseComponentPatchSetting(value) ?: throw IllegalArgumentException("Invalid component security patch setting")
+                            currentRules.set(key, parsed)
+                            if (currentPackage == null && key in setOf("all", "system")) newDefault = parsePatchSetting(value)
                         } else {
-                            val parsed = parseComponentPatchSetting(trimmed) ?: throw IllegalArgumentException("Invalid default security patch setting")
-                            currentRules.set("all", parsed)
-                            if (currentPackage == null) newDefault = parsePatchSetting(trimmed)
+                            require(currentPackage == null) { "Only all/system/vendor/boot are valid inside package sections" }
+                            require(validSecurityPatchTarget.matches(key)) { "Invalid security patch target" }
+                            val parsed = parsePatchSetting(value) ?: throw IllegalArgumentException("Invalid security patch setting")
+                            newPatch[key] = parsed
+                            legacyRules.add(key, parsed)
                         }
+                    } else {
+                        val parsed = parseComponentPatchSetting(trimmed) ?: throw IllegalArgumentException("Invalid default security patch setting")
+                        currentRules.set("all", parsed)
+                        if (currentPackage == null) newDefault = parsePatchSetting(trimmed)
                     }
                 }
             }
@@ -1561,9 +1568,33 @@ object Config {
                     KeyboxLoader.FileScope.CONFIG_ROOT -> File(newRoot, filename)
                     KeyboxLoader.FileScope.KEYBOX_DIRECTORY -> File(File(newRoot, KEYBOX_DIR), filename)
                 }
-            file.bufferedReader().use { reader -> CertHack.parseKeyboxXml(reader, filename) }
+            val snapshot = readFileSnapshotBounded(file, 1, StoredKeyboxInventory.MAX_XML_BYTES)
+            try {
+                KeyboxLoader.ParsedFile(
+                    snapshotSha256 = sha256Hex(snapshot),
+                    keyboxes = snapshot.toString(Charsets.UTF_8).reader().use { reader -> CertHack.parseKeyboxXml(reader, filename) },
+                )
+            } finally {
+                snapshot.fill(0)
+            }
         }
         PolicyState.setRootForTesting(newRoot)
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return try {
+            val alphabet = "0123456789abcdef"
+            buildString(digest.size * 2) {
+                digest.forEach { byte ->
+                    val value = byte.toInt() and 0xff
+                    append(alphabet[value ushr 4])
+                    append(alphabet[value and 0x0f])
+                }
+            }
+        } finally {
+            digest.fill(0)
+        }
     }
 
     internal fun getConfigRoot(): File = root
@@ -1623,12 +1654,13 @@ object Config {
                 } catch (_: AtomicMoveNotSupportedException) {
                     Files.move(f.toPath(), tmp.toPath())
                 }
-                if (tmp.length() !in 1..64) throw IOException("Invalid profile request size")
-                val profileName = tmp.bufferedReader().use { reader ->
-                    val firstLine = reader.readLine().orEmpty().trim()
-                    if (reader.readLine() != null) throw IOException("Invalid profile request")
-                    firstLine
-                }
+                val text = readUtf8FileSnapshotBounded(tmp, 1, 64)
+                val profileName =
+                    text.reader().buffered().use { reader ->
+                        val firstLine = reader.readLine().orEmpty().trim()
+                        if (reader.readLine() != null) throw IOException("Invalid profile request")
+                        firstLine
+                    }
                 applyProfile(profileName)
             } finally {
                 if (tmp.exists() && !tmp.delete()) Logger.w("Could not remove processed profile request")
@@ -1739,12 +1771,10 @@ object Config {
             }
             val retainedLines = mutableListOf<String>()
             if (Files.isRegularFile(spoofFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                require(spoofFile.length() in 0..MAX_BUILD_VARS_BYTES) { "spoof_build_vars has an invalid size" }
-                spoofFile.useLines { lines ->
-                    lines.forEach { line ->
-                        val key = line.substringBefore('=', "").trim()
-                        if (key !in replacements && line != "# Prepared by random_on_boot") retainedLines += line
-                    }
+                val text = readUtf8FileSnapshotBounded(spoofFile, 0, MAX_BUILD_VARS_BYTES)
+                text.lineSequence().forEach { line ->
+                    val key = line.substringBefore('=', "").trim()
+                    if (key !in replacements && line != "# Prepared by random_on_boot") retainedLines += line
                 }
             }
             retainedLines += "# Prepared by random_on_boot"
@@ -1835,9 +1865,9 @@ object Config {
         refreshPrivacySeed().getOrThrow()
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
         if (!isGlobalMode) {
-            val scope = File(root, TARGET_FILE)
-            Logger.d("Config.initialize: loading target.txt from ${scope.absolutePath} (exists=${scope.exists()})")
-            if (scope.exists()) updateTargetPackages(scope) else Logger.e("target.txt file not found, please put it to $scope !")
+            val targetFile = File(root, TARGET_FILE)
+            Logger.d("Config.initialize: loading target.txt from ${targetFile.absolutePath} (exists=${targetFile.exists()})")
+            if (targetFile.exists()) updateTargetPackages(targetFile) else Logger.e("target.txt file not found, please put it to $targetFile !")
         } else {
             Logger.i("Config.initialize: global mode active; all application UIDs are targeted")
             updateTargetPackages(File(root, TARGET_FILE))
@@ -2037,6 +2067,7 @@ object Config {
         drmState = DrmState(PackageTrie())
         clockSource = { System.currentTimeMillis() }
         storedKeyboxCache.clear()
+        KeyboxActivation.resetForTesting()
         KeyboxLoader.resetForTesting()
         BackendRecovery.resetForTesting()
         NativeBackend.resetIdentityForTesting()

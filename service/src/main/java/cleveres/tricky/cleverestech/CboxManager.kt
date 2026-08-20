@@ -35,8 +35,12 @@ object CboxManager {
         refresh()
     }
 
-    @Synchronized
-    fun refresh() {
+    fun refresh() =
+        KeyboxActivation.coordinateRefresh {
+            refreshLocked()
+        }
+
+    private fun refreshLocked() {
         if (KeyboxLoader.consumeBackendOutage()) {
             invalidateBackendHandles()
         }
@@ -110,15 +114,22 @@ object CboxManager {
     }
 
     /** Drops only managed opaque-handle views. Encrypted recovery caches remain for re-registration. */
-    @Synchronized
     internal fun invalidateBackendHandles() {
         val names = unlockedCache.keys.toList()
         unlockedCache.clear()
         lockedFiles.addAll(names)
     }
 
-    @Synchronized
     fun unlock(
+        filename: String,
+        password: String,
+        publicKey: String?,
+    ): Boolean =
+        KeyboxActivation.coordinateRefresh {
+            unlockLocked(filename, password, publicKey)
+        }
+
+    private fun unlockLocked(
         filename: String,
         password: String,
         publicKey: String?,

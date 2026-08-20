@@ -1,9 +1,10 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
+import cleveres.tricky.cleverestech.util.sha256FileSnapshotBounded
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.security.MessageDigest
 
 object Verification {
     private val MODULE_PATH = getModuleDir()
@@ -47,11 +48,9 @@ object Verification {
 
         val checksumMap = LinkedHashMap<String, String>()
         for (checksumFile in allFiles.filter { it.name.endsWith(".sha256") }) {
-            if (checksumFile.length() !in 64..MAX_CHECKSUM_FILE_BYTES) {
-                Logger.e("Verification failed: Invalid checksum file size: ${checksumFile.path}")
-                return false
-            }
-            val expected = checksumFile.readText().trim()
+            val expected =
+                readUtf8FileSnapshotBounded(checksumFile, 64, MAX_CHECKSUM_FILE_BYTES)
+                    .trim()
             if (expected.length != 64 || expected.any { it.digitToIntOrNull(16) == null }) {
                 Logger.e("Verification failed: Invalid checksum: ${checksumFile.path}")
                 return false
@@ -106,11 +105,12 @@ object Verification {
 
     @OptIn(ExperimentalStdlibApi::class)
     private fun calculateChecksum(file: File): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        file.forEachBlock { buffer, bytesRead ->
-            md.update(buffer, 0, bytesRead)
+        val digest = sha256FileSnapshotBounded(file, 0, MAX_MODULE_FILE_BYTES)
+        return try {
+            digest.toHexString(HexFormat.Default)
+        } finally {
+            digest.fill(0)
         }
-        return md.digest().toHexString(HexFormat.Default)
     }
 
     private const val MAX_MODULE_ENTRIES = 4096

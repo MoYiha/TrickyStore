@@ -8,6 +8,7 @@ import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONArray
 import org.json.JSONObject
@@ -858,17 +859,15 @@ class WebServer(
     private fun readNativeRuntimeStatus(): JSONObject {
         val unavailable = JSONObject().put("state", "unavailable").put("alive", false)
         val statusFile = File(configDir, "native_runtime_status")
-        if (!Files.isRegularFile(statusFile.toPath(), LinkOption.NOFOLLOW_LINKS) || statusFile.length() !in 1..4096) {
+        if (!Files.isRegularFile(statusFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             return unavailable
         }
         return runCatching {
             val values = LinkedHashMap<String, String>()
-            statusFile.useLines { lines ->
-                lines.take(16).forEach { line ->
-                    val separator = line.indexOf('=')
-                    if (separator > 0 && separator < line.lastIndex) {
-                        values[line.substring(0, separator)] = line.substring(separator + 1)
-                    }
+            readUtf8FileSnapshotBounded(statusFile, 1, 4096).lineSequence().take(16).forEach { line ->
+                val separator = line.indexOf('=')
+                if (separator > 0 && separator < line.lastIndex) {
+                    values[line.substring(0, separator)] = line.substring(separator + 1)
                 }
             }
             val version =
@@ -1379,68 +1378,73 @@ class WebServer(
                 ) {
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid app configuration")
                 }
-                if (file.length() > MAX_CONFIG_FILE_SIZE) {
-                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "App configuration is too large")
-                }
                 if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    val text =
+                        try {
+                            readUtf8FileSnapshotBounded(file, 0, MAX_CONFIG_FILE_SIZE)
+                        } catch (_: IOException) {
+                            return secureResponse(
+                                Response.Status.BAD_REQUEST,
+                                "text/plain",
+                                "App configuration is invalid or too large",
+                            )
+                        }
                     var ruleCount = 0
-                    file.useLines { lines ->
-                        lines.forEach { line ->
-                            if (line.isNotBlank() && !line.startsWith("#")) {
-                                if (++ruleCount > MAX_APP_CONFIG_RULES) {
-                                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Too many app rules")
-                                }
-                                val trimmed = line.trim()
-                                if (trimmed.isEmpty()) return@forEach
+                    text.lineSequence().forEach { line ->
+                        if (line.isNotBlank() && !line.startsWith("#")) {
+                            if (++ruleCount > MAX_APP_CONFIG_RULES) {
+                                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Too many app rules")
+                            }
+                            val trimmed = line.trim()
+                            if (trimmed.isEmpty()) return@forEach
 
-                                val len = trimmed.length
-                                var idx = 0
+                            val len = trimmed.length
+                            var idx = 0
 
-                                var start = idx
+                            var start = idx
+                            while (idx < len && !trimmed[idx].isWhitespace()) idx++
+                            val pkg = trimmed.substring(start, idx)
+
+                            var tmpl = ""
+                            var kb = ""
+                            var privacy = Config.AppPrivacyMode.INHERIT.configValue
+
+                            while (idx < len && trimmed[idx].isWhitespace()) idx++
+                            if (idx < len) {
+                                start = idx
                                 while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                val pkg = trimmed.substring(start, idx)
-
-                                var tmpl = ""
-                                var kb = ""
-                                var privacy = Config.AppPrivacyMode.INHERIT.configValue
+                                val tmplStr = trimmed.substring(start, idx)
+                                if (tmplStr != "null") tmpl = tmplStr
 
                                 while (idx < len && trimmed[idx].isWhitespace()) idx++
                                 if (idx < len) {
                                     start = idx
                                     while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                    val tmplStr = trimmed.substring(start, idx)
-                                    if (tmplStr != "null") tmpl = tmplStr
+                                    val kbStr = trimmed.substring(start, idx)
+                                    if (kbStr != "null") kb = kbStr
 
                                     while (idx < len && trimmed[idx].isWhitespace()) idx++
                                     if (idx < len) {
                                         start = idx
                                         while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                        val kbStr = trimmed.substring(start, idx)
-                                        if (kbStr != "null") kb = kbStr
-
-                                        while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                        if (idx < len) {
-                                            start = idx
-                                            while (idx < len && !trimmed[idx].isWhitespace()) idx++
-                                            privacy = trimmed.substring(start, idx)
-                                        }
+                                        privacy = trimmed.substring(start, idx)
                                     }
                                 }
+                            }
 
-                                if (pkg.isNotEmpty()) {
-                                    if (isValidPkg(pkg)) {
-                                        val isTmplValid = tmpl.isEmpty() || isValidTemplate(tmpl)
-                                        val isKbValid = kb.isEmpty() || isValidKeybox(kb)
-                                        while (idx < len && trimmed[idx].isWhitespace()) idx++
-                                        val parsedPrivacy = Config.AppPrivacyMode.parse(privacy)
-                                        if (isTmplValid && isKbValid && parsedPrivacy != null && idx == len) {
-                                            val obj = JSONObject()
-                                            obj.put("package", pkg)
-                                            obj.put("template", tmpl)
-                                            obj.put("keybox", kb)
-                                            obj.put("privacy", parsedPrivacy.configValue)
-                                            array.put(obj)
-                                        }
+                            if (pkg.isNotEmpty()) {
+                                if (isValidPkg(pkg)) {
+                                    val isTmplValid = tmpl.isEmpty() || isValidTemplate(tmpl)
+                                    val isKbValid = kb.isEmpty() || isValidKeybox(kb)
+                                    while (idx < len && trimmed[idx].isWhitespace()) idx++
+                                    val parsedPrivacy = Config.AppPrivacyMode.parse(privacy)
+                                    if (isTmplValid && isKbValid && parsedPrivacy != null && idx == len) {
+                                        val obj = JSONObject()
+                                        obj.put("package", pkg)
+                                        obj.put("template", tmpl)
+                                        obj.put("keybox", kb)
+                                        obj.put("privacy", parsedPrivacy.configValue)
+                                        array.put(obj)
                                     }
                                 }
                             }
@@ -2086,7 +2090,8 @@ class WebServer(
             candidates.firstOrNull { file ->
                 Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) && file.length() in 1..MAX_WEB_UI_HTML_BYTES
             } ?: throw IOException("Native WebUI source is unavailable")
-        return source.readText().replace("@DEBUG@", BuildConfig.DEBUG.toString())
+        return readUtf8FileSnapshotBounded(source, 1, MAX_WEB_UI_HTML_BYTES)
+            .replace("@DEBUG@", BuildConfig.DEBUG.toString())
     }
 
     companion object {

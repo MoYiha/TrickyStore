@@ -22,6 +22,7 @@ import java.util.Objects;
 
 import cleveres.tricky.cleverestech.CertificateBackend;
 import cleveres.tricky.cleverestech.Config;
+import cleveres.tricky.cleverestech.KeyboxActivation;
 import cleveres.tricky.cleverestech.KeyboxLoader;
 import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.PolicyState;
@@ -362,6 +363,7 @@ public final class CertHack {
         if (caList == null || caList.length == 0 || caList[0] == null) {
             throw new UnsupportedOperationException("Certificate chain is empty");
         }
+        KeyboxActivation.lockPublishedSnapshot();
         CertificateBackend.Inspection inspection = null;
         byte[] keyId = null;
         try {
@@ -487,6 +489,7 @@ public final class CertHack {
         } finally {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
             if (inspection != null) inspection.wipe();
+            KeyboxActivation.unlockPublishedSnapshot();
         }
     }
 

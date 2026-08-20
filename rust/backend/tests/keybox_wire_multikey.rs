@@ -15,12 +15,12 @@ fn one_xml_keybox_with_ec_and_rsa_keys_flattens_to_two_wire_keys() {
     );
     let response = keybox_wire::parse_and_encode(xml.into_bytes()).unwrap();
 
-    assert_eq!(response[0], 3);
+    assert_eq!(response[0], keybox_wire::WIRE_VERSION);
     assert_eq!(response[1], 1);
     assert_eq!(response[2], 1);
     assert_eq!(u16::from_be_bytes(response[3..5].try_into().unwrap()), 2);
 
-    let mut offset = 5usize;
+    let mut offset = keybox_wire::FIXED_HEADER_BYTES;
     let mut algorithms = Vec::new();
     for _ in 0..2 {
         let algorithm_len = response[offset] as usize;

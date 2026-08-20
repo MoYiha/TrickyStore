@@ -15,6 +15,7 @@ internal object KeyboxWire {
     data class Document(
         val declaredKeyboxes: Int,
         val keyboxCount: Int,
+        val snapshotSha256: String,
         val keys: List<RawKey>,
     )
 
@@ -29,6 +30,7 @@ internal object KeyboxWire {
             val declaredKeyboxes = cursor.readU8()
             val keyboxCount = cursor.readU8()
             val keyCount = cursor.readU16()
+            val snapshotSha256 = cursor.readBytes(SNAPSHOT_SHA256_BYTES).toHexString()
             requireWire(declaredKeyboxes in 1..MAX_KEYBOXES_PER_FILE)
             requireWire(keyboxCount == declaredKeyboxes)
             requireWire(keyCount in keyboxCount..keyboxCount * MAX_KEYS_PER_KEYBOX)
@@ -56,7 +58,7 @@ internal object KeyboxWire {
                 decodedKeys += RawKey(algorithm, keyId, certificates)
             }
             requireWire(cursor.isAtEnd())
-            Document(declaredKeyboxes, keyboxCount, decodedKeys)
+            Document(declaredKeyboxes, keyboxCount, snapshotSha256, decodedKeys)
         } catch (_: WireFormatException) {
             null
         } catch (_: CharacterCodingException) {
@@ -66,6 +68,17 @@ internal object KeyboxWire {
         } finally {
             response.fill(0)
         }
+    }
+
+    private fun ByteArray.toHexString(): String {
+        val alphabet = "0123456789abcdef"
+        val output = StringBuilder(size * 2)
+        for (byte in this) {
+            val value = byte.toInt() and 0xff
+            output.append(alphabet[value ushr 4])
+            output.append(alphabet[value and 0x0f])
+        }
+        return output.toString()
     }
 
     private class Cursor(
@@ -135,22 +148,23 @@ internal object KeyboxWire {
         if (!condition) throw WireFormatException()
     }
 
-    private const val WIRE_VERSION = 3
+    private const val WIRE_VERSION = 4
+    private const val SNAPSHOT_SHA256_BYTES = 32
     private const val KEY_ID_BYTES = 16
-    private const val MIN_RESPONSE_BYTES = 5
+    private const val MIN_RESPONSE_BYTES = 5 + SNAPSHOT_SHA256_BYTES
     private const val MAX_KEYBOXES_PER_FILE = 64
     private const val MAX_KEYS_PER_KEYBOX = 4
     private const val MAX_CERTIFICATES_PER_CHAIN = 16
     private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
-    private const val MAX_KEYBOX_XML_BYTES = 10 * 1024 * 1024
+    internal const val MAX_XML_BYTES = 10 * 1024 * 1024
     private const val MAX_TOTAL_KEYS = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX
     private const val MAX_TOTAL_CERTIFICATES = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN
-    private const val FIXED_HEADER_BYTES = 5
+    private const val FIXED_HEADER_BYTES = 5 + SNAPSHOT_SHA256_BYTES
     private const val KEY_HEADER_BYTES = 2 + KEY_ID_BYTES
     private const val CERTIFICATE_HEADER_BYTES = 4
     private const val MAX_WIRE_OVERHEAD_BYTES =
         FIXED_HEADER_BYTES +
             MAX_TOTAL_KEYS * KEY_HEADER_BYTES +
             MAX_TOTAL_CERTIFICATES * CERTIFICATE_HEADER_BYTES
-    private const val MAX_RESPONSE_BYTES = MAX_KEYBOX_XML_BYTES + MAX_WIRE_OVERHEAD_BYTES
+    internal const val MAX_RESPONSE_BYTES = MAX_XML_BYTES + MAX_WIRE_OVERHEAD_BYTES
 }

@@ -39,38 +39,23 @@ class StoredKeyboxInventoryTest {
     }
 
     @Test
-    fun `oversized XML is excluded before content stamping`() {
+    fun `oversized XML is excluded before runtime parsing`() {
         val root = temp.newFolder("oversized")
         val oversized = File(root, "oversized.xml")
         RandomAccessFile(oversized, "rw").use { file ->
             file.setLength(StoredKeyboxInventory.MAX_XML_BYTES + 1)
         }
-        var stampAttempts = 0
 
-        val sources =
-            StoredKeyboxInventory.runtimeXmlSources(root) {
-                stampAttempts++
-                1L
-            }
-
-        assertTrue(sources.isEmpty())
-        assertEquals(0, stampAttempts)
+        assertTrue(StoredKeyboxInventory.runtimeXmlSources(root).isEmpty())
     }
 
     @Test
-    fun `content stamp failure excludes source from cache admission`() {
-        val root = temp.newFolder("unstable")
-        File(root, "unstable.xml").writeText("keybox")
-
-        val sources = StoredKeyboxInventory.runtimeXmlSources(root) { null }
-
-        assertTrue(sources.isEmpty())
-    }
-
-    @Test
-    fun `runtime XML source count is bounded`() {
+    fun `runtime XML source count is bounded even when entries are oversized`() {
         val root = temp.newFolder("bounded")
-        repeat(StoredKeyboxInventory.MAX_ACTIVE_XML_SOURCES + 1) { index -> File(root, "cert-$index.xml").writeText("x") }
+        repeat(StoredKeyboxInventory.MAX_ACTIVE_XML_SOURCES + 1) { index ->
+            val file = File(root, "cert-$index.xml")
+            RandomAccessFile(file, "rw").use { it.setLength(StoredKeyboxInventory.MAX_XML_BYTES + 1) }
+        }
         assertThrows(IllegalArgumentException::class.java) { StoredKeyboxInventory.runtimeXmlSources(root) }
     }
 }

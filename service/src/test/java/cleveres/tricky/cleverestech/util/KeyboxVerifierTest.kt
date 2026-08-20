@@ -2,13 +2,13 @@ package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.KeyboxLoader
 import cleveres.tricky.cleverestech.keystore.CertHack
+import java.io.IOException
+import java.nio.file.Files
+import java.security.cert.X509Certificate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.mockito.Mockito
-import java.io.IOException
-import java.security.cert.X509Certificate
-import java.nio.file.Files
 
 class KeyboxVerifierTest {
     @Test
@@ -76,7 +76,10 @@ class KeyboxVerifierTest {
         KeyboxLoader.fileParserOverride = { scope, filename ->
             observedScope = scope
             observedFilename = filename
-            listOf(mockKeyBox)
+            KeyboxLoader.ParsedFile(
+                snapshotSha256 = "00".repeat(32),
+                keyboxes = listOf(mockKeyBox),
+            )
         }
 
         try {

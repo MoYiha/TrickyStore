@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -63,8 +64,11 @@ object BootLogic {
 
     private fun readBootPropsMode(): BootPropsMode {
         val file = File(configDir, FILE_BOOT_PROPS_MODE)
-        if (!isRegularFile(file) || file.length() !in 1..16) return BootPropsMode.AUTO
-        return when (runCatching { file.readText().trim().lowercase() }.getOrDefault("auto")) {
+        if (!isRegularFile(file)) return BootPropsMode.AUTO
+        val value =
+            runCatching { readUtf8FileSnapshotBounded(file, 1, 16).trim().lowercase() }
+                .getOrDefault("auto")
+        return when (value) {
             "force" -> BootPropsMode.FORCE
             "disable" -> BootPropsMode.DISABLE
             else -> BootPropsMode.AUTO

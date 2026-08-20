@@ -89,7 +89,7 @@ object NativeBackend {
     ): ByteArray? = transformBackup(OP_CRYPTO_BACKUP_DECRYPT, encrypted, password)
 
     internal fun parseKeybox(xml: ByteArray): KeyboxWire.Document? {
-        if (xml.isEmpty() || xml.size > MAX_KEYBOX_XML_BYTES) {
+        if (xml.isEmpty() || xml.size > KeyboxWire.MAX_XML_BYTES) {
             xml.fill(0)
             return null
         }
@@ -98,7 +98,7 @@ object NativeBackend {
                 transact(
                     OP_KEYBOX_PARSE,
                     xml.size,
-                    MAX_KEYBOX_RESPONSE_BYTES,
+                    KeyboxWire.MAX_RESPONSE_BYTES,
                     propagateTransportFailure = true,
                 ) { output -> output.write(xml) }
             decodeKeyboxResponse(response)
@@ -128,7 +128,7 @@ object NativeBackend {
                 transact(
                     OP_KEYBOX_FILE_PARSE,
                     payloadLength,
-                    MAX_KEYBOX_RESPONSE_BYTES,
+                    KeyboxWire.MAX_RESPONSE_BYTES,
                     propagateTransportFailure = true,
                 ) { output ->
                     output.write(scope)
@@ -613,21 +613,9 @@ object NativeBackend {
     private const val MAX_BACKUP_PLAINTEXT_BYTES = 32 * 1024 * 1024
     private const val MAX_BACKUP_WIRE_BYTES = MAX_BACKUP_PLAINTEXT_BYTES + 64
     private const val MAX_BACKUP_RESPONSE_BYTES = MAX_BACKUP_WIRE_BYTES
-    private const val MAX_KEYBOX_XML_BYTES = 10 * 1024 * 1024
     private const val MAX_KEYBOX_FILE_NAME_BYTES = 255
     private const val KEYBOX_FILE_SCOPE_CONFIG_ROOT = 0
     private const val KEYBOX_FILE_SCOPE_DIRECTORY = 1
-    private const val MAX_KEYBOXES_PER_FILE = 64
-    private const val MAX_KEYS_PER_KEYBOX = 4
-    private const val MAX_CERTIFICATES_PER_CHAIN = 16
-    private const val KEYBOX_FIXED_HEADER_BYTES = 5
-    private const val KEYBOX_KEY_HEADER_BYTES = 6
-    private const val KEYBOX_CERTIFICATE_HEADER_BYTES = 4
-    private const val MAX_KEYBOX_WIRE_OVERHEAD_BYTES =
-        KEYBOX_FIXED_HEADER_BYTES +
-            MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX * KEYBOX_KEY_HEADER_BYTES +
-            MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX * MAX_CERTIFICATES_PER_CHAIN * KEYBOX_CERTIFICATE_HEADER_BYTES
-    private const val MAX_KEYBOX_RESPONSE_BYTES = MAX_KEYBOX_XML_BYTES + MAX_KEYBOX_WIRE_OVERHEAD_BYTES
     private const val MAX_BACKEND_REQUEST_BYTES = MAX_BACKUP_WIRE_BYTES + MAX_PASSWORD_BYTES + 2
     private const val CBOX_RESPONSE_PREFIX_BYTES = 7
     private const val ANDROID_AID_NOBODY = 9999

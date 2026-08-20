@@ -2,9 +2,13 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.security.KeyPair
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -129,6 +133,53 @@ class BackendRestartRecoveryTest {
         }
         assertEquals(2, attempts)
         assertEquals(1, recoveryCalls)
+    }
+
+    @Test
+    fun `concurrent recovery attempt fails fast while single flight owns coordinator`() {
+        NativeBackend.observeBackendIdentityForTesting(identityA)
+        val firstEntered = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val firstResult = AtomicReference<Boolean>()
+        BackendStateRecovery.recoveryOverride = {
+            firstEntered.countDown()
+            assertTrue(releaseFirst.await(5, TimeUnit.SECONDS))
+            true
+        }
+
+        val first =
+            Thread {
+                firstResult.set(BackendStateRecovery.recover(identityA))
+            }
+        first.start()
+        assertTrue(firstEntered.await(2, TimeUnit.SECONDS))
+
+        val secondResult = AtomicReference<Boolean>()
+        val secondFinished = CountDownLatch(1)
+        val second =
+            Thread {
+                try {
+                    secondResult.set(BackendStateRecovery.recover(identityA))
+                } finally {
+                    secondFinished.countDown()
+                }
+            }
+        second.start()
+        try {
+            assertTrue(
+                "overlapping recovery must not wait on the active single flight",
+                secondFinished.await(2, TimeUnit.SECONDS),
+            )
+            assertFalse(requireNotNull(secondResult.get()))
+        } finally {
+            releaseFirst.countDown()
+        }
+
+        first.join(2_000)
+        second.join(2_000)
+        assertTrue(requireNotNull(firstResult.get()))
+        assertFalse(first.isAlive)
+        assertFalse(second.isAlive)
     }
 
     private fun keyboxForCurrentIdentity(filename: String): CertHack.KeyBox {

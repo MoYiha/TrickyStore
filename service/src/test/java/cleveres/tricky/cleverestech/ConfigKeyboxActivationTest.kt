@@ -3,8 +3,10 @@ package cleveres.tricky.cleverestech
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
 import java.io.File
+import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,6 +71,40 @@ class ConfigKeyboxActivationTest {
             assertThrows(IllegalStateException::class.java) {
                 CertHack.getKeyboxCount()
             }
+        }
+    }
+
+    @Test
+    fun `parsed snapshot digest controls cache reuse instead of path metadata`() {
+        withKeyboxRoot { root ->
+            File(root, "cache.xml").writeText("placeholder")
+            ManagedOpaqueKeyOracle.reset()
+            val first = ManagedOpaqueKeyOracle.parse(TestKeyboxFixtures.validEcKeyboxXml.reader(), "cache.xml").single()
+            val replacement = ManagedOpaqueKeyOracle.parse(TestKeyboxFixtures.validEcKeyboxXml.reader(), "cache.xml").single()
+            val parsed =
+                ArrayDeque(
+                    listOf(
+                        KeyboxLoader.ParsedFile("a".repeat(64), listOf(first)),
+                        KeyboxLoader.ParsedFile("a".repeat(64), listOf(replacement)),
+                        KeyboxLoader.ParsedFile("b".repeat(64), listOf(replacement)),
+                    ),
+                )
+            KeyboxLoader.fileParserOverride = { _, _ -> parsed.removeFirst() }
+            KeyboxLoader.activeSetOverride = { ids -> ids.all(ManagedOpaqueKeyOracle::contains) }
+            val verified = ArrayList<CertHack.KeyBox>()
+            val verifier: (CertHack.KeyBox, Set<String>) -> KeyboxVerifier.Status = { keybox, _ ->
+                verified += keybox
+                KeyboxVerifier.Status.VALID
+            }
+
+            assertTrue(Config.updateKeyBoxesSync(emptySet(), verifier))
+            assertTrue(Config.updateKeyBoxesSync(emptySet(), verifier))
+            assertTrue(Config.updateKeyBoxesSync(emptySet(), verifier))
+
+            assertEquals(3, verified.size)
+            assertSame(first, verified[0])
+            assertSame("same digest must reuse the accepted parsed snapshot", first, verified[1])
+            assertSame("digest change must invalidate the cached snapshot", replacement, verified[2])
         }
     }
 

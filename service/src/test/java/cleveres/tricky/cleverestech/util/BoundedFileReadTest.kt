@@ -1,11 +1,13 @@
 package cleveres.tricky.cleverestech.util
 
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
+import java.nio.file.Files
 
 class BoundedFileReadTest {
     @Test
@@ -31,6 +33,30 @@ class BoundedFileReadTest {
 
         assertThrows(IOException::class.java) {
             sha256ChannelSnapshotBounded(channel, 1, 4)
+        }
+    }
+
+    @Test
+    fun `utf8 snapshot decodes accepted bytes without reopening`() {
+        val file = Files.createTempFile("bounded-utf8", ".txt").toFile()
+        try {
+            file.writeText("alpha\nbeta\n", Charsets.UTF_8)
+            assertEquals("alpha\nbeta\n", readUtf8FileSnapshotBounded(file, 1, 64))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun `utf8 snapshot rejects malformed input`() {
+        val file = Files.createTempFile("bounded-utf8-invalid", ".txt").toFile()
+        try {
+            file.writeBytes(byteArrayOf(0xc3.toByte(), 0x28))
+            assertThrows(IOException::class.java) {
+                readUtf8FileSnapshotBounded(file, 1, 64)
+            }
+        } finally {
+            file.delete()
         }
     }
 

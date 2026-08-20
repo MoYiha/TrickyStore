@@ -1,13 +1,10 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.util.concurrent.ExecutorService
@@ -236,13 +233,7 @@ object DeviceTemplateManager {
         val file = File(configDir, TEMPLATES_FILE)
         if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
             try {
-                val beforeLength = file.length()
-                val beforeModified = file.lastModified()
-                require(beforeLength in 1..MAX_TEMPLATES_BYTES) { "templates.json has an invalid size" }
-                val json = readTextBounded(file)
-                require(
-                    file.length() == beforeLength && file.lastModified() == beforeModified,
-                ) { "templates.json changed while it was being read" }
+                val json = readUtf8FileSnapshotBounded(file, 1, MAX_TEMPLATES_BYTES)
                 val array = JSONArray(json)
                 require(array.length() <= MAX_TEMPLATES) { "templates.json contains too many templates" }
                 val list = ArrayList<DeviceTemplate>()
@@ -272,32 +263,6 @@ object DeviceTemplateManager {
             }
         } else {
             Logger.e("Refusing non-regular templates.json")
-        }
-    }
-
-    private fun readTextBounded(file: File): String {
-        val output = ByteArrayOutputStream(minOf(file.length(), 64 * 1024L).toInt())
-        Files.newInputStream(file.toPath()).use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var total = 0L
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) continue
-                total += count
-                if (total > MAX_TEMPLATES_BYTES) throw IOException("templates.json exceeds its size limit")
-                output.write(buffer, 0, count)
-            }
-        }
-        val bytes = output.toByteArray()
-        return try {
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
-                .toString()
-        } finally {
-            bytes.fill(0)
         }
     }
 

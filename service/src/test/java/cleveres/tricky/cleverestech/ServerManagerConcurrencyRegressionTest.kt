@@ -18,7 +18,12 @@ class ServerManagerConcurrencyRegressionTest {
     @Test
     fun `recovery and mutations invalidate stale fetch snapshots`() {
         val source = source()
-        assertTrue(source.contains("@Synchronized\n    fun initialize()"))
+        assertTrue(
+            source.contains(
+                "fun initialize() =\n        KeyboxActivation.coordinateRefresh",
+            ),
+        )
+        assertTrue(source.contains("@Synchronized\n    private fun initializeLocked()"))
         assertTrue(source.contains("stateGeneration++"))
         assertTrue(source.contains("context.generation == stateGeneration"))
         assertTrue(source.contains("serversMap[context.snapshot.id] === context.target"))

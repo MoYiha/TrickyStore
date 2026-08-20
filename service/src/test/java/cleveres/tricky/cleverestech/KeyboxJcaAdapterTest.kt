@@ -35,15 +35,17 @@ class KeyboxJcaAdapterTest {
         val legacy = readLegacyFixture("/keybox/valid_ec.xml", "valid_ec.xml").single()
         val document =
             KeyboxWire.Document(
-                1,
-                1,
-                listOf(
-                    KeyboxWire.RawKey(
-                        "RSA",
-                        validKeyId(),
-                        legacy.certificates().map { it.encoded },
+                declaredKeyboxes = 1,
+                keyboxCount = 1,
+                snapshotSha256 = validSnapshotSha256(),
+                keys =
+                    listOf(
+                        KeyboxWire.RawKey(
+                            "RSA",
+                            validKeyId(),
+                            legacy.certificates().map { it.encoded },
+                        ),
                     ),
-                ),
             )
 
         assertTrue(KeyboxJcaAdapter.materialize(document, "mismatch.xml").isEmpty())
@@ -53,15 +55,17 @@ class KeyboxJcaAdapterTest {
     fun `corrupted certificate DER fails closed`() {
         val document =
             KeyboxWire.Document(
-                1,
-                1,
-                listOf(
-                    KeyboxWire.RawKey(
-                        "EC",
-                        validKeyId(),
-                        listOf(byteArrayOf(0x31, 1, 2, 3)),
+                declaredKeyboxes = 1,
+                keyboxCount = 1,
+                snapshotSha256 = validSnapshotSha256(),
+                keys =
+                    listOf(
+                        KeyboxWire.RawKey(
+                            "EC",
+                            validKeyId(),
+                            listOf(byteArrayOf(0x31, 1, 2, 3)),
+                        ),
                     ),
-                ),
             )
 
         assertTrue(KeyboxJcaAdapter.materialize(document, "corrupt.xml").isEmpty())
@@ -80,6 +84,7 @@ class KeyboxJcaAdapterTest {
             KeyboxWire.Document(
                 declaredKeyboxes = 1,
                 keyboxCount = 1,
+                snapshotSha256 = validSnapshotSha256(),
                 keys =
                     listOf(
                         KeyboxWire.RawKey(
@@ -105,6 +110,8 @@ class KeyboxJcaAdapterTest {
     }
 
     private fun validKeyId(): ByteArray = ByteArray(16) { index -> (index + 1).toByte() }
+
+    private fun validSnapshotSha256(): String = "00".repeat(32)
 
     private fun readLegacyFixture(
         resource: String,

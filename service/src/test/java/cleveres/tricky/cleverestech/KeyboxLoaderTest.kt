@@ -34,7 +34,10 @@ class KeyboxLoaderTest {
         KeyboxLoader.fileParserOverride = { scope, filename ->
             observedScope = scope
             observedFilename = filename
-            emptyList()
+            KeyboxLoader.ParsedFile(
+                snapshotSha256 = null,
+                keyboxes = emptyList(),
+            )
         }
 
         try {
