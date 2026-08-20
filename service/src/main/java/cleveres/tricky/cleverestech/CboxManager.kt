@@ -125,8 +125,10 @@ object CboxManager {
         password: String,
         publicKey: String?,
     ): Boolean =
-        KeyboxActivation.coordinateRefresh {
-            unlockLocked(filename, password, publicKey)
+        synchronized(ManagedFileCoordinator.monitor) {
+            KeyboxActivation.coordinateRefresh {
+                unlockLocked(filename, password, publicKey)
+            }
         }
 
     private fun unlockLocked(
