@@ -4,8 +4,7 @@ pub(crate) mod key_store;
 
 use cleverestricky_service_core::ipc::PROTOCOL_VERSION;
 use cleverestricky_xml_core::{
-    parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_KEYBOXES_PER_FILE,
-    MAX_KEYS_PER_KEYBOX,
+    parse_keybox_xml_bytes, MAX_CERTIFICATES_PER_CHAIN, MAX_KEYBOXES_PER_FILE, MAX_KEYS_PER_KEYBOX,
 };
 use key_store::{KeyId, PublicKeyRecord, KEY_ID_BYTES, MAX_STORED_KEYS};
 use sha2::{Digest, Sha256};
