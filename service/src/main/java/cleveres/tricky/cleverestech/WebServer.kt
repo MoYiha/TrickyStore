@@ -214,7 +214,7 @@ class WebServer(
 
     private val requestCounts = java.util.concurrent.ConcurrentHashMap<String, RateLimitEntry>()
 
-    private val fileLock = Any()
+    private val fileLock = ManagedFileCoordinator.monitor
 
     private fun updateKeyboxesFromConfiguredRevocationSource(): Boolean =
         crlFetcher?.let { Config.updateKeyBoxesSync(it()) } ?: Config.updateKeyBoxesSync()
