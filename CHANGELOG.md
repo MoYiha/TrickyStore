@@ -1,5 +1,37 @@
 # Changelog
 
+## V2.6.2
+
+### Safer keybox and CBOX handling
+
+- **Keybox refresh, recovery and publication are more predictable under load.** Verified keybox snapshots are now tied to stable file identities and published atomically, reducing races between readers, refreshes, quarantine and backend recovery.
+- **Cache reuse is stricter.** Keybox and certificate caches are invalidated when their trusted source changes, unstable or rejected snapshots are not reused, and remote keybox trust is rebound when server trust changes.
+- **CBOX compatibility is safer without dropping supported legacy data.** Import and wire-format bounds are aligned across WebUI, service and Rust paths, legacy empty CBOX passwords remain accepted where previously supported, and fused/server CBOX loading survives backend restarts more reliably.
+
+### More resilient runtime and backend recovery
+
+- **Backend restarts recover cleanly instead of leaving half-finished refresh work behind.** Keybox recovery, refresh and publication locking were tightened to avoid lock inversions, stale generations and reader/writer races.
+- **Server state publication is serialized.** Key material, configuration and authentication state are published consistently, while malformed or unsupported authentication headers are rejected before they reach privileged handling.
+- **Restart behavior keeps useful verified state.** The ZIP-backed server cache is preserved across backend restarts when it is still valid, reducing unnecessary reload work after recovery.
+
+### Auto Identity and WebUI correctness
+
+- **Automatic Pixel security-patch selection is more accurate.** Bulletin metadata is now bound to the matching device row, and malformed or edge-case metadata is parsed more defensively so unrelated patch values are not selected.
+- **WebUI request lifecycles are more robust.** Response clones, aborted requests and export-directory capabilities are handled more safely, reducing stale-response and interrupted-operation edge cases.
+- **Versioning checks now enforce the real contract instead of a specific release number.** Encryptor and module builds must continue to inherit their version from the single root source, so future version bumps do not fail security CI just because a test contained an old literal.
+
+### Safer backup, diagnostics and file I/O
+
+- **Restore is more transactional.** Failed restores roll back staged changes instead of leaving a partially applied configuration, while backup streaming and expanded input sizes remain bounded.
+- **Bugreport collection is hardened.** Reads are bound to pinned sources, collection is size-limited, symlink/path races are rejected and archive publication is safer.
+- **More runtime file consumers use bounded stable snapshots.** Config, cache, keybox, certificate and policy reads have tighter size/identity checks, reducing stale-cache behavior and unsafe file-replacement races.
+
+### Compatibility and build hardening
+
+- Updated the Rust signing/X.509 dependency stack with the compatibility fixes required by the current certificate pipeline.
+- Updated Rust CI compatibility for Rust 1.98, including the new Clippy requirement and rustfmt output, without weakening warnings or lint gates.
+- Expanded regression coverage around recovery ordering, keybox publication, cache identity, CBOX bounds, Auto Identity metadata and security contracts.
+
 ## V2.6.1
 
 ### Keybox storage and verification

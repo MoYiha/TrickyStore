@@ -208,6 +208,8 @@ Mobilde tab menu bottom safe-area ile kullanılır; touch-sized controls, respon
 <a id="changelog"></a>
 ## CHANGELOG
 
+V2.6.2; keybox ve CBOX yenileme/recovery yollarını kararlı doğrulanmış snapshot'lara ve atomik yayınlamaya bağlayarak yarış durumlarını azalttı; backend/server restart recovery, cache invalidation ve kimlik doğrulama sınırlarını güçlendirdi. Auto Identity artık Pixel security bulletin patch bilgisini doğru cihaz satırıyla eşliyor; WebUI abort/response/export akışları daha dayanıklı. Backup/restore daha transactional, bugreport ve runtime dosya okumaları daha sıkı bounded/symlink-safe; Rust X.509 stack ve Rust 1.98 CI uyumluluğu güncellendi.
+
 V2.5.3; granular identity ve security patch controls, named profiles ve Effective State görünümü ekledi; attestation/KeyMint/StrongBox, DRM identifier privacy, upgrade ve Android 17 uyumluluğunu güçlendirdi. WebUI ownership sabit dosya setinde birleştirildi, yerleşik local translations ve Configuration Management UX iyileştirildi, KeyboxHub remote helper external browser routing ile eklendi. Runtime diagnostics, cache/timing, dependency security, regression coverage ve artifact validation iyileştirildi.
 
 <a id="contributing"></a>

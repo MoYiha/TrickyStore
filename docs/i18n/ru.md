@@ -208,6 +208,8 @@ Mobile bottom navigation, touch controls, responsive panels, password visibility
 <a id="changelog"></a>
 ## CHANGELOG
 
+V2.6.2 усиливает refresh/recovery/publication keybox и CBOX за счёт стабильных проверенных snapshot и атомарной публикации, уменьшает гонки между readers, quarantine и backend recovery и делает server restart, cache invalidation и auth validation надёжнее. Auto Identity теперь связывает Pixel security patch с правильной строкой bulletin; WebUI устойчивее обрабатывает abort/response/export. Backup/restore стал более transactional, bugreport и runtime file reads получили более строгие bounds/symlink protections, обновлены Rust X.509 и совместимость CI с Rust 1.98.
+
 V2.5.3: granular identity/security patch controls, profiles и Effective State; hardening Attestation/KeyMint/StrongBox/DRM privacy/upgrades/Android 17; consolidated WebUI and translations; KeyboxHub external browser helper; улучшения diagnostics, cache/timing, dependency security, regression и artifact validation.
 
 <a id="contributing"></a>

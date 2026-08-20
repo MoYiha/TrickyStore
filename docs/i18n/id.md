@@ -208,6 +208,8 @@ Mobile bottom navigation, touch controls, responsive panels, password visibility
 <a id="changelog"></a>
 ## CHANGELOG
 
+V2.6.2 memperkuat refresh, recovery dan publication keybox/CBOX dengan verified snapshot yang stabil dan publication atomik, mengurangi race antara reader, quarantine dan backend recovery serta memperbaiki server restart, cache invalidation dan auth validation. Auto Identity kini mengikat Pixel security patch ke baris bulletin yang benar; WebUI lebih kuat menangani abort/response/export. Backup/restore lebih transactional, bugreport dan runtime file reads memiliki bounds/proteksi symlink lebih ketat, serta kompatibilitas Rust X.509 dan Rust 1.98 CI diperbarui.
+
 V2.5.3 menambah granular identity/security patch controls, profiles, Effective State; memperkuat Attestation/KeyMint/StrongBox/DRM privacy/upgrades/Android 17; mengonsolidasikan WebUI dan translations; menambah KeyboxHub external browser helper; memperbaiki diagnostics, cache/timing, dependency security, regression dan artifact validation.
 
 <a id="contributing"></a>

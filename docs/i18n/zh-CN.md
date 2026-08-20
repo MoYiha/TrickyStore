@@ -208,6 +208,8 @@ WebUI runtime ownership 固定为 `index.html` 静态结构/base CSS，`bridge.j
 <a id="changelog"></a>
 ## CHANGELOG
 
+V2.6.2 通过稳定、已验证的 snapshot 和原子发布强化 keybox/CBOX 的刷新、恢复与缓存一致性，减少读取、隔离和 backend recovery 之间的竞争；server restart、认证 header 和可信源变化处理也更可靠。Auto Identity 现在把 Pixel security bulletin patch 绑定到正确的设备行；WebUI 的 abort/response/export 生命周期更稳健。Backup/restore 更具事务性，bugreport 与运行时文件读取增加严格的大小、路径和 symlink 保护，同时更新 Rust X.509 依赖与 Rust 1.98 CI 兼容性。
+
 V2.5.3 增加细粒度 identity/security patch controls、named profiles 与 Effective State；加强 attestation、KeyMint/StrongBox、DRM identifier privacy、升级流程与 Android 17；统一 WebUI 文件 ownership、恢复内置翻译、改进 Configuration Management 和移动导航；加入 KeyboxHub external-browser helper；并加强 diagnostics、cache/timing、dependency security、regression 与 release artifact validation。
 
 <a id="contributing"></a>

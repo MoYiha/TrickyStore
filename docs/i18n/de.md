@@ -208,6 +208,8 @@ Mobile Bottom Navigation, Touch Controls, Responsive Panels, Password Visibility
 <a id="changelog"></a>
 ## CHANGELOG
 
+V2.6.2 stärkt Keybox/CBOX-Refresh, Recovery und Veröffentlichung durch stabile verifizierte Snapshots und atomare Publikation, reduziert Rennen zwischen Lesern, Quarantine und Backend-Recovery und verbessert Server-Restarts, Cache-Invalidierung und Authentifizierungsprüfung. Auto Identity bindet Pixel-Security-Patches an die richtige Bulletin-Zeile; WebUI behandelt Abbrüche, Responses und Exports robuster. Backup/Restore ist transaktionaler, Bugreport- und Runtime-Dateizugriffe sind strenger begrenzt und symlink-sicher, außerdem wurden Rust X.509 und Rust-1.98-CI-Kompatibilität aktualisiert.
+
 V2.5.3 brachte granulare Identity/Security-Patch-Controls, Profiles und Effective State; Härtung von Attestation, KeyMint/StrongBox, DRM Privacy, Upgrade und Android 17; konsolidierte WebUI-Ownership und Übersetzungen; KeyboxHub mit externem Browser; sowie bessere Diagnostics, Cache/Timing, Dependency Security, Regression und Artifact Validation.
 
 <a id="contributing"></a>
