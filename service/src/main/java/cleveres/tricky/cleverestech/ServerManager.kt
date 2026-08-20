@@ -350,7 +350,10 @@ object ServerManager {
     ) {
         require(validHeaderName.matches(name)) { "Invalid authentication header name" }
         require(name.lowercase() !in restrictedHeaders) { "Restricted authentication header" }
-        require(value.length <= MAX_HEADER_VALUE_CHARS && '\r' !in value && '\n' !in value) {
+        require(
+            value.length <= MAX_HEADER_VALUE_CHARS &&
+                value.all { character -> character >= ' ' && character != '\u007f' },
+        ) {
             "Invalid authentication header value"
         }
     }
