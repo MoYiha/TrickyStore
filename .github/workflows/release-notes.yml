@@ -5,6 +5,7 @@ on:
     branches: [ "master" ]
     paths:
       - "CHANGELOG.md"
+      - "update.json"
       - ".github/workflows/release-notes.yml"
   workflow_dispatch:
 
