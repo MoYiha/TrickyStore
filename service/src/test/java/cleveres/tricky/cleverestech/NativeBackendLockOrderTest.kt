@@ -10,9 +10,11 @@ class NativeBackendLockOrderTest {
     @Test
     fun `keybox transports share the decoder response bound`() {
         val source = nativeBackendSource()
+        val fusedSource = sourceFile("FusedCboxBackend.kt")
         assertTrue(KeyboxWire.MAX_RESPONSE_BYTES > KeyboxWire.MAX_XML_BYTES)
         assertTrue(source.split("KeyboxWire.MAX_RESPONSE_BYTES").size - 1 >= 2)
         assertFalse(source.contains("private const val MAX_KEYBOX_RESPONSE_BYTES"))
+        assertTrue(fusedSource.contains("MAX_KEYBOX_WIRE_BYTES = KeyboxWire.MAX_RESPONSE_BYTES"))
     }
 
     @Test
@@ -33,7 +35,6 @@ class NativeBackendLockOrderTest {
     private companion object {
         val RECOVERY_CAPABLE_METHODS =
             listOf(
-                "openCbox",
                 "encryptBackup",
                 "decryptBackup",
                 "parseKeybox",
@@ -42,13 +43,15 @@ class NativeBackendLockOrderTest {
                 "transact",
             )
 
-        fun nativeBackendSource(): String {
+        fun nativeBackendSource(): String = sourceFile("NativeBackend.kt")
+
+        fun sourceFile(filename: String): String {
             var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
             repeat(6) {
                 val candidate =
                     File(
                         current,
-                        "service/src/main/java/cleveres/tricky/cleverestech/NativeBackend.kt",
+                        "service/src/main/java/cleveres/tricky/cleverestech/$filename",
                     )
                 if (candidate.isFile) return candidate.readText()
                 current = current.parentFile ?: return@repeat

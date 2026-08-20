@@ -5,9 +5,6 @@ import android.net.LocalSocketAddress
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.ByteBuffer
-import java.nio.charset.CharacterCodingException
-import java.nio.charset.CodingErrorAction
 
 internal enum class BackendStatus(val wireValue: Int) {
     REJECTED(1),
@@ -27,12 +24,6 @@ internal class RustBackendStateException(
 
 /** Thin Android LocalSocket adapter for the unprivileged Rust backend. */
 object NativeBackend {
-    data class CboxPayload(
-        val author: String,
-        val xmlContent: ByteArray,
-        val hasSignature: Boolean,
-    )
-
     internal data class BackendIdentity(
         val pid: Int,
         val epochHigh: Long,
@@ -44,39 +35,6 @@ object NativeBackend {
     private var backendStateResetPending = false
     private val readHeaderBuffer = ByteArray(HEADER_BYTES)
     private val writeHeaderBuffer = ByteArray(HEADER_BYTES)
-
-    fun openCbox(
-        encrypted: ByteArray,
-        password: String,
-        publicKey: String?,
-    ): CboxPayload? {
-        if (encrypted.isEmpty() || encrypted.size > MAX_CBOX_BYTES) return null
-        val passwordBytes = password.toByteArray(Charsets.UTF_8)
-        val publicKeyBytes = publicKey?.toByteArray(Charsets.UTF_8) ?: EMPTY_BYTES
-        try {
-            if (passwordBytes.size > MAX_PASSWORD_BYTES || publicKeyBytes.size > MAX_PUBLIC_KEY_BYTES) {
-                return null
-            }
-            val payloadLength =
-                checkedPayloadLength(2, passwordBytes.size, 2, publicKeyBytes.size, encrypted.size)
-                    ?: return null
-            return transact(
-                OP_CRYPTO_CBOX_OPEN,
-                payloadLength,
-                MAX_CBOX_RESPONSE_BYTES,
-                propagateTransportFailure = true,
-            ) { output ->
-                writeU16(output, passwordBytes.size)
-                if (passwordBytes.isNotEmpty()) output.write(passwordBytes)
-                writeU16(output, publicKeyBytes.size)
-                if (publicKeyBytes.isNotEmpty()) output.write(publicKeyBytes)
-                output.write(encrypted)
-            }?.let(::decodeCboxResponse)
-        } finally {
-            passwordBytes.fill(0)
-            if (publicKeyBytes !== EMPTY_BYTES) publicKeyBytes.fill(0)
-        }
-    }
 
     fun encryptBackup(
         plaintext: ByteArray,
@@ -452,44 +410,6 @@ object NativeBackend {
         output.write(writeHeaderBuffer)
     }
 
-    private fun decodeCboxResponse(bytes: ByteArray): CboxPayload? {
-        if (bytes.size < CBOX_RESPONSE_PREFIX_BYTES) {
-            bytes.fill(0)
-            return null
-        }
-        return try {
-            val authorLength = readU16(bytes, 0)
-            val xmlLength = readU32(bytes, 2)
-            val signatureFlag = bytes[6].toInt() and 0xff
-            if (xmlLength > Int.MAX_VALUE || signatureFlag !in 0..1) return null
-            val authorStart = CBOX_RESPONSE_PREFIX_BYTES
-            val authorEnd = Math.addExact(authorStart, authorLength)
-            val xmlEnd = Math.addExact(authorEnd, xmlLength.toInt())
-            if (xmlEnd != bytes.size || authorLength > MAX_AUTHOR_BYTES || xmlLength > MAX_CBOX_BYTES) return null
-            val author = decodeUtf8Strict(bytes, authorStart, authorLength)
-            val xml = bytes.copyOfRange(authorEnd, xmlEnd)
-            CboxPayload(author, xml, signatureFlag == 1)
-        } catch (_: CharacterCodingException) {
-            null
-        } catch (_: ArithmeticException) {
-            null
-        } finally {
-            bytes.fill(0)
-        }
-    }
-
-    private fun decodeUtf8Strict(
-        bytes: ByteArray,
-        offset: Int,
-        length: Int,
-    ): String =
-        Charsets.UTF_8
-            .newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes, offset, length))
-            .toString()
-
     private fun readFully(
         input: InputStream,
         output: ByteArray,
@@ -588,7 +508,6 @@ object NativeBackend {
     private const val IPC_VERSION = 1
     private const val HEADER_BYTES = 16
     private const val FLAG_ERROR = 1
-    private const val OP_CRYPTO_CBOX_OPEN = 20
     private const val OP_CRYPTO_BACKUP_ENCRYPT = 21
     private const val OP_CRYPTO_BACKUP_DECRYPT = 22
     private const val OP_KEYBOX_PARSE = 23
@@ -606,10 +525,6 @@ object NativeBackend {
     private const val NANOS_PER_MILLISECOND = 1_000_000L
     private const val MAX_EMPTY_READS = 16
     private const val MAX_PASSWORD_BYTES = 4 * 1024
-    private const val MAX_PUBLIC_KEY_BYTES = 16 * 1024
-    private const val MAX_AUTHOR_BYTES = 4 * 1024
-    private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
-    private const val MAX_CBOX_RESPONSE_BYTES = 10 * 1024 * 1024 + 8 * 1024
     private const val MAX_BACKUP_PLAINTEXT_BYTES = 32 * 1024 * 1024
     private const val MAX_BACKUP_WIRE_BYTES = MAX_BACKUP_PLAINTEXT_BYTES + 64
     private const val MAX_BACKUP_RESPONSE_BYTES = MAX_BACKUP_WIRE_BYTES
@@ -617,9 +532,7 @@ object NativeBackend {
     private const val KEYBOX_FILE_SCOPE_CONFIG_ROOT = 0
     private const val KEYBOX_FILE_SCOPE_DIRECTORY = 1
     private const val MAX_BACKEND_REQUEST_BYTES = MAX_BACKUP_WIRE_BYTES + MAX_PASSWORD_BYTES + 2
-    private const val CBOX_RESPONSE_PREFIX_BYTES = 7
     private const val ANDROID_AID_NOBODY = 9999
     private const val ANDROID_GID_NOBODY = 9999
     private val IPC_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'I'.code.toByte(), 'P'.code.toByte())
-    private val EMPTY_BYTES = ByteArray(0)
 }
