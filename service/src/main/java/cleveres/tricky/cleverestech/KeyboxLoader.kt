@@ -24,7 +24,7 @@ internal object KeyboxLoader {
     }
 
     internal data class ParsedFile(
-        val snapshotSha256: String,
+        val snapshotSha256: String?,
         val keyboxes: List<CertHack.KeyBox>,
     )
 
@@ -74,7 +74,7 @@ internal object KeyboxLoader {
                 override(scope, filename)
             } else {
                 val document = NativeBackend.parseKeyboxFile(scope.wireValue, filename)
-                    ?: return ParsedFile("", emptyList())
+                    ?: return ParsedFile(null, emptyList())
                 ParsedFile(
                     snapshotSha256 = document.snapshotSha256,
                     keyboxes = KeyboxJcaAdapter.materialize(document, filename),
