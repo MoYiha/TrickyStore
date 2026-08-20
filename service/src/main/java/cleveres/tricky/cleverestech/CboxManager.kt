@@ -40,7 +40,6 @@ object CboxManager {
             refreshLocked()
         }
 
-    @Synchronized
     private fun refreshLocked() {
         if (KeyboxLoader.consumeBackendOutage()) {
             invalidateBackendHandles()
@@ -115,7 +114,6 @@ object CboxManager {
     }
 
     /** Drops only managed opaque-handle views. Encrypted recovery caches remain for re-registration. */
-    @Synchronized
     internal fun invalidateBackendHandles() {
         val names = unlockedCache.keys.toList()
         unlockedCache.clear()
@@ -131,7 +129,6 @@ object CboxManager {
             unlockLocked(filename, password, publicKey)
         }
 
-    @Synchronized
     private fun unlockLocked(
         filename: String,
         password: String,
