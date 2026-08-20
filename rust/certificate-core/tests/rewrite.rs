@@ -81,6 +81,18 @@ fn ec_issuer_resigns_rsa_subject_without_changing_subject_spki() {
         genuine.tbs_certificate().subject_public_key_info(),
     );
     assert_eq!(
+        output
+            .tbs_certificate()
+            .subject_public_key_info()
+            .to_der()
+            .expect("rewritten subject SPKI DER"),
+        genuine
+            .tbs_certificate()
+            .subject_public_key_info()
+            .to_der()
+            .expect("genuine subject SPKI DER"),
+    );
+    assert_eq!(
         output.tbs_certificate().issuer(),
         ec_issuer.tbs_certificate().subject(),
     );
@@ -137,6 +149,14 @@ fn run_fixture(xml: &[u8], algorithm: SigningAlgorithm) {
         genuine.tbs_certificate().serial_number(),
     );
     assert_eq!(
+        output
+            .tbs_certificate()
+            .serial_number()
+            .to_der()
+            .expect("rewritten serial DER"),
+        vec![0x02, 0x02, 0x00, 0x80],
+    );
+    assert_eq!(
         output.tbs_certificate().validity(),
         genuine.tbs_certificate().validity()
     );
@@ -147,6 +167,18 @@ fn run_fixture(xml: &[u8], algorithm: SigningAlgorithm) {
     assert_eq!(
         output.tbs_certificate().subject_public_key_info(),
         genuine.tbs_certificate().subject_public_key_info(),
+    );
+    assert_eq!(
+        output
+            .tbs_certificate()
+            .subject_public_key_info()
+            .to_der()
+            .expect("rewritten subject SPKI DER"),
+        genuine
+            .tbs_certificate()
+            .subject_public_key_info()
+            .to_der()
+            .expect("genuine subject SPKI DER"),
     );
     assert!(genuine.tbs_certificate().issuer_unique_id().is_some());
     assert!(genuine.tbs_certificate().subject_unique_id().is_some());
@@ -196,7 +228,8 @@ fn normalized_pem(value: &str) -> String {
 fn synthetic_genuine_leaf(issuer: &Certificate) -> Certificate {
     let issuer_tbs = issuer.tbs_certificate();
     let version = explicit_x509_tag(0, &2i32.to_der().expect("v3 DER"));
-    let serial = 0x012345i32.to_der().expect("serial DER");
+    // 0x80 requires DER's leading 0x00 sign octet when encoded as a positive INTEGER.
+    let serial = 0x80i32.to_der().expect("serial DER");
     let signature = issuer_tbs
         .signature()
         .to_der()

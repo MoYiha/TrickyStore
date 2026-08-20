@@ -111,6 +111,7 @@ public final class CertHack {
         final Map<String, List<KeyBox>> keyboxFiles;
         final Map<KeyBox, PreparedKeyBox> preparedKeyboxes;
         final Map<CacheKey, CachedCertificateChain> certificateCache;
+        Object certificateCacheEpoch;
 
         State(Map<String, List<KeyBox>> keyboxes, Map<String, List<KeyBox>> keyboxFiles) {
             this.keyboxes = immutableLists(keyboxes);
@@ -136,6 +137,7 @@ public final class CertHack {
                             return size() > MAX_CERTIFICATE_CACHE_ENTRIES;
                         }
                     });
+            this.certificateCacheEpoch = new Object();
         }
 
         private static Map<String, List<KeyBox>> immutableLists(Map<String, List<KeyBox>> source) {
@@ -291,7 +293,22 @@ public final class CertHack {
     public static void clearCertificateCache() {
         State currentState = state;
         synchronized (currentState.certificateCache) {
+            currentState.certificateCacheEpoch = new Object();
             currentState.certificateCache.clear();
+        }
+    }
+
+    static Object captureCertificateCacheEpochForTesting() {
+        State currentState = state;
+        synchronized (currentState.certificateCache) {
+            return currentState.certificateCacheEpoch;
+        }
+    }
+
+    static boolean isCertificateCacheEpochCurrentForTesting(Object expectedEpoch) {
+        State currentState = state;
+        synchronized (currentState.certificateCache) {
+            return currentState.certificateCacheEpoch == expectedEpoch;
         }
     }
 
@@ -356,9 +373,11 @@ public final class CertHack {
             }
             CacheKey cacheKey = new CacheKey(leafEncoded);
             Map<CacheKey, CachedCertificateChain> cache = currentState.certificateCache;
+            Object cacheEpoch;
             synchronized (cache) {
                 CachedCertificateChain cached = cache.get(cacheKey);
                 if (cached != null) return cached.certificateCopy();
+                cacheEpoch = currentState.certificateCacheEpoch;
             }
 
             // Preserve 2.5.8's ordering: look for a completed replacement first, then classify an
@@ -454,6 +473,9 @@ public final class CertHack {
             CachedCertificateChain completed =
                     new CachedCertificateChain(result, rewrittenDer, issuerChainEncoded);
             synchronized (cache) {
+                if (state != currentState || currentState.certificateCacheEpoch != cacheEpoch) {
+                    return result;
+                }
                 CachedCertificateChain raced = cache.get(cacheKey);
                 if (raced != null) return raced.certificateCopy();
                 cache.put(cacheKey, completed);
