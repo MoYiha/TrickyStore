@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.security.MessageDigest
 import java.util.Locale
 
 /** One bounded inventory for keybox sources visible to both runtime and WebUI. */
@@ -29,13 +28,6 @@ internal object StoredKeyboxInventory {
             get() = filename.endsWith(".cbox", ignoreCase = true)
     }
 
-    private class ContentStampedFile(
-        source: File,
-        private val contentStamp: Long,
-    ) : File(source.path) {
-        override fun lastModified(): Long = contentStamp
-    }
-
     const val MAX_ACTIVE_XML_SOURCES = 64
     const val MAX_STORED_SOURCES = 256
     const val MAX_FILENAME_BYTES = 255
@@ -55,29 +47,10 @@ internal object StoredKeyboxInventory {
         return output
     }
 
-    fun runtimeXmlSources(configDir: File): List<Source> = runtimeXmlSources(configDir, ::contentStamp)
-
-    internal fun runtimeXmlSources(
-        configDir: File,
-        contentStamper: (File) -> Long?,
-    ): List<Source> {
-        val sources = list(configDir).filter { it.isXml }
+    fun runtimeXmlSources(configDir: File): List<Source> {
+        val sources = list(configDir).filter { it.isXml && it.file.length() in 1..MAX_XML_BYTES }
         require(sources.size <= MAX_ACTIVE_XML_SOURCES) { "Too many keybox XML files" }
-        // Preserve the V2.6.0 upgrade contract: a legacy XML in the module root and a
-        // managed XML in keyboxes/ may share the same basename. Source IDs remain
-        // scope-qualified for cache, inventory and deletion, while CertHack intentionally
-        // groups same-name keyboxes into one selectable filename pool.
-        //
-        // Runtime cache metadata historically used only mtime + length, allowing a replaced
-        // XML with identical metadata to retain stale parsed keyboxes. A source is cache-
-        // admissible only when its complete content can be stamped within the runtime bound.
-        // Failed or unstable stamping is propagated as non-admission; Config's current-source
-        // cleanup then evicts any older cache entry instead of reusing a synthetic identity.
-        return sources.mapNotNull { source ->
-            if (source.file.length() !in 1..MAX_XML_BYTES) return@mapNotNull null
-            val stamp = contentStamper(source.file) ?: return@mapNotNull null
-            source.copy(file = ContentStampedFile(source.file, stamp))
-        }
+        return sources
     }
 
     fun resolve(
@@ -92,37 +65,6 @@ internal object StoredKeyboxInventory {
         if (candidate.parentFile?.canonicalFile != directory.canonicalFile) return null
         if (!Files.isRegularFile(candidate.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
         return Source(scope, filename, candidate)
-    }
-
-    private fun contentStamp(file: File): Long? {
-        val digest = MessageDigest.getInstance("SHA-256")
-        Files.newInputStream(file.toPath(), LinkOption.NOFOLLOW_LINKS).use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var total = 0L
-            try {
-                while (true) {
-                    val count = input.read(buffer)
-                    if (count < 0) break
-                    if (count > 0) {
-                        total += count
-                        if (total > MAX_XML_BYTES) return null
-                        digest.update(buffer, 0, count)
-                    }
-                }
-            } finally {
-                buffer.fill(0)
-            }
-        }
-        val bytes = digest.digest()
-        return try {
-            var value = 0L
-            for (index in 0 until Long.SIZE_BYTES) {
-                value = (value shl 8) or (bytes[index].toLong() and 0xffL)
-            }
-            value
-        } finally {
-            bytes.fill(0)
-        }
     }
 
     private fun scan(
