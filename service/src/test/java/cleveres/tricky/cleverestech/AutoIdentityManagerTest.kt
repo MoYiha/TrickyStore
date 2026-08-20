@@ -79,6 +79,34 @@ class AutoIdentityManagerTest {
     }
 
     @Test
+    fun `security patch lookup stays inside the matching bulletin row`() {
+        val bulletin =
+            """
+            <table>
+              <tr><td>2607</td><td>2026-07-05</td></tr>
+              <tr><td>2608</td><td>2026-08-05</td></tr>
+            </table>
+            """.trimIndent()
+
+        assertEquals(
+            "2026-08-05",
+            AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"),
+        )
+    }
+
+    @Test
+    fun `security patch lookup does not borrow a nearby date outside the matching row`() {
+        val bulletin =
+            """
+            <div>2026-07-05</div>
+            <p>canary-2608</p>
+            <div>2026-08-05</div>
+            """.trimIndent()
+
+        assertEquals(null, AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"))
+    }
+
+    @Test
     fun `security patch falls back to canary month when bulletin has no match`() {
         assertEquals("2026-08-05", AutoIdentityManager.estimateSecurityPatch("canary-2608"))
         assertEquals("2026-08-05", AutoIdentityManager.estimateSecurityPatch("canary-202608"))
