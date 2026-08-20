@@ -366,9 +366,13 @@ object AutoIdentityManager {
         if (token.isEmpty()) return null
         val index = html.indexOf(token, ignoreCase = true)
         if (index < 0) return null
-        val start = (index - 1200).coerceAtLeast(0)
-        val end = (index + token.length + 1200).coerceAtMost(html.length)
-        return Regex("""20\d{2}-\d{2}-\d{2}""").find(html.substring(start, end))?.value
+
+        val rowStart = html.lastIndexOf("<tr", startIndex = index, ignoreCase = true)
+        val rowEnd = html.indexOf("</tr>", startIndex = index, ignoreCase = true)
+        if (rowStart < 0 || rowEnd < index) return null
+
+        val row = html.substring(rowStart, rowEnd + "</tr>".length)
+        return normalizePatch(row)
     }
 
     private fun normalizePatch(value: String): String? =
