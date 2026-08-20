@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
+import java.util.concurrent.locks.ReentrantLock
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
 /** Atomic process-wide publication boundary between Rust secret keys and managed selection state. */
@@ -13,6 +14,7 @@ internal object KeyboxActivation {
         FAILED,
     }
 
+    private val refreshLock = ReentrantLock()
     private val publicationLock = ReentrantReadWriteLock()
     private val publicationReadLock = publicationLock.readLock()
     private val publicationWriteLock = publicationLock.writeLock()
@@ -22,8 +24,22 @@ internal object KeyboxActivation {
     private var committedIdentity: NativeBackend.BackendIdentity? = null
 
     /**
+     * Serializes the complete scan -> parse -> verify -> commit -> publish lifecycle. Besides
+     * preventing stale writers, this keeps one refresh from evicting another refresh's transient
+     * Rust key registrations before the winning active-set commit.
+     */
+    fun <T> coordinateRefresh(block: () -> T): T {
+        refreshLock.lock()
+        return try {
+            block()
+        } finally {
+            refreshLock.unlock()
+        }
+    }
+
+    /**
      * Starts a new logical refresh. Generation assignment shares the publication write lock so a
-     * refresh cannot become newer halfway through another refresh's Rust+managed commit boundary.
+     * backend invalidation cannot become newer halfway through another refresh's commit boundary.
      */
     fun beginRefresh(): RefreshTicket {
         publicationWriteLock.lock()
@@ -61,10 +77,11 @@ internal object KeyboxActivation {
     }
 
     /** Compatibility entry point for recovery/bootstrap callers that own their own error policy. */
-    fun commitAndPublish(keyboxes: List<CertHack.KeyBox>): Boolean {
-        val ticket = beginRefresh()
-        return commitAndPublish(ticket, keyboxes) == PublicationResult.COMMITTED
-    }
+    fun commitAndPublish(keyboxes: List<CertHack.KeyBox>): Boolean =
+        coordinateRefresh {
+            val ticket = beginRefresh()
+            commitAndPublish(ticket, keyboxes) == PublicationResult.COMMITTED
+        }
 
     /** Java-facing guard for a certificate rewrite that consumes managed + Rust key state. */
     @JvmStatic
