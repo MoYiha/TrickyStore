@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.util.concurrent.locks.ReentrantLock
-import java.util.concurrent.locks.ReentrantReadWriteLock
 
 /** Atomic process-wide publication boundary between Rust secret keys and managed selection state. */
 internal object KeyboxActivation {
@@ -15,9 +14,7 @@ internal object KeyboxActivation {
     }
 
     private val refreshLock = ReentrantLock()
-    private val publicationLock = ReentrantReadWriteLock()
-    private val publicationReadLock = publicationLock.readLock()
-    private val publicationWriteLock = publicationLock.writeLock()
+    private val publicationLock = ReentrantLock()
     private var refreshGeneration = 0L
 
     @Volatile
@@ -38,30 +35,31 @@ internal object KeyboxActivation {
     }
 
     /**
-     * Starts a new logical refresh. Generation assignment shares the publication write lock so a
-     * backend invalidation cannot become newer halfway through another refresh's commit boundary.
+     * Starts a new logical refresh. Generation assignment shares the publication mutex so backend
+     * invalidation cannot become newer halfway through another refresh's commit boundary.
      */
     fun beginRefresh(): RefreshTicket {
-        publicationWriteLock.lock()
+        publicationLock.lock()
         return try {
             refreshGeneration = Math.incrementExact(refreshGeneration)
             RefreshTicket(refreshGeneration)
         } finally {
-            publicationWriteLock.unlock()
+            publicationLock.unlock()
         }
     }
 
     /**
      * Commits the Rust active set and publishes the matching managed snapshot as one reader-visible
-     * transition. Fresh certificate rewrites hold the read side of this lock while selecting and
+     * transition. Fresh certificate rewrites hold this same reentrant mutex while selecting and
      * consuming an opaque backend key, so they can observe either the old pair or the new pair but
-     * never the Rust-new/managed-old gap between these two operations.
+     * never the Rust-new/managed-old gap. Reentrancy is intentional: an epoch recovery triggered by
+     * a fresh rewrite can rebuild publication on the same thread without a read-to-write upgrade.
      */
     fun commitAndPublish(
         ticket: RefreshTicket,
         keyboxes: List<CertHack.KeyBox>,
     ): PublicationResult {
-        publicationWriteLock.lock()
+        publicationLock.lock()
         return try {
             if (ticket.generation != refreshGeneration) return PublicationResult.SUPERSEDED
             if (!KeyboxLoader.commitActive(keyboxes)) {
@@ -72,7 +70,7 @@ internal object KeyboxActivation {
             committedIdentity = NativeBackend.currentBackendIdentity()
             PublicationResult.COMMITTED
         } finally {
-            publicationWriteLock.unlock()
+            publicationLock.unlock()
         }
     }
 
@@ -83,25 +81,28 @@ internal object KeyboxActivation {
             commitAndPublish(ticket, keyboxes) == PublicationResult.COMMITTED
         }
 
-    /** Java-facing guard for a certificate rewrite that consumes managed + Rust key state. */
+    /**
+     * Java-facing guard for a fresh certificate rewrite that consumes managed + Rust key state.
+     * Cache-hit certificate reads do not need this mutex because they no longer consume Rust keys.
+     */
     @JvmStatic
     fun lockPublishedSnapshot() {
-        publicationReadLock.lock()
+        publicationLock.lock()
     }
 
     @JvmStatic
     fun unlockPublishedSnapshot() {
-        publicationReadLock.unlock()
+        publicationLock.unlock()
     }
 
     fun invalidateBackendInstance() {
-        publicationWriteLock.lock()
+        publicationLock.lock()
         try {
             refreshGeneration = Math.incrementExact(refreshGeneration)
             committedIdentity = null
             CertHack.clearCertificateCache()
         } finally {
-            publicationWriteLock.unlock()
+            publicationLock.unlock()
         }
     }
 
@@ -112,12 +113,12 @@ internal object KeyboxActivation {
 
     @androidx.annotation.VisibleForTesting
     internal fun resetForTesting() {
-        publicationWriteLock.lock()
+        publicationLock.lock()
         try {
             refreshGeneration = 0L
             committedIdentity = null
         } finally {
-            publicationWriteLock.unlock()
+            publicationLock.unlock()
         }
     }
 }
