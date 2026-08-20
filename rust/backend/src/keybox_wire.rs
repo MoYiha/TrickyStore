@@ -113,10 +113,8 @@ fn retain_active_set(request: &[u8]) -> Result<Vec<u8>, &'static str> {
     let mut ids = Vec::<KeyId>::new();
     ids.try_reserve_exact(count)
         .map_err(|_| "active key set allocation failed")?;
-    for chunk in request[STORE_RETAIN_HEADER_BYTES..].chunks_exact(KEY_ID_BYTES) {
-        let id: KeyId = chunk
-            .try_into()
-            .map_err(|_| "invalid opaque key identifier")?;
+    for chunk in request[STORE_RETAIN_HEADER_BYTES..].as_chunks::<KEY_ID_BYTES>().0 {
+        let id: KeyId = *chunk;
         if id.iter().all(|byte| *byte == 0) || ids.contains(&id) {
             return Err("invalid active key identifier set");
         }
