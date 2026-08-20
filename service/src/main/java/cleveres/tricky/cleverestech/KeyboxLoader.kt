@@ -23,6 +23,11 @@ internal object KeyboxLoader {
         KEYBOX_DIRECTORY(1),
     }
 
+    internal data class ParsedFile(
+        val snapshotSha256: String,
+        val keyboxes: List<CertHack.KeyBox>,
+    )
+
     private val backendOutageObserved = AtomicBoolean(false)
     private val activeSetHealthy = AtomicBoolean(true)
 
@@ -30,7 +35,7 @@ internal object KeyboxLoader {
     internal var parserOverride: ((ByteArray, String) -> List<CertHack.KeyBox>)? = null
 
     @VisibleForTesting
-    internal var fileParserOverride: ((FileScope, String) -> List<CertHack.KeyBox>)? = null
+    internal var fileParserOverride: ((FileScope, String) -> ParsedFile)? = null
 
     @VisibleForTesting
     internal var activeSetOverride: ((List<ByteArray>) -> Boolean)? = null
@@ -57,14 +62,23 @@ internal object KeyboxLoader {
     fun parseFile(
         scope: FileScope,
         filename: String,
-    ): List<CertHack.KeyBox> =
+    ): List<CertHack.KeyBox> = parseFileSnapshot(scope, filename).keyboxes
+
+    fun parseFileSnapshot(
+        scope: FileScope,
+        filename: String,
+    ): ParsedFile =
         try {
             val override = fileParserOverride
             if (override != null) {
                 override(scope, filename)
             } else {
                 val document = NativeBackend.parseKeyboxFile(scope.wireValue, filename)
-                if (document == null) emptyList() else KeyboxJcaAdapter.materialize(document, filename)
+                    ?: return ParsedFile("", emptyList())
+                ParsedFile(
+                    snapshotSha256 = document.snapshotSha256,
+                    keyboxes = KeyboxJcaAdapter.materialize(document, filename),
+                )
             }
         } catch (error: RustBackendUnavailableException) {
             backendOutageObserved.set(true)
