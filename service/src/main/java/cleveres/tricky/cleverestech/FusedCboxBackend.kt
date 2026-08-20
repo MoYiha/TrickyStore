@@ -149,7 +149,8 @@ internal object FusedCboxBackend {
         }
     }
 
-    private fun decode(bytes: ByteArray): Payload? {
+    @VisibleForTesting
+    internal fun decode(bytes: ByteArray): Payload? {
         if (bytes.size < RESPONSE_PREFIX_BYTES) {
             bytes.fill(0)
             return null
@@ -165,6 +166,7 @@ internal object FusedCboxBackend {
             val wireEnd = Math.addExact(authorEnd, wireLength.toInt())
             if (wireEnd != bytes.size || authorLength > MAX_AUTHOR_BYTES || wireLength > MAX_KEYBOX_WIRE_BYTES) return null
             val author = decodeUtf8Strict(bytes, authorStart, authorLength)
+            if (author.length > MAX_AUTHOR_UTF16_UNITS) return null
             keyboxWire = bytes.copyOfRange(authorEnd, wireEnd)
             val document = KeyboxWire.decode(keyboxWire) ?: return null
             keyboxWire = null
@@ -226,7 +228,8 @@ internal object FusedCboxBackend {
     private const val RECOVERY_KEY_BYTES = 32
     private const val MAX_PASSWORD_BYTES = 4 * 1024
     private const val MAX_PUBLIC_KEY_BYTES = 16 * 1024
-    private const val MAX_AUTHOR_BYTES = 1024
+    private const val MAX_AUTHOR_UTF16_UNITS = 1024
+    private const val MAX_AUTHOR_BYTES = 4 * MAX_AUTHOR_UTF16_UNITS
     private const val MAX_CBOX_BYTES = 10 * 1024 * 1024 + 36
     private const val MAX_KEYBOX_WIRE_BYTES = KeyboxWire.MAX_RESPONSE_BYTES
     private const val MAX_CBOX_RESPONSE_BYTES = RESPONSE_PREFIX_BYTES + MAX_AUTHOR_BYTES + MAX_KEYBOX_WIRE_BYTES
