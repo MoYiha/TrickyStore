@@ -1,7 +1,9 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.readFileSnapshotBounded
 import java.io.File
 import java.io.StringReader
+import java.security.MessageDigest
 
 /** JVM-only legacy oracle for tests whose production path requires the supervised Rust backend. */
 internal object ManagedKeyboxParserOracle {
@@ -16,7 +18,15 @@ internal object ManagedKeyboxParserOracle {
                     KeyboxLoader.FileScope.CONFIG_ROOT -> File(Config.getConfigRoot(), filename)
                     KeyboxLoader.FileScope.KEYBOX_DIRECTORY -> File(File(Config.getConfigRoot(), "keyboxes"), filename)
                 }
-            file.bufferedReader(Charsets.UTF_8).use { ManagedOpaqueKeyOracle.parse(it, filename) }
+            val snapshot = readFileSnapshotBounded(file, 1, StoredKeyboxInventory.MAX_XML_BYTES)
+            try {
+                KeyboxLoader.ParsedFile(
+                    snapshotSha256 = sha256Hex(snapshot),
+                    keyboxes = ManagedOpaqueKeyOracle.parse(StringReader(snapshot.toString(Charsets.UTF_8)), filename),
+                )
+            } finally {
+                snapshot.fill(0)
+            }
         }
         KeyboxLoader.activeSetOverride = { keyIds -> keyIds.all(ManagedOpaqueKeyOracle::contains) }
     }
@@ -24,5 +34,21 @@ internal object ManagedKeyboxParserOracle {
     fun reset() {
         KeyboxLoader.resetForTesting()
         ManagedOpaqueKeyOracle.reset()
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        return try {
+            val alphabet = "0123456789abcdef"
+            buildString(digest.size * 2) {
+                digest.forEach { byte ->
+                    val value = byte.toInt() and 0xff
+                    append(alphabet[value ushr 4])
+                    append(alphabet[value and 0x0f])
+                }
+            }
+        } finally {
+            digest.fill(0)
+        }
     }
 }
