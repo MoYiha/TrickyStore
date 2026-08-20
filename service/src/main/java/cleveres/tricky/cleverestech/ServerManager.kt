@@ -67,8 +67,13 @@ object ServerManager {
             Thread(runnable, "cleverestricky-server-refresh").apply { isDaemon = true }
         }
 
+    fun initialize() =
+        KeyboxActivation.coordinateRefresh {
+            initializeLocked()
+        }
+
     @Synchronized
-    fun initialize() {
+    private fun initializeLocked() {
         loadServers()
         // Invalidate every fetch snapshot captured before this reload. Recovery can run while
         // a server request is in flight, but that request must never publish into rebuilt state.
@@ -556,36 +561,10 @@ object ServerManager {
                     }
                 }
 
-            val result =
-                try {
-                    processContent(bytes, snapshot)
-                } finally {
-                    bytes.fill(0)
-                }
-            val keyboxes = result.first
-            val cacheBytes = result.second
-            try {
-                val crl = KeyboxVerifier.fetchCrl()
-                if (crl == null) {
-                    return commitFetchFailure(
-                        context,
-                        "CRL_UNAVAILABLE",
-                        clearContent = true,
-                        deleteCache = false,
-                    )
-                }
-                val statuses = keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
-                if (keyboxes.isEmpty() || statuses.any { it != KeyboxVerifier.Status.VALID }) {
-                    return commitFetchFailure(
-                        context,
-                        "INVALID_CONTENT",
-                        clearContent = true,
-                        deleteCache = true,
-                    )
-                }
-                return commitFetchSuccess(context, keyboxes, cacheBytes)
+            return try {
+                processFetchedContent(context, bytes)
             } finally {
-                cacheBytes?.fill(0)
+                bytes.fill(0)
             }
         } catch (e: IllegalArgumentException) {
             Logger.e("Invalid server configuration: ${snapshot.name}", e)
@@ -597,6 +576,40 @@ object ServerManager {
             conn?.disconnect()
         }
     }
+
+    private fun processFetchedContent(
+        context: FetchContext,
+        bytes: ByteArray,
+    ): Boolean =
+        KeyboxActivation.coordinateRefresh {
+            val snapshot = context.snapshot
+            val result = processContent(bytes, snapshot)
+            val keyboxes = result.first
+            val cacheBytes = result.second
+            try {
+                val crl = KeyboxVerifier.fetchCrl()
+                if (crl == null) {
+                    return@coordinateRefresh commitFetchFailure(
+                        context,
+                        "CRL_UNAVAILABLE",
+                        clearContent = true,
+                        deleteCache = false,
+                    )
+                }
+                val statuses = keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
+                if (keyboxes.isEmpty() || statuses.any { it != KeyboxVerifier.Status.VALID }) {
+                    return@coordinateRefresh commitFetchFailure(
+                        context,
+                        "INVALID_CONTENT",
+                        clearContent = true,
+                        deleteCache = true,
+                    )
+                }
+                commitFetchSuccess(context, keyboxes, cacheBytes)
+            } finally {
+                cacheBytes?.fill(0)
+            }
+        }
 
     internal fun processContent(
         bytes: ByteArray,
