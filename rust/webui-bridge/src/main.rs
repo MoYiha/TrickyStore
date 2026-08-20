@@ -25,6 +25,9 @@ const MAX_REQUEST_BYTES: usize = MAX_FRAME_BYTES;
 const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES: usize = 20 * 1024 * 1024;
 const MAX_REPORT_BYTES: usize = 256 * 1024 * 1024;
+const MAX_REPORT_SOURCE_BYTES: usize = 1024 * 1024;
+const MAX_REPORT_RELATIVE_PATH_BYTES: usize = 4096;
+const MAX_REPORT_PATH_COMPONENTS: usize = 64;
 const MAX_RESPONSE_ENVELOPE_BYTES: usize = 512 * 1024;
 const MAX_CHUNK_BYTES: usize = 64 * 1024;
 const MAX_REPORT_DIRECTORY_ENTRIES: usize = 1024;
@@ -63,6 +66,9 @@ fn run() -> Result<(), String> {
         }
         "stage-drop" if args.len() == 3 => stage_drop(&staging, &args[1], &args[2]),
         "export" if args.len() == 4 => export_file(&staging, &args[1], &args[2], &args[3]),
+        "copy-report-file" if args.len() == 5 => {
+            copy_report_file(&args[1], &args[2], &args[3], &args[4])
+        }
         "publish-report" if args.len() == 3 => publish_report(&args[1], &args[2]),
         _ => Err("Invalid command".to_string()),
     }
@@ -335,6 +341,103 @@ fn publish_report(id: &str, filename: &str) -> Result<(), String> {
     )?;
     println!("{}", destination.display());
     Ok(())
+}
+
+fn copy_report_file(
+    id: &str,
+    source_root: &str,
+    source_relative: &str,
+    destination_relative: &str,
+) -> Result<(), String> {
+    validate_id(id)?;
+    let source_path = Path::new(source_root);
+    if !source_path.is_absolute() || source_root.len() > MAX_REPORT_RELATIVE_PATH_BYTES {
+        return Err("Invalid report source root".to_string());
+    }
+    let source_components = report_path_components(source_relative)?;
+    let destination_components = report_path_components(destination_relative)?;
+
+    let config = TrustedDir::open(Path::new(CONFIG_DIR))
+        .map_err(|error| format!("Configuration directory is unavailable: {error}"))?;
+    let workspace = config
+        .open_child(&format!("{REPORT_WORKSPACE_PREFIX}{id}"))
+        .map_err(|error| format!("Report workspace is unavailable: {error}"))?;
+    let payload = workspace
+        .open_child("payload")
+        .map_err(|error| format!("Report payload directory is unavailable: {error}"))?;
+    let source = TrustedDir::open(source_path)
+        .map_err(|error| format!("Report source directory is unavailable: {error}"))?;
+
+    copy_report_file_between(
+        &source,
+        &source_components,
+        &payload,
+        &destination_components,
+    )
+    .map_err(|error| format!("Could not snapshot report source: {error}"))?;
+    println!("1");
+    Ok(())
+}
+
+fn report_path_components(value: &str) -> Result<Vec<&str>, String> {
+    if value.is_empty()
+        || value.len() > MAX_REPORT_RELATIVE_PATH_BYTES
+        || value.starts_with('/')
+        || value.ends_with('/')
+    {
+        return Err("Invalid report-relative path".to_string());
+    }
+    let components: Vec<_> = value.split('/').collect();
+    if components.len() > MAX_REPORT_PATH_COMPONENTS
+        || components
+            .iter()
+            .any(|component| component.is_empty() || *component == "." || *component == "..")
+    {
+        return Err("Invalid report-relative path".to_string());
+    }
+    Ok(components)
+}
+
+fn copy_report_file_between(
+    source: &TrustedDir,
+    source_components: &[&str],
+    destination: &TrustedDir,
+    destination_components: &[&str],
+) -> io::Result<()> {
+    let bytes = read_report_file(source, source_components)?;
+    write_report_file(destination, destination_components, &bytes)
+}
+
+fn read_report_file(directory: &TrustedDir, components: &[&str]) -> io::Result<Vec<u8>> {
+    match components {
+        [name] => directory.read_prefix_bounded(name, MAX_REPORT_SOURCE_BYTES),
+        [directory_name, remaining @ ..] => {
+            let child = directory.open_child(directory_name)?;
+            read_report_file(&child, remaining)
+        }
+        [] => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "report source path is empty",
+        )),
+    }
+}
+
+fn write_report_file(
+    directory: &TrustedDir,
+    components: &[&str],
+    bytes: &[u8],
+) -> io::Result<()> {
+    match components {
+        [name] => directory.atomic_write(name, bytes, 0o600),
+        [directory_name, remaining @ ..] => {
+            let child = directory.mkdir_child(directory_name, 0o700)?;
+            write_report_file(&child, remaining, bytes)
+        }
+        [] => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "report destination path is empty",
+        )),
+    }
 }
 
 fn open_report_source(config: &TrustedDir, id: &str) -> Result<File, String> {
@@ -773,6 +876,69 @@ mod tests {
         drop(source);
         drop(config);
         fs::remove_file(&workspace_path).unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn report_collection_pins_source_tree_rejects_symlinks_and_bounds_reads() {
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        let base = env::temp_dir().join(format!(
+            "ct-report-collection-{}-{}",
+            process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let source_path = base.join("source");
+        let pinned_path = base.join("source.pinned");
+        let outside_path = base.join("outside");
+        let payload_path = base.join("payload");
+        fs::create_dir_all(source_path.join("nested")).unwrap();
+        fs::create_dir_all(&outside_path).unwrap();
+        fs::create_dir_all(&payload_path).unwrap();
+        let oversized = vec![0x5a; MAX_REPORT_SOURCE_BYTES + 37];
+        fs::write(source_path.join("nested/device.log"), &oversized).unwrap();
+        fs::write(outside_path.join("secret"), b"outside-secret").unwrap();
+        let source = TrustedDir::open(&source_path).unwrap();
+        let payload = TrustedDir::open(&payload_path).unwrap();
+
+        fs::rename(&source_path, &pinned_path).unwrap();
+        symlink(&outside_path, &source_path).unwrap();
+        copy_report_file_between(
+            &source,
+            &["nested", "device.log"],
+            &payload,
+            &["android", "source", "device.log"],
+        )
+        .unwrap();
+        let copied = fs::read(payload_path.join("android/source/device.log")).unwrap();
+        assert_eq!(copied.len(), MAX_REPORT_SOURCE_BYTES);
+        assert!(copied.iter().all(|byte| *byte == 0x5a));
+
+        symlink(&outside_path, pinned_path.join("escape-dir")).unwrap();
+        symlink(
+            outside_path.join("secret"),
+            pinned_path.join("escape-file"),
+        )
+        .unwrap();
+        assert!(copy_report_file_between(
+            &source,
+            &["escape-dir", "secret"],
+            &payload,
+            &["android", "leaked-dir"],
+        )
+        .is_err());
+        assert!(copy_report_file_between(
+            &source,
+            &["escape-file"],
+            &payload,
+            &["android", "leaked-file"],
+        )
+        .is_err());
+        assert!(!payload_path.join("android/leaked-dir").exists());
+        assert!(!payload_path.join("android/leaked-file").exists());
+        assert!(report_path_components("../escape").is_err());
+
+        drop(source);
+        drop(payload);
         fs::remove_dir_all(&base).unwrap();
     }
 

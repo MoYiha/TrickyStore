@@ -17,12 +17,11 @@ tmp=""
 REPORT_FILE_BLOCK_LIMIT=262144
 
 # Bound the uncompressed collection before tar sees it. Directory snapshots keep
-# at most 128 regular files and at most 1 MiB from each file. Generated command
-# logs are independently capped to at most 8 MiB on Android shells that use
-# 1 KiB ulimit blocks (and 4 MiB on 512-byte-block shells).
+# at most 128 regular files. The native collector pins each source directory and
+# reads at most 1 MiB from a single O_NOFOLLOW descriptor. Generated command logs
+# are independently capped to at most 8 MiB on Android shells that use 1 KiB
+# ulimit blocks (and 4 MiB on 512-byte-block shells).
 REPORT_COPY_FILE_LIMIT=128
-REPORT_COPY_BLOCK_SIZE=4096
-REPORT_COPY_BLOCK_COUNT=256
 REPORT_LOG_FILE_BLOCK_LIMIT=8192
 report_copy_count=0
 
@@ -213,6 +212,10 @@ send_bugreport() {
     su 2000 -c "am start -a android.intent.action.SEND --eu android.intent.extra.STREAM content://com.android.shell/bugreports/$share_file -t '*/*' --grant-read-uri-permission" >/dev/null 2>&1
 }
 
+copy_report_file() {
+    "$WEBUI_BRIDGE" copy-report-file "$report_nonce" "$1" "$2" "$3"
+}
+
 copy_report_path() {
     copy_src="$1"
     copy_group="$2"
@@ -243,27 +246,30 @@ copy_report_path() {
         if [ "$copy_source_kind" = directory ]; then
             case "$report_file" in
                 "$copy_src"/*)
-                    relative_report_path=${report_file#"$copy_src"/}
-                    relative_report_path="$copy_source_label/$relative_report_path"
+                    source_root="$copy_src"
+                    source_relative_path=${report_file#"$copy_src"/}
+                    relative_report_path="$copy_source_label/$source_relative_path"
                     ;;
                 *) continue ;;
             esac
         else
+            source_root=${copy_src%/*}
+            [ -n "$source_root" ] || source_root=/
+            source_relative_path=${copy_src##*/}
             relative_report_path=${report_file##*/}
         fi
-        case "$relative_report_path" in
+        case "$source_relative_path" in
+            ""|/*|..|../*|*/..|*/../*) continue ;;
+        esac
+        destination_relative_path="$copy_group/$relative_report_path"
+        case "$destination_relative_path" in
             ""|/*|..|../*|*/..|*/../*) continue ;;
         esac
 
-        report_destination="$tmp/$copy_group/$relative_report_path"
-        report_parent=${report_destination%/*}
-        mkdir -p "$report_parent" 2>/dev/null || continue
-        if dd if="$report_file" of="$report_destination" \
-            bs="$REPORT_COPY_BLOCK_SIZE" count="$REPORT_COPY_BLOCK_COUNT" 2>/dev/null; then
-            chmod 0600 "$report_destination" 2>/dev/null || true
+        if copy_report_file \
+            "$source_root" "$source_relative_path" "$destination_relative_path" \
+            >/dev/null 2>&1; then
             report_copy_count=$((report_copy_count + 1))
-        else
-            rm -f "$report_destination"
         fi
     done < "$report_file_list"
     rm -f "$report_file_list"

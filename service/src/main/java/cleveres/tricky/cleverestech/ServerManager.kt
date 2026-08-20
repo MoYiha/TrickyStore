@@ -282,7 +282,7 @@ object ServerManager {
         }
     }
 
-    private fun validateServer(server: ServerConfig) {
+    internal fun validateServer(server: ServerConfig) {
         require(validServerId.matches(server.id)) { "Invalid server ID" }
         require(server.name.isNotBlank() && server.name.length <= 128) { "Invalid server name" }
         require(server.name.none { it.isISOControl() }) { "Invalid server name" }
@@ -290,7 +290,7 @@ object ServerManager {
         require(server.priority in -1_000_000..1_000_000) { "Invalid priority" }
         require(server.refreshIntervalHours in 1..24 * 30) { "Invalid refresh interval" }
         require((server.contentPassword?.length ?: 0) <= 1024) { "Content password is too long" }
-        require((server.contentPublicKey?.length ?: 0) <= 16 * 1024) { "Public key is too long" }
+        require(FusedCboxBackend.isPublicKeyWithinLimit(server.contentPublicKey)) { "Public key is too long" }
         require(server.authData.toString().length <= 64 * 1024) { "Authentication data is too large" }
         require(server.lastStatus.length <= 128 && server.lastStatus.none { it.isISOControl() }) {
             "Invalid server status"
