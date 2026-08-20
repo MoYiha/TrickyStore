@@ -30,6 +30,21 @@ internal fun readFileSnapshotBounded(
         readChannelSnapshotBounded(channel, minBytes, maxBytes)
     }
 
+/** Converts one accepted bounded byte snapshot to UTF-8 without reopening the path. */
+@Throws(IOException::class)
+internal fun readUtf8FileSnapshotBounded(
+    file: File,
+    minBytes: Long,
+    maxBytes: Long,
+): String {
+    val bytes = readFileSnapshotBounded(file, minBytes, maxBytes)
+    return try {
+        bytes.toString(Charsets.UTF_8)
+    } finally {
+        bytes.fill(0)
+    }
+}
+
 /** SHA-256 variant that keeps memory bounded while enforcing the same snapshot contract. */
 @Throws(IOException::class)
 internal fun sha256FileSnapshotBounded(
