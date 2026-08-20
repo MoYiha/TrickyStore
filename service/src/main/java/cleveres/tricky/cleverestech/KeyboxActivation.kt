@@ -36,10 +36,6 @@ internal object KeyboxActivation {
             if (ticket.generation != refreshGeneration) return@synchronized PublicationResult.SUPERSEDED
             if (!KeyboxLoader.commitActive(keyboxes)) {
                 Logger.e("Refusing to publish keyboxes because the Rust active-set commit failed")
-                val identity = NativeBackend.currentBackendIdentity()
-                if (identity != null && !BackendStateRecovery.isRecovering()) {
-                    BackendStateRecovery.recover(identity)
-                }
                 return@synchronized PublicationResult.FAILED
             }
             CertHack.setKeyboxes(keyboxes)
@@ -47,6 +43,7 @@ internal object KeyboxActivation {
             PublicationResult.COMMITTED
         }
 
+    /** Compatibility entry point for recovery/bootstrap callers that own their own error policy. */
     fun commitAndPublish(keyboxes: List<CertHack.KeyBox>): Boolean {
         val ticket = beginRefresh()
         return commitAndPublish(ticket, keyboxes) == PublicationResult.COMMITTED
