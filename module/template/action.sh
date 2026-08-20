@@ -16,6 +16,16 @@ tmp=""
 # staged archive at or below the native publisher's 256 MiB streaming bound.
 REPORT_FILE_BLOCK_LIMIT=262144
 
+# Bound the uncompressed collection before tar sees it. Directory snapshots keep
+# at most 128 regular files and at most 1 MiB from each file. Generated command
+# logs are independently capped to at most 8 MiB on Android shells that use
+# 1 KiB ulimit blocks (and 4 MiB on 512-byte-block shells).
+REPORT_COPY_FILE_LIMIT=128
+REPORT_COPY_BLOCK_SIZE=4096
+REPORT_COPY_BLOCK_COUNT=256
+REPORT_LOG_FILE_BLOCK_LIMIT=8192
+report_copy_count=0
+
 umask 077
 
 cleanup() {
@@ -206,11 +216,63 @@ send_bugreport() {
 copy_report_path() {
     copy_src="$1"
     copy_group="$2"
-    if [ -e "$copy_src" ] && [ ! -L "$copy_src" ]; then
-        print_log "$(message ADDING) $copy_src"
-        mkdir -p "$tmp/$copy_group"
-        cp -a "$copy_src" "$tmp/$copy_group/" 2>/dev/null || true
+    [ "$report_copy_count" -lt "$REPORT_COPY_FILE_LIMIT" ] || return 0
+    [ -e "$copy_src" ] && [ ! -L "$copy_src" ] || return 0
+
+    print_log "$(message ADDING) $copy_src"
+    remaining_files=$((REPORT_COPY_FILE_LIMIT - report_copy_count))
+    report_file_list="$workspace/.report-files"
+    : > "$report_file_list"
+    if [ -d "$copy_src" ]; then
+        copy_source_kind="directory"
+        copy_source_label=${copy_src##*/}
+        find "$copy_src" -xdev -type f 2>/dev/null | head -n "$remaining_files" > "$report_file_list" || true
+    elif [ -f "$copy_src" ]; then
+        copy_source_kind="file"
+        printf '%s\n' "$copy_src" > "$report_file_list"
+    else
+        rm -f "$report_file_list"
+        return 0
     fi
+
+    while IFS= read -r report_file; do
+        [ "$report_copy_count" -lt "$REPORT_COPY_FILE_LIMIT" ] || break
+        if [ ! -f "$report_file" ] || [ -L "$report_file" ]; then
+            continue
+        fi
+        if [ "$copy_source_kind" = directory ]; then
+            case "$report_file" in
+                "$copy_src"/*)
+                    relative_report_path=${report_file#"$copy_src"/}
+                    relative_report_path="$copy_source_label/$relative_report_path"
+                    ;;
+                *) continue ;;
+            esac
+        else
+            relative_report_path=${report_file##*/}
+        fi
+        case "$relative_report_path" in
+            ""|/*|..|../*|*/..|*/../*) continue ;;
+        esac
+
+        report_destination="$tmp/$copy_group/$relative_report_path"
+        report_parent=${report_destination%/*}
+        mkdir -p "$report_parent" 2>/dev/null || continue
+        if dd if="$report_file" of="$report_destination" \
+            bs="$REPORT_COPY_BLOCK_SIZE" count="$REPORT_COPY_BLOCK_COUNT" 2>/dev/null; then
+            chmod 0600 "$report_destination" 2>/dev/null || true
+            report_copy_count=$((report_copy_count + 1))
+        else
+            rm -f "$report_destination"
+        fi
+    done < "$report_file_list"
+    rm -f "$report_file_list"
+}
+
+write_bounded_log() {
+    log_output="$1"
+    shift
+    (ulimit -f "$REPORT_LOG_FILE_BLOCK_LIMIT" && "$@") > "$log_output" 2>&1
 }
 
 write_payload_hashes() {
@@ -356,14 +418,14 @@ module_state="enabled"
 write_payload_hashes
 
 print_log "$(message LOGS)"
-if ! logcat -b all -d -v threadtime -f "$tmp/logcat-all.log" 2>/dev/null; then
-    logcat -d -v threadtime -f "$tmp/logcat-all.log" 2>/dev/null || true
+if ! write_bounded_log "$tmp/logcat-all.log" logcat -b all -d -v threadtime; then
+    write_bounded_log "$tmp/logcat-all.log" logcat -d -v threadtime || true
 fi
 if [ -f "$tmp/logcat-all.log" ]; then
-    grep -i 'cleverestricky' "$tmp/logcat-all.log" > "$tmp/logcat-cleverestricky.log" 2>/dev/null || true
+    write_bounded_log "$tmp/logcat-cleverestricky.log" grep -i 'cleverestricky' "$tmp/logcat-all.log" || true
 fi
 
-dmesg > "$tmp/dmesg.log" 2>&1 || true
+write_bounded_log "$tmp/dmesg.log" dmesg || true
 
 copy_report_path "$CONFIG_DIR/logs" "cleverestricky"
 copy_report_path "$CONFIG_DIR/log" "cleverestricky"
