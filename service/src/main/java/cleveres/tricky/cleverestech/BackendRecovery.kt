@@ -23,7 +23,8 @@ internal object BackendRecovery {
         recoveryOverride?.let { return it() }
         val identity = NativeBackend.currentBackendIdentity() ?: return false
         // Identity changes are detected by NativeBackend's mandatory PID+epoch PING handshake. The
-        // single-flight coordinator deduplicates concurrent callers for the same identity.
+        // single-flight coordinator rejects an overlapping recovery without waiting, preventing
+        // recovery/refresh lock inversion while the active attempt rebuilds the same identity.
         return BackendStateRecovery.recover(identity)
     }
 

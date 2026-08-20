@@ -33,7 +33,7 @@ const MAX_PASSWORD_BYTES: usize = 4 * 1024;
 const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024;
 const MAX_CBOX_BYTES: usize = 10 * 1024 * 1024 + 36;
 const MAX_BACKUP_BYTES: usize = 32 * 1024 * 1024;
-const MAX_KEYBOX_REQUEST_BYTES: usize = 10 * 1024 * 1024;
+const MAX_KEYBOX_REQUEST_BYTES: usize = keybox_wire::MAX_KEYBOX_XML_BYTES;
 const MAX_KEYBOX_FILE_REQUEST_BYTES: usize = 1 + 255;
 const BACKUP_ENCRYPTION_RESERVE_BYTES: usize = 64;
 const MAX_CBOX_REQUEST_BYTES: usize =
@@ -43,8 +43,7 @@ const MAX_CBOX_RECOVERY_REQUEST_BYTES: usize =
 const MAX_BACKUP_REQUEST_BYTES: usize = 2 + MAX_PASSWORD_BYTES + MAX_BACKUP_BYTES + 64;
 const MAX_BACKEND_FRAME_BYTES: usize = MAX_BACKUP_REQUEST_BYTES;
 const MAX_BACKUP_RESPONSE_BYTES: usize = MAX_BACKUP_BYTES + 64;
-const MAX_KEYBOX_RESPONSE_BYTES: usize =
-    MAX_KEYBOX_REQUEST_BYTES + keybox_wire::MAX_KEYBOX_WIRE_OVERHEAD_BYTES;
+const MAX_KEYBOX_RESPONSE_BYTES: usize = keybox_wire::MAX_KEYBOX_RESPONSE_BYTES;
 const MAX_CBOX_AUTHOR_BYTES: usize = 1024;
 const CBOX_RESPONSE_PREFIX_BYTES: usize = 7;
 const MAX_CBOX_RESPONSE_BYTES: usize =
@@ -872,7 +871,7 @@ mod tests {
         assert_eq!(&response[7..7 + author_len], b"fixture author");
         let wire = &response[7 + author_len..];
         assert_eq!(wire.len(), wire_len);
-        assert_eq!(wire.first().copied(), Some(3));
+        assert_eq!(wire.first().copied(), Some(keybox_wire::WIRE_VERSION));
         assert!(!wire.windows(16).any(|window| window == b"PRIVATE KEY-----"));
         assert!(!wire
             .windows(19)
@@ -911,7 +910,7 @@ mod tests {
             Some(MAX_KEYBOX_RESPONSE_BYTES)
         );
         let response = handle_request(OP_KEYBOX_PARSE, VALID_EC.to_vec()).unwrap();
-        assert_eq!(response.first().copied(), Some(3));
+        assert_eq!(response.first().copied(), Some(keybox_wire::WIRE_VERSION));
         assert!(!response
             .windows(16)
             .any(|window| window == b"PRIVATE KEY-----"));

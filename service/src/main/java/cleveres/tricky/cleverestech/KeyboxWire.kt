@@ -156,7 +156,7 @@ internal object KeyboxWire {
     private const val MAX_KEYS_PER_KEYBOX = 4
     private const val MAX_CERTIFICATES_PER_CHAIN = 16
     private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
-    private const val MAX_KEYBOX_XML_BYTES = 10 * 1024 * 1024
+    internal const val MAX_XML_BYTES = 10 * 1024 * 1024
     private const val MAX_TOTAL_KEYS = MAX_KEYBOXES_PER_FILE * MAX_KEYS_PER_KEYBOX
     private const val MAX_TOTAL_CERTIFICATES = MAX_TOTAL_KEYS * MAX_CERTIFICATES_PER_CHAIN
     private const val FIXED_HEADER_BYTES = 5 + SNAPSHOT_SHA256_BYTES
@@ -166,5 +166,5 @@ internal object KeyboxWire {
         FIXED_HEADER_BYTES +
             MAX_TOTAL_KEYS * KEY_HEADER_BYTES +
             MAX_TOTAL_CERTIFICATES * CERTIFICATE_HEADER_BYTES
-    private const val MAX_RESPONSE_BYTES = MAX_KEYBOX_XML_BYTES + MAX_WIRE_OVERHEAD_BYTES
+    internal const val MAX_RESPONSE_BYTES = MAX_XML_BYTES + MAX_WIRE_OVERHEAD_BYTES
 }

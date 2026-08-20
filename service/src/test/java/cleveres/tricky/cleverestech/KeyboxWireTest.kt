@@ -19,6 +19,7 @@ class KeyboxWireTest {
         requireNotNull(decoded)
         assertEquals(1, decoded.declaredKeyboxes)
         assertEquals(1, decoded.keyboxCount)
+        assertEquals("ab".repeat(32), decoded.snapshotSha256)
         assertEquals(1, decoded.keys.size)
         assertEquals("EC", decoded.keys[0].algorithm)
         assertArrayEquals(keyId, decoded.keys[0].keyId)
@@ -29,9 +30,9 @@ class KeyboxWireTest {
     }
 
     @Test
-    fun `legacy private-key wire version fails closed`() {
+    fun `legacy public wire without snapshot digest fails closed`() {
         val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1)))
-        response[0] = 2
+        response[0] = 3
 
         assertNull(KeyboxWire.decode(response))
         assertTrue(response.all { it == 0.toByte() })
@@ -82,7 +83,7 @@ class KeyboxWireTest {
     @Test
     fun `oversized certificate length fails closed before allocation`() {
         val response = encodeResponse("EC", validKeyId(), listOf(byteArrayOf(0x30, 1)))
-        val certificateLengthOffset = 5 + 2 + 16 + 2
+        val certificateLengthOffset = 5 + SNAPSHOT_SHA256_BYTES + 2 + 16 + 2
         response[certificateLengthOffset] = 0x7f
         response[certificateLengthOffset + 1] = 0xff.toByte()
         response[certificateLengthOffset + 2] = 0xff.toByte()
@@ -103,10 +104,11 @@ class KeyboxWireTest {
         val algorithmBytes = algorithm.toByteArray(Charsets.UTF_8)
         val output = ByteArrayOutputStream()
         DataOutputStream(output).use { data ->
-            data.writeByte(3)
+            data.writeByte(4)
             data.writeByte(1)
             data.writeByte(1)
             data.writeShort(1)
+            data.write(ByteArray(SNAPSHOT_SHA256_BYTES) { 0xab.toByte() })
             data.writeByte(algorithmBytes.size)
             data.writeByte(certificates.size)
             data.write(keyId)
@@ -117,5 +119,9 @@ class KeyboxWireTest {
             }
         }
         return output.toByteArray()
+    }
+
+    private companion object {
+        const val SNAPSHOT_SHA256_BYTES = 32
     }
 }

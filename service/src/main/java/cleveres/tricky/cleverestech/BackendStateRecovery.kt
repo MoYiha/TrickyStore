@@ -2,10 +2,11 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxVerifier
+import java.util.concurrent.locks.ReentrantLock
 
 /** Rebuilds all managed views that contain process-local Rust backend handles after an epoch change. */
 internal object BackendStateRecovery {
-    private val recoveryLock = Any()
+    private val recoveryLock = ReentrantLock()
 
     @Volatile
     private var recovering = false
@@ -19,7 +20,13 @@ internal object BackendStateRecovery {
     fun isRecovering(): Boolean = recovering
 
     fun recover(expectedIdentity: NativeBackend.BackendIdentity): Boolean {
-        synchronized(recoveryLock) {
+        // Recovery can need the process-wide refresh coordinator. Never wait here: a normal
+        // refresh may already own that coordinator and be unwinding a backend-state failure.
+        // Blocking on another recovery in that state would invert recovery -> refresh against
+        // refresh -> recovery and deadlock both workers. The active single flight or a later
+        // backend operation will complete/retry recovery.
+        if (!recoveryLock.tryLock()) return false
+        return try {
             if (recovering) return false
             val current = NativeBackend.currentBackendIdentity() ?: return false
             if (current != expectedIdentity) return false
@@ -40,6 +47,8 @@ internal object BackendStateRecovery {
             } finally {
                 recovering = false
             }
+        } finally {
+            recoveryLock.unlock()
         }
     }
 
@@ -78,10 +87,13 @@ internal object BackendStateRecovery {
 
     @androidx.annotation.VisibleForTesting
     internal fun resetForTesting() {
-        synchronized(recoveryLock) {
+        recoveryLock.lock()
+        try {
             recovering = false
             recoveredIdentity = null
             recoveryOverride = null
+        } finally {
+            recoveryLock.unlock()
         }
     }
 }
