@@ -137,15 +137,13 @@ impl TrustedDir {
         }
         let descriptor_path = format!("/proc/self/fd/{}", self.fd.as_raw_fd());
         let mut names = Vec::new();
-        let mut scanned = 0usize;
-        for entry in std::fs::read_dir(descriptor_path)? {
+        for (scanned, entry) in std::fs::read_dir(descriptor_path)?.enumerate() {
             if scanned == max_entries {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "directory entry count exceeds configured bound",
                 ));
             }
-            scanned += 1;
             let name = entry?.file_name();
             if let Some(name) = name.to_str() {
                 names.push(name.to_string());
