@@ -2071,8 +2071,9 @@
 
     const MAX_SUPPORTED_FILES = 64;
     const MAX_ARCHIVE_ENTRIES = 256;
-    const MAX_FILE_BYTES = 10 * 1024 * 1024;
-    const MAX_COMPRESSED_FILE_BYTES = MAX_FILE_BYTES + 64 * 1024;
+    const MAX_XML_BYTES = 10 * 1024 * 1024;
+    const MAX_CBOX_BYTES = MAX_XML_BYTES + 36;
+    const MAX_COMPRESSED_FILE_BYTES = MAX_CBOX_BYTES + 64 * 1024;
     const MAX_NAME_BYTES = 4096;
     const MAX_CENTRAL_DIRECTORY_BYTES = 64 * 1024 * 1024;
     const STORAGE_KEY = 'cleverestricky.language.v1';
@@ -2252,6 +2253,10 @@
         return lower.endsWith('.xml') || lower.endsWith('.cbox');
     }
 
+    function fileLimitForName(name) {
+        return name.toLowerCase().endsWith('.cbox') ? MAX_CBOX_BYTES : MAX_XML_BYTES;
+    }
+
     function safeBasename(name) {
         let base = name.replace(/\\/g, '/').split('/').pop() || 'keybox.xml';
         base = base.replace(/[\u0000-\u001f\u007f]/g, '_').trim();
@@ -2343,7 +2348,7 @@
                 if (method !== 0 && method !== 8) fail('compression');
                 const name = decodeName(central.subarray(cursor + 46, cursor + 46 + nameLength), (flags & 0x0800) !== 0);
                 if (!name.endsWith('/') && isSupportedName(name)) {
-                    if (uncompressedSize <= 0 || uncompressedSize > MAX_FILE_BYTES || compressedSize <= 0 || compressedSize > MAX_COMPRESSED_FILE_BYTES) fail('fileLimit');
+                    if (uncompressedSize <= 0 || uncompressedSize > fileLimitForName(name) || compressedSize <= 0 || compressedSize > MAX_COMPRESSED_FILE_BYTES) fail('fileLimit');
                     entries.push({ name, flags, method, crc, compressedSize, uncompressedSize, localOffset });
                     if (entries.length > MAX_SUPPORTED_FILES) fail('fileCountLimit');
                 }
@@ -2390,7 +2395,7 @@
                 const result = await reader.read();
                 if (result.done) break;
                 const chunk = result.value instanceof Uint8Array ? result.value : new Uint8Array(result.value);
-                if (chunk.length > expectedSize - total || total + chunk.length > MAX_FILE_BYTES) fail('fileLimit');
+                if (chunk.length > expectedSize - total) fail('fileLimit');
                 chunks.push(chunk);
                 total += chunk.length;
             }
@@ -2674,7 +2679,7 @@
     }
 
     global.CleveresZipImport = Object.freeze({
-        limits: Object.freeze({ MAX_SUPPORTED_FILES, MAX_ARCHIVE_ENTRIES, MAX_FILE_BYTES }),
+        limits: Object.freeze({ MAX_SUPPORTED_FILES, MAX_ARCHIVE_ENTRIES, MAX_XML_BYTES, MAX_CBOX_BYTES }),
         parseZipFile,
         extractEntry,
         allocateUploadNames,

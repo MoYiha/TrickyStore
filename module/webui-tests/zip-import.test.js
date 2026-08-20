@@ -4,7 +4,8 @@ const vm = require('vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
 assert.ok(source.includes('const MAX_SUPPORTED_FILES = 64;'), 'module ZIP keybox limit must match runtime bound');
-assert.ok(source.includes('const MAX_FILE_BYTES = 10 * 1024 * 1024;'), 'per-keybox limit must remain 10 MiB');
+assert.ok(source.includes('const MAX_XML_BYTES = 10 * 1024 * 1024;'), 'XML limit must remain 10 MiB');
+assert.ok(source.includes('const MAX_CBOX_BYTES = MAX_XML_BYTES + 36;'), 'CBOX limit must include the envelope header');
 assert.ok(!source.includes('MAX_TOTAL_XML_BYTES'), 'ZIP importer must not retain the old aggregate XML cap');
 assert.ok(!source.includes('MAX_ARCHIVE_BYTES'), 'ZIP importer must not retain the old aggregate archive cap');
 assert.ok(source.includes("new global.DecompressionStream('deflate-raw')"), 'deflated ZIP entries must use bounded streaming decompression');
@@ -23,7 +24,8 @@ vm.runInContext(source, context, { filename: 'zip-import.js' });
 const api = context.CleveresZipImport;
 assert.ok(api, 'ZIP importer API must be exposed for regression tests');
 assert.strictEqual(api.limits.MAX_SUPPORTED_FILES, 64);
-assert.strictEqual(api.limits.MAX_FILE_BYTES, 10 * 1024 * 1024);
+assert.strictEqual(api.limits.MAX_XML_BYTES, 10 * 1024 * 1024);
+assert.strictEqual(api.limits.MAX_CBOX_BYTES, 10 * 1024 * 1024 + 36);
 assert.ok(api.limits.MAX_ARCHIVE_ENTRIES >= api.limits.MAX_SUPPORTED_FILES);
 
 function crc32(bytes) {
@@ -92,6 +94,15 @@ function storedZip(name, data, declaredSize = data.length) {
 
   await assert.rejects(
     api.parseZipFile(storedZip('too-large.xml', Buffer.from('x'), 10 * 1024 * 1024 + 1)),
+    error => error && error.code === 'fileLimit'
+  );
+
+  const maxCbox = await api.parseZipFile(
+    storedZip('full-size.cbox', Buffer.from('x'), 10 * 1024 * 1024 + 36)
+  );
+  assert.strictEqual(maxCbox.entries[0].uncompressedSize, 10 * 1024 * 1024 + 36);
+  await assert.rejects(
+    api.parseZipFile(storedZip('too-large.cbox', Buffer.from('x'), 10 * 1024 * 1024 + 37)),
     error => error && error.code === 'fileLimit'
   );
 
