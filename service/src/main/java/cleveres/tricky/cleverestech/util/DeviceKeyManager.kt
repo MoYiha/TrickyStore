@@ -82,17 +82,13 @@ object DeviceKeyManager {
             throw IOException("Refusing symbolic-link fallback key")
         }
         if (Files.isRegularFile(keyFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            if (keyFile.length() != FALLBACK_KEY_BYTES.toLong()) {
-                throw IOException("Fallback key has an invalid size")
-            }
-            val bytes = keyFile.readBytes()
-            if (bytes.size == FALLBACK_KEY_BYTES) {
+            val bytes = readFileSnapshotBounded(keyFile, FALLBACK_KEY_BYTES.toLong(), FALLBACK_KEY_BYTES.toLong())
+            try {
                 fallbackKey = SecretKeySpec(bytes, "AES")
-                bytes.fill(0)
                 return
+            } finally {
+                bytes.fill(0)
             }
-            bytes.fill(0)
-            throw IOException("Fallback key could not be read completely")
         }
         val bytes = ByteArray(FALLBACK_KEY_BYTES)
         SecureRandom().nextBytes(bytes)
