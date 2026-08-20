@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import cleveres.tricky.cleverestech.Logger;
@@ -89,5 +90,15 @@ public class CertHackTest {
         assertEquals("EC", CertHack.signingKeyAlgorithm("SHA256withECDSA"));
         assertEquals("RSA", CertHack.signingKeyAlgorithm("SHA256withRSA"));
         assertEquals(null, CertHack.signingKeyAlgorithm("Ed25519"));
+    }
+
+    @Test
+    public void testCertificateCacheClearInvalidatesInFlightPublicationEpoch() {
+        Object capturedEpoch = CertHack.captureCertificateCacheEpochForTesting();
+        assertTrue(CertHack.isCertificateCacheEpochCurrentForTesting(capturedEpoch));
+
+        CertHack.clearCertificateCache();
+
+        assertFalse(CertHack.isCertificateCacheEpochCurrentForTesting(capturedEpoch));
     }
 }
