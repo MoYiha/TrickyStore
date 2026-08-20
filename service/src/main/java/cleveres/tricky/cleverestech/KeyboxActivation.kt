@@ -5,7 +5,7 @@ import java.util.concurrent.locks.ReentrantLock
 
 /** Atomic process-wide publication boundary between Rust secret keys and managed selection state. */
 internal object KeyboxActivation {
-    internal data class RefreshTicket internal constructor(val generation: Long)
+    internal class RefreshTicket internal constructor(val generation: Long)
 
     internal enum class PublicationResult {
         COMMITTED,
