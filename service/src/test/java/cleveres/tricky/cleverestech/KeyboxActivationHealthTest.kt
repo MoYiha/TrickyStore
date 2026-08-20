@@ -96,4 +96,34 @@ class KeyboxActivationHealthTest {
         assertEquals(KeyboxActivation.PublicationResult.COMMITTED, result.get())
         assertEquals(1, backendCommits.get())
     }
+
+    @Test
+    fun `publication recovery never blocks in reverse refresh lock order`() {
+        val refreshEntered = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val holder =
+            Thread {
+                KeyboxActivation.coordinateRefresh {
+                    refreshEntered.countDown()
+                    releaseRefresh.await(2, TimeUnit.SECONDS)
+                }
+            }
+        holder.start()
+        assertTrue(refreshEntered.await(2, TimeUnit.SECONDS))
+
+        KeyboxActivation.lockPublishedSnapshot()
+        try {
+            assertThrows(IllegalStateException::class.java) {
+                KeyboxActivation.coordinateRefresh {
+                    throw AssertionError("busy reverse-order recovery must not enter refresh work")
+                }
+            }
+        } finally {
+            KeyboxActivation.unlockPublishedSnapshot()
+            releaseRefresh.countDown()
+        }
+
+        holder.join(2_000)
+        assertFalse(holder.isAlive)
+    }
 }
