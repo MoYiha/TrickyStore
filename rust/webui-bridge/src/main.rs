@@ -422,11 +422,7 @@ fn read_report_file(directory: &TrustedDir, components: &[&str]) -> io::Result<V
     }
 }
 
-fn write_report_file(
-    directory: &TrustedDir,
-    components: &[&str],
-    bytes: &[u8],
-) -> io::Result<()> {
+fn write_report_file(directory: &TrustedDir, components: &[&str], bytes: &[u8]) -> io::Result<()> {
     match components {
         [name] => directory.atomic_write(name, bytes, 0o600),
         [directory_name, remaining @ ..] => {
@@ -914,11 +910,7 @@ mod tests {
         assert!(copied.iter().all(|byte| *byte == 0x5a));
 
         symlink(&outside_path, pinned_path.join("escape-dir")).unwrap();
-        symlink(
-            outside_path.join("secret"),
-            pinned_path.join("escape-file"),
-        )
-        .unwrap();
+        symlink(outside_path.join("secret"), pinned_path.join("escape-file")).unwrap();
         assert!(copy_report_file_between(
             &source,
             &["escape-dir", "secret"],
