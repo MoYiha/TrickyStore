@@ -239,16 +239,17 @@ object AutoIdentityManager {
     internal fun parseDeviceCandidates(html: String): List<DeviceCandidate> {
         val rows =
             Regex(
-                """<tr\s+id=["']([^"']+)["'][^>]*>(.*?)</tr>""",
+                """<tr\b([^>]*)>(.*?)</tr>""",
                 setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
             )
+        val rowId = Regex("""(?:^|\s)id\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
         val modelCell =
             Regex(
                 """<td[^>]*>\s*(.*?)\s*</td>""",
                 setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
             )
         return rows.findAll(html).mapNotNull { row ->
-            val device = row.groupValues[1].trim()
+            val device = rowId.find(row.groupValues[1])?.groupValues?.get(1)?.trim() ?: return@mapNotNull null
             val rawModel = modelCell.find(row.groupValues[2])?.groupValues?.get(1) ?: return@mapNotNull null
             val model = stripHtml(rawModel)
             if (!VALID_DEVICE.matches(device) || model.isBlank() || model.length > 128) return@mapNotNull null
@@ -316,12 +317,18 @@ object AutoIdentityManager {
     }
 
     private fun canaryDateKey(value: String): Int {
-        val full = Regex("""(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?([0-2]\d|3[01])(?!\d)""").find(value)
-        if (full != null) {
-            val year = full.groupValues[1].toInt()
-            val month = full.groupValues[2].toInt()
-            val day = full.groupValues[3].toInt()
-            return year * 10_000 + month * 100 + day
+        val fullPattern =
+            Regex("""(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])[-_.]?(0[1-9]|[12]\d|3[01])(?!\d)""")
+        for (match in fullPattern.findAll(value)) {
+            val date =
+                runCatching {
+                    LocalDate.of(
+                        match.groupValues[1].toInt(),
+                        match.groupValues[2].toInt(),
+                        match.groupValues[3].toInt(),
+                    )
+                }.getOrNull() ?: continue
+            return date.year * 10_000 + date.monthValue * 100 + date.dayOfMonth
         }
         val monthOnly = Regex("""(?<!\d)(20\d{2})[-_.]?(0[1-9]|1[0-2])(?!\d)""").find(value)
         if (monthOnly != null) {
@@ -364,19 +371,24 @@ object AutoIdentityManager {
     ): String? {
         val token = canaryId.removePrefix("canary-").trim()
         if (token.isEmpty()) return null
-        val index = html.indexOf(token, ignoreCase = true)
-        if (index < 0) return null
-
-        val rowStart = html.lastIndexOf("<tr", startIndex = index, ignoreCase = true)
-        val rowEnd = html.indexOf("</tr>", startIndex = index, ignoreCase = true)
-        if (rowStart < 0 || rowEnd < index) return null
-
-        val row = html.substring(rowStart, rowEnd + "</tr>".length)
-        return normalizePatch(row)
+        val rows =
+            Regex(
+                """<tr\b[^>]*>.*?</tr>""",
+                setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+            )
+        return rows
+            .findAll(html)
+            .map { it.value }
+            .firstOrNull { row -> row.contains(token, ignoreCase = true) }
+            ?.let(::normalizePatch)
     }
 
     private fun normalizePatch(value: String): String? =
-        Regex("""20\d{2}-\d{2}-\d{2}""").find(value)?.value
+        Regex("""20\d{2}-\d{2}-\d{2}""")
+            .findAll(value)
+            .mapNotNull { match -> runCatching { LocalDate.parse(match.value) }.getOrNull() }
+            .firstOrNull()
+            ?.toString()
 
     internal fun estimateSecurityPatch(canaryId: String): String {
         val digits = canaryId.removePrefix("canary-").filter(Char::isDigit)
