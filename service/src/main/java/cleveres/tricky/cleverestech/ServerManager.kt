@@ -312,12 +312,7 @@ object ServerManager {
             "BASIC" -> {
                 val username = server.authData.optString("username")
                 val password = server.authData.optString("password")
-                require(username.length <= 1024 && password.length <= 1024) {
-                    "Basic authentication credentials are too long"
-                }
-                require('\r' !in username && '\n' !in username && '\r' !in password && '\n' !in password) {
-                    "Invalid basic authentication credentials"
-                }
+                validateBasicAuthentication(username, password)
             }
             "API_KEY" -> {
                 val header = server.authData.optString("headerName", "X-API-Key")
@@ -355,8 +350,38 @@ object ServerManager {
     ) {
         require(validHeaderName.matches(name)) { "Invalid authentication header name" }
         require(name.lowercase() !in restrictedHeaders) { "Restricted authentication header" }
-        require(value.length <= 8192 && '\r' !in value && '\n' !in value) {
+        require(value.length <= MAX_HEADER_VALUE_CHARS && '\r' !in value && '\n' !in value) {
             "Invalid authentication header value"
+        }
+    }
+
+    private fun validateBasicAuthentication(
+        username: String,
+        password: String,
+    ) {
+        require(
+            username.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS &&
+                password.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS,
+        ) {
+            "Basic authentication credentials are too long"
+        }
+        require(
+            ':' !in username &&
+                '\r' !in username &&
+                '\n' !in username &&
+                '\r' !in password &&
+                '\n' !in password,
+        ) {
+            "Invalid basic authentication credentials"
+        }
+
+        val credentialsBytes =
+            username.toByteArray(StandardCharsets.UTF_8).size +
+                1 +
+                password.toByteArray(StandardCharsets.UTF_8).size
+        val encodedChars = ((credentialsBytes + 2) / 3) * 4
+        require(BASIC_AUTH_PREFIX.length + encodedChars <= MAX_HEADER_VALUE_CHARS) {
+            "Basic authentication credentials are too long"
         }
     }
 
@@ -505,9 +530,13 @@ object ServerManager {
                     val user = snapshot.authData.optString("username")
                     val pass = snapshot.authData.optString("password")
                     if (user.isNotEmpty() || pass.isNotEmpty()) {
-                        val auth = Base64.encodeToString("$user:$pass".toByteArray(), Base64.NO_WRAP)
-                        requireSafeHeader("Authorization", "Basic $auth")
-                        conn.setRequestProperty("Authorization", "Basic $auth")
+                        val auth = Base64.encodeToString(
+                            "$user:$pass".toByteArray(StandardCharsets.UTF_8),
+                            Base64.NO_WRAP,
+                        )
+                        val authorization = "$BASIC_AUTH_PREFIX$auth"
+                        requireSafeHeader("Authorization", authorization)
+                        conn.setRequestProperty("Authorization", authorization)
                     }
                 }
                 "API_KEY" -> {
@@ -874,6 +903,9 @@ object ServerManager {
     private const val MAX_REMOTE_KEYBOXES = 64
     private const val MAX_CONFIG_BYTES = 2L * 1024 * 1024
     private const val MAX_CACHE_BYTES = 16L * 1024 * 1024
+    private const val MAX_HEADER_VALUE_CHARS = 8192
+    private const val MAX_BASIC_CREDENTIAL_UTF16_UNITS = 1024
+    private const val BASIC_AUTH_PREFIX = "Basic "
     private val SERVER_CACHE_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'S'.code.toByte(), 'C'.code.toByte(), 2)
     private const val SERVER_CACHE_BINDING_BYTES = 32
     private val SERVER_CACHE_PREFIX_BYTES = SERVER_CACHE_MAGIC.size + SERVER_CACHE_BINDING_BYTES
