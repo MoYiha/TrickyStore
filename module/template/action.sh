@@ -5,16 +5,22 @@ MODULE_ID="cleverestricky"
 MODDIR="/data/adb/modules/$MODULE_ID"
 CONFIG_DIR="/data/adb/$MODULE_ID"
 SHELL_DIR="/data/user_de/0/com.android.shell"
+WEBUI_BRIDGE="$MODDIR/webui_bridge"
 FROM_WEBUI="${FROM_WEBUI:-0}"
 LANG_CODE="en"
 RAW_LOCALE=""
+workspace=""
 tmp=""
+
+# Android shells use either 512-byte or 1 KiB file-size blocks. This keeps the
+# staged archive at or below the native publisher's 256 MiB streaming bound.
+REPORT_FILE_BLOCK_LIMIT=262144
 
 umask 077
 
 cleanup() {
-    if [ -n "$tmp" ] && [ -e "$tmp" ]; then
-        rm -rf "$tmp" 2>/dev/null || true
+    if [ -n "$workspace" ] && [ -d "$workspace" ] && [ ! -L "$workspace" ]; then
+        rm -rf "$workspace" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT INT TERM
@@ -240,6 +246,17 @@ create_archive() {
     return 1
 }
 
+generate_report_nonce() {
+    [ -r /proc/sys/kernel/random/uuid ] || return 1
+    IFS= read -r random_uuid < /proc/sys/kernel/random/uuid || return 1
+    report_nonce=$(printf '%s' "$random_uuid" | tr -d '-' | tr '[:upper:]' '[:lower:]')
+    [ "${#report_nonce}" -eq 32 ] || return 1
+    case "$report_nonce" in
+        *[!0-9a-f]*) return 1 ;;
+    esac
+    printf '%s\n' "$report_nonce"
+}
+
 detect_language
 
 if [ "$FROM_WEBUI" = "1" ] && [ "${1:-}" = "--send" ]; then
@@ -249,36 +266,35 @@ fi
 
 print_log "$(message GENERATING)"
 stamp=$(date +%Y%m%d-%H%M%S)
-tmp="/data/local/tmp/cleverestricky-bugreport-$$"
+case "$stamp" in
+    ""|*[!0-9-]*) stamp="unknown" ;;
+esac
 
+if [ ! -d "$CONFIG_DIR" ] || [ -L "$CONFIG_DIR" ]; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+fi
+if ! chown 0:0 "$CONFIG_DIR" 2>/dev/null || ! chmod 0700 "$CONFIG_DIR" 2>/dev/null; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+fi
+report_nonce=$(generate_report_nonce) || {
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+}
+workspace="$CONFIG_DIR/.bugreport-$report_nonce"
+if ! mkdir "$workspace" 2>/dev/null || ! chmod 0700 "$workspace" 2>/dev/null; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+fi
+tmp="$workspace/payload"
+if ! mkdir "$tmp" 2>/dev/null || ! chmod 0700 "$tmp" 2>/dev/null; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+fi
+staged_archive="$workspace/report.tar.gz"
 has_shell=false
-outdir=""
-if [ -d "$SHELL_DIR" ] && [ ! -L "$SHELL_DIR" ]; then
-    shell_outdir="$SHELL_DIR/files/bugreports"
-    if mkdir -p "$shell_outdir" 2>/dev/null; then
-        chown 2000 "$SHELL_DIR/files" "$shell_outdir" 2>/dev/null || true
-        chgrp 2000 "$SHELL_DIR/files" "$shell_outdir" 2>/dev/null || true
-        outdir="$shell_outdir"
-        has_shell=true
-        rm -f "$outdir"/CleveresTricky-bugreport-*.tar.gz 2>/dev/null || true
-    fi
-fi
-
-if [ -z "$outdir" ]; then
-    for download_dir in /sdcard/Download /storage/emulated/0/Download /data/local/tmp; do
-        if mkdir -p "$download_dir" 2>/dev/null; then
-            outdir="$download_dir"
-            break
-        fi
-    done
-fi
-
-[ -n "$outdir" ] || exit 1
-filename="CleveresTricky-bugreport-$stamp.tar.gz"
-out="$outdir/$filename"
-
-rm -rf "$tmp" 2>/dev/null || true
-mkdir -p "$tmp"
+filename="CleveresTricky-bugreport-$stamp-$report_nonce.tar.gz"
 
 print_log "$(message BASIC)"
 root_managers=""
@@ -319,7 +335,7 @@ module_state="enabled"
         printf 'module.prop unavailable\n'
     fi
     printf '\n======== disk ========\n'
-    df -h /data "$outdir" 2>/dev/null || df /data "$outdir" 2>/dev/null || true
+    df -h /data 2>/dev/null || df /data 2>/dev/null || true
 } > "$tmp/basic.txt"
 
 {
@@ -366,19 +382,33 @@ copy_report_path "/sys/fs/pstore" "android"
 copy_report_path "/data/anr" "android"
 
 print_log "$(message COMPRESSING)"
-rm -f "$out" 2>/dev/null || true
-if ! create_archive "$out"; then
+if ! (ulimit -f "$REPORT_FILE_BLOCK_LIMIT" && create_archive "$staged_archive"); then
     print_log "$(message ARCHIVE_FAILED)"
     exit 1
 fi
-
-if $has_shell; then
-    chown 2000 "$out" 2>/dev/null || true
-    chgrp 2000 "$out" 2>/dev/null || true
-    chmod 0640 "$out" 2>/dev/null || true
-else
-    chmod 0644 "$out" 2>/dev/null || true
+if [ ! -x "$WEBUI_BRIDGE" ] || [ -L "$WEBUI_BRIDGE" ]; then
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
 fi
+out=$("$WEBUI_BRIDGE" publish-report "$report_nonce" "$filename") || {
+    print_log "$(message ARCHIVE_FAILED)"
+    exit 1
+}
+case "$out" in
+    "$SHELL_DIR/files/bugreports/"*) has_shell=true ;;
+    /storage/emulated/0/Download/*|/data/local/tmp/*) ;;
+    *)
+        print_log "$(message ARCHIVE_FAILED)"
+        exit 1
+        ;;
+esac
+filename=${out##*/}
+case "$filename" in
+    ""|*[!A-Za-z0-9._-]*)
+        print_log "$(message ARCHIVE_FAILED)"
+        exit 1
+        ;;
+esac
 
 print_log "$(message GENERATED) $out"
 

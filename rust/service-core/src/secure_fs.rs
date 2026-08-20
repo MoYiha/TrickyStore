@@ -119,6 +119,39 @@ impl TrustedDir {
         Ok(File::from(fd))
     }
 
+    pub fn chown(&self, owner: u32, group: u32) -> io::Result<()> {
+        // SAFETY: `self.fd` is a live owned descriptor. `fchown` retains no pointer or FD.
+        if unsafe { libc::fchown(self.fd.as_raw_fd(), owner, group) } == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+
+    pub fn entry_names_bounded(&self, max_entries: usize) -> io::Result<Vec<String>> {
+        if max_entries == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "entry limit must be non-zero",
+            ));
+        }
+        let descriptor_path = format!("/proc/self/fd/{}", self.fd.as_raw_fd());
+        let mut names = Vec::new();
+        for (scanned, entry) in std::fs::read_dir(descriptor_path)?.enumerate() {
+            if scanned == max_entries {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "directory entry count exceeds configured bound",
+                ));
+            }
+            let name = entry?.file_name();
+            if let Some(name) = name.to_str() {
+                names.push(name.to_string());
+            }
+        }
+        Ok(names)
+    }
+
     pub fn file_size_bounded(&self, name: &str, max_bytes: usize) -> io::Result<usize> {
         let (_, size) = self.open_file_bounded(name, max_bytes)?;
         Ok(size)
@@ -394,6 +427,15 @@ impl TrustedDir {
     }
 }
 
+pub fn chown_file(file: &File, owner: u32, group: u32) -> io::Result<()> {
+    // SAFETY: `file` owns a live descriptor. `fchown` retains no pointer or descriptor.
+    if unsafe { libc::fchown(file.as_raw_fd(), owner, group) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 fn owned_fd(raw: RawFd) -> io::Result<OwnedFd> {
     if raw < 0 {
         return Err(io::Error::last_os_error());
@@ -617,6 +659,27 @@ mod tests {
         assert!(dir.read_range_bounded("stage", 5, 2, 8).is_err());
         assert!(dir.unlink_file("stage").unwrap());
         assert!(!dir.unlink_file("stage").unwrap());
+    }
+
+    #[test]
+    fn directory_enumeration_is_descriptor_relative_and_bounded() {
+        let root = TestDir::new();
+        let pinned = root.path.with_extension("pinned");
+        fs::write(root.path.join("first"), b"one").unwrap();
+        fs::write(root.path.join("third"), b"three").unwrap();
+        let dir = TrustedDir::open(&root.path).unwrap();
+        fs::rename(&root.path, &pinned).unwrap();
+        fs::create_dir(&root.path).unwrap();
+        fs::write(root.path.join("second"), b"two").unwrap();
+
+        assert!(dir.entry_names_bounded(1).is_err());
+        let mut names = dir.entry_names_bounded(2).unwrap();
+        names.sort();
+        assert_eq!(names, ["first", "third"]);
+        assert!(dir.entry_names_bounded(0).is_err());
+        drop(dir);
+        fs::remove_dir_all(&root.path).unwrap();
+        fs::rename(&pinned, &root.path).unwrap();
     }
 
     #[test]
