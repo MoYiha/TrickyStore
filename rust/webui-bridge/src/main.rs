@@ -416,15 +416,13 @@ fn select_download_dir() -> Result<(PathBuf, TrustedDir), String> {
 
 fn select_report_directory() -> Result<ExportDirectory, String> {
     match shell_report_directory() {
-        Ok(directory) => {
-            Ok(ExportDirectory {
-                display_path: PathBuf::from(SHELL_REPORT_DIR),
-                directory,
-                mode: 0o640,
-                owner: Some((SHELL_UID, SHELL_GID)),
-                clean_old_reports: true,
-            })
-        }
+        Ok(directory) => Ok(ExportDirectory {
+            display_path: PathBuf::from(SHELL_REPORT_DIR),
+            directory,
+            mode: 0o640,
+            owner: Some((SHELL_UID, SHELL_GID)),
+            clean_old_reports: true,
+        }),
         Err(shell_error) => {
             if let Ok((display_path, directory)) = select_download_dir() {
                 return Ok(ExportDirectory {
