@@ -24,9 +24,22 @@ internal object KeyboxActivation {
      * Serializes the complete scan -> parse -> verify -> commit -> publish lifecycle. Besides
      * preventing stale writers, this keeps one refresh from evicting another refresh's transient
      * Rust key registrations before the winning active-set commit.
+     *
+     * A fresh certificate rewrite owns [publicationLock]. Backend recovery can re-enter this
+     * coordinator from that rewrite. Normal refreshes acquire refresh -> publication, so recovery
+     * must never block in the opposite publication -> refresh order. If another refresh already
+     * owns [refreshLock], fail this exceptional recovery attempt instead; the in-flight refresh or
+     * a subsequent retry can rebuild backend state without creating an AB-BA deadlock.
      */
     fun <T> coordinateRefresh(block: () -> T): T {
-        refreshLock.lock()
+        val acquired =
+            if (publicationLock.isHeldByCurrentThread) {
+                refreshLock.tryLock()
+            } else {
+                refreshLock.lock()
+                true
+            }
+        check(acquired) { "Keybox refresh is already active during publication recovery" }
         return try {
             block()
         } finally {
@@ -53,7 +66,8 @@ internal object KeyboxActivation {
      * transition. Fresh certificate rewrites hold this same reentrant mutex while selecting and
      * consuming an opaque backend key, so they can observe either the old pair or the new pair but
      * never the Rust-new/managed-old gap. Reentrancy is intentional: an epoch recovery triggered by
-     * a fresh rewrite can rebuild publication on the same thread without a read-to-write upgrade.
+     * a fresh rewrite can rebuild publication on the same thread when the refresh coordinator is
+     * free, without a read-to-write lock upgrade.
      */
     fun commitAndPublish(
         ticket: RefreshTicket,
