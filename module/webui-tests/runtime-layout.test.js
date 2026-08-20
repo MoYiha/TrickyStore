@@ -13,6 +13,8 @@ assert.ok(ux.includes('const MAX_CBOX_BYTES = MAX_XML_BYTES + 36;'), 'CBOX ZIP l
 assert.ok(ux.includes('I understand that every supported XML/CBOX file in this ZIP will be imported individually.'), 'ZIP confirmation copy is missing');
 assert.ok(index.includes('accept=".xml,.cbox,.zip"'), 'keybox picker must accept ZIP');
 assert.ok(index.includes("lowerName.endsWith('.cbox') ? 10 * 1024 * 1024 + 36 : 10 * 1024 * 1024"), 'direct CBOX upload must include the envelope header');
+assert.ok(!index.includes("if (!pwd.trim())"), 'legacy empty-password CBOX unlock must reach the backend');
+assert.ok(index.includes("formData.append('password', pwd)"), 'CBOX unlock must submit the exact password value');
 assert.ok(!fs.existsSync(`${root}/ux-core.js`) && !fs.existsSync(`${root}/zip-import.js`), 'feature-specific runtime JS must not be reintroduced');
 
 console.log('WebUI ZIP runtime layout checks passed');

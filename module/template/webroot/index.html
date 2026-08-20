@@ -978,7 +978,6 @@ try {
 
         async function unlockCbox(filename, controlId) {
 const pwd = document.getElementById('pwd_' + controlId).value;
-if (!pwd.trim()) { notify('Password required', 'error'); return; }
 const pk = document.getElementById('pk_' + controlId).value;
 try {
     const formData = new FormData();
