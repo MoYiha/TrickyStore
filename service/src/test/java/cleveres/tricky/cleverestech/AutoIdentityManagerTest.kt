@@ -35,7 +35,8 @@ class AutoIdentityManagerTest {
                           "canary": true,
                           "releaseCandidateName": "BP31.260801.001",
                           "buildId": "12345678",
-                          "releaseTrackVersionName": "Android 17 Canary"
+                          "releaseTrackVersionName": "Android 17 Canary",
+                          "securityPatch": "2026-02-31"
                         }
                       ]
                     }
@@ -79,6 +80,18 @@ class AutoIdentityManagerTest {
     }
 
     @Test
+    fun `invalid canary calendar dates cannot outrank valid builds`() {
+        val valid =
+            """{"id":"canary-20260228","canary":true,"releaseCandidateName":"BP31.260228.001","buildId":"100"}"""
+        val invalid =
+            """{"id":"canary-20260231","canary":true,"releaseCandidateName":"BP31.260231.001","buildId":"999"}"""
+
+        val latest = AutoIdentityManager.findLatestCanary("[$valid,$invalid]")
+
+        assertEquals("canary-20260228", latest?.optString("id"))
+    }
+
+    @Test
     fun `security patch lookup stays inside the matching bulletin row`() {
         val bulletin =
             """
@@ -95,6 +108,20 @@ class AutoIdentityManagerTest {
     }
 
     @Test
+    fun `security patch lookup does not bridge across bulletin rows`() {
+        val bulletin =
+            """
+            <table>
+              <tr><td>2607</td><td>2026-07-05</td></tr>
+              <p>canary-2608</p>
+              <tr><td>2026-08-05</td></tr>
+            </table>
+            """.trimIndent()
+
+        assertEquals(null, AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"))
+    }
+
+    @Test
     fun `security patch lookup does not borrow a nearby date outside the matching row`() {
         val bulletin =
             """
@@ -102,6 +129,13 @@ class AutoIdentityManagerTest {
             <p>canary-2608</p>
             <div>2026-08-05</div>
             """.trimIndent()
+
+        assertEquals(null, AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"))
+    }
+
+    @Test
+    fun `security patch lookup rejects impossible calendar dates`() {
+        val bulletin = """<table><tr><td>2608</td><td>2026-02-31</td></tr></table>"""
 
         assertEquals(null, AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"))
     }
@@ -117,11 +151,12 @@ class AutoIdentityManagerTest {
         val candidates =
             AutoIdentityManager.parseDeviceCandidates(
                 """
-                <tr id="good_device"><td>Pixel Good</td></tr>
-                <tr id="bad/device"><td>Pixel Bad</td></tr>
+                <tr class="pixel-row" data-id="ignored" id = "good_device"><td>Pixel Good</td></tr>
+                <tr class="pixel-row" id="bad/device"><td>Pixel Bad</td></tr>
                 """.trimIndent(),
             )
         assertEquals(1, candidates.size)
+        assertEquals("good_device", candidates.single().device)
         assertTrue(candidates.single().product.endsWith("_beta"))
     }
 }
