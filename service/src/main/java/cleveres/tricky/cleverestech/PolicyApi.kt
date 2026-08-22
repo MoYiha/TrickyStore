@@ -72,7 +72,7 @@ internal object PolicyApi {
 
     private fun currentPolicyResponse(): JSONObject =
         synchronized(PolicyState) {
-            compatibilityStatusResponse(PolicyState.stateJson(), Config.getConfigRoot())
+            reconciledCompatibilityResponse(PolicyState.stateJson(), Config.getConfigRoot())
         }
 
     private fun retryCompatibilitySync(): NanoHTTPD.Response =
@@ -107,6 +107,23 @@ internal object PolicyApi {
                     )
                 },
             )
+        return mutationResponse(result)
+    }
+
+    internal fun reconciledCompatibilityResponse(
+        state: JSONObject,
+        root: File,
+    ): JSONObject {
+        val synchronized = LegacyIdentityMarkers.isSynchronized(root, state)
+        if (synchronized.getOrNull() == true) {
+            return mutationResponse(PolicyMutationResult(state, CompatibilitySyncStatus.OK))
+        }
+        val result = retryCompatibility(state, root)
+        if (result.compatibilitySync == CompatibilitySyncStatus.PENDING) {
+            result.compatibilityError?.let { error ->
+                Logger.e("Policy read could not reconcile early-boot identity compatibility markers", error)
+            }
+        }
         return mutationResponse(result)
     }
 
