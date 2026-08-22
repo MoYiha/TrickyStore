@@ -33,11 +33,12 @@ class PolicyMutationCoordinatorTest {
                         },
                         synchronizeCompatibility = { state ->
                             firstSyncEntered.countDown()
-                            if (!releaseFirstSync.await(2, TimeUnit.SECONDS)) {
-                                return@mutate Result.failure(AssertionError("Timed out waiting to release first sync"))
+                            if (releaseFirstSync.await(2, TimeUnit.SECONDS)) {
+                                markers.set(state.getString("generation"))
+                                Result.success(Unit)
+                            } else {
+                                Result.failure(AssertionError("Timed out waiting to release first sync"))
                             }
-                            markers.set(state.getString("generation"))
-                            Result.success(Unit)
                         },
                     )
                 }
@@ -62,7 +63,10 @@ class PolicyMutationCoordinatorTest {
                 }
 
             assertTrue(secondAttempting.await(2, TimeUnit.SECONDS))
-            assertFalse("second canonical mutation must wait for first marker sync", secondMutationEntered.await(150, TimeUnit.MILLISECONDS))
+            assertFalse(
+                "second canonical mutation must wait for first marker sync",
+                secondMutationEntered.await(150, TimeUnit.MILLISECONDS),
+            )
 
             releaseFirstSync.countDown()
             assertTrue(first.get(2, TimeUnit.SECONDS).isSuccess)
