@@ -35,7 +35,7 @@ internal object PolicyMutationCoordinator {
             }
 
             mutation().map { state ->
-                val compatibilityResult = synchronizeCompatibility(state)
+                val compatibilityResult = runCatching { synchronizeCompatibility(state).getOrThrow() }
                 PolicyMutationResult(
                     state = state,
                     compatibilitySync =
