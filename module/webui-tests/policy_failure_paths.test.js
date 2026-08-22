@@ -30,8 +30,8 @@ assert.doesNotMatch(
 );
 assert.match(
     policySource,
-    /Identity was updated, but the Identity Manager view could not be fully refreshed/,
+    /Warning: the Identity Manager view could not be fully refreshed/,
     'Auto Identity must distinguish presentation refresh warnings from backend failure'
 );
 
-console.log('Policy failure-path regression checks passed');
+console.log('Policy failure-path source guards passed');
