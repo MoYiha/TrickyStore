@@ -91,7 +91,8 @@ internal object LegacyIdentityMarkers {
         }
     }
 
-    private fun desiredState(state: JSONObject): DesiredState {
+    @androidx.annotation.VisibleForTesting
+    internal fun desiredState(state: JSONObject): DesiredState {
         val resolved = LinkedHashMap<String, Boolean>()
         val features = state.optJSONObject("features") ?: JSONObject()
         listOf("buildIdentity", "attestationIdentity", "telephonyIdentity", "regionIdentity", "identityRefresh")
