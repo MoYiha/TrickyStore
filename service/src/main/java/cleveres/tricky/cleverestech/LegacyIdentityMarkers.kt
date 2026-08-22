@@ -97,7 +97,15 @@ internal object LegacyIdentityMarkers {
         listOf("buildIdentity", "attestationIdentity", "telephonyIdentity", "regionIdentity", "identityRefresh")
             .forEach { key -> resolved[key] = features.optBoolean(key, false) }
 
-        val activeProfile = state.optString("activeProfile").trim()
+        // JSON null is the canonical representation of "no active profile". Do not
+        // coerce JSONObject.NULL through optString(): Android org.json renders that
+        // sentinel as the literal string "null", which is also a valid profile name.
+        val activeProfile =
+            if (state.has("activeProfile") && !state.isNull("activeProfile")) {
+                (state.opt("activeProfile") as? String)?.trim().orEmpty()
+            } else {
+                ""
+            }
         val profiles = state.optJSONArray("profiles")
         if (activeProfile.isNotEmpty() && profiles != null) {
             for (i in 0 until profiles.length()) {
