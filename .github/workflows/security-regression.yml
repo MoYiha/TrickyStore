@@ -187,6 +187,68 @@ jobs:
         if: steps.android_jvm_tests.outcome == 'failure'
         run: exit 1
 
+  device-smoke-gate:
+    name: "📱 Device Smoke Evidence"
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Require head-bound device smoke evidence for core runtime changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          device_bound=false
+          while IFS= read -r path; do
+            case "$path" in
+              service/src/main/*|stub/src/main/*|rust/*|module/template/*|module/*.sh)
+                echo "Device-bound production change: $path"
+                device_bound=true
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+
+          if [[ "$device_bound" != "true" ]]; then
+            echo "No device-bound production paths changed; device smoke evidence is not required."
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ.get("PR_BODY", "")
+          head = os.environ["HEAD_SHA"].strip()
+
+          result = re.search(r"(?mi)^Device-Smoke-Result:\s*PASS\s*$", body)
+          tested_head = re.search(r"(?mi)^Device-Smoke-Head:\s*([0-9a-f]{40})\s*$", body)
+          target = re.search(r"(?mi)^Device-Smoke-Target:\s*(.+?)\s*$", body)
+
+          errors = []
+          if result is None:
+              errors.append("missing 'Device-Smoke-Result: PASS'")
+          if tested_head is None or tested_head.group(1).lower() != head.lower():
+              errors.append(f"Device-Smoke-Head must equal current PR head {head}")
+          if target is None or target.group(1).strip().lower() in {"pending", "n/a", "none"}:
+              errors.append("Device-Smoke-Target must identify the tested device / Android / root-manager target")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              print("::error::Core device-runtime changes cannot be merge-ready from host CI alone. Run the required smoke on a supported KernelSU/APatch device and record head-bound evidence in the PR body.")
+              sys.exit(1)
+
+          print(f"Device smoke evidence is bound to final head {head} on {target.group(1).strip()}")
+          PY
+
   dependency-submission:
     name: "📦 Submit Gradle Dependency Graph"
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
