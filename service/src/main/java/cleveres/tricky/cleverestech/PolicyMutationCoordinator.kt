@@ -34,7 +34,7 @@ internal object PolicyMutationCoordinator {
                 return@synchronized Result.failure(CompatibilityPreflightException(error))
             }
 
-            mutation().map { state ->
+            runCatching { mutation().getOrThrow() }.map { state ->
                 val compatibilityResult = runCatching { synchronizeCompatibility(state).getOrThrow() }
                 PolicyMutationResult(
                     state = state,
@@ -50,7 +50,9 @@ internal object PolicyMutationCoordinator {
         synchronizeCompatibility: (JSONObject) -> Result<Unit>,
     ): Result<Unit> =
         synchronized(PolicyState) {
-            val state = stateProvider()
-            runCatching { synchronizeCompatibility(state).getOrThrow() }
+            runCatching {
+                val state = stateProvider()
+                synchronizeCompatibility(state).getOrThrow()
+            }
         }
 }
