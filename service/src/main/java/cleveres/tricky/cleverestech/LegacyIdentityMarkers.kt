@@ -7,15 +7,6 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
-/**
- * Keeps V2 policy state compatible with early-boot code that still consumes
- * fixed marker files before the Android service is available.
- *
- * The file names are intentionally closed over a fixed allow-list. All paths are
- * checked without following links before any mutation so a malformed or replaced
- * marker fails closed instead of turning a policy update into an arbitrary file
- * write/delete primitive.
- */
 internal object LegacyIdentityMarkers {
     const val ENGINE = "spoof_enabled"
     const val BUILD = "spoof_build_identity"
@@ -23,7 +14,8 @@ internal object LegacyIdentityMarkers {
     const val REGION = "spoof_region_cn"
     const val REFRESH = "random_on_boot"
 
-    private const val ROOT_ONLY_MODE = 384 // 0600
+    private const val ROOT_ONLY_MODE = 384
+    private val allowedNames = setOf(ENGINE, BUILD, TELEPHONY, REGION, REFRESH)
 
     data class DesiredState(
         val engine: Boolean,
@@ -39,104 +31,89 @@ internal object LegacyIdentityMarkers {
         val enabled: Boolean,
     )
 
-    private val allowedNames = setOf(ENGINE, BUILD, TELEPHONY, REGION, REFRESH)
-
-    /** Validate all compatibility paths before a persistent policy mutation. */
     fun preflight(root: File) {
-        allowedNames.forEach { name -> validatePath(File(root, name)) }
+        allowedNames.forEach { validatePath(File(root, it)) }
+    }
+
+    fun syncFromPolicyState(root: File, state: JSONObject): Result<Unit> = runCatching {
+        if (!state.optString("source").equals("v2", true)) return@runCatching
+        apply(plan(root, desiredState(state)))
+    }
+
+    fun plan(root: File, desired: DesiredState): List<Operation> {
+        val expected = linkedMapOf(
+            ENGINE to desired.engine,
+            BUILD to desired.build,
+            TELEPHONY to desired.telephony,
+            REGION to desired.region,
+            REFRESH to desired.refresh,
+        )
+        return expected.mapNotNull { (name, enabled) ->
+            val file = File(root, name)
+            if (validatePath(file) != enabled) Operation(name, file, enabled) else null
+        }
     }
 
     /**
-     * Synchronize only explicit V2 policy. Legacy state already uses these marker
-     * files as its source of truth and must never be rewritten from a derived view.
+     * Applies the marker transaction with rollback. Marker files are compatibility
+     * state; never leave a half-applied policy after an IO failure.
      */
-    fun syncFromPolicyState(
-        root: File,
-        state: JSONObject,
-    ): Result<Unit> =
-        runCatching {
-            if (!state.optString("source").equals("v2", ignoreCase = true)) return@runCatching
-            apply(plan(root, desiredState(state)))
-        }
-
-    fun plan(
-        root: File,
-        desired: DesiredState,
-    ): List<Operation> {
-        val expected =
-            linkedMapOf(
-                ENGINE to desired.engine,
-                BUILD to desired.build,
-                TELEPHONY to desired.telephony,
-                REGION to desired.region,
-                REFRESH to desired.refresh,
-            )
-        val result = ArrayList<Operation>(expected.size)
-        for ((name, enabled) in expected) {
-            require(name in allowedNames) { "Unsupported identity marker" }
-            val file = File(root, name)
-            val exists = validatePath(file)
-            if (exists != enabled) result += Operation(name, file, enabled)
-        }
-        return result
-    }
-
     fun apply(operations: List<Operation>) {
-        // Revalidate the complete plan immediately before mutating anything. This
-        // prevents a pre-existing symlink/directory from causing a partial update.
-        operations.forEach { operation ->
-            require(operation.name in allowedNames) { "Unsupported identity marker" }
-            validatePath(operation.file)
+        operations.forEach {
+            require(it.name in allowedNames)
+            validatePath(it.file)
         }
-        operations.forEach { operation ->
-            if (operation.enabled) {
-                SecureFile.touch(operation.file, ROOT_ONLY_MODE)
-            } else {
-                Files.deleteIfExists(operation.file.toPath())
+
+        val previous = operations.associate { it.file to Files.exists(it.file.toPath(), LinkOption.NOFOLLOW_LINKS) }
+        val changed = ArrayList<Operation>()
+        try {
+            operations.forEach {
+                if (it.enabled) {
+                    SecureFile.touch(it.file, ROOT_ONLY_MODE)
+                } else {
+                    Files.deleteIfExists(it.file.toPath())
+                }
+                changed += it
             }
-            // Update in-process legacy caches without waiting for the file observer.
-            Config.refreshRuntimeSetting(operation.name)
+            changed.forEach { Config.refreshRuntimeSetting(it.name) }
+        } catch (failure: Throwable) {
+            changed.asReversed().forEach { op ->
+                runCatching {
+                    val shouldExist = previous[op.file] == true
+                    if (shouldExist) SecureFile.touch(op.file, ROOT_ONLY_MODE)
+                    else Files.deleteIfExists(op.file.toPath())
+                }
+            }
+            throw failure
         }
     }
 
     private fun desiredState(state: JSONObject): DesiredState {
         val resolved = LinkedHashMap<String, Boolean>()
-        val features = state.getJSONObject("features")
+        val features = state.optJSONObject("features") ?: JSONObject()
         listOf("buildIdentity", "attestationIdentity", "telephonyIdentity", "regionIdentity", "identityRefresh")
-            .forEach { key -> resolved[key] = features.getBoolean(key) }
+            .forEach { key -> resolved[key] = features.optBoolean(key, false) }
 
-        val activeProfile = state.optString("activeProfile").trim().takeIf { it.isNotEmpty() }
-        if (activeProfile != null) {
-            val profiles = state.optJSONArray("profiles")
-            if (profiles != null) {
-                for (index in 0 until profiles.length()) {
-                    val profile = profiles.optJSONObject(index) ?: continue
-                    if (!profile.optString("name").equals(activeProfile, ignoreCase = true)) continue
-                    val overrides = profile.optJSONObject("features") ?: break
-                    resolved.keys.toList().forEach { key ->
-                        if (overrides.has(key) && overrides.opt(key) is Boolean) {
-                            resolved[key] = overrides.getBoolean(key)
-                        }
-                    }
-                    break
+        val activeProfile = state.optString("activeProfile").trim()
+        val profiles = state.optJSONArray("profiles")
+        if (activeProfile.isNotEmpty() && profiles != null) {
+            for (i in 0 until profiles.length()) {
+                val profile = profiles.optJSONObject(i) ?: continue
+                if (!profile.optString("name").equals(activeProfile, true)) continue
+                val overrides = profile.optJSONObject("features") ?: break
+                resolved.keys.forEach { key ->
+                    if (overrides.has(key)) resolved[key] = overrides.optBoolean(key, resolved[key] ?: false)
                 }
+                break
             }
         }
 
-        val build = resolved.getValue("buildIdentity")
-        val attestation = resolved.getValue("attestationIdentity")
-        val telephony = resolved.getValue("telephonyIdentity")
-        val region = resolved.getValue("regionIdentity")
-        val refresh = resolved.getValue("identityRefresh")
-        // Security Patch intentionally does not participate in the legacy master
-        // marker. V2 treats patch presentation as an independent identity feature.
-        return DesiredState(
-            engine = build || attestation || telephony || region || refresh,
-            build = build,
-            telephony = telephony,
-            region = region,
-            refresh = refresh,
-        )
+        val build = resolved["buildIdentity"] ?: false
+        val attestation = resolved["attestationIdentity"] ?: false
+        val telephony = resolved["telephonyIdentity"] ?: false
+        val region = resolved["regionIdentity"] ?: false
+        val refresh = resolved["identityRefresh"] ?: false
+        return DesiredState(build || attestation || telephony || region || refresh, build, telephony, region, refresh)
     }
 
     private fun validatePath(file: File): Boolean {
