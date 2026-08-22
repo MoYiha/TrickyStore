@@ -257,14 +257,13 @@ jobs:
           adb shell settings put global animator_duration_scale 0
           adb shell getprop ro.build.version.sdk
 
-      - name: Run Android platform semantic contract
+      - name: Run Android platform semantic contracts
         id: platform_contract
         continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew :service:connectedDebugAndroidTest \
-            -Pandroid.testInstrumentationRunnerArguments.class=cleveres.tricky.cleverestech.AndroidJsonIdentityContractTest \
             --warning-mode=fail --console=plain --stacktrace --no-build-cache
 
       - name: Show Android platform contract failure context
