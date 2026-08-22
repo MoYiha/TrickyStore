@@ -68,12 +68,15 @@ internal object LegacyIdentityMarkers {
         val changed = ArrayList<Operation>()
         try {
             operations.forEach {
+                // Register the operation before mutating the filesystem. SecureFile.touch()
+                // can create the marker and then fail while enforcing permissions; that
+                // partially-applied current operation must be rolled back as well.
+                changed += it
                 if (it.enabled) {
                     SecureFile.touch(it.file, ROOT_ONLY_MODE)
                 } else {
                     Files.deleteIfExists(it.file.toPath())
                 }
-                changed += it
             }
             changed.forEach { Config.refreshRuntimeSetting(it.name) }
         } catch (failure: Throwable) {
