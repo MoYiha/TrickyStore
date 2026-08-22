@@ -117,6 +117,7 @@ jobs:
             --tests 'cleveres.tricky.cleverestech.LegacyIdentityMarkersTest' \
             --tests 'cleveres.tricky.cleverestech.IdentityPolicyContractTest' \
             --tests 'cleveres.tricky.cleverestech.NullablePolicyJsonContractTest' \
+            --tests 'cleveres.tricky.cleverestech.PolicyCompatibilityRecoveryTest' \
             --tests 'cleveres.tricky.cleverestech.PolicyMutationCoordinatorTest' \
             --tests 'cleveres.tricky.cleverestech.WebServerIdentityTest' \
             --warning-mode=fail --console=plain --stacktrace --no-build-cache
@@ -223,21 +224,24 @@ jobs:
             "platform-tools" \
             "emulator" \
             "platforms;android-35" \
-            "system-images;android-35;google_apis;x86_64"
+            "system-images;android-35;default;x86_64"
 
       - name: Boot Android platform oracle
+        id: emulator_boot
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           if [[ -e /dev/kvm ]]; then
             sudo chmod 666 /dev/kvm
           fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check || true
           echo no | avdmanager create avd \
             --force \
             --name ct-platform-contract \
-            --package "system-images;android-35;google_apis;x86_64" \
+            --package "system-images;android-35;default;x86_64" \
             --device "pixel_6"
-          nohup "$ANDROID_HOME/emulator/emulator" \
+          "$ANDROID_HOME/emulator/emulator" \
             -avd ct-platform-contract \
             -no-window \
             -no-audio \
@@ -246,12 +250,27 @@ jobs:
             -wipe-data \
             -gpu swiftshader_indirect \
             > "$RUNNER_TEMP/ct-emulator.log" 2>&1 &
-          timeout 420 bash -c '
-            adb wait-for-device
-            until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" == "1" ]]; do
-              sleep 2
-            done
-          '
+          emulator_pid=$!
+          echo "$emulator_pid" > "$RUNNER_TEMP/ct-emulator.pid"
+          booted=false
+          for _ in $(seq 1 210); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Android emulator process exited before boot completed"
+              tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+              exit 1
+            fi
+            if [[ "$(adb get-state 2>/dev/null || true)" == "device" ]] && \
+               [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != "true" ]]; then
+            echo "::error::Android emulator did not complete boot within the platform-contract window"
+            tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+            exit 1
+          fi
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
@@ -259,6 +278,7 @@ jobs:
 
       - name: Run Android platform semantic contracts
         id: platform_contract
+        if: steps.emulator_boot.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
@@ -267,17 +287,19 @@ jobs:
             --warning-mode=fail --console=plain --stacktrace --no-build-cache
 
       - name: Show Android platform contract failure context
-        if: steps.platform_contract.outcome == 'failure'
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         shell: bash
         run: |
           set -euo pipefail
           echo "===== emulator ====="
           tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+          echo "===== adb ====="
+          adb devices -l || true
           echo "===== instrumentation reports ====="
           find service/build -type f \( -path '*/androidTests/connected/*' -o -path '*/reports/androidTests/*' \) -print | sort || true
 
       - name: Upload Android platform contract failure reports
-        if: steps.platform_contract.outcome == 'failure'
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: android-platform-contract-failure
@@ -290,7 +312,7 @@ jobs:
           compression-level: 6
 
       - name: Enforce Android platform contract result
-        if: steps.platform_contract.outcome == 'failure'
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         run: exit 1
 
   device-smoke-gate:
