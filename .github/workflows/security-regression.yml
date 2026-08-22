@@ -106,6 +106,18 @@ jobs:
             node "$test_file"
           done
 
+      - name: Guard Identity and policy semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :service:testDebugUnitTest \
+            --tests 'cleveres.tricky.cleverestech.PolicyStateTest' \
+            --tests 'cleveres.tricky.cleverestech.LegacyIdentityMarkersTest' \
+            --tests 'cleveres.tricky.cleverestech.IdentityPolicyContractTest' \
+            --tests 'cleveres.tricky.cleverestech.PolicyMutationCoordinatorTest' \
+            --tests 'cleveres.tricky.cleverestech.WebServerIdentityTest' \
+            --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
       - name: Guard Binder cache regressions
         working-directory: rust
         env:
@@ -120,7 +132,7 @@ jobs:
       - name: Run Android JVM unit tests
         id: android_jvm_tests
         continue-on-error: true
-        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
 
       - name: Show Android JVM test failures
         if: steps.android_jvm_tests.outcome == 'failure'
