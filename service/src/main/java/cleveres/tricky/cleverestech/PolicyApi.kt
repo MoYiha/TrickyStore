@@ -13,8 +13,12 @@ internal object PolicyApi {
         if (uri == "/api/policy_state" && method == NanoHTTPD.Method.POST) {
             val data = parameter(session, "data")
                 ?: return text(NanoHTTPD.Response.Status.BAD_REQUEST, "Missing policy state")
+            preflightCompatibilityMarkers()?.let { return it }
             return PolicyState.replaceFromJson(data).fold(
-                onSuccess = { json(NanoHTTPD.Response.Status.OK, it) },
+                onSuccess = { state ->
+                    synchronizeCompatibilityMarkers(state)
+                    json(NanoHTTPD.Response.Status.OK, state)
+                },
                 onFailure = { text(NanoHTTPD.Response.Status.BAD_REQUEST, it.message ?: "Invalid policy state") },
             )
         }
@@ -30,10 +34,14 @@ internal object PolicyApi {
             val action = parameter(session, "action")
                 ?: return text(NanoHTTPD.Response.Status.BAD_REQUEST, "Missing profile action")
             val data = parameter(session, "data") ?: "{}"
+            preflightCompatibilityMarkers()?.let { return it }
             return runCatching { JSONObject(data) }.fold(
                 onSuccess = { payload ->
                     PolicyState.profileAction(action, payload).fold(
-                        onSuccess = { json(NanoHTTPD.Response.Status.OK, it) },
+                        onSuccess = { state ->
+                            synchronizeCompatibilityMarkers(state)
+                            json(NanoHTTPD.Response.Status.OK, state)
+                        },
                         onFailure = { text(NanoHTTPD.Response.Status.BAD_REQUEST, it.message ?: "Invalid profile request") },
                     )
                 },
@@ -41,6 +49,24 @@ internal object PolicyApi {
             )
         }
         return null
+    }
+
+    private fun preflightCompatibilityMarkers(): NanoHTTPD.Response? =
+        runCatching { LegacyIdentityMarkers.preflight(Config.getConfigRoot()) }.fold(
+            onSuccess = { null },
+            onFailure = { error ->
+                Logger.e("Refusing policy mutation because identity compatibility markers are unsafe", error)
+                text(NanoHTTPD.Response.Status.BAD_REQUEST, "Identity compatibility state is unsafe")
+            },
+        )
+
+    private fun synchronizeCompatibilityMarkers(state: JSONObject) {
+        LegacyIdentityMarkers.syncFromPolicyState(Config.getConfigRoot(), state)
+            .onFailure { error ->
+                // Policy persistence is canonical. A post-save marker I/O failure is logged and
+                // healed again at service startup instead of reporting a false transactional rollback.
+                Logger.e("Policy state saved but early-boot identity markers could not be synchronized", error)
+            }
     }
 
     private fun parameter(session: NanoHTTPD.IHTTPSession, name: String): String? =
