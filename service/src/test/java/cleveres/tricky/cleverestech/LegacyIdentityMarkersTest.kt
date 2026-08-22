@@ -76,6 +76,18 @@ class LegacyIdentityMarkersTest {
     }
 
     @Test
+    fun `compatibility status reports stale markers until synchronization completes`() {
+        val enabled = policy(build = true)
+
+        assertFalse(LegacyIdentityMarkers.isSynchronized(root, enabled).getOrThrow())
+        assertTrue(LegacyIdentityMarkers.syncFromPolicyState(root, enabled).isSuccess)
+        assertTrue(LegacyIdentityMarkers.isSynchronized(root, enabled).getOrThrow())
+
+        File(root, LegacyIdentityMarkers.BUILD).delete()
+        assertFalse(LegacyIdentityMarkers.isSynchronized(root, enabled).getOrThrow())
+    }
+
+    @Test
     fun `active profile feature overrides participate in global boot state`() {
         val profile =
             JSONObject()
@@ -132,6 +144,7 @@ class LegacyIdentityMarkersTest {
         val state = policy().put("source", "legacy")
 
         assertTrue(LegacyIdentityMarkers.syncFromPolicyState(root, state).isSuccess)
+        assertTrue(LegacyIdentityMarkers.isSynchronized(root, state).getOrThrow())
         assertTrue(File(root, LegacyIdentityMarkers.ENGINE).isFile)
     }
 
@@ -191,6 +204,38 @@ class LegacyIdentityMarkersTest {
 
         assertTrue(result.isFailure)
         assertFalse("partially created marker must be removed", marker.exists())
+    }
+
+    @Test
+    fun `runtime refresh failure rolls files and published runtime state back together`() {
+        val engine = File(root, LegacyIdentityMarkers.ENGINE)
+        val build = File(root, LegacyIdentityMarkers.BUILD)
+        val published = mutableMapOf<String, Boolean>()
+        var failBuildRefreshOnce = true
+        val refresh: (String) -> Unit = { name ->
+            published[name] = File(root, name).exists()
+            if (name == LegacyIdentityMarkers.BUILD && failBuildRefreshOnce) {
+                failBuildRefreshOnce = false
+                throw IOException("runtime refresh failed")
+            }
+        }
+
+        val result =
+            runCatching {
+                LegacyIdentityMarkers.apply(
+                    listOf(
+                        LegacyIdentityMarkers.Operation(LegacyIdentityMarkers.ENGINE, engine, true),
+                        LegacyIdentityMarkers.Operation(LegacyIdentityMarkers.BUILD, build, true),
+                    ),
+                    refreshRuntime = refresh,
+                )
+            }
+
+        assertTrue(result.isFailure)
+        assertFalse(engine.exists())
+        assertFalse(build.exists())
+        assertFalse("engine runtime flag must converge to rolled-back filesystem", published[LegacyIdentityMarkers.ENGINE] == true)
+        assertFalse("build runtime flag must converge to rolled-back filesystem", published[LegacyIdentityMarkers.BUILD] == true)
     }
 
     private fun assertNoIdentityMarkers(message: String) {
