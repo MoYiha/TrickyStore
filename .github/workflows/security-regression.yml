@@ -232,6 +232,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           if [[ -e /dev/kvm ]]; then
             sudo chmod 666 /dev/kvm
           fi
@@ -241,6 +244,13 @@ jobs:
             --name ct-platform-contract \
             --package "system-images;android-35;default;x86_64" \
             --device "pixel_6"
+          echo "Created AVDs:"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+          if [[ ! -f "$ANDROID_AVD_HOME/ct-platform-contract.ini" ]]; then
+            echo "::error::AVD metadata was not created in $ANDROID_AVD_HOME"
+            find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -print || true
+            exit 1
+          fi
           "$ANDROID_HOME/emulator/emulator" \
             -avd ct-platform-contract \
             -no-window \
@@ -291,6 +301,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "===== AVD ====="
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          "$ANDROID_HOME/emulator/emulator" -list-avds || true
+          find "${ANDROID_AVD_HOME:-$RUNNER_TEMP/android-avd}" -maxdepth 2 -type f -print 2>/dev/null | sort || true
           echo "===== emulator ====="
           tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
           echo "===== adb ====="
@@ -307,6 +321,7 @@ jobs:
             service/build/outputs/androidTest-results
             service/build/reports/androidTests
             ${{ runner.temp }}/ct-emulator.log
+            ${{ runner.temp }}/android-avd
           if-no-files-found: warn
           retention-days: 7
           compression-level: 6
