@@ -10,6 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 
 class LegacyIdentityMarkersTest {
@@ -116,6 +117,44 @@ class LegacyIdentityMarkersTest {
         assertTrue(Files.isSymbolicLink(marker))
         assertTrue(outside.toFile().readText() == "unchanged")
         Files.deleteIfExists(outside)
+    }
+
+    @Test
+    fun `touch that creates marker then throws is rolled back`() {
+        val marker = File(root, LegacyIdentityMarkers.BUILD)
+        SecureFile.impl =
+            object : SecureFileOperations {
+                override fun writeText(
+                    file: File,
+                    content: String,
+                ) = Unit
+
+                override fun mkdirs(
+                    file: File,
+                    mode: Int,
+                ) {
+                    file.mkdirs()
+                }
+
+                override fun touch(
+                    file: File,
+                    mode: Int,
+                ) {
+                    file.parentFile?.mkdirs()
+                    file.createNewFile()
+                    throw IOException("chmod failed after create")
+                }
+            }
+
+        val result =
+            runCatching {
+                LegacyIdentityMarkers.apply(
+                    listOf(LegacyIdentityMarkers.Operation(LegacyIdentityMarkers.BUILD, marker, true)),
+                )
+            }
+
+        assertTrue(result.isFailure)
+        assertFalse("partially created marker must be removed", marker.exists())
     }
 
     private fun policy(
