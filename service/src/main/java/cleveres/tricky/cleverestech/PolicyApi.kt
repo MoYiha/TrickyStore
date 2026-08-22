@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech
 
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
+import java.io.File
 
 internal object PolicyApi {
     fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response? {
@@ -71,48 +72,12 @@ internal object PolicyApi {
 
     private fun currentPolicyResponse(): JSONObject =
         synchronized(PolicyState) {
-            val state = PolicyState.stateJson()
-            val root = Config.getConfigRoot()
-            val synchronizedResult = LegacyIdentityMarkers.isSynchronized(root, state)
-            val result =
-                synchronizedResult.fold(
-                    onSuccess = { synchronized ->
-                        PolicyMutationResult(
-                            state = state,
-                            compatibilitySync = if (synchronized) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
-                        )
-                    },
-                    onFailure = { error ->
-                        PolicyMutationResult(
-                            state = state,
-                            compatibilitySync = CompatibilitySyncStatus.PENDING,
-                            compatibilityError = error,
-                        )
-                    },
-                )
-            mutationResponse(result)
+            compatibilityStatusResponse(PolicyState.stateJson(), Config.getConfigRoot())
         }
 
     private fun retryCompatibilitySync(): NanoHTTPD.Response =
         synchronized(PolicyState) {
-            val state = PolicyState.stateJson()
-            val root = Config.getConfigRoot()
-            val compatibilityResult =
-                if (!state.optString("source").equals("v2", true)) {
-                    Result.success(Unit)
-                } else {
-                    runCatching {
-                        LegacyIdentityMarkers.preflight(root)
-                        LegacyIdentityMarkers.syncFromPolicyState(root, state).getOrThrow()
-                    }
-                }
-            val result =
-                PolicyMutationResult(
-                    state = state,
-                    compatibilitySync =
-                        if (compatibilityResult.isSuccess) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
-                    compatibilityError = compatibilityResult.exceptionOrNull(),
-                )
+            val result = retryCompatibility(PolicyState.stateJson(), Config.getConfigRoot())
             if (result.compatibilitySync == CompatibilitySyncStatus.PENDING) {
                 result.compatibilityError?.let { error ->
                     Logger.e("Retrying early-boot identity compatibility synchronization failed", error)
@@ -120,6 +85,51 @@ internal object PolicyApi {
             }
             json(NanoHTTPD.Response.Status.OK, mutationResponse(result))
         }
+
+    internal fun compatibilityStatusResponse(
+        state: JSONObject,
+        root: File,
+    ): JSONObject {
+        val synchronizedResult = LegacyIdentityMarkers.isSynchronized(root, state)
+        val result =
+            synchronizedResult.fold(
+                onSuccess = { synchronized ->
+                    PolicyMutationResult(
+                        state = state,
+                        compatibilitySync = if (synchronized) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
+                    )
+                },
+                onFailure = { error ->
+                    PolicyMutationResult(
+                        state = state,
+                        compatibilitySync = CompatibilitySyncStatus.PENDING,
+                        compatibilityError = error,
+                    )
+                },
+            )
+        return mutationResponse(result)
+    }
+
+    internal fun retryCompatibility(
+        state: JSONObject,
+        root: File,
+    ): PolicyMutationResult {
+        val compatibilityResult =
+            if (!state.optString("source").equals("v2", true)) {
+                Result.success(Unit)
+            } else {
+                runCatching {
+                    LegacyIdentityMarkers.preflight(root)
+                    LegacyIdentityMarkers.syncFromPolicyState(root, state).getOrThrow()
+                }
+            }
+        return PolicyMutationResult(
+            state = state,
+            compatibilitySync =
+                if (compatibilityResult.isSuccess) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
+            compatibilityError = compatibilityResult.exceptionOrNull(),
+        )
+    }
 
     internal fun mutationResponse(result: PolicyMutationResult): JSONObject {
         val response = JSONObject(result.state.toString())
