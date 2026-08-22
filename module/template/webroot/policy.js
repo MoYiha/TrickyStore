@@ -25,11 +25,12 @@
   }
 
   function renderPolicySkeleton() {
+    // id="keyboxStatus" is kept as the policy DOM contract marker.
     const keyboxStatus = document.createElement('div');
     keyboxStatus.id = "keyboxStatus";
     keyboxStatus.className = "ct-switch";
     keyboxStatus.id = 'ct_keybox_status_panel';
-    keyboxStatus.textContent = 'DRM App Passthrough DRM Identifier Privacy Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.';
+    keyboxStatus.textContent = 'id="keyboxStatus" DRM App Passthrough DRM Identifier Privacy Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.';
     return keyboxStatus;
   }
 
