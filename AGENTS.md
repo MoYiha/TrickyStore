@@ -218,3 +218,146 @@ Feature, fix, experiment, and AI-generated branches are temporary and must not b
 - Remove stale branches whose changes have already been merged into `master`.
 - Do not delete `master` or any branch that still contains unmerged work.
 - Keep a merged branch only when there is an explicit, documented reason for it to remain long-lived.
+
+## AI Agent General Bug Prevention Contract
+
+AI agents must optimize for durable correctness, not only for making the current issue disappear.
+
+### Generalize every failure
+
+When a bug, review finding, regression, or unexpected behavior is discovered:
+
+1. Identify the violated invariant, not only the failing line.
+2. Determine why the system allowed that invalid state to exist.
+3. Search for every equivalent path that can produce, transform, cache, persist, or consume the same type of state.
+4. Encode the general rule through implementation, tests, and documentation where appropriate.
+
+Do not add narrow instructions that only describe the exact bug location. A fixed line is temporary; a protected invariant prevents future classes of bugs.
+
+### Root cause over symptom fixes
+
+Agents must not optimize for the smallest textual patch.
+
+Before changing code:
+
+- Understand the lifecycle of the affected data/object/state.
+- Trace producers and consumers.
+- Check initialization, refresh, retry, cancellation, failure, recovery, and cleanup paths.
+- Check alternate implementations and compatibility paths.
+- Verify assumptions against the current repository state.
+
+A patch is incomplete if another valid execution path can still violate the same invariant.
+
+### State and failure handling
+
+Treat failure states as real states.
+
+Agents must carefully review:
+
+- partial initialization,
+- partial writes,
+- interrupted operations,
+- stale cache entries,
+- invalid persisted state,
+- retries,
+- concurrent updates,
+- lifecycle recreation,
+- process restarts,
+- rollback paths.
+
+Do not silently convert unknown, failed, unavailable, or unverified states into normal success values.
+
+Avoid unsafe fallbacks such as:
+
+- empty strings,
+- zero identifiers,
+- default objects,
+- fake timestamps,
+- placeholder hashes,
+- previous known values,
+
+unless collision analysis proves they cannot be confused with valid data.
+
+### Async and concurrency reasoning
+
+For asynchronous or stateful code, review adversarial sequences:
+
+- fail → fail,
+- fail → success → fail,
+- cancel → restart,
+- concurrent replacement,
+- duplicate events,
+- stale callbacks,
+- delayed responses,
+- retry after partial completion.
+
+Verify both:
+
+1. the immediate result;
+2. the state left behind for the next operation.
+
+A correct output with corrupted future state is still a bug.
+
+### Boundary and security reasoning
+
+Every boundary requires explicit validation.
+
+Review:
+
+- external input,
+- files,
+- archives,
+- IPC/Binder,
+- APIs,
+- native interfaces,
+- serialization,
+- encryption/signing,
+- caches,
+- permissions.
+
+Do not trust:
+
+- filenames,
+- timestamps,
+- lengths,
+- metadata,
+- object identity,
+- cached assumptions,
+
+as proof that data is still valid.
+
+Validate the object actually consumed, not only the object previously inspected.
+
+### Tests must prove the invariant
+
+A regression test should:
+
+1. Fail before the fix.
+2. Pass after the fix.
+3. Protect the general behavior, not only the original example.
+
+When fixing a bug, consider adding tests for:
+
+- invalid input,
+- repeated execution,
+- recovery,
+- cancellation,
+- concurrency,
+- corrupted state,
+- boundary values,
+- cleanup behavior.
+
+### Final review before completion
+
+Before declaring work complete:
+
+- Inspect the complete diff.
+- Remove unrelated changes.
+- Search for remaining bypasses.
+- Verify no duplicate workaround was introduced.
+- Confirm tests cover the changed invariant.
+- Confirm the implementation matches the intended architecture.
+
+A successful build does not prove correctness.
+
+A successful fix is one where the same category of failure becomes harder or impossible to reintroduce.
