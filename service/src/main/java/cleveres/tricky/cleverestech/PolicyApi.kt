@@ -8,12 +8,15 @@ internal object PolicyApi {
         val uri = session.uri
         val method = session.method
         if (uri == "/api/policy_state" && method == NanoHTTPD.Method.GET) {
-            return json(NanoHTTPD.Response.Status.OK, PolicyState.stateJson())
+            return json(NanoHTTPD.Response.Status.OK, currentPolicyResponse())
         }
         if (uri == "/api/policy_state" && method == NanoHTTPD.Method.POST) {
             val data = parameter(session, "data")
                 ?: return text(NanoHTTPD.Response.Status.BAD_REQUEST, "Missing policy state")
             return mutatePolicy("Invalid policy state") { PolicyState.replaceFromJson(data) }
+        }
+        if (uri == "/api/policy_compatibility" && method == NanoHTTPD.Method.POST) {
+            return retryCompatibilitySync()
         }
         if (uri == "/api/effective_state" && method == NanoHTTPD.Method.GET) {
             val packageName = parameter(session, "package")
@@ -66,6 +69,58 @@ internal object PolicyApi {
             },
         )
 
+    private fun currentPolicyResponse(): JSONObject =
+        synchronized(PolicyState) {
+            val state = PolicyState.stateJson()
+            val root = Config.getConfigRoot()
+            val synchronizedResult = LegacyIdentityMarkers.isSynchronized(root, state)
+            val result =
+                synchronizedResult.fold(
+                    onSuccess = { synchronized ->
+                        PolicyMutationResult(
+                            state = state,
+                            compatibilitySync = if (synchronized) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
+                        )
+                    },
+                    onFailure = { error ->
+                        PolicyMutationResult(
+                            state = state,
+                            compatibilitySync = CompatibilitySyncStatus.PENDING,
+                            compatibilityError = error,
+                        )
+                    },
+                )
+            mutationResponse(result)
+        }
+
+    private fun retryCompatibilitySync(): NanoHTTPD.Response =
+        synchronized(PolicyState) {
+            val state = PolicyState.stateJson()
+            val root = Config.getConfigRoot()
+            val compatibilityResult =
+                if (!state.optString("source").equals("v2", true)) {
+                    Result.success(Unit)
+                } else {
+                    runCatching {
+                        LegacyIdentityMarkers.preflight(root)
+                        LegacyIdentityMarkers.syncFromPolicyState(root, state).getOrThrow()
+                    }
+                }
+            val result =
+                PolicyMutationResult(
+                    state = state,
+                    compatibilitySync =
+                        if (compatibilityResult.isSuccess) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
+                    compatibilityError = compatibilityResult.exceptionOrNull(),
+                )
+            if (result.compatibilitySync == CompatibilitySyncStatus.PENDING) {
+                result.compatibilityError?.let { error ->
+                    Logger.e("Retrying early-boot identity compatibility synchronization failed", error)
+                }
+            }
+            json(NanoHTTPD.Response.Status.OK, mutationResponse(result))
+        }
+
     internal fun mutationResponse(result: PolicyMutationResult): JSONObject {
         val response = JSONObject(result.state.toString())
         val pending = result.compatibilitySync == CompatibilitySyncStatus.PENDING
@@ -73,7 +128,7 @@ internal object PolicyApi {
         if (pending) {
             response.put(
                 "compatibilityWarning",
-                "Policy was saved, but early-boot compatibility synchronization failed. Retry before reboot.",
+                "Policy is saved, but early-boot compatibility markers are not synchronized. Retry before reboot.",
             )
         }
         return response
