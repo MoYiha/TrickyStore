@@ -58,7 +58,7 @@ class PolicyCompatibilityRecoveryTest {
     }
 
     @Test
-    fun `stale compatibility remains pending across reads until retry heals markers`() {
+    fun `stale compatibility remains pending until explicit retry heals markers`() {
         val state = policy(build = true)
 
         val before = PolicyApi.compatibilityStatusResponse(state, root)
@@ -78,15 +78,43 @@ class PolicyCompatibilityRecoveryTest {
     }
 
     @Test
+    fun `policy read self heals stale compatibility without changing canonical state`() {
+        val state = policy(build = true).put("generation", 41)
+
+        val response = PolicyApi.reconciledCompatibilityResponse(state, root)
+
+        assertEquals("ok", response.getString("compatibilitySync"))
+        assertEquals(41, response.getInt("generation"))
+        assertTrue(response.getJSONObject("features").getBoolean("buildIdentity"))
+        assertTrue(File(root, LegacyIdentityMarkers.ENGINE).isFile)
+        assertTrue(File(root, LegacyIdentityMarkers.BUILD).isFile)
+        assertFalse(response.has("compatibilityWarning"))
+    }
+
+    @Test
+    fun `policy read keeps pending warning when compatibility cannot be safely healed`() {
+        val state = policy(build = true)
+        File(root, LegacyIdentityMarkers.BUILD).mkdirs()
+
+        val response = PolicyApi.reconciledCompatibilityResponse(state, root)
+
+        assertEquals("pending", response.getString("compatibilitySync"))
+        assertTrue(response.getString("compatibilityWarning").contains("Retry before reboot"))
+        assertTrue(File(root, LegacyIdentityMarkers.BUILD).isDirectory)
+    }
+
+    @Test
     fun `legacy state never claims ownership of compatibility markers`() {
         File(root, LegacyIdentityMarkers.ENGINE).writeText("")
         val state = policy(build = false).put("source", "legacy")
 
         val status = PolicyApi.compatibilityStatusResponse(state, root)
         val retry = PolicyApi.retryCompatibility(state, root)
+        val reconciled = PolicyApi.reconciledCompatibilityResponse(state, root)
 
         assertEquals("ok", status.getString("compatibilitySync"))
         assertEquals(CompatibilitySyncStatus.OK, retry.compatibilitySync)
+        assertEquals("ok", reconciled.getString("compatibilitySync"))
         assertTrue(File(root, LegacyIdentityMarkers.ENGINE).isFile)
     }
 
