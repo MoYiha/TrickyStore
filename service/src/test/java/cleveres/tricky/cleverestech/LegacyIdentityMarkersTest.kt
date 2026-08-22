@@ -91,6 +91,42 @@ class LegacyIdentityMarkersTest {
     }
 
     @Test
+    fun `json null active profile never aliases sentinel like profile names`() {
+        listOf("null", "true", "false", "0", "undefined").forEach { profileName ->
+            val profile =
+                JSONObject()
+                    .put("name", profileName)
+                    .put("features", JSONObject().put("buildIdentity", true).put("regionIdentity", true))
+            val state =
+                policy()
+                    .put("profiles", JSONArray().put(profile))
+                    .put("activeProfile", JSONObject.NULL)
+
+            assertTrue(LegacyIdentityMarkers.syncFromPolicyState(root, state).isSuccess)
+            assertNoIdentityMarkers("JSON null must not select profile '$profileName'")
+        }
+    }
+
+    @Test
+    fun `literal null profile name activates only when explicitly selected as a string`() {
+        val profile =
+            JSONObject()
+                .put("name", "null")
+                .put("features", JSONObject().put("buildIdentity", true).put("regionIdentity", true))
+        val state =
+            policy()
+                .put("profiles", JSONArray().put(profile))
+                .put("activeProfile", "null")
+
+        assertTrue(LegacyIdentityMarkers.syncFromPolicyState(root, state).isSuccess)
+        assertTrue(File(root, LegacyIdentityMarkers.ENGINE).isFile)
+        assertTrue(File(root, LegacyIdentityMarkers.BUILD).isFile)
+        assertTrue(File(root, LegacyIdentityMarkers.REGION).isFile)
+        assertFalse(File(root, LegacyIdentityMarkers.TELEPHONY).exists())
+        assertFalse(File(root, LegacyIdentityMarkers.REFRESH).exists())
+    }
+
+    @Test
     fun `legacy source remains marker source of truth`() {
         File(root, LegacyIdentityMarkers.ENGINE).writeText("")
         val state = policy().put("source", "legacy")
@@ -155,6 +191,18 @@ class LegacyIdentityMarkersTest {
 
         assertTrue(result.isFailure)
         assertFalse("partially created marker must be removed", marker.exists())
+    }
+
+    private fun assertNoIdentityMarkers(message: String) {
+        listOf(
+            LegacyIdentityMarkers.ENGINE,
+            LegacyIdentityMarkers.BUILD,
+            LegacyIdentityMarkers.TELEPHONY,
+            LegacyIdentityMarkers.REGION,
+            LegacyIdentityMarkers.REFRESH,
+        ).forEach { marker ->
+            assertFalse("$message: unexpected $marker", File(root, marker).exists())
+        }
     }
 
     private fun policy(
