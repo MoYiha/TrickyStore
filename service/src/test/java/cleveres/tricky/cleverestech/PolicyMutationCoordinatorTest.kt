@@ -160,6 +160,43 @@ class PolicyMutationCoordinatorTest {
     }
 
     @Test
+    fun `thrown mutation failure stays inside Result and skips compatibility sync`() {
+        var synchronized = false
+
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                mutation = { throw IOException("mutation threw") },
+                synchronizeCompatibility = {
+                    synchronized = true
+                    Result.success(Unit)
+                },
+            )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertFalse(synchronized)
+    }
+
+    @Test
+    fun `startup state provider failure stays inside Result`() {
+        var synchronized = false
+
+        val result =
+            PolicyMutationCoordinator.synchronizeCurrentCompatibility(
+                stateProvider = { throw IOException("state read failed") },
+                synchronizeCompatibility = {
+                    synchronized = true
+                    Result.success(Unit)
+                },
+            )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertFalse(synchronized)
+    }
+
+    @Test
     fun `pending compatibility response preserves canonical state and exposes retry warning`() {
         val result =
             PolicyMutationResult(
