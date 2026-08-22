@@ -111,6 +111,10 @@ fun main(args: Array<String>) {
             }
             KernelIdentityManager.initialize(configDir)
             Config.initialize()
+            LegacyIdentityMarkers.syncFromPolicyState(configDir, PolicyState.stateJson())
+                .onFailure { error ->
+                    Logger.e("Failed to heal early-boot identity compatibility markers", error)
+                }
         } catch (e: Exception) {
             Logger.e("Failed to initialize core configuration", e)
             Logger.e("Main: Exiting so the module supervisor can retry initialization")
