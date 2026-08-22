@@ -1,18 +1,19 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.SecureFile
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 
 /**
- * Keeps the V2 policy state compatible with early-boot code that still consumes
+ * Keeps V2 policy state compatible with early-boot code that still consumes
  * fixed marker files before the Android service is available.
  *
  * The file names are intentionally closed over a fixed allow-list. All paths are
  * checked without following links before any mutation so a malformed or replaced
- * marker fails closed instead of turning a V2 policy update into an arbitrary file
+ * marker fails closed instead of turning a policy update into an arbitrary file
  * write/delete primitive.
  */
 internal object LegacyIdentityMarkers {
@@ -40,7 +41,28 @@ internal object LegacyIdentityMarkers {
 
     private val allowedNames = setOf(ENGINE, BUILD, TELEPHONY, REGION, REFRESH)
 
-    fun plan(root: File, desired: DesiredState): List<Operation> {
+    /** Validate all compatibility paths before a persistent policy mutation. */
+    fun preflight(root: File) {
+        allowedNames.forEach { name -> validatePath(File(root, name)) }
+    }
+
+    /**
+     * Synchronize only explicit V2 policy. Legacy state already uses these marker
+     * files as its source of truth and must never be rewritten from a derived view.
+     */
+    fun syncFromPolicyState(
+        root: File,
+        state: JSONObject,
+    ): Result<Unit> =
+        runCatching {
+            if (!state.optString("source").equals("v2", ignoreCase = true)) return@runCatching
+            apply(plan(root, desiredState(state)))
+        }
+
+    fun plan(
+        root: File,
+        desired: DesiredState,
+    ): List<Operation> {
         val expected =
             linkedMapOf(
                 ENGINE to desired.engine,
@@ -75,6 +97,46 @@ internal object LegacyIdentityMarkers {
             // Update in-process legacy caches without waiting for the file observer.
             Config.refreshRuntimeSetting(operation.name)
         }
+    }
+
+    private fun desiredState(state: JSONObject): DesiredState {
+        val resolved = LinkedHashMap<String, Boolean>()
+        val features = state.getJSONObject("features")
+        listOf("buildIdentity", "attestationIdentity", "telephonyIdentity", "regionIdentity", "identityRefresh")
+            .forEach { key -> resolved[key] = features.getBoolean(key) }
+
+        val activeProfile = state.optString("activeProfile").trim().takeIf { it.isNotEmpty() }
+        if (activeProfile != null) {
+            val profiles = state.optJSONArray("profiles")
+            if (profiles != null) {
+                for (index in 0 until profiles.length()) {
+                    val profile = profiles.optJSONObject(index) ?: continue
+                    if (!profile.optString("name").equals(activeProfile, ignoreCase = true)) continue
+                    val overrides = profile.optJSONObject("features") ?: break
+                    resolved.keys.toList().forEach { key ->
+                        if (overrides.has(key) && overrides.opt(key) is Boolean) {
+                            resolved[key] = overrides.getBoolean(key)
+                        }
+                    }
+                    break
+                }
+            }
+        }
+
+        val build = resolved.getValue("buildIdentity")
+        val attestation = resolved.getValue("attestationIdentity")
+        val telephony = resolved.getValue("telephonyIdentity")
+        val region = resolved.getValue("regionIdentity")
+        val refresh = resolved.getValue("identityRefresh")
+        // Security Patch intentionally does not participate in the legacy master
+        // marker. V2 treats patch presentation as an independent identity feature.
+        return DesiredState(
+            engine = build || attestation || telephony || region || refresh,
+            build = build,
+            telephony = telephony,
+            region = region,
+            refresh = refresh,
+        )
     }
 
     private fun validatePath(file: File): Boolean {
