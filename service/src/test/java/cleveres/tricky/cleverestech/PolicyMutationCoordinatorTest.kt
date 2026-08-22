@@ -99,6 +99,38 @@ class PolicyMutationCoordinatorTest {
     }
 
     @Test
+    fun `pending compatibility response preserves canonical state and exposes retry warning`() {
+        val result =
+            PolicyMutationResult(
+                state = JSONObject().put("generation", 42).put("features", JSONObject().put("buildIdentity", true)),
+                compatibilitySync = CompatibilitySyncStatus.PENDING,
+                compatibilityError = IOException("marker write failed"),
+            )
+
+        val response = PolicyApi.mutationResponse(result)
+
+        assertEquals(42, response.getInt("generation"))
+        assertTrue(response.getJSONObject("features").getBoolean("buildIdentity"))
+        assertEquals("pending", response.getString("compatibilitySync"))
+        assertTrue(response.getString("compatibilityWarning").contains("Retry before reboot"))
+    }
+
+    @Test
+    fun `successful compatibility response reports ok without warning`() {
+        val result =
+            PolicyMutationResult(
+                state = JSONObject().put("generation", 43),
+                compatibilitySync = CompatibilitySyncStatus.OK,
+            )
+
+        val response = PolicyApi.mutationResponse(result)
+
+        assertEquals(43, response.getInt("generation"))
+        assertEquals("ok", response.getString("compatibilitySync"))
+        assertFalse(response.has("compatibilityWarning"))
+    }
+
+    @Test
     fun `preflight failure rejects mutation before canonical persistence`() {
         var mutated = false
 
