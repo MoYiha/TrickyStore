@@ -132,6 +132,23 @@ For installer/shell changes, run the matching shellcheck and extraction/security
 
 If an environment cannot run a required check, state exactly which check could not be run and why. Do not silently substitute confidence for execution.
 
+## Functional behavior and device-bound validation contract
+
+Source-shape assertions such as `includes`, regex matches, expected filenames, or source snippets are architecture guards only. They are not sufficient proof that a user-facing feature works. A green syntax check plus source-shape checks must never be treated as equivalent to executing the affected behavior.
+
+For every user-visible feature change, state transition, persistence path, bridge/API mutation, or bug that could make a control appear to work while runtime state is wrong:
+
+1. Add at least one executable behavior test that invokes the real production function or production code path. Source-shape assertions may remain as supplemental architecture checks, but they do not satisfy regression coverage by themselves.
+2. For WebUI code, prefer loading the real runtime owner in a controlled Node/VM harness or an equivalent browser test and invoking the affected handlers/helpers. A test that only reads `policy.js`, `ux.js`, or `index.html` as text cannot prove click/save/refresh behavior.
+3. For any escaping, sanitization, encoding, quoting, or HTML-construction primitive used with `innerHTML`, template strings, attribute values, labels, or generated markup, execute the primitive against adversarial strings containing at least `&`, `<`, `>`, `"`, and `'`. Assert the exact encoded output and include an attribute-boundary case when the output can enter an attribute. Do not validate escaping solely by checking that a mapping literal exists in source.
+4. For WebUI -> bridge/API -> persistence/runtime chains, test the action-level contract end to end with realistic fakes: the intended request is issued; canonical/persisted success is reflected in returned state; stale UI state is not reused after a successful mutation; a later read-only/presentation refresh failure cannot retroactively turn a committed mutation into failure; and a real backend mutation failure still surfaces as failure.
+5. Exercise both success and failure paths for critical buttons/actions. A successful backend operation followed by a failed refresh, reload, status fetch, localization pass, or other presentation-only step must be tested separately from a failed backend operation.
+6. Runtime owners must be executable in tests deeply enough that replacing a real implementation with a marker, stub, empty shell, or source-pattern decoy fails CI. Representative critical hooks must actually run; file size and regex presence are not acceptable substitutes.
+7. When a defect is first discovered only on a physical device, add the lowest-layer deterministic automated regression test that would have caught the same invariant without the device whenever technically possible. Keep the device finding as evidence that host-side coverage was incomplete, not as a reason to leave the gap unautomated.
+8. Device-bound critical paths that depend on Android framework/native behavior require layered validation: host/unit contract tests, service/bridge tests where applicable, and a device or emulator smoke test for the changed critical path before merge. This applies to Identity, boot-property synchronization, telephony, camera visibility, DRM, Keystore/Binder, TEE/attestation, and similar platform-coupled features. Until that device smoke is automated in CI, record the exact device/emulator validation result in the PR; green host CI alone is not sufficient evidence for a changed device-bound critical path.
+9. Device smoke must verify observable behavior, not only process health. For a setting/action, verify the user action, persisted/canonical state, post-action readback, and the relevant runtime/device effect. Reopen/reload the UI when stale-state bugs are plausible.
+10. If a new regression demonstrates that the current test suite could pass while the shipped feature is non-functional, strengthen the shared test harness or contract so the entire failure class is detected in future changes. Do not add only a one-off assertion naming the exact line that failed.
+
 ## CI failure discipline
 
 A PR is not "green enough" because one workflow passed. Evaluate the exact final head commit across every workflow selected by the repository's change detection.
