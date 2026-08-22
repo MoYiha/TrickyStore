@@ -71,6 +71,17 @@ function notify(message, type) {
   if (typeof global.notify === 'function') global.notify(message, type || 'normal');
 }
 
+function policyCompatibilityWarning(state) {
+  if (!state || state.compatibilitySync !== 'pending') return '';
+  return String(state.compatibilityWarning || 'Policy was saved, but early-boot compatibility synchronization is pending. Retry before reboot.');
+}
+
+function notifyPolicyMutation(successMessage, state) {
+  const warning = policyCompatibilityWarning(state);
+  if (warning) notify(`${successMessage || 'Saved'}. ${warning}`, 'error');
+  else notify(successMessage || 'Saved');
+}
+
 function refreshPresentation() {
   const selector = document.getElementById('ct_language_selector');
   if (selector) selector.dispatchEvent(new Event('change',{bubbles:true}));
@@ -150,7 +161,7 @@ async function savePolicy(mutator, successMessage) {
     body.set('data', JSON.stringify(stateForSave(next)));
     policyState = await request('/api/policy_state', {method:'POST', body});
     renderAll();
-    notify(successMessage || 'Saved');
+    notifyPolicyMutation(successMessage, policyState);
   } catch (error) {
     notify(error.message || 'Could not save policy', 'error');
     renderAll();
@@ -945,7 +956,7 @@ async function importProfiles(event) {
     body.set('data',JSON.stringify(stateForSave(parsed)));
     policyState = await request('/api/policy_state',{method:'POST',body});
     renderAll();
-    notify('Profile policy imported');
+    notifyPolicyMutation('Profile policy imported', policyState);
   } catch (error) { notify(error.message || 'Could not import profile policy','error'); }
 }
 
@@ -1032,6 +1043,17 @@ async function loadSavedBuildIdentity() {
   renderSavedBuildIdentity();
 }
 
+async function refreshSavedBuildIdentityBestEffort() {
+  try {
+    await loadSavedBuildIdentity();
+    return null;
+  } catch (error) {
+    console.error(error);
+    renderSavedBuildIdentity();
+    return error;
+  }
+}
+
 function installIdentityManagerState() {
   ensureSavedBuildIdentityView();
   const originalPreview = global.previewTemplate;
@@ -1048,16 +1070,16 @@ function installIdentityManagerState() {
   if (typeof originalApply === 'function' && !originalApply.ctSavedBuildIdentity) {
     const wrappedApply = async function() {
       const result = await originalApply.apply(this,arguments);
-      await loadSavedBuildIdentity();
+      const refreshError = await refreshSavedBuildIdentityBestEffort();
+      if (refreshError) {
+        notify('Identity was applied, but the saved identity view could not be refreshed. Reload to retry.', 'error');
+      }
       return result;
     };
     wrappedApply.ctSavedBuildIdentity = true;
     global.applySpoofing = wrappedApply;
   }
-  loadSavedBuildIdentity().catch(error => {
-    console.error(error);
-    renderSavedBuildIdentity();
-  });
+  refreshSavedBuildIdentityBestEffort();
 }
 
 function nextUiPaint() {
@@ -1105,9 +1127,22 @@ function installAutoIdentityOverride() {
       // potentially blocking host work. The timeout keeps background-tab behavior bounded.
       await nextUiPaint();
       const data = await request('/api/auto_identity',{method:'POST',timeoutMs:18000});
-      if (typeof global.loadIdentity === 'function') await global.loadIdentity();
-      await loadSavedBuildIdentity();
-      notify(`Identity ready: ${data.model || data.device || 'Pixel'} · ${data.build_id || data.buildId || 'current build'}`);
+      let refreshFailed = false;
+      if (typeof global.loadIdentity === 'function') {
+        try {
+          await global.loadIdentity();
+        } catch (error) {
+          console.error(error);
+          refreshFailed = true;
+        }
+      }
+      if (await refreshSavedBuildIdentityBestEffort()) refreshFailed = true;
+      const success = `Identity ready: ${data.model || data.device || 'Pixel'} · ${data.build_id || data.buildId || 'current build'}`;
+      if (refreshFailed) {
+        notify(`${success}. Identity was updated, but the Identity Manager view could not be fully refreshed. Reload to retry.`, 'error');
+      } else {
+        notify(success);
+      }
     } catch (error) {
       notify(/unavailable|timeout|timed out|network/i.test(error.message || '') ? 'Auto Identity source is temporarily unavailable. Try again later or choose a local template.' : (error.message || 'Auto Identity failed'),'error');
     } finally {
@@ -1261,7 +1296,7 @@ function renderAll() {
 }
 
 function escapeHtml(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  return String(value == null ? '' : value).replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[char]));
 }
 
 async function initialize() {
