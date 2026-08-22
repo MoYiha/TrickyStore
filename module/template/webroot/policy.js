@@ -33,6 +33,13 @@ const IMPACTS = {
   'Keybox Storage': 'Estimated impact: CPU low during refresh/verification; RAM moderate and bounded by active certificate chains.',
   'App Rules': 'Estimated impact: CPU very low with cached lookups; RAM low and proportional to configured rules.'
 };
+const SAVED_BUILD_IDENTITY_KEYS = new Set([
+  'BRAND','PRODUCT','DEVICE','MANUFACTURER','MODEL','FINGERPRINT','RELEASE','BUILD_ID','INCREMENTAL','SECURITY_PATCH'
+]);
+const SAVED_BUILD_IDENTITY_FIELDS = [
+  ['BRAND','Brand'],['PRODUCT','Product'],['DEVICE','Device'],['BUILD_ID','Build ID'],
+  ['RELEASE','Android release'],['SECURITY_PATCH','Security patch'],['INCREMENTAL','Incremental']
+];
 
 let policyState = null;
 let legacyConfig = null;
@@ -41,6 +48,7 @@ let keyboxes = [];
 let templates = [];
 let selectedProfileIndex = -1;
 let saving = false;
+let savedBuildIdentity = Object.freeze({});
 
 function onReady(fn) {
   // policy.js is loaded at the end of <body>, before the legacy inline bootstrap.
@@ -509,7 +517,6 @@ function installConfigurationActions() {
   panel.append(note,button);
 }
 
-
 const BUILT_IN_TEMPLATE_IDS = new Set(['pixel8pro','pixel8','pixel7pro','pixel6pro','s24ultra','s23ultra','xiaomi14','oneplus11','nothing2']);
 const CUSTOM_TEMPLATE_FIELDS = [
   ['id','Template ID'],['manufacturer','Manufacturer'],['model','Model'],['fingerprint','Fingerprint'],
@@ -563,7 +570,6 @@ async function saveCustomTemplate() {
   notify('Custom template saved');
   global.setTimeout(() => global.location.reload(),500);
 }
-
 
 function installKernelIdentityControls() {
   const spoof = document.getElementById('spoof');
@@ -957,6 +963,127 @@ async function inspectEffective() {
   } catch (error) { host.textContent = error.message || 'Could not inspect effective state'; }
 }
 
+function parseSavedBuildIdentity(text) {
+  const values = {};
+  if (typeof text !== 'string' || text.length > 512 * 1024) return Object.freeze(values);
+  text.split(/\r?\n/).forEach(rawLine => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) return;
+    const separator = line.indexOf('=');
+    if (separator <= 0) return;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (SAVED_BUILD_IDENTITY_KEYS.has(key) && value && value.length <= 512 && !/[\u0000-\u001f\u007f]/.test(value)) {
+      values[key] = value;
+    }
+  });
+  return Object.freeze(values);
+}
+
+function ensureSavedBuildIdentityView() {
+  const preview = document.getElementById('templatePreview');
+  if (!preview || document.getElementById('ct_saved_build_identity')) return;
+  const host = document.createElement('div');
+  host.id = 'ct_saved_build_identity';
+  host.style.marginTop = '14px';
+  host.style.paddingTop = '12px';
+  host.style.borderTop = '1px solid var(--border)';
+  const heading = document.createElement('div');
+  heading.className = 'section-header';
+  heading.textContent = 'Saved build identity';
+  const grid = document.createElement('div');
+  grid.className = 'grid-2';
+  SAVED_BUILD_IDENTITY_FIELDS.forEach(([key,label]) => {
+    const item = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'section-header';
+    title.textContent = label;
+    const value = document.createElement('div');
+    value.id = `ct_saved_${key.toLowerCase()}`;
+    value.style.overflowWrap = 'anywhere';
+    item.append(title,value);
+    grid.appendChild(item);
+  });
+  host.append(heading,grid);
+  preview.appendChild(host);
+}
+
+function renderSavedBuildIdentity() {
+  ensureSavedBuildIdentityView();
+  SAVED_BUILD_IDENTITY_FIELDS.forEach(([key]) => {
+    const node = document.getElementById(`ct_saved_${key.toLowerCase()}`);
+    if (node) node.textContent = savedBuildIdentity[key] || 'Not configured';
+  });
+  const select = document.getElementById('templateSelect');
+  const selected = select && select.selectedOptions && select.selectedOptions[0];
+  if (selected && selected.dataset && selected.dataset.json) return;
+  const model = document.getElementById('pModel');
+  const manufacturer = document.getElementById('pManuf');
+  const fingerprint = document.getElementById('pFing');
+  if (model) model.textContent = savedBuildIdentity.MODEL || 'Current device';
+  if (manufacturer) manufacturer.textContent = savedBuildIdentity.MANUFACTURER || 'Current device';
+  if (fingerprint) fingerprint.textContent = savedBuildIdentity.FINGERPRINT || 'No saved build identity';
+}
+
+async function loadSavedBuildIdentity() {
+  const response = await bridge.fetch('/api/file?filename=spoof_build_vars');
+  if (!response.ok) throw new Error('Saved build identity is unavailable');
+  savedBuildIdentity = parseSavedBuildIdentity(await response.text());
+  renderSavedBuildIdentity();
+}
+
+function installIdentityManagerState() {
+  ensureSavedBuildIdentityView();
+  const originalPreview = global.previewTemplate;
+  if (typeof originalPreview === 'function' && !originalPreview.ctSavedBuildIdentity) {
+    const wrappedPreview = function() {
+      const result = originalPreview.apply(this,arguments);
+      renderSavedBuildIdentity();
+      return result;
+    };
+    wrappedPreview.ctSavedBuildIdentity = true;
+    global.previewTemplate = wrappedPreview;
+  }
+  const originalApply = global.applySpoofing;
+  if (typeof originalApply === 'function' && !originalApply.ctSavedBuildIdentity) {
+    const wrappedApply = async function() {
+      const result = await originalApply.apply(this,arguments);
+      await loadSavedBuildIdentity();
+      return result;
+    };
+    wrappedApply.ctSavedBuildIdentity = true;
+    global.applySpoofing = wrappedApply;
+  }
+  loadSavedBuildIdentity().catch(error => {
+    console.error(error);
+    renderSavedBuildIdentity();
+  });
+}
+
+function nextUiPaint() {
+  return new Promise(resolve => {
+    let completed = false;
+    const finish = () => {
+      if (completed) return;
+      completed = true;
+      resolve();
+    };
+    const fallback = global.setTimeout(finish, 80);
+    if (typeof global.requestAnimationFrame !== 'function') return;
+    global.requestAnimationFrame(() => global.requestAnimationFrame(() => {
+      global.clearTimeout(fallback);
+      finish();
+    }));
+  });
+}
+
+function showLoadingButton(button) {
+  const spinner = document.createElement('span');
+  spinner.className = 'inline-spinner';
+  spinner.setAttribute('aria-hidden','true');
+  button.replaceChildren(spinner,document.createTextNode('Loading...'));
+}
+
 function installAutoIdentityOverride() {
   const spoof = document.getElementById('spoof');
   if (!spoof) return;
@@ -970,16 +1097,22 @@ function installAutoIdentityOverride() {
     if (button.disabled) return;
     const original = button.textContent;
     button.disabled = true;
-    button.textContent = 'RESOLVING PIXEL IDENTITY...';
-    notify('Resolving Pixel identity...','working');
+    button.setAttribute('aria-busy','true');
+    showLoadingButton(button);
+    notify('Loading...','working');
     try {
+      // Give WebView a guaranteed paint opportunity before the native bridge begins
+      // potentially blocking host work. The timeout keeps background-tab behavior bounded.
+      await nextUiPaint();
       const data = await request('/api/auto_identity',{method:'POST',timeoutMs:18000});
       if (typeof global.loadIdentity === 'function') await global.loadIdentity();
+      await loadSavedBuildIdentity();
       notify(`Identity ready: ${data.model || data.device || 'Pixel'} · ${data.build_id || data.buildId || 'current build'}`);
     } catch (error) {
       notify(/unavailable|timeout|timed out|network/i.test(error.message || '') ? 'Auto Identity source is temporarily unavailable. Try again later or choose a local template.' : (error.message || 'Auto Identity failed'),'error');
     } finally {
       button.disabled = false;
+      button.removeAttribute('aria-busy');
       button.textContent = original;
     }
   });
@@ -1149,6 +1282,7 @@ async function initialize() {
   try { policyState = await request('/api/policy_state'); }
   catch (error) { notify(`Policy controls unavailable: ${error.message}`,'error'); return; }
   await loadReferenceData();
+  installIdentityManagerState();
   renderAll();
   sanitizeErrors();
   installResourceOwner();
