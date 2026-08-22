@@ -90,6 +90,27 @@ class IdentityPolicyContractTest {
         assertNoIdentityMarkers()
     }
 
+    @Test
+    fun `policy migration preserves json null beside a literal null profile`() {
+        val policy =
+            policyWithNullNamedProfile().apply {
+                getJSONArray("profiles").getJSONObject(0)
+                    .put("template", JSONObject.NULL)
+                    .put("keybox", JSONObject.NULL)
+            }
+        val text = policy.toString()
+        val stateFile = File(root, PolicyState.STATE_FILE).apply { writeText(text) }
+        File(root, PolicyState.LAST_GOOD_FILE).writeText(text)
+
+        assertFalse("valid nullable policy state must not be rewritten", PolicyMigration.sanitize(root))
+
+        val migrated = JSONObject(stateFile.readText())
+        assertTrue("migration must preserve JSON null activeProfile", migrated.isNull("activeProfile"))
+        val profile = migrated.getJSONArray("profiles").getJSONObject(0)
+        assertEquals("null", profile.getString("name"))
+        assertTrue("migration must preserve JSON null keybox", profile.isNull("keybox"))
+    }
+
     private fun assertNoIdentityMarkers() {
         listOf(
             LegacyIdentityMarkers.ENGINE,
