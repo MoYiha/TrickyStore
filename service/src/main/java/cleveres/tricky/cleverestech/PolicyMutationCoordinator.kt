@@ -17,9 +17,9 @@ internal data class PolicyMutationResult(
 )
 
 /**
- * Extends PolicyState's own monitor across preflight, canonical persistence and
- * legacy-marker synchronization so concurrent mutations cannot commit markers
- * out of order relative to the published V2 state.
+ * Extends PolicyState's own monitor across canonical state reads/mutations and
+ * legacy-marker synchronization so no compatibility writer can publish markers
+ * out of order relative to the V2 state that produced them.
  */
 internal object PolicyMutationCoordinator {
     fun mutate(
@@ -43,5 +43,14 @@ internal object PolicyMutationCoordinator {
                     compatibilityError = compatibilityResult.exceptionOrNull(),
                 )
             }
+        }
+
+    fun synchronizeCurrentCompatibility(
+        stateProvider: () -> JSONObject = { PolicyState.stateJson() },
+        synchronizeCompatibility: (JSONObject) -> Result<Unit>,
+    ): Result<Unit> =
+        synchronized(PolicyState) {
+            val state = stateProvider()
+            runCatching { synchronizeCompatibility(state).getOrThrow() }
         }
 }
