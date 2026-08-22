@@ -53,13 +53,8 @@ internal object PolicyApi {
                     result.compatibilityError?.let { error ->
                         Logger.e("Policy state saved but early-boot identity markers could not be synchronized", error)
                     }
-                    text(
-                        NanoHTTPD.Response.Status.INTERNAL_ERROR,
-                        "Policy state was saved, but early-boot compatibility synchronization failed. Retry before reboot.",
-                    )
-                } else {
-                    json(NanoHTTPD.Response.Status.OK, result.state)
                 }
+                json(NanoHTTPD.Response.Status.OK, mutationResponse(result))
             },
             onFailure = { error ->
                 if (error is CompatibilityPreflightException) {
@@ -70,6 +65,19 @@ internal object PolicyApi {
                 }
             },
         )
+
+    private fun mutationResponse(result: PolicyMutationResult): JSONObject {
+        val response = JSONObject(result.state.toString())
+        val pending = result.compatibilitySync == CompatibilitySyncStatus.PENDING
+        response.put("compatibilitySync", if (pending) "pending" else "ok")
+        if (pending) {
+            response.put(
+                "compatibilityWarning",
+                "Policy was saved, but early-boot compatibility synchronization failed. Retry before reboot.",
+            )
+        }
+        return response
+    }
 
     private fun parameter(session: NanoHTTPD.IHTTPSession, name: String): String? =
         session.parameters[name]?.singleOrNull()?.takeIf { it.length <= 1024 * 1024 }
