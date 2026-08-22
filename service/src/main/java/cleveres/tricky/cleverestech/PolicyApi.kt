@@ -66,7 +66,7 @@ internal object PolicyApi {
             },
         )
 
-    private fun mutationResponse(result: PolicyMutationResult): JSONObject {
+    internal fun mutationResponse(result: PolicyMutationResult): JSONObject {
         val response = JSONObject(result.state.toString())
         val pending = result.compatibilitySync == CompatibilitySyncStatus.PENDING
         response.put("compatibilitySync", if (pending) "pending" else "ok")
