@@ -78,7 +78,7 @@ function policyCompatibilityWarning(state) {
 
 function notifyPolicyMutation(successMessage, state) {
   const warning = policyCompatibilityWarning(state);
-  if (warning) notify(`${successMessage || 'Saved'}. ${warning}`, 'error');
+  if (warning) notify(`${successMessage || 'Saved'}. Warning: ${warning}`);
   else notify(successMessage || 'Saved');
 }
 
@@ -215,7 +215,7 @@ function injectStyles() {
     input[type="checkbox"].ct-switch:focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px!important}
     input[type="checkbox"].ct-switch:disabled{opacity:.5!important;cursor:not-allowed!important}
     #dashboard,#info,#spoof,#profiles,#effective,#apps{padding-bottom:max(120px,calc(78px + env(safe-area-inset-bottom)))!important}
-    @media(max-width:640px){.ct-feature-grid,.ct-choice-grid{grid-template-columns:1fr}.ct-action-grid{grid-template-columns:1fr!important}.identity-actions{display:grid!important;grid-template-columns:1fr!important;width:100%}.identity-actions>button{width:100%!important;min-width:0!important;white-space:normal}.grid-2{grid-template-columns:1fr!important}.panel{padding:16px}.ct-profile-item{align-items:flex-start;flex-wrap:wrap}.ct-profile-item button{width:100%}}
+    @media(max-width:640px){.ct-feature-grid,.ct-choice-grid{grid-template-columns:1fr}.ct-action-grid{grid-template-columns:1fr!important}.identity-actions{display:grid!important;grid-template-columns:1fr!important;width:100%}.identity-actions>button{width:100%!important;min-width:0!important;white-space:normal}.grid-2{grid-template-columns:1fr!important}.panel{padding:16px}.ct-profile-item{align-items:flex-start;flex-wrap:wrap}.ct-profile-item button{width:100%!important}}
   `;
   document.head.appendChild(style);
 }
@@ -1072,7 +1072,7 @@ function installIdentityManagerState() {
       const result = await originalApply.apply(this,arguments);
       const refreshError = await refreshSavedBuildIdentityBestEffort();
       if (refreshError) {
-        notify('Identity was applied, but the saved identity view could not be refreshed. Reload to retry.', 'error');
+        notify('Identity was applied. Warning: the saved identity view could not be refreshed. Reload to retry.');
       }
       return result;
     };
@@ -1139,7 +1139,7 @@ function installAutoIdentityOverride() {
       if (await refreshSavedBuildIdentityBestEffort()) refreshFailed = true;
       const success = `Identity ready: ${data.model || data.device || 'Pixel'} · ${data.build_id || data.buildId || 'current build'}`;
       if (refreshFailed) {
-        notify(`${success}. Identity was updated, but the Identity Manager view could not be fully refreshed. Reload to retry.`, 'error');
+        notify(`${success}. Warning: the Identity Manager view could not be fully refreshed. Reload to retry.`);
       } else {
         notify(success);
       }
@@ -1296,7 +1296,7 @@ function renderAll() {
 }
 
 function escapeHtml(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[char]));
+  return String(value == null ? '' : value).replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 }
 
 async function initialize() {
