@@ -70,6 +70,9 @@ function loadPolicyRuntime(fetchImpl = async () => makeResponse()) {
         escapeHtml,
         policyCompatibilityWarning,
         notifyPolicyMutation,
+        savePolicy,
+        setPolicyStateForTest(value) { policyState = value; },
+        getPolicyStateForTest() { return policyState; },
         refreshSavedBuildIdentityBestEffort,
         installIdentityManagerState,
         installAutoIdentityOverride
@@ -94,6 +97,29 @@ function loadPolicyRuntime(fetchImpl = async () => makeResponse()) {
 
     assert.ok(window.__ctPolicyTestHooks, 'policy.js runtime hooks were not exposed to the test harness');
     return { window, document, notifications, hooks: window.__ctPolicyTestHooks };
+}
+
+function basePolicy(overrides = {}) {
+    return {
+        version: 2,
+        features: {
+            buildIdentity: false,
+            attestationIdentity: false,
+            telephonyIdentity: false,
+            regionIdentity: false,
+            identityRefresh: false,
+            securityPatch: false
+        },
+        securityPatch: {
+            automaticThresholdMonths: 6,
+            system: { mode: 'device_default' },
+            vendor: { mode: 'device_default' },
+            boot: { mode: 'device_default' }
+        },
+        profiles: [],
+        activeProfile: null,
+        ...overrides
+    };
 }
 
 async function testEscapingPrimitive() {
@@ -121,6 +147,36 @@ async function testCanonicalSaveWarningIsNotReportedAsFailure() {
         message: 'Policy saved. Warning: Retry compatibility sync before reboot.',
         type: 'normal'
     }], 'a committed canonical policy with a pending compatibility sync must remain a successful action with a warning');
+}
+
+async function testSaveUsesCanonicalReadbackInsteadOfStaleUiState() {
+    let posted = null;
+    const canonical = basePolicy({
+        serverGeneration: 'B',
+        compatibilitySync: 'pending',
+        compatibilityWarning: 'marker sync pending'
+    });
+    canonical.features = { ...canonical.features, buildIdentity: true };
+
+    const runtime = loadPolicyRuntime(async (path, options = {}) => {
+        assert.strictEqual(path, '/api/policy_state', 'policy mutation must use the canonical policy endpoint');
+        assert.strictEqual(options.method, 'POST', 'policy mutation must be a POST');
+        posted = JSON.parse(options.body.get('data'));
+        return makeResponse({ jsonValue: canonical });
+    });
+    runtime.hooks.setPolicyStateForTest(basePolicy({ serverGeneration: 'A' }));
+
+    await runtime.hooks.savePolicy(next => {
+        next.features.buildIdentity = true;
+    }, 'Identity updated');
+
+    assert.ok(posted, 'policy mutation payload must be sent');
+    assert.strictEqual(posted.features.buildIdentity, true, 'the intended mutation must be present in the request payload');
+    const current = runtime.hooks.getPolicyStateForTest();
+    assert.strictEqual(current.serverGeneration, 'B', 'UI state must be replaced by canonical server readback after a committed mutation');
+    assert.strictEqual(current.features.buildIdentity, true, 'canonical returned feature state must become the next UI source of truth');
+    assert.ok(runtime.notifications.some(item => item.message === 'Identity updated. Warning: marker sync pending' && item.type === 'normal'),
+        'a pending compatibility sync must warn without reverting to stale UI state or reporting the committed mutation as failed');
 }
 
 async function testApplyIdentitySurvivesPresentationRefreshFailure() {
@@ -203,6 +259,7 @@ async function testAutoIdentityBackendFailureStillFails() {
 (async () => {
     await testEscapingPrimitive();
     await testCanonicalSaveWarningIsNotReportedAsFailure();
+    await testSaveUsesCanonicalReadbackInsteadOfStaleUiState();
     await testApplyIdentitySurvivesPresentationRefreshFailure();
     await testAutoIdentitySurvivesPresentationRefreshFailure();
     await testAutoIdentityBackendFailureStillFails();
