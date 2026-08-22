@@ -81,6 +81,67 @@ class PolicyMutationCoordinatorTest {
     }
 
     @Test
+    fun `startup compatibility heal cannot publish stale markers after a newer mutation`() {
+        val canonical = AtomicReference("A")
+        val markers = AtomicReference("none")
+        val healSyncEntered = CountDownLatch(1)
+        val releaseHealSync = CountDownLatch(1)
+        val mutationEntered = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val heal =
+                executor.submit<Result<Unit>> {
+                    PolicyMutationCoordinator.synchronizeCurrentCompatibility(
+                        stateProvider = { JSONObject().put("generation", canonical.get()) },
+                        synchronizeCompatibility = { state ->
+                            healSyncEntered.countDown()
+                            if (releaseHealSync.await(2, TimeUnit.SECONDS)) {
+                                markers.set(state.getString("generation"))
+                                Result.success(Unit)
+                            } else {
+                                Result.failure(AssertionError("Timed out waiting to release startup heal"))
+                            }
+                        },
+                    )
+                }
+
+            assertTrue(healSyncEntered.await(2, TimeUnit.SECONDS))
+
+            val mutation =
+                executor.submit<Result<PolicyMutationResult>> {
+                    PolicyMutationCoordinator.mutate(
+                        preflight = {},
+                        mutation = {
+                            mutationEntered.countDown()
+                            canonical.set("B")
+                            Result.success(JSONObject().put("generation", "B"))
+                        },
+                        synchronizeCompatibility = { state ->
+                            markers.set(state.getString("generation"))
+                            Result.success(Unit)
+                        },
+                    )
+                }
+
+            assertFalse(
+                "canonical mutation must wait until startup heal releases the shared policy monitor",
+                mutationEntered.await(150, TimeUnit.MILLISECONDS),
+            )
+
+            releaseHealSync.countDown()
+            assertTrue(heal.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(mutation.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(mutationEntered.await(2, TimeUnit.SECONDS))
+            assertEquals("B", canonical.get())
+            assertEquals("B", markers.get())
+        } finally {
+            releaseHealSync.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
     fun `compatibility failure preserves canonical result but marks mutation pending`() {
         val state = JSONObject().put("generation", 42)
 
