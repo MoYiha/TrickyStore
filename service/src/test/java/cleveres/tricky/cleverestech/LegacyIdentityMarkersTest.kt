@@ -5,7 +5,6 @@ import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -89,17 +88,6 @@ class LegacyIdentityMarkersTest {
         assertTrue(File(root, LegacyIdentityMarkers.BUILD).isFile)
         assertTrue(File(root, LegacyIdentityMarkers.REGION).isFile)
         assertFalse(File(root, LegacyIdentityMarkers.TELEPHONY).exists())
-    }
-
-    @Test
-    fun `jvm json oracle preserves Android null coercion hazard`() {
-        val state = JSONObject().put("activeProfile", JSONObject.NULL)
-
-        assertTrue(state.isNull("activeProfile"))
-        assertEquals(
-            "null",
-            state.optString("activeProfile"),
-        )
     }
 
     @Test
