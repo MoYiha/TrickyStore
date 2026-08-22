@@ -35,6 +35,11 @@ internal object LegacyIdentityMarkers {
         allowedNames.forEach { validatePath(File(root, it)) }
     }
 
+    fun isSynchronized(root: File, state: JSONObject): Result<Boolean> = runCatching {
+        if (!state.optString("source").equals("v2", true)) return@runCatching true
+        plan(root, desiredState(state)).isEmpty()
+    }
+
     fun syncFromPolicyState(root: File, state: JSONObject): Result<Unit> = runCatching {
         if (!state.optString("source").equals("v2", true)) return@runCatching
         apply(plan(root, desiredState(state)))
@@ -56,9 +61,12 @@ internal object LegacyIdentityMarkers {
 
     /**
      * Applies the marker transaction with rollback. Marker files are compatibility
-     * state; never leave a half-applied policy after an IO failure.
+     * state; never leave a half-applied policy after an IO or runtime-refresh failure.
      */
-    fun apply(operations: List<Operation>) {
+    fun apply(
+        operations: List<Operation>,
+        refreshRuntime: (String) -> Unit = { Config.refreshRuntimeSetting(it) },
+    ) {
         operations.forEach {
             require(it.name in allowedNames)
             validatePath(it.file)
@@ -78,7 +86,7 @@ internal object LegacyIdentityMarkers {
                     Files.deleteIfExists(it.file.toPath())
                 }
             }
-            changed.forEach { Config.refreshRuntimeSetting(it.name) }
+            changed.forEach { refreshRuntime(it.name) }
         } catch (failure: Throwable) {
             changed.asReversed().forEach { op ->
                 runCatching {
@@ -87,6 +95,10 @@ internal object LegacyIdentityMarkers {
                     else Files.deleteIfExists(op.file.toPath())
                 }
             }
+            // File rollback alone is insufficient if a runtime refresh failed after
+            // earlier flags were already published. Re-read every touched marker from
+            // the rolled-back filesystem so process state converges to the same snapshot.
+            changed.forEach { op -> runCatching { refreshRuntime(op.name) } }
             throw failure
         }
     }
