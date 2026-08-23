@@ -32,6 +32,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl = SecureFile.DefaultSecureFileOperations()
         Config.reset()
+        KeyboxLoader.activeSetOverride = { true }
         Config.setRootForTesting(root)
         Config.initialize()
         KernelIdentityManager.initialize(root)
