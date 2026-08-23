@@ -86,7 +86,7 @@ class WebUiActionInstrumentationTest {
     }
 
     private fun newRoot(prefix: String): File {
-        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
-        return Files.createTempDirectory(cache.toPath(), prefix).toFile().also { root = it }
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.canonicalFile
+        return Files.createTempDirectory(cache.toPath(), prefix).toFile().canonicalFile.also { root = it }
     }
 }
