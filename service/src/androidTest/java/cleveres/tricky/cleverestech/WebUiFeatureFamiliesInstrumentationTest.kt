@@ -2,6 +2,8 @@ package cleveres.tricky.cleverestech
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
@@ -21,11 +23,14 @@ import java.util.Base64
 class WebUiFeatureFamiliesInstrumentationTest {
     private lateinit var root: File
     private lateinit var bridge: WebUiBridge
+    private lateinit var originalSecureFileImpl: SecureFileOperations
 
     @Before
     fun setUp() {
         val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
         root = Files.createTempDirectory(cache.toPath(), "webui-feature-families").toFile()
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = SecureFile.DefaultSecureFileOperations()
         Config.reset()
         Config.setRootForTesting(root)
         Config.initialize()
@@ -45,6 +50,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
     @After
     fun tearDown() {
         Config.reset()
+        SecureFile.impl = originalSecureFileImpl
         root.deleteRecursively()
     }
 
