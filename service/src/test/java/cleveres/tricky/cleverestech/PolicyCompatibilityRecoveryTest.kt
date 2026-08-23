@@ -58,6 +58,15 @@ class PolicyCompatibilityRecoveryTest {
     }
 
     @Test
+    fun `bootstrap snapshot is not ready for policy traffic`() {
+        assertFalse(PolicyApi.policyRuntimeReady(JSONObject().put("recovery", "bootstrap")))
+        assertFalse(PolicyApi.policyRuntimeReady(JSONObject().put("recovery", "BOOTSTRAP")))
+        assertTrue(PolicyApi.policyRuntimeReady(JSONObject().put("recovery", "legacy")))
+        assertTrue(PolicyApi.policyRuntimeReady(JSONObject().put("recovery", "configured")))
+        assertTrue(PolicyApi.policyRuntimeReady(JSONObject().put("recovery", "last_known_good")))
+    }
+
+    @Test
     fun `stale compatibility remains pending until explicit retry heals markers`() {
         val state = policy(build = true)
 
