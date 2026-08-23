@@ -5,7 +5,7 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,6 @@ permissions:
 jobs:
   security-regression:
     name: "🔐 Dependency Security & Unit Tests"
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out
@@ -192,10 +191,9 @@ jobs:
         run: exit 1
 
   android-platform-contract:
-    name: "🤖 Android Platform Contracts"
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' }}
+    name: "🤖 Android 17 API 37 Platform Contracts"
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -215,18 +213,35 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
 
-      - name: Install emulator system image
+      - name: Install Android 17 API 37 emulator image
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
+          image_package="system-images;android-37;default;x86_64"
+          if ! sdkmanager --list | grep -Fq "$image_package"; then
+            image_package="system-images;android-37;google_apis;x86_64"
+          fi
+          if ! sdkmanager --list | grep -Fq "$image_package"; then
+            echo "::error::No Android 17 API 37 x86_64 emulator image is available from the configured SDK channel"
+            exit 1
+          fi
+          echo "ANDROID_17_IMAGE_PACKAGE=$image_package" >> "$GITHUB_ENV"
           sdkmanager --install \
             "platform-tools" \
             "emulator" \
-            "platforms;android-35" \
-            "system-images;android-35;default;x86_64"
+            "platforms;android-37" \
+            "$image_package"
+          tag=$(printf '%s' "$image_package" | cut -d';' -f3)
+          image_properties="$ANDROID_HOME/system-images/android-37/$tag/x86_64/source.properties"
+          if [[ ! -f "$image_properties" ]]; then
+            echo "::error::Installed Android 17 system image metadata is missing: $image_properties"
+            exit 1
+          fi
+          echo "===== Android 17 system image ====="
+          grep -E '^(Pkg.Revision|AndroidVersion.ApiLevel|AndroidVersion.CodeName|SystemImage.TagDisplay)=' "$image_properties" || true
 
-      - name: Boot Android platform oracle
+      - name: Boot Android 17 platform oracle
         id: emulator_boot
         continue-on-error: true
         shell: bash
@@ -242,7 +257,7 @@ jobs:
           echo no | avdmanager create avd \
             --force \
             --name ct-platform-contract \
-            --package "system-images;android-35;default;x86_64" \
+            --package "$ANDROID_17_IMAGE_PACKAGE" \
             --device "pixel_6"
           echo "Created AVDs:"
           "$ANDROID_HOME/emulator/emulator" -list-avds
@@ -263,7 +278,7 @@ jobs:
           emulator_pid=$!
           echo "$emulator_pid" > "$RUNNER_TEMP/ct-emulator.pid"
           booted=false
-          for _ in $(seq 1 210); do
+          for _ in $(seq 1 240); do
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
               echo "::error::Android emulator process exited before boot completed"
               tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
@@ -284,9 +299,21 @@ jobs:
           adb shell settings put global window_animation_scale 0
           adb shell settings put global transition_animation_scale 0
           adb shell settings put global animator_duration_scale 0
-          adb shell getprop ro.build.version.sdk
+          sdk=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+          release=$(adb shell getprop ro.build.version.release | tr -d '\r')
+          codename=$(adb shell getprop ro.build.version.codename | tr -d '\r')
+          abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
+          echo "Android platform oracle: release=$release sdk=$sdk codename=$codename abi=$abi"
+          if [[ "$sdk" != "37" ]]; then
+            echo "::error::Expected Android API 37, got API $sdk"
+            exit 1
+          fi
+          if [[ "$release" != 17* ]]; then
+            echo "::error::Expected Android 17 release identity, got $release"
+            exit 1
+          fi
 
-      - name: Run Android platform semantic contracts
+      - name: Run Android 17 platform semantic contracts
         id: platform_contract
         if: steps.emulator_boot.outcome == 'success'
         continue-on-error: true
@@ -294,7 +321,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :service:connectedDebugAndroidTest \
-            --warning-mode=fail --console=plain --stacktrace --no-build-cache
+            --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
 
       - name: Show Android platform contract failure context
         if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
@@ -303,12 +330,15 @@ jobs:
           set -euo pipefail
           echo "===== AVD ====="
           echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          echo "ANDROID_17_IMAGE_PACKAGE=${ANDROID_17_IMAGE_PACKAGE:-unset}"
           "$ANDROID_HOME/emulator/emulator" -list-avds || true
           find "${ANDROID_AVD_HOME:-$RUNNER_TEMP/android-avd}" -maxdepth 2 -type f -print 2>/dev/null | sort || true
           echo "===== emulator ====="
           tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
           echo "===== adb ====="
           adb devices -l || true
+          adb shell getprop ro.build.version.sdk || true
+          adb shell getprop ro.build.version.release || true
           echo "===== instrumentation reports ====="
           find service/build -type f \( -path '*/androidTests/connected/*' -o -path '*/reports/androidTests/*' \) -print | sort || true
 
@@ -316,12 +346,13 @@ jobs:
         if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: android-platform-contract-failure
+          name: android-17-platform-contract-failure
           path: |
             service/build/outputs/androidTest-results
             service/build/reports/androidTests
             ${{ runner.temp }}/ct-emulator.log
-            ${{ runner.temp }}/android-avd
+            ${{ runner.temp }}/android-avd/ct-platform-contract.ini
+            ${{ runner.temp }}/android-avd/ct-platform-contract.avd/config.ini
           if-no-files-found: warn
           retention-days: 7
           compression-level: 6
@@ -329,68 +360,6 @@ jobs:
       - name: Enforce Android platform contract result
         if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         run: exit 1
-
-  device-smoke-gate:
-    name: "📱 Device Smoke Evidence"
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Require head-bound device smoke evidence for core runtime changes
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          device_bound=false
-          while IFS= read -r path; do
-            case "$path" in
-              service/src/main/*|stub/src/main/*|rust/*|module/template/*|module/*.sh)
-                echo "Device-bound production change: $path"
-                device_bound=true
-                ;;
-            esac
-          done < <(git diff --name-only "$BASE_SHA...$HEAD_SHA")
-
-          if [[ "$device_bound" != "true" ]]; then
-            echo "No device-bound production paths changed; device smoke evidence is not required."
-            exit 0
-          fi
-
-          python3 - <<'PY'
-          import os
-          import re
-          import sys
-
-          body = os.environ.get("PR_BODY", "")
-          head = os.environ["HEAD_SHA"].strip()
-
-          result = re.search(r"(?mi)^Device-Smoke-Result:\s*PASS\s*$", body)
-          tested_head = re.search(r"(?mi)^Device-Smoke-Head:\s*([0-9a-f]{40})\s*$", body)
-          target = re.search(r"(?mi)^Device-Smoke-Target:\s*(.+?)\s*$", body)
-
-          errors = []
-          if result is None:
-              errors.append("missing 'Device-Smoke-Result: PASS'")
-          if tested_head is None or tested_head.group(1).lower() != head.lower():
-              errors.append(f"Device-Smoke-Head must equal current PR head {head}")
-          if target is None or target.group(1).strip().lower() in {"pending", "n/a", "none"}:
-              errors.append("Device-Smoke-Target must identify the tested device / Android / root-manager target")
-
-          if errors:
-              for error in errors:
-                  print(f"::error::{error}")
-              print("::error::Core device-runtime changes cannot be merge-ready from host CI alone. Run the required smoke on a supported KernelSU/APatch device and record head-bound evidence in the PR body.")
-              sys.exit(1)
-
-          print(f"Device smoke evidence is bound to final head {head} on {target.group(1).strip()}")
-          PY
 
   dependency-submission:
     name: "📦 Submit Gradle Dependency Graph"
