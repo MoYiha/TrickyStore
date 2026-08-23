@@ -62,11 +62,7 @@ internal object RuntimeDiagnostics {
                     append(native.trim())
                 }
             }
-        return if (combined.toByteArray(Charsets.UTF_8).size <= MAX_LOG_BYTES) {
-            combined
-        } else {
-            combined.takeLast(MAX_LOG_BYTES)
-        }
+        return boundUtf8Tail(combined, MAX_LOG_BYTES)
     }
 
     private fun readProcessOutput(command: Array<String>): String {
@@ -108,6 +104,24 @@ internal object RuntimeDiagnostics {
             if (process.isAlive) process.destroyForcibly()
             if (!reader.isDone) reader.cancel(true)
         }
+    }
+
+    private fun boundUtf8Tail(
+        text: String,
+        maxBytes: Int,
+    ): String {
+        val lines = text.lineSequence().toList()
+        val selected = ArrayDeque<String>()
+        var totalBytes = 0
+        for (index in lines.indices.reversed()) {
+            val line = lines[index]
+            val lineBytes = line.toByteArray(Charsets.UTF_8).size
+            val separatorBytes = if (selected.isEmpty()) 0 else 1
+            if (lineBytes > maxBytes - totalBytes - separatorBytes) break
+            selected.addFirst(line)
+            totalBytes += lineBytes + separatorBytes
+        }
+        return selected.joinToString("\n")
     }
 
     private fun Sequence<String>.takeLastBounded(limit: Int): List<String> {
