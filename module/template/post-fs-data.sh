@@ -171,8 +171,10 @@ apply_early_properties() {
       done
     done
     if [ "$identity_conflict" = true ]; then
-      log -t CleveresTricky "Another build-identity provider is active; template properties were skipped in auto mode"
-      return 0
+      # Build Identity is an explicit user choice. A second identity provider may
+      # overwrite these properties later, but CleveresTricky must never silently
+      # turn its own enabled feature into a no-op.
+      log -t CleveresTricky "Another build-identity provider is active; applying the enabled CleveresTricky Build Identity anyway"
     fi
   fi
 
