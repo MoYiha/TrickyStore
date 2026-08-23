@@ -1,5 +1,5 @@
 #!/system/bin/sh
-CONFIG_DIR="/data/adb/cleverestricky"
+CONFIG_DIR="${CLEVERES_TRICKY_CONFIG_DIR:-/data/adb/cleverestricky}"
 CONFIG_ROOT_SAFE=false
 
 if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
@@ -60,67 +60,70 @@ promote_staged_identity() {
   fi
 }
 
-apply_early_properties() {
-  [ "$CONFIG_ROOT_SAFE" = true ] || return 0
-  command -v resetprop >/dev/null 2>&1 || {
-    log -t CleveresTricky "resetprop is unavailable; boot property protection was skipped"
-    return 0
+apply_prop() {
+  resetprop -n "$1" "$2" >/dev/null 2>&1 || {
+    log -t CleveresTricky "Failed to apply an app-visible boot property: $1"
+    return 1
   }
+}
 
-  apply_prop() {
-    resetprop -n "$1" "$2" >/dev/null 2>&1 || {
-      log -t CleveresTricky "Failed to apply an app-visible boot property"
-      return 1
-    }
+remove_prop() {
+  resetprop --delete "$1" >/dev/null 2>&1 || {
+    log -t CleveresTricky "Failed to remove a legacy boot property: $1"
+    return 1
   }
+}
 
-  remove_prop() {
-    resetprop --delete "$1" >/dev/null 2>&1 || {
-      log -t CleveresTricky "Failed to remove a legacy boot property"
-      return 1
-    }
-  }
+hide_boot_mode() {
+  current_value=$(getprop "$1")
+  case "$current_value" in
+    *recovery*|*RECOVERY*) apply_prop "$1" unknown || return 1 ;;
+  esac
+}
 
-  hide_boot_mode() {
-    current_value=$(getprop "$1")
-    case "$current_value" in
-      *recovery*|*RECOVERY*) apply_prop "$1" unknown || return 1 ;;
-    esac
-  }
-
-  # Core bootloader / verified-boot property protection. This is intentionally
-  # unconditional: Spoof Engine controls identity only, and legacy
-  # hide_sensitive_props / boot_props_mode files cannot disable this path.
-  apply_prop ro.boot.vbmeta.device_state locked || return 0
-  apply_prop ro.boot.verifiedbootstate green || return 0
-  apply_prop ro.boot.flash.locked 1 || return 0
-  apply_prop ro.boot.warranty_bit 0 || return 0
-  apply_prop ro.warranty_bit 0 || return 0
-  apply_prop ro.debuggable 0 || return 0
-  apply_prop ro.force.debuggable 0 || return 0
-  apply_prop ro.secure 1 || return 0
-  apply_prop ro.adb.secure 1 || return 0
-  apply_prop ro.build.type user || return 0
-  apply_prop ro.build.tags release-keys || return 0
-  apply_prop ro.vendor.boot.warranty_bit 0 || return 0
-  apply_prop ro.vendor.warranty_bit 0 || return 0
+apply_core_boot_properties() {
+  # Core bootloader / verified-boot property protection is intentionally
+  # unconditional. Each property is independent: one vendor/property-service
+  # incompatibility must not prevent the remaining protections or the optional
+  # Build Identity phase from running.
+  apply_prop ro.boot.vbmeta.device_state locked || true
+  apply_prop ro.boot.verifiedbootstate green || true
+  apply_prop ro.boot.flash.locked 1 || true
+  apply_prop ro.boot.warranty_bit 0 || true
+  apply_prop ro.warranty_bit 0 || true
+  apply_prop ro.debuggable 0 || true
+  apply_prop ro.force.debuggable 0 || true
+  apply_prop ro.secure 1 || true
+  apply_prop ro.adb.secure 1 || true
+  apply_prop ro.build.type user || true
+  apply_prop ro.build.tags release-keys || true
+  apply_prop ro.vendor.boot.warranty_bit 0 || true
+  apply_prop ro.vendor.warranty_bit 0 || true
   android_sdk=$(getprop ro.build.version.sdk)
   case "$android_sdk" in
     ''|*[!0-9]*) android_sdk=0 ;;
   esac
   if [ "$android_sdk" -ge 36 ]; then
-    remove_prop sys.oem_unlock_allowed || return 0
+    remove_prop sys.oem_unlock_allowed || true
   else
-    apply_prop sys.oem_unlock_allowed 0 || return 0
+    apply_prop sys.oem_unlock_allowed 0 || true
   fi
-  apply_prop ro.secureboot.lockstate locked || return 0
-  apply_prop ro.boot.realmebootstate green || return 0
-  apply_prop ro.boot.realme.lockstate 1 || return 0
-  hide_boot_mode ro.bootmode || return 0
-  hide_boot_mode ro.boot.bootmode || return 0
-  hide_boot_mode vendor.boot.bootmode || return 0
+  apply_prop ro.secureboot.lockstate locked || true
+  apply_prop ro.boot.realmebootstate green || true
+  apply_prop ro.boot.realme.lockstate 1 || true
+  hide_boot_mode ro.bootmode || true
+  hide_boot_mode ro.boot.bootmode || true
+  hide_boot_mode vendor.boot.bootmode || true
+}
 
-  # Everything below this point is optional identity spoofing.
+apply_optional_identity_properties() {
+  [ "$CONFIG_ROOT_SAFE" = true ] || return 0
+  command -v resetprop >/dev/null 2>&1 || {
+    log -t CleveresTricky "resetprop is unavailable; identity properties were skipped"
+    return 0
+  }
+
+  # Everything in this phase belongs to optional identity spoofing.
   [ -f "$CONFIG_DIR/spoof_enabled" ] || return 0
   [ ! -L "$CONFIG_DIR/spoof_enabled" ] || return 0
 
@@ -135,11 +138,13 @@ apply_early_properties() {
   [ "$boot_mode" != disable ] || return 0
 
   if [ -f "$CONFIG_DIR/spoof_region_cn" ] && [ ! -L "$CONFIG_DIR/spoof_region_cn" ]; then
-    apply_prop ro.boot.hwc CN || return 0
-    apply_prop gsm.operator.iso-country cn || return 0
-    apply_prop gsm.sim.operator.iso-country cn || return 0
-    apply_prop ro.boot.hwlevel MP || return 0
-    apply_prop persist.radio.skhwc_matchres MATCH || return 0
+    # Region Identity and Build Identity are separate child features. A failure in
+    # one region property must never suppress the enabled Build Identity below.
+    apply_prop ro.boot.hwc CN || true
+    apply_prop gsm.operator.iso-country cn || true
+    apply_prop gsm.sim.operator.iso-country cn || true
+    apply_prop ro.boot.hwlevel MP || true
+    apply_prop persist.radio.skhwc_matchres MATCH || true
   fi
 
   [ -f "$CONFIG_DIR/spoof_build_identity" ] || return 0
@@ -171,10 +176,7 @@ apply_early_properties() {
       done
     done
     if [ "$identity_conflict" = true ]; then
-      # Build Identity is an explicit user choice. A second identity provider may
-      # overwrite these properties later, but CleveresTricky must never silently
-      # turn its own enabled feature into a no-op.
-      log -t CleveresTricky "Another build-identity provider is active; applying the enabled CleveresTricky Build Identity anyway"
+      log -t CleveresTricky "Another build-identity provider is active; reasserting the enabled CleveresTricky Build Identity"
     fi
   fi
 
@@ -219,28 +221,48 @@ apply_early_properties() {
   }
   case "$CT_FINGERPRINT" in *[!A-Za-z0-9._:/+-]*) return 0 ;; esac
 
-  apply_prop ro.build.fingerprint "$CT_FINGERPRINT" || return 0
-  if [ -n "$CT_BRAND" ]; then apply_prop ro.product.brand "$CT_BRAND"; fi
-  if [ -n "$CT_DEVICE" ]; then apply_prop ro.product.device "$CT_DEVICE"; fi
-  if [ -n "$CT_PRODUCT" ]; then apply_prop ro.product.name "$CT_PRODUCT"; fi
-  if [ -n "$CT_MANUFACTURER" ]; then apply_prop ro.product.manufacturer "$CT_MANUFACTURER"; fi
-  if [ -n "$CT_MODEL" ]; then apply_prop ro.product.model "$CT_MODEL"; fi
-  if [ -n "$CT_BUILD_ID" ]; then apply_prop ro.build.id "$CT_BUILD_ID"; fi
+  # Attempt every persisted Build field independently. This prevents one
+  # vendor-specific property failure from turning the remaining identity into a
+  # no-op, while each individual resetprop failure is still logged above.
+  apply_prop ro.build.fingerprint "$CT_FINGERPRINT" || true
+  if [ -n "$CT_BRAND" ]; then apply_prop ro.product.brand "$CT_BRAND" || true; fi
+  if [ -n "$CT_DEVICE" ]; then apply_prop ro.product.device "$CT_DEVICE" || true; fi
+  if [ -n "$CT_PRODUCT" ]; then apply_prop ro.product.name "$CT_PRODUCT" || true; fi
+  if [ -n "$CT_MANUFACTURER" ]; then apply_prop ro.product.manufacturer "$CT_MANUFACTURER" || true; fi
+  if [ -n "$CT_MODEL" ]; then apply_prop ro.product.model "$CT_MODEL" || true; fi
+  if [ -n "$CT_BUILD_ID" ]; then apply_prop ro.build.id "$CT_BUILD_ID" || true; fi
   if [ -n "$CT_RELEASE" ]; then
-    apply_prop ro.build.version.release "$CT_RELEASE"
-    apply_prop ro.build.version.release_or_codename "$CT_RELEASE"
+    apply_prop ro.build.version.release "$CT_RELEASE" || true
+    apply_prop ro.build.version.release_or_codename "$CT_RELEASE" || true
   fi
-  if [ -n "$CT_INCREMENTAL" ]; then apply_prop ro.build.version.incremental "$CT_INCREMENTAL"; fi
-  if [ -n "$CT_TYPE" ]; then apply_prop ro.build.type "$CT_TYPE"; fi
-  if [ -n "$CT_TAGS" ]; then apply_prop ro.build.tags "$CT_TAGS"; fi
+  if [ -n "$CT_INCREMENTAL" ]; then apply_prop ro.build.version.incremental "$CT_INCREMENTAL" || true; fi
+  if [ -n "$CT_TYPE" ]; then apply_prop ro.build.type "$CT_TYPE" || true; fi
+  if [ -n "$CT_TAGS" ]; then apply_prop ro.build.tags "$CT_TAGS" || true; fi
   if [ -n "$CT_SECURITY_PATCH" ]; then
     case "$CT_SECURITY_PATCH" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-        apply_prop ro.build.version.security_patch "$CT_SECURITY_PATCH"
+        apply_prop ro.build.version.security_patch "$CT_SECURITY_PATCH" || true
         ;;
     esac
   fi
 }
 
-promote_staged_identity
-apply_early_properties
+apply_early_properties() {
+  [ "$CONFIG_ROOT_SAFE" = true ] || return 0
+  command -v resetprop >/dev/null 2>&1 || {
+    log -t CleveresTricky "resetprop is unavailable; boot property protection was skipped"
+    return 0
+  }
+  apply_core_boot_properties
+  apply_optional_identity_properties
+}
+
+if [ "${CLEVERES_TRICKY_IDENTITY_ONLY:-0}" = "1" ]; then
+  # post-mount runs after root-manager system.prop loading. Reassert only the
+  # optional identity phase so a later identity provider cannot silently win the
+  # pre-Zygote property race.
+  apply_optional_identity_properties
+else
+  promote_staged_identity
+  apply_early_properties
+fi
