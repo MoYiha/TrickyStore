@@ -55,6 +55,18 @@ class WebUiFeatureFamiliesInstrumentationTest {
     }
 
     @Test
+    fun `every editable config validates persists and reads back on Android 17`() {
+        EDITABLE_CONFIG_FILES.forEach { filename ->
+            val content = editableContent(filename)
+            val saved = request("POST", "/api/save", mapOf("filename" to filename, "content" to content))
+            assertEquals("save editable config $filename: ${saved.text}", 200, saved.status)
+            val readback = request("GET", "/api/file", mapOf("filename" to filename))
+            assertEquals("read editable config $filename", 200, readback.status)
+            assertEquals("editable config $filename must round trip exactly", content, readback.text)
+        }
+    }
+
+    @Test
     fun `every WebUI toggle persists and reads back on Android 17`() {
         TOGGLE_SETTINGS.forEach { setting ->
             assertEquals(
@@ -130,6 +142,19 @@ class WebUiFeatureFamiliesInstrumentationTest {
         }
     }
 
+    private fun editableContent(filename: String): String =
+        when (filename) {
+            "target.txt" -> "com.example.editor\n"
+            "security_patch.txt" -> "system=2026-08-05\n"
+            "spoof_build_vars" -> "MODEL=Pixel API37 Editor\n"
+            "app_config" -> "com.example.editor null null redact\n"
+            "templates.json" -> "[]"
+            "drm_packages.txt" -> "com.example.drm\n"
+            "boot_props_mode" -> "auto\n"
+            PolicyState.STATE_FILE -> policy("securityPatch").toString()
+            else -> error("Missing editable config fixture for $filename")
+        }
+
     private fun config(): JSONObject {
         val response = request("GET", "/api/config")
         assertEquals(200, response.status)
@@ -196,6 +221,19 @@ class WebUiFeatureFamiliesInstrumentationTest {
     private data class Response(val status: Int, val text: String)
 
     companion object {
+        // Kept in lockstep with WebServer.EDITABLE_CONFIG_FILES by the Node coverage guard.
+        private val EDITABLE_CONFIG_FILES =
+            listOf(
+                "target.txt",
+                "security_patch.txt",
+                "spoof_build_vars",
+                "app_config",
+                "templates.json",
+                "drm_packages.txt",
+                "boot_props_mode",
+                "policy_state_v2.json",
+            )
+
         // Kept in lockstep with WebServer.WEB_UI_SETTINGS by the Node coverage guard.
         private val TOGGLE_SETTINGS =
             listOf(
