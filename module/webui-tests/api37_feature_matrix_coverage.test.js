@@ -8,16 +8,21 @@ const productionFiles = [
   path.join(root, 'service/src/main/java/cleveres/tricky/cleverestech/WebServer.kt'),
   path.join(root, 'service/src/main/java/cleveres/tricky/cleverestech/PolicyApi.kt'),
 ];
+const packageCompatFile = path.join(
+  root,
+  'service/src/main/java/cleveres/tricky/cleverestech/InstalledPackagesCompat.kt',
+);
 const matrixFile = path.join(
   root,
   'service/src/androidTest/java/cleveres/tricky/cleverestech/WebUiFeatureMatrixInstrumentationTest.kt',
 );
 
-for (const file of [...productionFiles, matrixFile]) {
+for (const file of [...productionFiles, packageCompatFile, matrixFile]) {
   if (!fs.existsSync(file)) throw new Error(`Required feature-contract source is missing: ${path.relative(root, file)}`);
 }
 
 const production = productionFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n');
+const packageCompat = fs.readFileSync(packageCompatFile, 'utf8');
 const matrix = fs.readFileSync(matrixFile, 'utf8');
 
 function collectRouteNames(text) {
@@ -90,6 +95,18 @@ if (!matrix.includes('bridge.processRequestBytes')) {
 }
 if (!matrix.includes('safe mutable feature surfaces round trip through production bridge')) {
   throw new Error('API 37 matrix must retain stateful WebUI feature round-trip coverage.');
+}
+
+const packageCompatEvidence = [
+  'android.content.pm.ParceledListSlice',
+  'android.content.pm.PackageInfoList',
+  'candidate.name == "getList"',
+];
+const missingPackageCompatEvidence = packageCompatEvidence.filter(token => !packageCompat.includes(token));
+if (missingPackageCompatEvidence.length) {
+  throw new Error(
+    `Android 17 package enumeration compatibility must support both legacy and API 37 result containers: ${missingPackageCompatEvidence.join(', ')}`,
+  );
 }
 
 const mutable = testBody('safe mutable feature surfaces round trip through production bridge');
