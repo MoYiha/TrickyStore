@@ -218,20 +218,26 @@ jobs:
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          image_package="system-images;android-37;default;x86_64"
-          if ! sdkmanager --list | grep -Fq "$image_package"; then
-            image_package="system-images;android-37;google_apis;x86_64"
+          package_list="$RUNNER_TEMP/sdk-packages.txt"
+          sdkmanager --list --channel=3 > "$package_list"
+          echo "===== Available Android 17 x86_64 images ====="
+          awk -F '|' '$1 ~ /system-images;android-37;.*;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' "$package_list"
+          image_package=$(awk -F '|' '$1 ~ /system-images;android-37;google_apis_ps16k;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' "$package_list")
+          if [[ -z "$image_package" ]]; then
+            image_package=$(awk -F '|' '$1 ~ /system-images;android-37;.*;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' "$package_list")
           fi
-          if ! sdkmanager --list | grep -Fq "$image_package"; then
-            echo "::error::No Android 17 API 37 x86_64 emulator image is available from the configured SDK channel"
+          if [[ -z "$image_package" ]]; then
+            echo "::error::No Android 17 API 37 x86_64 emulator image is available through stable-to-Canary SDK channels"
             exit 1
           fi
+          echo "Selected Android 17 image: $image_package"
           echo "ANDROID_17_IMAGE_PACKAGE=$image_package" >> "$GITHUB_ENV"
           sdkmanager --install \
             "platform-tools" \
             "emulator" \
             "platforms;android-37" \
-            "$image_package"
+            "$image_package" \
+            --channel=3
           tag=$(printf '%s' "$image_package" | cut -d';' -f3)
           image_properties="$ANDROID_HOME/system-images/android-37/$tag/x86_64/source.properties"
           if [[ ! -f "$image_properties" ]]; then
@@ -239,7 +245,13 @@ jobs:
             exit 1
           fi
           echo "===== Android 17 system image ====="
-          grep -E '^(Pkg.Revision|AndroidVersion.ApiLevel|AndroidVersion.CodeName|SystemImage.TagDisplay)=' "$image_properties" || true
+          cat "$image_properties"
+          revision=$(sed -n 's/^Pkg.Revision=//p' "$image_properties" | head -n1)
+          revision_major=${revision%%.*}
+          if [[ "$tag" == google_apis* ]] && { [[ ! "$revision_major" =~ ^[0-9]+$ ]] || (( revision_major < 5 )); }; then
+            echo "::error::Android 17 Google APIs system image must be revision 5 or newer; got ${revision:-unknown}"
+            exit 1
+          fi
 
       - name: Boot Android 17 platform oracle
         id: emulator_boot
