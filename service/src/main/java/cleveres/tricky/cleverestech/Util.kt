@@ -13,7 +13,24 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.LocalDate
 
-var systemPropertiesGet: (String, String?) -> String? = { key, def -> SystemProperties.get(key, def) }
+internal const val BOOT_IMAGE_SECURITY_PATCH_PROPERTY = "ro.bootimage.build.version.security_patch"
+internal const val BOOT_IMAGE_SECURITY_PATCH_ALIAS = "ro.bootimage.build.security_patch"
+
+internal fun getSystemPropertyCompat(
+    key: String,
+    def: String?,
+    getter: (String, String?) -> String?,
+): String? {
+    if (key == BOOT_IMAGE_SECURITY_PATCH_ALIAS) {
+        val canonical = getter(BOOT_IMAGE_SECURITY_PATCH_PROPERTY, "")
+        if (!canonical.isNullOrBlank()) return canonical
+    }
+    return getter(key, def)
+}
+
+var systemPropertiesGet: (String, String?) -> String? = { key, def ->
+    getSystemPropertyCompat(key, def) { property, fallback -> SystemProperties.get(property, fallback) }
+}
 
 fun getModuleDir(): String {
     val candidates =
