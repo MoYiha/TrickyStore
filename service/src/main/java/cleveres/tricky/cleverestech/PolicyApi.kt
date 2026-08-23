@@ -10,6 +10,7 @@ internal object PolicyApi {
             "/api/policy_state",
             "/api/effective_state",
             "/api/profile_v2",
+            "/api/identity_diagnostics",
         )
 
     fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response? {
@@ -44,6 +45,9 @@ internal object PolicyApi {
                 },
                 onFailure = { text(NanoHTTPD.Response.Status.BAD_REQUEST, "Invalid profile request") },
             )
+        }
+        if (uri == "/api/identity_diagnostics" && method == NanoHTTPD.Method.GET) {
+            return json(NanoHTTPD.Response.Status.OK, IdentityCoordinator.diagnosticsJson())
         }
         return null
     }
