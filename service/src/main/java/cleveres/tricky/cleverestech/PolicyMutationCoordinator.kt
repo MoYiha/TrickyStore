@@ -14,6 +14,7 @@ internal data class PolicyMutationResult(
     val state: JSONObject,
     val compatibilitySync: CompatibilitySyncStatus,
     val compatibilityError: Throwable? = null,
+    val previousState: JSONObject? = null,
 )
 
 /**
@@ -26,8 +27,15 @@ internal object PolicyMutationCoordinator {
         preflight: () -> Unit,
         mutation: () -> Result<JSONObject>,
         synchronizeCompatibility: (JSONObject) -> Result<Unit>,
+        captureBefore: (() -> JSONObject)? = null,
     ): Result<PolicyMutationResult> =
         synchronized(PolicyState) {
+            val previous =
+                try {
+                    captureBefore?.invoke()
+                } catch (error: Throwable) {
+                    return@synchronized Result.failure(error)
+                }
             try {
                 preflight()
             } catch (error: Throwable) {
@@ -41,6 +49,7 @@ internal object PolicyMutationCoordinator {
                     compatibilitySync =
                         if (compatibilityResult.isSuccess) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
                     compatibilityError = compatibilityResult.exceptionOrNull(),
+                    previousState = previous,
                 )
             }
         }
