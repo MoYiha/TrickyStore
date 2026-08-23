@@ -5,9 +5,20 @@ import org.json.JSONObject
 import java.io.File
 
 internal object PolicyApi {
+    private val policyUris =
+        setOf(
+            "/api/policy_state",
+            "/api/policy_compatibility",
+            "/api/effective_state",
+            "/api/profile_v2",
+        )
+
     fun serve(session: NanoHTTPD.IHTTPSession): NanoHTTPD.Response? {
         val uri = session.uri
         val method = session.method
+        if (uri in policyUris && !policyRuntimeReady()) {
+            return text(NanoHTTPD.Response.Status.SERVICE_UNAVAILABLE, "Policy state is still initializing")
+        }
         if (uri == "/api/policy_state" && method == NanoHTTPD.Method.GET) {
             return json(NanoHTTPD.Response.Status.OK, currentPolicyResponse())
         }
@@ -85,6 +96,12 @@ internal object PolicyApi {
             }
             json(NanoHTTPD.Response.Status.OK, mutationResponse(result))
         }
+
+    private fun policyRuntimeReady(): Boolean =
+        runCatching { policyRuntimeReady(PolicyState.stateJson()) }.getOrDefault(false)
+
+    internal fun policyRuntimeReady(state: JSONObject): Boolean =
+        !state.optString("recovery").equals("bootstrap", ignoreCase = true)
 
     internal fun compatibilityStatusResponse(
         state: JSONObject,
