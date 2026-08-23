@@ -157,7 +157,7 @@ internal object PolicyApi {
         if (pending) {
             response.put(
                 "compatibilityWarning",
-                "Policy is saved, but early-boot compatibility markers are not synchronized. Reload to retry before reboot.",
+                "Policy is saved, but early-boot compatibility markers are not synchronized. Retry before reboot by reloading this view.",
             )
         }
         return response
