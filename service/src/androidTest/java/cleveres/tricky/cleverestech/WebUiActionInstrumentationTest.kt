@@ -2,40 +2,80 @@ package cleveres.tricky.cleverestech
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.Base64
 
 @RunWith(AndroidJUnit4::class)
 class WebUiActionInstrumentationTest {
+    private var root: File? = null
+
+    @After
+    fun tearDown() {
+        Config.reset()
+        root?.deleteRecursively()
+    }
+
     @Test
-    fun testActionScriptUrlLoadsAuthenticatedWebUiOverLoopback() {
-        val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        val configDir = File(appContext.filesDir, "config_action_url")
-        configDir.mkdirs()
+    fun `WebUI action backend loads configuration through authenticated native bridge contract`() {
+        val configDir = newRoot("webui-action")
+        Config.reset()
+        Config.setRootForTesting(configDir)
+        Config.initialize()
+        val bridge = WebUiBridge(WebServer(0, configDir, crlFetcher = { emptySet() }), configDir)
 
-        val server = WebServer(0, configDir)
-        server.start()
+        val request =
+            JSONObject()
+                .put("version", 1)
+                .put("method", "GET")
+                .put("path", "/api/config")
+                .put("parameters", JSONObject())
+        val envelope =
+            JSONObject(
+                String(
+                    bridge.processRequestBytes(request.toString().toByteArray(StandardCharsets.UTF_8)),
+                    StandardCharsets.UTF_8,
+                ),
+            )
 
-        try {
-            val port = server.listeningPort
-            val token = server.token
-            val url = URL("http://127.0.0.1:$port/?token=$token")
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 2000
-            connection.readTimeout = 2000
-            connection.connect()
+        assertEquals(200, envelope.getInt("status"))
+        assertTrue(envelope.getString("mimeType").contains("application/json"))
+        val body = String(Base64.getUrlDecoder().decode(envelope.getString("body")), StandardCharsets.UTF_8)
+        val config = JSONObject(body)
+        assertTrue(config.has("files"))
+        assertTrue(config.get("files") is JSONArray)
+    }
 
-            assertEquals("Action-script WebUI URL should load successfully", 200, connection.responseCode)
-            val content = connection.inputStream.bufferedReader().use { it.readText() }
-            assertTrue("Response should contain app name", content.contains("CleveresTricky"))
-        } finally {
-            server.stop()
-        }
+    @Test
+    fun `WebUI bridge refuses action requests outside API namespace`() {
+        val configDir = newRoot("webui-action-non-api")
+        val bridge = WebUiBridge(WebServer(0, configDir), configDir)
+        val request =
+            JSONObject()
+                .put("version", 1)
+                .put("method", "GET")
+                .put("path", "/index.html")
+                .put("parameters", JSONObject())
+        val envelope =
+            JSONObject(
+                String(
+                    bridge.processRequestBytes(request.toString().toByteArray(StandardCharsets.UTF_8)),
+                    StandardCharsets.UTF_8,
+                ),
+            )
+        assertEquals(400, envelope.getInt("status"))
+    }
+
+    private fun newRoot(prefix: String): File {
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
+        return Files.createTempDirectory(cache.toPath(), prefix).toFile().also { root = it }
     }
 }
