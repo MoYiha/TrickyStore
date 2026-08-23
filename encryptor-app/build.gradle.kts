@@ -87,7 +87,7 @@ android {
         compose = true
     }
     sourceSets {
-        getByName("main").jniLibs.srcDir(generatedRustJni)
+        getByName("main").jniLibs.directories.add(generatedRustJni.path)
     }
     packaging {
         resources {
