@@ -26,6 +26,8 @@ class WebUiActionInstrumentationTest {
     fun setUp() {
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl = SecureFile.DefaultSecureFileOperations()
+        Config.reset()
+        KeyboxLoader.activeSetOverride = { true }
     }
 
     @After
@@ -38,7 +40,6 @@ class WebUiActionInstrumentationTest {
     @Test
     fun `WebUI action backend loads configuration through authenticated native bridge contract`() {
         val configDir = newRoot("webui-action")
-        Config.reset()
         Config.setRootForTesting(configDir)
         Config.initialize()
         val bridge = WebUiBridge(WebServer(0, configDir, crlFetcher = { emptySet() }), configDir)
