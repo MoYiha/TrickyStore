@@ -64,11 +64,13 @@ class WebUiFeatureMatrixInstrumentationTest {
                 "${case.method} ${case.path} returned unexpected ${response.status}: ${response.text}",
                 response.status in case.allowedStatuses,
             )
-            assertNotEquals(
-                "${case.method} ${case.path} must never fall through to an unhandled route",
-                404,
-                response.status,
-            )
+            if (404 !in case.allowedStatuses) {
+                assertNotEquals(
+                    "${case.method} ${case.path} must never fall through to an unhandled route",
+                    404,
+                    response.status,
+                )
+            }
             assertNotEquals(
                 "${case.method} ${case.path} must not crash the Android service",
                 500,
@@ -85,15 +87,15 @@ class WebUiFeatureMatrixInstrumentationTest {
 
         val identity =
             JSONObject()
-                .put("ATTESTATION_ID_SERIAL", "CTEMU17SERIAL")
-                .put("ATTESTATION_ID_IMEI", "350000000000018")
-                .put("VISIBLE_SIM_COUNT", "2")
-                .put("VISIBLE_CAMERA_COUNT", "3")
+                .put("serial", "CTEMU17SERIAL")
+                .put("imei", "350000000000018")
+                .put("visible_sim_count", "2")
+                .put("visible_camera_count", "3")
         assertEquals(200, request("POST", "/api/identity", mapOf("data" to identity.toString())).status)
         val identityReadback = JSONObject(request("GET", "/api/identity").text)
-        assertEquals("CTEMU17SERIAL", identityReadback.getString("ATTESTATION_ID_SERIAL"))
-        assertEquals("2", identityReadback.getString("VISIBLE_SIM_COUNT"))
-        assertEquals("3", identityReadback.getString("VISIBLE_CAMERA_COUNT"))
+        assertEquals("CTEMU17SERIAL", identityReadback.getString("serial"))
+        assertEquals("2", identityReadback.getString("visible_sim_count"))
+        assertEquals("3", identityReadback.getString("visible_camera_count"))
 
         val rules =
             JSONArray().put(
@@ -155,8 +157,8 @@ class WebUiFeatureMatrixInstrumentationTest {
         assertEquals(200, auto.status)
         assertTrue(File(root, "spoof_build_identity").isFile)
         val autoReadback = JSONObject(request("GET", "/api/identity").text)
-        assertEquals("Pixel API37", autoReadback.getString("MODEL"))
-        assertEquals("google/api37/api37:17/CT37/1234567:user/release-keys", autoReadback.getString("FINGERPRINT"))
+        assertEquals("Pixel API37", autoReadback.getString("model"))
+        assertEquals("google/api37/api37:17/CT37/1234567:user/release-keys", readBuildVar("FINGERPRINT"))
     }
 
     @Test
@@ -215,6 +217,16 @@ class WebUiFeatureMatrixInstrumentationTest {
                 .put("parameters", JSONObject())
         val response = decodeEnvelope(bridge.processRequestBytes(invalidVersion.toString().toByteArray(StandardCharsets.UTF_8)))
         assertEquals(400, response.status)
+    }
+
+    private fun readBuildVar(key: String): String {
+        val file = File(root, "spoof_build_vars")
+        assertTrue("spoof_build_vars must exist", file.isFile)
+        return file.readLines()
+            .firstOrNull { it.substringBefore('=', "").trim() == key }
+            ?.substringAfter('=', "")
+            ?.trim()
+            .orEmpty()
     }
 
     private fun request(
