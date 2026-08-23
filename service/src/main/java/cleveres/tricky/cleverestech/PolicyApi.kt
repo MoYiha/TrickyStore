@@ -8,7 +8,6 @@ internal object PolicyApi {
     private val policyUris =
         setOf(
             "/api/policy_state",
-            "/api/policy_compatibility",
             "/api/effective_state",
             "/api/profile_v2",
         )
@@ -26,9 +25,6 @@ internal object PolicyApi {
             val data = parameter(session, "data")
                 ?: return text(NanoHTTPD.Response.Status.BAD_REQUEST, "Missing policy state")
             return mutatePolicy("Invalid policy state") { PolicyState.replaceFromJson(data) }
-        }
-        if (uri == "/api/policy_compatibility" && method == NanoHTTPD.Method.POST) {
-            return retryCompatibilitySync()
         }
         if (uri == "/api/effective_state" && method == NanoHTTPD.Method.GET) {
             val packageName = parameter(session, "package")
@@ -84,17 +80,6 @@ internal object PolicyApi {
     private fun currentPolicyResponse(): JSONObject =
         synchronized(PolicyState) {
             reconciledCompatibilityResponse(PolicyState.stateJson(), Config.getConfigRoot())
-        }
-
-    private fun retryCompatibilitySync(): NanoHTTPD.Response =
-        synchronized(PolicyState) {
-            val result = retryCompatibility(PolicyState.stateJson(), Config.getConfigRoot())
-            if (result.compatibilitySync == CompatibilitySyncStatus.PENDING) {
-                result.compatibilityError?.let { error ->
-                    Logger.e("Retrying early-boot identity compatibility synchronization failed", error)
-                }
-            }
-            json(NanoHTTPD.Response.Status.OK, mutationResponse(result))
         }
 
     private fun policyRuntimeReady(): Boolean =
@@ -172,7 +157,7 @@ internal object PolicyApi {
         if (pending) {
             response.put(
                 "compatibilityWarning",
-                "Policy is saved, but early-boot compatibility markers are not synchronized. Retry before reboot.",
+                "Policy is saved, but early-boot compatibility markers are not synchronized. Reload to retry before reboot.",
             )
         }
         return response
