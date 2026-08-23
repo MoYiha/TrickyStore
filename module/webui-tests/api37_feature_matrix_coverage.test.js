@@ -49,6 +49,14 @@ function difference(left, right) {
   return [...left].filter(value => !right.has(value)).sort();
 }
 
+function testBody(name) {
+  const marker = `fun \`${name}\`() {`;
+  const start = matrix.indexOf(marker);
+  if (start < 0) throw new Error(`API 37 matrix is missing required test: ${name}`);
+  const next = matrix.indexOf('\n    @Test', start + marker.length);
+  return matrix.slice(start, next < 0 ? matrix.length : next);
+}
+
 const productionRoutes = collectRouteNames(production);
 const matrixRoutes = collectRouteNames(matrix);
 const missingRoutes = difference(productionRoutes, matrixRoutes);
@@ -83,8 +91,24 @@ if (!matrix.includes('bridge.processRequestBytes')) {
 if (!matrix.includes('safe mutable feature surfaces round trip through production bridge')) {
   throw new Error('API 37 matrix must retain stateful WebUI feature round-trip coverage.');
 }
-if (!matrix.includes('encrypted backup restores through native bridge upload staging')) {
-  throw new Error('API 37 matrix must retain backup/restore upload staging coverage.');
+
+const outage = testBody('native crypto outage fails closed without mutating configuration');
+const outageEvidence = [
+  '"/api/backup"',
+  '"/api/restore"',
+  'uploadId = uploadId',
+  'uploadField = "file"',
+  'assertEquals(before',
+  'assertEquals(after',
+  'staged.exists()',
+];
+const missingOutageEvidence = outageEvidence.filter(token => !outage.includes(token));
+if (missingOutageEvidence.length) {
+  throw new Error(
+    `API 37 matrix must retain fail-closed backup/restore staging and state-preservation evidence: ${missingOutageEvidence.join(', ')}`,
+  );
 }
 
-console.log(`Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes.`);
+console.log(
+  `Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes, including native-crypto outage state preservation.`,
+);
