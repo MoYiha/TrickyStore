@@ -3,6 +3,7 @@ import java.util.HexFormat
 
 plugins {
     alias(libs.plugins.agp.app)
+    alias(libs.plugins.remap)
 }
 
 val moduleId = rootProject.extra["moduleId"] as String
