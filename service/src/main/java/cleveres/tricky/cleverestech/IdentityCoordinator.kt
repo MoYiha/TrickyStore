@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 
 /** Single owner for Identity fetch, persistence, live apply/rollback and diagnostics. */
 internal object IdentityCoordinator {
@@ -162,7 +163,11 @@ internal object IdentityCoordinator {
                 }
             }
         }
-        return flight.get()
+        return try {
+            flight.get()
+        } catch (error: ExecutionException) {
+            throw error.cause ?: error
+        }
     }
 
     private fun topLevel(state: JSONObject): TopLevelIdentity {
