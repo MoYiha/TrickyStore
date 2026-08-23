@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import cleveres.tricky.cleverestech.util.readUtf8FileSnapshotBounded
 import org.json.JSONObject
 import java.io.File
 
@@ -8,6 +9,7 @@ internal object IdentityRuntimeSnapshot {
     const val FILE_NAME = "identity_runtime_original"
     private const val FORMAT_VERSION = 1
     private const val MAX_BYTES = 16L * 1024L
+    private val bootIdPattern = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
     val buildProperties =
         listOf(
@@ -36,6 +38,7 @@ internal object IdentityRuntimeSnapshot {
     private val allowedProperties = (buildProperties + regionProperties).toSet()
 
     data class Snapshot(
+        val bootId: String,
         val buildCaptured: Boolean,
         val regionCaptured: Boolean,
         val values: Map<String, String>,
@@ -49,6 +52,7 @@ internal object IdentityRuntimeSnapshot {
     ): Result<Snapshot> =
         runCatching {
             require(build || region) { "No runtime Identity group requested" }
+            val bootId = currentBootId()
             val existing = read(root)
             if (existing != null && (!build || existing.buildCaptured) && (!region || existing.regionCaptured)) {
                 return@runCatching existing
@@ -67,7 +71,7 @@ internal object IdentityRuntimeSnapshot {
                 regionCaptured = true
             }
 
-            val snapshot = Snapshot(buildCaptured, regionCaptured, values.toMap())
+            val snapshot = Snapshot(bootId, buildCaptured, regionCaptured, values.toMap())
             write(root, snapshot)
             snapshot
         }.onFailure { error ->
@@ -78,7 +82,13 @@ internal object IdentityRuntimeSnapshot {
     fun read(root: File): Snapshot? {
         val text = SafeConfigStore.readText(root, FILE_NAME, MAX_BYTES, minBytes = 1) ?: return null
         val json = JSONObject(text)
-        require(json.length() == 4 && json.getInt("version") == FORMAT_VERSION) { "Invalid runtime Identity snapshot" }
+        require(json.length() == 5 && json.getInt("version") == FORMAT_VERSION) { "Invalid runtime Identity snapshot" }
+        val storedBootId = json.getString("bootId")
+        require(bootIdPattern.matches(storedBootId)) { "Invalid runtime Identity boot ID" }
+        if (storedBootId != currentBootId()) {
+            SafeConfigStore.delete(root, FILE_NAME)
+            return null
+        }
         val build = json.getBoolean("build")
         val region = json.getBoolean("region")
         val objectValues = json.getJSONObject("values")
@@ -94,7 +104,7 @@ internal object IdentityRuntimeSnapshot {
         if (build) require(values.keys.containsAll(buildProperties)) { "Incomplete Build rollback snapshot" }
         if (region) require(values.keys.containsAll(regionProperties)) { "Incomplete region rollback snapshot" }
         require(build || region) { "Empty runtime Identity snapshot" }
-        return Snapshot(build, region, values)
+        return Snapshot(storedBootId, build, region, values)
     }
 
     @Synchronized
@@ -115,7 +125,7 @@ internal object IdentityRuntimeSnapshot {
         if (keepBuild) keepKeys.addAll(buildProperties)
         if (keepRegion) keepKeys.addAll(regionProperties)
         val keptValues = current.values.filterKeys { it in keepKeys }
-        write(root, Snapshot(keepBuild, keepRegion, keptValues))
+        write(root, Snapshot(current.bootId, keepBuild, keepRegion, keptValues))
     }
 
     @Synchronized
@@ -132,6 +142,7 @@ internal object IdentityRuntimeSnapshot {
         val json =
             JSONObject()
                 .put("version", FORMAT_VERSION)
+                .put("bootId", snapshot.bootId)
                 .put("build", snapshot.buildCaptured)
                 .put("region", snapshot.regionCaptured)
                 .put("values", objectValues)
@@ -149,6 +160,12 @@ internal object IdentityRuntimeSnapshot {
             captured[property] = value
         }
         destination.putAll(captured)
+    }
+
+    private fun currentBootId(): String {
+        val value = readUtf8FileSnapshotBounded(File("/proc/sys/kernel/random/boot_id"), 1, 64).trim()
+        require(bootIdPattern.matches(value)) { "Invalid current boot ID" }
+        return value.lowercase()
     }
 
     private fun validValue(value: String): Boolean =
