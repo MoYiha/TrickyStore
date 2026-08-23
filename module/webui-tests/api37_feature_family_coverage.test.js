@@ -59,7 +59,7 @@ assertSame('Built-in profile family', productionProfiles, coveredProfiles);
 
 const randomFunction = section(webServer, 'private fun randomIdentityJson', 'private fun parseIdentityUpdates');
 const productionRandomSelectors = new Set();
-for (const match of randomFunction.matchAll(/((?:\s*"[^"]+"\s*,?)+)\s*->/g)) {
+for (const match of randomFunction.matchAll(/(\s*"[^"]+"(?:\s*,\s*"[^"]+")*)\s*->/g)) {
   for (const value of match[1].matchAll(/"([^"]+)"/g)) productionRandomSelectors.add(value[1]);
 }
 const coveredRandomSelectors = quoted(section(matrix, 'private val RANDOM_IDENTITY_SELECTORS =', 'private val POLICY_FEATURES ='));
