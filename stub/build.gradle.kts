@@ -27,5 +27,7 @@ android {
 
 dependencies {
     compileOnly(libs.annotation)
+    compileOnly(libs.remap.annotation)
+    annotationProcessor(libs.remap.processor)
     implementation(libs.json)
 }
