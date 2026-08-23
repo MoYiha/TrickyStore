@@ -33,26 +33,32 @@ internal object LegacyIdentityMarkers {
 
     fun preflight(root: File) {
         allowedNames.forEach { validatePath(File(root, it)) }
+        BootPolicyProjection.preflight(root)
     }
 
     fun isSynchronized(root: File, state: JSONObject): Result<Boolean> = runCatching {
         if (!state.optString("source").equals("v2", true)) return@runCatching true
-        plan(root, desiredState(state)).isEmpty()
+        plan(root, desiredState(state)).isEmpty() && BootPolicyProjection.isSynchronized(root, state)
     }
 
     fun syncFromPolicyState(root: File, state: JSONObject): Result<Unit> = runCatching {
         if (!state.optString("source").equals("v2", true)) return@runCatching
         apply(plan(root, desiredState(state)))
+        // The early-boot projection is deliberately written after marker changes. Enabling remains
+        // fail-closed until the projection exists, while disabling is already blocked by marker
+        // removal even if this final write fails. A later policy read retries reconciliation.
+        BootPolicyProjection.write(root, state)
     }
 
     fun plan(root: File, desired: DesiredState): List<Operation> {
-        val expected = linkedMapOf(
-            ENGINE to desired.engine,
-            BUILD to desired.build,
-            TELEPHONY to desired.telephony,
-            REGION to desired.region,
-            REFRESH to desired.refresh,
-        )
+        val expected =
+            linkedMapOf(
+                ENGINE to desired.engine,
+                BUILD to desired.build,
+                TELEPHONY to desired.telephony,
+                REGION to desired.region,
+                REFRESH to desired.refresh,
+            )
         return expected.mapNotNull { (name, enabled) ->
             val file = File(root, name)
             if (validatePath(file) != enabled) Operation(name, file, enabled) else null
@@ -110,9 +116,9 @@ internal object LegacyIdentityMarkers {
         listOf("buildIdentity", "attestationIdentity", "telephonyIdentity", "regionIdentity", "identityRefresh")
             .forEach { key -> resolved[key] = features.optBoolean(key, false) }
 
-        // JSON null is the canonical representation of "no active profile". Do not
-        // coerce JSONObject.NULL through optString(): Android org.json renders that
-        // sentinel as the literal string "null", which is also a valid profile name.
+        // Compatibility markers still follow the active profile because managed runtime
+        // interceptors consume them. The separate BootPolicyProjection intentionally does not:
+        // only top-level policy may authorize device-wide pre-Zygote properties.
         val activeProfile =
             if (state.has("activeProfile") && !state.isNull("activeProfile")) {
                 (state.opt("activeProfile") as? String)?.trim().orEmpty()
@@ -123,6 +129,7 @@ internal object LegacyIdentityMarkers {
         if (activeProfile.isNotEmpty() && profiles != null) {
             for (i in 0 until profiles.length()) {
                 val profile = profiles.optJSONObject(i) ?: continue
+                if (!profile.optBoolean("enabled", true)) continue
                 if (!profile.optString("name").equals(activeProfile, true)) continue
                 val overrides = profile.optJSONObject("features") ?: break
                 resolved.keys.forEach { key ->
