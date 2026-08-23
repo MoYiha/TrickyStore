@@ -1396,7 +1396,7 @@ object Config {
         return AttestationPatchLevels(
             system = system,
             vendor = resolveAttestationPatch(selected { it.vendor }, true, "ro.vendor.build.security_patch"),
-            boot = resolveAttestationPatch(selected { it.boot }, true, "ro.bootimage.build.version.security_patch"),
+            boot = resolveAttestationPatch(selected { it.boot }, true, "ro.bootimage.build.security_patch"),
         )
     }
 
@@ -1626,7 +1626,7 @@ object Config {
                             try {
                                 pm.getInstalledPackages(0L, 0).list.map { it.packageName }
                             } catch (e: NoSuchMethodError) {
-                                pm.getInstalledPackages(0, 0).list.map { it.packageName }
+                                InstalledPackagesCompat.getInstalledPackageNames(pm, 0)
                             }
                         } catch (t: Throwable) {
                             Logger.e("Failed to list packages via IPC", t)

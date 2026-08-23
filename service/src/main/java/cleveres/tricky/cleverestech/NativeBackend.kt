@@ -179,7 +179,12 @@ object NativeBackend {
         try {
             if (passwordBytes.size > MAX_PASSWORD_BYTES) return null
             val payloadLength = checkedPayloadLength(2, passwordBytes.size, data.size) ?: return null
-            return transact(opcode, payloadLength, MAX_BACKUP_RESPONSE_BYTES) { output ->
+            return transact(
+                opcode,
+                payloadLength,
+                MAX_BACKUP_RESPONSE_BYTES,
+                propagateTransportFailure = true,
+            ) { output ->
                 writeU16(output, passwordBytes.size)
                 if (passwordBytes.isNotEmpty()) output.write(passwordBytes)
                 if (data.isNotEmpty()) output.write(data)

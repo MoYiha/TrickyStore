@@ -92,6 +92,20 @@ if (!matrix.includes('safe mutable feature surfaces round trip through productio
   throw new Error('API 37 matrix must retain stateful WebUI feature round-trip coverage.');
 }
 
+const mutable = testBody('safe mutable feature surfaces round trip through production bridge');
+const packageEvidence = [
+  'request("GET", "/api/packages")',
+  'targetContext.packageName',
+  'installedPackages.length() > 0',
+  'must include the target app',
+];
+const missingPackageEvidence = packageEvidence.filter(token => !mutable.includes(token));
+if (missingPackageEvidence.length) {
+  throw new Error(
+    `API 37 matrix must prove package enumeration returns real Android packages instead of silently collapsing to empty: ${missingPackageEvidence.join(', ')}`,
+  );
+}
+
 const outage = testBody('native crypto outage fails closed without mutating configuration');
 const outageEvidence = [
   '"/api/backup"',
@@ -110,5 +124,5 @@ if (missingOutageEvidence.length) {
 }
 
 console.log(
-  `Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes, including native-crypto outage state preservation.`,
+  `Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes, including package enumeration semantics and native-crypto outage state preservation.`,
 );

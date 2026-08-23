@@ -95,14 +95,23 @@ class WebUiFeatureMatrixInstrumentationTest {
         val identity =
             JSONObject()
                 .put("serial", "CTEMU17SERIAL")
-                .put("imei", "350000000000018")
+                .put("imei", "490154203237518")
                 .put("visible_sim_count", "2")
                 .put("visible_camera_count", "3")
         assertEquals(200, request("POST", "/api/identity", mapOf("data" to identity.toString())).status)
         val identityReadback = JSONObject(request("GET", "/api/identity").text)
         assertEquals("CTEMU17SERIAL", identityReadback.getString("serial"))
+        assertEquals("490154203237518", identityReadback.getString("imei"))
         assertEquals("2", identityReadback.getString("visible_sim_count"))
         assertEquals("3", identityReadback.getString("visible_camera_count"))
+
+        val installedPackages = JSONArray(request("GET", "/api/packages").text)
+        val targetPackage = InstrumentationRegistry.getInstrumentation().targetContext.packageName
+        assertTrue("Android 17 package enumeration must not collapse to an empty list", installedPackages.length() > 0)
+        assertTrue(
+            "Android 17 package enumeration must include the target app $targetPackage",
+            (0 until installedPackages.length()).any { index -> installedPackages.optString(index) == targetPackage },
+        )
 
         val rules =
             JSONArray().put(
@@ -207,8 +216,8 @@ class WebUiFeatureMatrixInstrumentationTest {
                 uploadId = uploadId,
                 uploadField = "file",
             )
-        assertEquals("restore outage response: ${restored.text}", 500, restored.status)
-        assertEquals("Restore failed", restored.text)
+        assertEquals("restore outage response: ${restored.text}", 503, restored.status)
+        assertEquals("Rust backend unavailable; restore not applied", restored.text)
         assertEquals(after, request("GET", "/api/file", mapOf("filename" to "target.txt")).text)
         assertFalse("bridge must clean staged restore payloads", staged.exists())
     }
