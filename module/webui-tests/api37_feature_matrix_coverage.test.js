@@ -98,14 +98,16 @@ if (!matrix.includes('safe mutable feature surfaces round trip through productio
 }
 
 const packageCompatEvidence = [
-  'android.content.pm.ParceledListSlice',
-  'android.content.pm.PackageInfoList',
+  'getInstalledPackagesV17',
+  'method.name in supportedMethodNames',
   'candidate.name == "getList"',
+  'field.name == "list"',
+  'Unsupported PackageManager result container',
 ];
 const missingPackageCompatEvidence = packageCompatEvidence.filter(token => !packageCompat.includes(token));
 if (missingPackageCompatEvidence.length) {
   throw new Error(
-    `Android 17 package enumeration compatibility must support both legacy and API 37 result containers: ${missingPackageCompatEvidence.join(', ')}`,
+    `Android 17 package enumeration compatibility must resolve the runtime ABI by supported shape and validate its result container: ${missingPackageCompatEvidence.join(', ')}`,
   );
 }
 
