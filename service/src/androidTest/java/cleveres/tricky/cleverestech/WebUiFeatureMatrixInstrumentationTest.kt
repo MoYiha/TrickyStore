@@ -142,7 +142,14 @@ class WebUiFeatureMatrixInstrumentationTest {
         assertEquals("API37 Matrix", effective.getString("matchedProfile"))
         assertTrue(effective.getBoolean("telephonyIdentity"))
         assertEquals("redact", effective.getString("privacy"))
-        assertEquals(200, request("POST", "/api/policy_compatibility").status)
+
+        val engineMarker = File(root, LegacyIdentityMarkers.ENGINE)
+        assertTrue(engineMarker.isFile)
+        assertTrue("stale marker injection failed", engineMarker.delete())
+        assertFalse(engineMarker.exists())
+        val reconciled = JSONObject(request("GET", "/api/policy_state").text)
+        assertEquals("ok", reconciled.getString("compatibilitySync"))
+        assertTrue("canonical policy read must heal stale compatibility markers", engineMarker.isFile)
 
         val auto = request("POST", "/api/auto_identity")
         assertEquals(200, auto.status)
@@ -299,7 +306,6 @@ class WebUiFeatureMatrixInstrumentationTest {
             listOf(
                 FeatureCase("GET", "/api/policy_state"),
                 FeatureCase("POST", "/api/policy_state", mapOf("data" to VALID_POLICY)),
-                FeatureCase("POST", "/api/policy_compatibility"),
                 FeatureCase("GET", "/api/effective_state", mapOf("package" to "com.example.matrix")),
                 FeatureCase("POST", "/api/profile_v2", mapOf("action" to "deactivate", "data" to "{}")),
                 FeatureCase("GET", "/api/config"),
