@@ -82,7 +82,7 @@ internal object RuntimeDiagnostics {
                             output.write(buffer, 0, count)
                             total += count
                         }
-                        output.toString(Charsets.UTF_8)
+                        String(output.toByteArray(), Charsets.UTF_8)
                     } finally {
                         buffer.fill(0)
                         output.reset()
