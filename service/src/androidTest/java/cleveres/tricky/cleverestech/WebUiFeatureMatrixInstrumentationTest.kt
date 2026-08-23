@@ -40,6 +40,7 @@ class WebUiFeatureMatrixInstrumentationTest {
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl = SecureFile.DefaultSecureFileOperations()
         Config.reset()
+        KeyboxLoader.activeSetOverride = { true }
         Config.setRootForTesting(root)
         Config.initialize()
         KernelIdentityManager.initialize(root)
@@ -170,46 +171,46 @@ class WebUiFeatureMatrixInstrumentationTest {
     }
 
     @Test
-    fun `encrypted backup restores through native bridge upload staging`() {
+    fun `native crypto outage fails closed without mutating configuration`() {
+        val before = "com.example.before\n"
         assertEquals(
             200,
-            request(
-                "POST",
-                "/api/save",
-                mapOf("filename" to "target.txt", "content" to "com.example.before\n"),
-            ).status,
+            request("POST", "/api/save", mapOf("filename" to "target.txt", "content" to before)).status,
         )
-        val password = "api37-backup-contract"
-        val backup = request("POST", "/api/backup", mapOf("pw" to password))
-        assertEquals(200, backup.status)
-        assertTrue("encrypted backup must have content", backup.body.isNotEmpty())
 
+        val backup = request("POST", "/api/backup", mapOf("pw" to BACKUP_PASSWORD))
+        assertEquals("backup outage response: ${backup.text}", 500, backup.status)
+        assertEquals("Encrypted backup failed", backup.text)
+        assertEquals(before, request("GET", "/api/file", mapOf("filename" to "target.txt")).text)
+
+        val after = "com.example.after\n"
         assertEquals(
             200,
-            request(
-                "POST",
-                "/api/save",
-                mapOf("filename" to "target.txt", "content" to "com.example.after\n"),
-            ).status,
+            request("POST", "/api/save", mapOf("filename" to "target.txt", "content" to after)).status,
         )
 
         val uploadId = "0123456789abcdef0123456789abcdef"
         val staging = File(root, "webui_bridge/staging")
         assertTrue(staging.mkdirs() || staging.isDirectory)
-        File(staging, "$uploadId.upload").writeBytes(backup.body)
+        val staged = File(staging, "$uploadId.upload")
+        val encrypted = Base64.getDecoder().decode(CTSB_V2)
+        try {
+            staged.writeBytes(encrypted)
+        } finally {
+            encrypted.fill(0)
+        }
         val restored =
             request(
                 "POST",
                 "/api/restore",
-                mapOf("pw" to password),
+                mapOf("pw" to BACKUP_PASSWORD),
                 uploadId = uploadId,
                 uploadField = "file",
             )
-        assertEquals("restore response: ${restored.text}", 200, restored.status)
-        assertEquals(
-            "com.example.before\n",
-            request("GET", "/api/file", mapOf("filename" to "target.txt")).text,
-        )
+        assertEquals("restore outage response: ${restored.text}", 500, restored.status)
+        assertEquals("Restore failed", restored.text)
+        assertEquals(after, request("GET", "/api/file", mapOf("filename" to "target.txt")).text)
+        assertFalse("bridge must clean staged restore payloads", staged.exists())
     }
 
     @Test
@@ -296,6 +297,10 @@ class WebUiFeatureMatrixInstrumentationTest {
     )
 
     companion object {
+        private const val BACKUP_PASSWORD = "correct horse battery staple"
+        private const val CTSB_V2 =
+            "Q1RTQgAAAAIAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobQrPBYdDdFyqlYeaU/mul01QMGsRn7g0MjLdOskpN97GWZ5fNXsQE5H+FldOlDg4HvENUIQC5rexM7K0B5tNer0Cjko6vCq2Z"
+
         private val VALID_POLICY =
             JSONObject()
                 .put("version", 2)
