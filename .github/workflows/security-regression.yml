@@ -220,6 +220,16 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           package_list="$RUNNER_TEMP/sdk-packages.txt"
           sdkmanager --list --channel=3 > "$package_list"
+          echo "===== Available Android 17 platforms ====="
+          awk -F '|' '$1 ~ /platforms;android-37([.]0)?/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' "$package_list"
+          platform_package=$(awk -F '|' '$1 ~ /^[ \t]*platforms;android-37([.]0)?[ \t]*$/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' "$package_list")
+          if [[ -z "$platform_package" ]]; then
+            echo "::error::No Android 17 API 37/37.0 platform package is available through stable-to-Canary SDK channels"
+            exit 1
+          fi
+          echo "Selected Android 17 platform: $platform_package"
+          echo "ANDROID_17_PLATFORM_PACKAGE=$platform_package" >> "$GITHUB_ENV"
+
           echo "===== Available Android 17 x86_64 images ====="
           awk -F '|' '$1 ~ /system-images;android-37([.]0)?;.*;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' "$package_list"
           preferred='system-images;android-37.0;google_apis_ps16k;x86_64'
@@ -237,7 +247,7 @@ jobs:
           sdkmanager --install \
             "platform-tools" \
             "emulator" \
-            "platforms;android-37" \
+            "$platform_package" \
             "$image_package" \
             --channel=3
           api_dir=$(printf '%s' "$image_package" | cut -d';' -f2)
@@ -369,6 +379,7 @@ jobs:
           set -euo pipefail
           echo "===== AVD ====="
           echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          echo "ANDROID_17_PLATFORM_PACKAGE=${ANDROID_17_PLATFORM_PACKAGE:-unset}"
           echo "ANDROID_17_IMAGE_PACKAGE=${ANDROID_17_IMAGE_PACKAGE:-unset}"
           "$ANDROID_HOME/emulator/emulator" -list-avds || true
           find "${ANDROID_AVD_HOME:-$RUNNER_TEMP/android-avd}" -maxdepth 2 -type f -print 2>/dev/null | sort || true
