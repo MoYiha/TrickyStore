@@ -35,8 +35,8 @@ class WebUiFeatureMatrixInstrumentationTest {
 
     @Before
     fun setUp() {
-        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir
-        root = Files.createTempDirectory(cache.toPath(), "webui-feature-matrix").toFile()
+        val cache = InstrumentationRegistry.getInstrumentation().targetContext.cacheDir.canonicalFile
+        root = Files.createTempDirectory(cache.toPath(), "webui-feature-matrix").toFile().canonicalFile
         originalSecureFileImpl = SecureFile.impl
         SecureFile.impl = SecureFile.DefaultSecureFileOperations()
         Config.reset()
