@@ -2,11 +2,14 @@ package cleveres.tricky.cleverestech
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import cleveres.tricky.cleverestech.util.SecureFile
+import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -17,10 +20,18 @@ import java.util.Base64
 @RunWith(AndroidJUnit4::class)
 class WebUiActionInstrumentationTest {
     private var root: File? = null
+    private lateinit var originalSecureFileImpl: SecureFileOperations
+
+    @Before
+    fun setUp() {
+        originalSecureFileImpl = SecureFile.impl
+        SecureFile.impl = SecureFile.DefaultSecureFileOperations()
+    }
 
     @After
     fun tearDown() {
         Config.reset()
+        SecureFile.impl = originalSecureFileImpl
         root?.deleteRecursively()
     }
 
