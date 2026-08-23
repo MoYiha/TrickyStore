@@ -35,6 +35,16 @@ function assertSame(label, production, covered) {
   }
 }
 
+const editableSection = section(webServer, 'private val EDITABLE_CONFIG_FILES =', 'private val BACKUP_CONFIG_FILES');
+const productionEditableConfigs = quoted(editableSection);
+if (editableSection.includes('PolicyState.STATE_FILE')) {
+  const stateFile = policyState.match(/const val STATE_FILE\s*=\s*"([^"]+)"/);
+  if (!stateFile) throw new Error('Could not resolve PolicyState.STATE_FILE for API 37 coverage');
+  productionEditableConfigs.add(stateFile[1]);
+}
+const coveredEditableConfigs = quoted(section(matrix, 'private val EDITABLE_CONFIG_FILES =', 'private val TOGGLE_SETTINGS ='));
+assertSame('Editable config family', productionEditableConfigs, coveredEditableConfigs);
+
 const productionToggles = quoted(section(webServer, 'private val WEB_UI_SETTINGS =', 'private val EDITABLE_CONFIG_FILES'));
 const coveredToggles = quoted(section(matrix, 'private val TOGGLE_SETTINGS =', 'private val PROFILE_MARKERS ='));
 assertSame('WebUI toggle family', productionToggles, coveredToggles);
@@ -61,6 +71,7 @@ const coveredPolicyFeatures = quoted(section(matrix, 'private val POLICY_FEATURE
 assertSame('V2 policy feature family', productionPolicyFeatures, coveredPolicyFeatures);
 
 for (const requiredBehavior of [
+  'every editable config validates persists and reads back on Android 17',
   'every WebUI toggle persists and reads back on Android 17',
   'every built in profile produces its documented marker state',
   'every random identity selector executes on Android 17',
@@ -70,7 +81,7 @@ for (const requiredBehavior of [
 }
 
 console.log(
-  `Android 17 feature-family coverage: ${productionToggles.size} toggles, ` +
-  `${productionProfiles.size} profiles, ${productionRandomSelectors.size} random selectors, ` +
-  `${productionPolicyFeatures.size} V2 policy features.`,
+  `Android 17 feature-family coverage: ${productionEditableConfigs.size} editable configs, ` +
+  `${productionToggles.size} toggles, ${productionProfiles.size} profiles, ` +
+  `${productionRandomSelectors.size} random selectors, ${productionPolicyFeatures.size} V2 policy features.`,
 );
