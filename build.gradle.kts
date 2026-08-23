@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.agp.app) apply false
     alias(libs.plugins.jetbrains.kotlin.android) apply false
     alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.remap) apply false
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
 }
 
