@@ -67,13 +67,9 @@ internal object IdentityRuntimeSnapshot {
                 regionCaptured = true
             }
 
-            val json = JSONObject()
-                .put("version", FORMAT_VERSION)
-                .put("build", buildCaptured)
-                .put("region", regionCaptured)
-                .put("values", JSONObject(values as Map<*, *>))
-            SafeConfigStore.writeText(root, FILE_NAME, json.toString(), MAX_BYTES)
-            Snapshot(buildCaptured, regionCaptured, values.toMap())
+            val snapshot = Snapshot(buildCaptured, regionCaptured, values.toMap())
+            write(root, snapshot)
+            snapshot
         }.onFailure { error ->
             Logger.w("Live Identity rollback snapshot is unavailable: ${error.javaClass.simpleName}")
         }
@@ -92,19 +88,54 @@ internal object IdentityRuntimeSnapshot {
             val key = keys.next()
             require(key in allowedProperties) { "Unexpected runtime Identity property" }
             val value = objectValues.getString(key)
-            require(value.isNotEmpty() && value.length <= 512 && value.none { it.code < 0x20 || it.code == 0x7f }) {
-                "Invalid runtime Identity property value"
-            }
+            require(validValue(value)) { "Invalid runtime Identity property value" }
             values[key] = value
         }
         if (build) require(values.keys.containsAll(buildProperties)) { "Incomplete Build rollback snapshot" }
         if (region) require(values.keys.containsAll(regionProperties)) { "Incomplete region rollback snapshot" }
+        require(build || region) { "Empty runtime Identity snapshot" }
         return Snapshot(build, region, values)
+    }
+
+    @Synchronized
+    fun release(
+        root: File,
+        build: Boolean,
+        region: Boolean,
+    ) {
+        if (!build && !region) return
+        val current = read(root) ?: return
+        val keepBuild = current.buildCaptured && !build
+        val keepRegion = current.regionCaptured && !region
+        if (!keepBuild && !keepRegion) {
+            SafeConfigStore.delete(root, FILE_NAME)
+            return
+        }
+        val keepKeys = LinkedHashSet<String>()
+        if (keepBuild) keepKeys.addAll(buildProperties)
+        if (keepRegion) keepKeys.addAll(regionProperties)
+        val keptValues = current.values.filterKeys { it in keepKeys }
+        write(root, Snapshot(keepBuild, keepRegion, keptValues))
     }
 
     @Synchronized
     fun clear(root: File) {
         SafeConfigStore.delete(root, FILE_NAME)
+    }
+
+    private fun write(
+        root: File,
+        snapshot: Snapshot,
+    ) {
+        val objectValues = JSONObject()
+        snapshot.values.toSortedMap().forEach { (key, value) -> objectValues.put(key, value) }
+        val json =
+            JSONObject()
+                .put("version", FORMAT_VERSION)
+                .put("build", snapshot.buildCaptured)
+                .put("region", snapshot.regionCaptured)
+                .put("values", objectValues)
+        SafeConfigStore.writeText(root, FILE_NAME, json.toString(), MAX_BYTES)
     }
 
     private fun captureGroup(
@@ -114,11 +145,12 @@ internal object IdentityRuntimeSnapshot {
         val captured = LinkedHashMap<String, String>()
         properties.forEach { property ->
             val value = systemPropertiesGet(property, "").orEmpty()
-            require(value.isNotEmpty() && value.length <= 512 && value.none { it.code < 0x20 || it.code == 0x7f }) {
-                "Property $property cannot be safely restored without reboot"
-            }
+            require(validValue(value)) { "Property $property cannot be safely restored without reboot" }
             captured[property] = value
         }
         destination.putAll(captured)
     }
+
+    private fun validValue(value: String): Boolean =
+        value.isNotEmpty() && value.length <= 512 && value.none { it.code < 0x20 || it.code == 0x7f }
 }
