@@ -12,17 +12,33 @@ const packageCompatFile = path.join(
   root,
   'service/src/main/java/cleveres/tricky/cleverestech/InstalledPackagesCompat.kt',
 );
+const packageStubFile = path.join(root, 'stub/src/main/java/android/content/pm/IPackageManager.java');
+const packageListStubFile = path.join(root, 'stub/src/main/java/android/content/pm/PackageInfoList.java');
+const serviceBuildFile = path.join(root, 'service/build.gradle.kts');
+const stubBuildFile = path.join(root, 'stub/build.gradle.kts');
 const matrixFile = path.join(
   root,
   'service/src/androidTest/java/cleveres/tricky/cleverestech/WebUiFeatureMatrixInstrumentationTest.kt',
 );
 
-for (const file of [...productionFiles, packageCompatFile, matrixFile]) {
+for (const file of [
+  ...productionFiles,
+  packageCompatFile,
+  packageStubFile,
+  packageListStubFile,
+  serviceBuildFile,
+  stubBuildFile,
+  matrixFile,
+]) {
   if (!fs.existsSync(file)) throw new Error(`Required feature-contract source is missing: ${path.relative(root, file)}`);
 }
 
 const production = productionFiles.map(file => fs.readFileSync(file, 'utf8')).join('\n');
 const packageCompat = fs.readFileSync(packageCompatFile, 'utf8');
+const packageStub = fs.readFileSync(packageStubFile, 'utf8');
+const packageListStub = fs.readFileSync(packageListStubFile, 'utf8');
+const serviceBuild = fs.readFileSync(serviceBuildFile, 'utf8');
+const stubBuild = fs.readFileSync(stubBuildFile, 'utf8');
 const matrix = fs.readFileSync(matrixFile, 'utf8');
 
 function collectRouteNames(text) {
@@ -98,17 +114,42 @@ if (!matrix.includes('safe mutable feature surfaces round trip through productio
 }
 
 const packageCompatEvidence = [
-  'getInstalledPackagesV17',
-  'method.name in supportedMethodNames',
-  'candidate.name == "getList"',
-  'field.name == "list"',
-  'Unsupported PackageManager result container',
+  'Build.VERSION.SDK_INT >= 37',
+  'getInstalledPackagesV17(0L, userId).list',
+  'Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU',
+  'getInstalledPackages(0L, userId).list',
+  'getInstalledPackages(0, userId).list',
 ];
 const missingPackageCompatEvidence = packageCompatEvidence.filter(token => !packageCompat.includes(token));
 if (missingPackageCompatEvidence.length) {
   throw new Error(
-    `Android 17 package enumeration compatibility must resolve the runtime ABI by supported shape and validate its result container: ${missingPackageCompatEvidence.join(', ')}`,
+    `Android package enumeration compatibility must retain explicit API 31-32, 33-36, and 37+ descriptors: ${missingPackageCompatEvidence.join(', ')}`,
   );
+}
+if (packageCompat.includes('java.lang.reflect') || packageCompat.includes('.methods')) {
+  throw new Error('Android package enumeration compatibility must not fall back to hidden-API runtime reflection.');
+}
+
+const packageStubEvidence = [
+  '@RemapMethod("getInstalledPackages")',
+  'PackageInfoList getInstalledPackagesV17(long flags, int userId)',
+  'ParceledListSlice<PackageInfo> getInstalledPackages(long flags, int userId)',
+  'ParceledListSlice<PackageInfo> getInstalledPackages(int flags, int userId)',
+];
+const missingPackageStubEvidence = packageStubEvidence.filter(token => !packageStub.includes(token));
+if (missingPackageStubEvidence.length) {
+  throw new Error(
+    `Hidden IPackageManager stub must retain the versioned package-enumeration descriptors and Android 17 method remap: ${missingPackageStubEvidence.join(', ')}`,
+  );
+}
+if (!packageListStub.includes('public List<PackageInfo> list;')) {
+  throw new Error('Android 17 PackageInfoList compile-only stub must expose the framework list field.');
+}
+if (!serviceBuild.includes('alias(libs.plugins.remap)')) {
+  throw new Error('Service build must apply the hidden-API remap transform.');
+}
+for (const token of ['compileOnly(libs.remap.annotation)', 'annotationProcessor(libs.remap.processor)']) {
+  if (!stubBuild.includes(token)) throw new Error(`Hidden API stub build must generate remap metadata: ${token}`);
 }
 
 const mutable = testBody('safe mutable feature surfaces round trip through production bridge');
@@ -143,5 +184,5 @@ if (missingOutageEvidence.length) {
 }
 
 console.log(
-  `Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes, including package enumeration semantics and native-crypto outage state preservation.`,
+  `Android 17 feature matrix covers ${productionPairs.size} method/route contracts across ${productionRoutes.size} routes, including build-time package ABI remapping and native-crypto outage state preservation.`,
 );
