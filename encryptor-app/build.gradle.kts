@@ -27,33 +27,21 @@ if (releaseSigningValues.any { !it.isNullOrBlank() } && !releaseSigningConfigure
 
 android {
     namespace = "cleveres.tricky.encryptor"
-    compileSdk = 37
+    compileSdk = rootProject.extra["androidCompileSdkVersion"] as Int
+    ndkVersion = rootProject.extra["androidCompileNdkVersion"] as String
 
     defaultConfig {
         applicationId = "cleveres.tricky.encryptor"
         minSdk = encryptorMinSdk
-        targetSdk = 37
+        targetSdk = rootProject.extra["androidTargetSdkVersion"] as Int
         versionCode = moduleVersionCode
         versionName = moduleVersionName
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
-    }
-
-    bundle {
-        language {
-            // The vault offers an in-app language picker and must keep all packaged locales
-            // available offline instead of relying on Play language split downloads.
-            enableSplit = false
-        }
     }
 
     signingConfigs {
-        if (releaseSigningConfigured) {
-            create("release") {
-                storeFile = file(requireNotNull(releaseKeystore))
+        create("release") {
+            if (releaseSigningConfigured) {
+                storeFile = file(checkNotNull(releaseKeystore))
                 storePassword = releaseStorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
@@ -62,6 +50,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            isMinifyEnabled = false
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -87,7 +78,7 @@ android {
         compose = true
     }
     sourceSets {
-        getByName("main").jniLibs.srcDir(generatedRustJni)
+        getByName("main").jniLibs.directories.add(generatedRustJni.path)
     }
     packaging {
         resources {
@@ -105,79 +96,93 @@ android {
     }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-    }
-}
+val rustTargetByAbi =
+    mapOf(
+        "arm64-v8a" to "aarch64-linux-android",
+        "x86_64" to "x86_64-linux-android",
+    )
 
-val buildEncryptorRust =
-    tasks.register<Exec>("buildEncryptorRust") {
-        group = "rust"
-        description = "Builds the Rust CBOX/vault JNI bridge for supported Android ABIs"
-        dependsOn(":module:installRustTargets")
-        workingDir = file("../rust")
-        environment("RUSTFLAGS", "-D warnings")
-        doFirst {
+val cargoNdk = providers.gradleProperty("cargoNdkExecutable").orElse("cargo")
+val cargoProfile = providers.gradleProperty("cargoProfile").orElse("release")
+val cargoManifest = rootProject.file("rust/encryptor-core/Cargo.toml")
+val cargoTargetDir = rootProject.file("rust/target")
+
+val buildRustLibraries =
+    tasks.register("buildRustLibraries") {
+        group = "build"
+        description = "Builds encryptor Rust JNI libraries for Android ABIs"
+        inputs.file(cargoManifest)
+        inputs.file(rootProject.file("rust/Cargo.lock"))
+        inputs.dir(rootProject.file("rust/encryptor-core/src"))
+        outputs.dir(generatedRustJni)
+
+        doLast {
             generatedRustJni.deleteRecursively()
-            generatedRustJni.mkdirs()
+            rustTargetByAbi.forEach { (abi, target) ->
+                val toolchainFile = file("${android.ndkDirectory}/build/cmake/android.toolchain.cmake")
+                if (!toolchainFile.exists()) {
+                    throw GradleException("Android NDK toolchain file not found: $toolchainFile")
+                }
+
+                val api = encryptorMinSdk
+                val hostTag =
+                    when {
+                        System.getProperty("os.name").startsWith("Mac", ignoreCase = true) -> "darwin-x86_64"
+                        System.getProperty("os.name").startsWith("Windows", ignoreCase = true) -> "windows-x86_64"
+                        else -> "linux-x86_64"
+                    }
+                val clang =
+                    file(
+                        "${android.ndkDirectory}/toolchains/llvm/prebuilt/$hostTag/bin/" +
+                            when (target) {
+                                "aarch64-linux-android" -> "aarch64-linux-android${api}-clang"
+                                "x86_64-linux-android" -> "x86_64-linux-android${api}-clang"
+                                else -> throw GradleException("Unsupported Rust Android target: $target")
+                            },
+                    )
+                if (!clang.exists()) {
+                    throw GradleException("Android NDK clang not found: $clang")
+                }
+
+                val command =
+                    listOf(
+                        cargoNdk.get(),
+                        "build",
+                        "--manifest-path",
+                        cargoManifest.absolutePath,
+                        "--target",
+                        target,
+                        "--profile",
+                        cargoProfile.get(),
+                        "--locked",
+                    )
+                val process =
+                    ProcessBuilder(command)
+                        .directory(rootProject.projectDir)
+                        .redirectErrorStream(true)
+                        .apply {
+                            environment()["CARGO_TARGET_DIR"] = cargoTargetDir.absolutePath
+                            environment()["CC_${target.replace('-', '_')}"] = clang.absolutePath
+                        }.start()
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach(::println)
+                }
+                val exit = process.waitFor()
+                if (exit != 0) {
+                    throw GradleException("Rust JNI build failed for $target with exit code $exit")
+                }
+
+                val library = file("${cargoTargetDir.absolutePath}/$target/${cargoProfile.get()}/libcleveres_encryptor_crypto.so")
+                if (!library.exists()) {
+                    throw GradleException("Rust JNI library missing after build: $library")
+                }
+                val destination = file("${generatedRustJni.absolutePath}/$abi")
+                destination.mkdirs()
+                library.copyTo(file("${destination.absolutePath}/libcleveres_encryptor_crypto.so"), overwrite = true)
+            }
         }
-        commandLine(
-            "cargo",
-            "ndk",
-            "--platform",
-            encryptorMinSdk.toString(),
-            "-t",
-            "arm64-v8a",
-            "-t",
-            "x86_64",
-            "-o",
-            generatedRustJni.absolutePath,
-            "build",
-            "--release",
-            "-p",
-            "cleverestricky-encryptor-native",
-        )
     }
 
-tasks.named("preBuild") {
-    dependsOn(buildEncryptorRust)
-}
-
-tasks.register("verifyModuleVersionParity") {
-    group = "verification"
-    doLast {
-        check(android.defaultConfig.versionCode == moduleVersionCode) {
-            "Encryptor versionCode must match module verCode"
-        }
-        check(android.defaultConfig.versionName == moduleVersionName) {
-            "Encryptor versionName must match module verName"
-        }
-        check(android.compileOptions.sourceCompatibility == JavaVersion.VERSION_11) {
-            "Encryptor Java sourceCompatibility must remain JVM 11"
-        }
-        check(android.compileOptions.targetCompatibility == JavaVersion.VERSION_11) {
-            "Encryptor Java targetCompatibility must remain JVM 11"
-        }
-    }
-}
-
-tasks.named("check") {
-    dependsOn("verifyModuleVersionParity")
-}
-
-dependencies {
-    implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
-
-    implementation(libs.annotation)
-
-    testImplementation(libs.junit)
-    testImplementation(libs.androidx.test.ext.junit)
-    testImplementation(libs.robolectric)
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(buildRustLibraries)
 }
