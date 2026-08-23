@@ -8,13 +8,18 @@ import java.lang.reflect.Method
 /**
  * Bounded compatibility adapter for hidden IPackageManager package enumeration.
  *
- * Android 17/API 37 added a device-id integer to this hidden Binder method. Calling the
- * compile-time signature directly is still preferred; this adapter is entered only after a
- * NoSuchMethodError and resolves one of the explicitly supported runtime signatures.
+ * Android 17/API 37 changed the hidden getInstalledPackages result container from
+ * ParceledListSlice to PackageInfoList while keeping the long-flags/user-id arguments.
+ * Calling the compile-time signature directly is still preferred; this adapter is entered
+ * after a linkage failure and resolves one of the explicitly supported runtime signatures.
  */
 internal object InstalledPackagesCompat {
     private const val DEVICE_ID_DEFAULT = 0
-    private const val PARCELED_LIST_SLICE = "android.content.pm.ParceledListSlice"
+    private val SUPPORTED_RESULT_TYPES =
+        setOf(
+            "android.content.pm.ParceledListSlice",
+            "android.content.pm.PackageInfoList",
+        )
 
     @Volatile
     private var cachedMethod: Method? = null
@@ -47,7 +52,7 @@ internal object InstalledPackagesCompat {
             (packageManager.javaClass.methods.asSequence() + IPackageManager::class.java.methods.asSequence())
                 .filter { method ->
                     method.name == "getInstalledPackages" &&
-                        method.returnType.name == PARCELED_LIST_SLICE &&
+                        method.returnType.name in SUPPORTED_RESULT_TYPES &&
                         method.parameterTypes.isSupportedSignature()
                 }.distinctBy { method -> method.toGenericString() }
                 .toList()
