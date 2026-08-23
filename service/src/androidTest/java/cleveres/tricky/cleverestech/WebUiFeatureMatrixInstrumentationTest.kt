@@ -155,9 +155,11 @@ class WebUiFeatureMatrixInstrumentationTest {
 
         val auto = request("POST", "/api/auto_identity")
         assertEquals(200, auto.status)
+        val autoJson = JSONObject(auto.text)
+        assertEquals("Pixel API37", autoJson.getString("model"))
+        assertEquals("google/api37/api37:17/CT37/1234567:user/release-keys", autoJson.getString("fingerprint"))
         assertTrue(File(root, "spoof_build_identity").isFile)
-        val autoReadback = JSONObject(request("GET", "/api/identity").text)
-        assertEquals("Pixel API37", autoReadback.getString("model"))
+        assertEquals("Pixel API37", readBuildVar("MODEL"))
         assertEquals("google/api37/api37:17/CT37/1234567:user/release-keys", readBuildVar("FINGERPRINT"))
     }
 
