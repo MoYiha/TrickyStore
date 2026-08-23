@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
 const postFs = fs.readFileSync(path.join(repoRoot, 'module/template/post-fs-data.sh'), 'utf8');
+const postMount = fs.readFileSync(path.join(repoRoot, 'module/template/post-mount.sh'), 'utf8');
 
 function requireToken(token, message) {
   assert.ok(postFs.includes(token), message || `missing boot identity contract: ${token}`);
@@ -34,9 +35,18 @@ assert.doesNotMatch(
 );
 assert.match(
   conflictMatch[1],
-  /applying the enabled CleveresTricky Build Identity anyway/,
+  /reasserting the enabled CleveresTricky Build Identity/,
   'provider conflicts must be logged while honoring the enabled feature',
 );
+
+// Core verified-boot protection and optional identity are separate phases. One
+// unsupported Android/vendor property must never short-circuit Build Identity.
+requireToken('apply_core_boot_properties');
+requireToken('apply_optional_identity_properties');
+const earlyOwner = postFs.match(/apply_early_properties\(\) \{([\s\S]*?)\n\}/);
+assert.ok(earlyOwner, 'early property owner must remain explicit');
+assert.match(earlyOwner[1], /apply_core_boot_properties/);
+assert.match(earlyOwner[1], /apply_optional_identity_properties/);
 
 // The saved Identity Manager fields must reach the properties Android Build
 // snapshots before Zygote starts. Keep this list exhaustive for the fields the
@@ -62,5 +72,15 @@ for (const mapping of [
 
 requireToken('resetprop -n "$1" "$2"', 'boot identity must use KernelSU/APatch-safe resetprop -n');
 requireToken('apply_early_properties', 'post-fs-data must execute the early property application owner');
+assert.match(
+  postMount,
+  /CLEVERES_TRICKY_IDENTITY_ONLY=1/,
+  'post-mount must select identity-only reapplication after root-manager property loading',
+);
+assert.match(
+  postMount,
+  /\. "\$MODDIR\/post-fs-data\.sh"/,
+  'post-mount must reuse the same validated Build Identity owner instead of duplicating property mapping',
+);
 
-console.log('Build Identity boot contract honors the enabled feature and maps every persisted Build field before Zygote.');
+console.log('Build Identity boot contract is failure-isolated, exhaustive and reasserted after root-manager property loading.');
