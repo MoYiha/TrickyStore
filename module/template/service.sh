@@ -1,6 +1,7 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
+NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
 
 (
 retry_delay=2
@@ -28,51 +29,17 @@ bootstrap_default_policy() {
   fi
 
   # Do not reinterpret an upgrading user's legacy identity/security settings.
-  # This bootstrap is only for a clean policy surface.
+  # This bootstrap is only for a clean policy surface. Fresh defaults keep every
+  # optional Identity/Security Patch child disabled; automatic patch *mode* is
+  # preselected only for when the user explicitly enables Security Patch later.
   if has_legacy_optional_policy; then
     return 0
   fi
 
-  patch_enabled=false
-  patch_mode=device_default
-  rom_patch=$(getprop ro.build.version.security_patch 2>/dev/null)
-  now=$(date +%Y-%m-%d 2>/dev/null)
-
-  case "$rom_patch:$now" in
-    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-      patch_year=${rom_patch%%-*}
-      patch_rest=${rom_patch#*-}
-      patch_month=${patch_rest%%-*}
-      patch_day=${patch_rest##*-}
-      now_year=${now%%-*}
-      now_rest=${now#*-}
-      now_month=${now_rest%%-*}
-      now_day=${now_rest##*-}
-
-      patch_month=${patch_month#0}; [ -n "$patch_month" ] || patch_month=0
-      patch_day=${patch_day#0}; [ -n "$patch_day" ] || patch_day=0
-      now_month=${now_month#0}; [ -n "$now_month" ] || now_month=0
-      now_day=${now_day#0}; [ -n "$now_day" ] || now_day=0
-
-      case "$patch_year:$patch_month:$patch_day:$now_year:$now_month:$now_day" in
-        *[!0-9:]*) ;;
-        *)
-          patch_serial=$((patch_year * 12 + patch_month))
-          now_serial=$((now_year * 12 + now_month))
-          month_age=$((now_serial - patch_serial))
-          if [ "$month_age" -gt 6 ] || { [ "$month_age" -eq 6 ] && [ "$now_day" -gt "$patch_day" ]; }; then
-            patch_enabled=true
-            patch_mode=automatic
-          fi
-          ;;
-      esac
-      ;;
-  esac
-
   tmp="$CONFIG_DIR/.policy_state_v2.json.$$"
   umask 077
   if ! cat > "$tmp" <<EOF
-{"version":2,"features":{"buildIdentity":false,"attestationIdentity":false,"telephonyIdentity":false,"regionIdentity":false,"identityRefresh":false,"securityPatch":$patch_enabled},"securityPatch":{"automaticThresholdMonths":6,"system":{"mode":"$patch_mode"},"vendor":{"mode":"$patch_mode"},"boot":{"mode":"$patch_mode"}},"profiles":[],"activeProfile":null}
+{"version":2,"features":{"buildIdentity":false,"attestationIdentity":false,"telephonyIdentity":false,"regionIdentity":false,"identityRefresh":false,"securityPatch":false},"securityPatch":{"automaticThresholdMonths":6,"system":{"mode":"automatic"},"vendor":{"mode":"automatic"},"boot":{"mode":"automatic"}},"profiles":[],"activeProfile":null}
 EOF
   then
     rm -f "$tmp"
@@ -82,11 +49,7 @@ EOF
   chmod 600 "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
   chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
   if mv -f "$tmp" "$state"; then
-    if [ "$patch_enabled" = true ]; then
-      log -t CleveresTricky "Security Patch + Auto Security Patch enabled: ROM patch is older than six months"
-    else
-      log -t CleveresTricky "Initialized policy defaults: Global Mode independent, Identity and Security Patch off"
-    fi
+    log -t CleveresTricky "Initialized policy defaults: Global Mode independent, Identity and Security Patch off"
   else
     rm -f "$tmp"
   fi
@@ -147,6 +110,101 @@ generate_backend_auth() {
   return 0
 }
 
+rotate_native_log() {
+  [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ] || return 1
+  [ -f "$NATIVE_LOG" ] && [ ! -L "$NATIVE_LOG" ] || return 1
+  log_size=$(wc -c < "$NATIVE_LOG" 2>/dev/null) || return 1
+  case "$log_size" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$log_size" -gt 524288 ] || return 0
+
+  tmp_log="$CONFIG_DIR/.native_runtime.log.$$"
+  [ ! -e "$tmp_log" ] && [ ! -L "$tmp_log" ] || return 1
+  umask 077
+  if tail -c 262144 "$NATIVE_LOG" > "$tmp_log" 2>/dev/null; then
+    chown 0:0 "$tmp_log" 2>/dev/null || { rm -f "$tmp_log"; return 1; }
+    chmod 600 "$tmp_log" 2>/dev/null || { rm -f "$tmp_log"; return 1; }
+    chcon u:object_r:system_file:s0 "$tmp_log" 2>/dev/null
+    mv -f "$tmp_log" "$NATIVE_LOG" 2>/dev/null || { rm -f "$tmp_log"; return 1; }
+  else
+    rm -f "$tmp_log"
+    return 1
+  fi
+}
+
+prepare_native_log() {
+  [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ] || return 1
+  if [ -L "$NATIVE_LOG" ] || { [ -e "$NATIVE_LOG" ] && [ ! -f "$NATIVE_LOG" ]; }; then
+    log -t CleveresTricky "Unsafe native runtime log path; native stderr capture was skipped"
+    return 1
+  fi
+
+  if [ ! -f "$NATIVE_LOG" ]; then
+    umask 077
+    : > "$NATIVE_LOG" || return 1
+  fi
+  chown 0:0 "$NATIVE_LOG" 2>/dev/null || return 1
+  chmod 600 "$NATIVE_LOG" 2>/dev/null || return 1
+  chcon u:object_r:system_file:s0 "$NATIVE_LOG" 2>/dev/null
+  rotate_native_log || return 1
+  return 0
+}
+
+run_daemon_with_bounded_log() {
+  if ! prepare_native_log; then
+    log -t CleveresTricky "Native runtime log capture is unavailable; running daemon without file capture"
+    "$MODDIR/daemon"
+    return $?
+  fi
+
+  runtime_pipe="$CONFIG_DIR/.native_runtime.pipe.$$"
+  if [ -e "$runtime_pipe" ] || [ -L "$runtime_pipe" ]; then
+    log -t CleveresTricky "Native runtime log pipe is unavailable; running daemon without file capture"
+    "$MODDIR/daemon"
+    return $?
+  fi
+  umask 077
+  if ! mkfifo "$runtime_pipe" 2>/dev/null; then
+    log -t CleveresTricky "Native runtime log pipe could not be created; running daemon without file capture"
+    "$MODDIR/daemon"
+    return $?
+  fi
+  if ! chmod 600 "$runtime_pipe" 2>/dev/null || ! chown 0:0 "$runtime_pipe" 2>/dev/null; then
+    rm -f "$runtime_pipe"
+    log -t CleveresTricky "Native runtime log pipe permissions failed; running daemon without file capture"
+    "$MODDIR/daemon"
+    return $?
+  fi
+  chcon u:object_r:system_file:s0 "$runtime_pipe" 2>/dev/null
+
+  (
+    capture_ok=true
+    line_count=0
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [ "$capture_ok" = true ]; then
+        if ! printf '%.8192s\n' "$line" >> "$NATIVE_LOG" 2>/dev/null; then
+          capture_ok=false
+        else
+          line_count=$((line_count + 1))
+          if [ "$line_count" -ge 32 ]; then
+            rotate_native_log || capture_ok=false
+            line_count=0
+          fi
+        fi
+      fi
+    done < "$runtime_pipe"
+    if [ "$capture_ok" = true ]; then
+      rotate_native_log || true
+    fi
+  ) &
+  log_reader_pid=$!
+
+  "$MODDIR/daemon" > "$runtime_pipe" 2>&1
+  daemon_status=$?
+  wait "$log_reader_pid" 2>/dev/null || true
+  rm -f "$runtime_pipe"
+  return "$daemon_status"
+}
+
 if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chown 0:0 "$CONFIG_DIR" 2>/dev/null
   chmod 700 "$CONFIG_DIR" 2>/dev/null
@@ -190,7 +248,7 @@ while true; do
   fi
 
   started_at=$(date +%s)
-  "$MODDIR/daemon"
+  run_daemon_with_bounded_log
   exit_code=$?
   unset CLEVERES_TRICKY_BACKEND_AUTH
   stopped_at=$(date +%s)

@@ -11,6 +11,148 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
 fi
 
+policy_feature_enabled() {
+  feature=$1
+  state="$CONFIG_DIR/policy_state_v2.json"
+
+  # No v2 state means legacy marker compatibility remains authoritative.
+  if [ ! -e "$state" ] && [ ! -L "$state" ]; then
+    return 2
+  fi
+  if [ -L "$state" ] || [ ! -f "$state" ]; then
+    return 1
+  fi
+
+  state_size=$(wc -c < "$state" 2>/dev/null) || return 1
+  case "$state_size" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$state_size" -ge 1 ] && [ "$state_size" -le 524288 ] || return 1
+
+  case "$feature" in
+    buildIdentity|regionIdentity|identityRefresh) ;;
+    *) return 1 ;;
+  esac
+
+  # policy_state_v2.json can also contain per-profile feature overrides. Only
+  # the top-level `features` object may authorize global early-boot properties.
+  # Scan JSON structure rather than grepping the whole file so a nested profile
+  # override can never resurrect a disabled global feature.
+  awk -v target="$feature" '
+    BEGIN {
+      depth = 0
+      in_string = 0
+      escaped = 0
+      capture_key = 0
+      candidate = 0
+      seek_object = 0
+      in_features = 0
+      object = ""
+      result = -1
+    }
+    {
+      for (i = 1; i <= length($0); i++) {
+        char = substr($0, i, 1)
+        if (in_string) {
+          if (escaped) {
+            escaped = 0
+            if (capture_key) token = token char
+            if (in_features) object = object char
+            continue
+          }
+          if (char == "\\") {
+            escaped = 1
+            if (in_features) object = object char
+            continue
+          }
+          if (char == "\"") {
+            in_string = 0
+            if (capture_key) {
+              capture_key = 0
+              candidate = (depth == 1 && token == "features")
+              token = ""
+            }
+            if (in_features) object = object char
+            continue
+          }
+          if (capture_key) token = token char
+          if (in_features) object = object char
+          continue
+        }
+
+        if (char == "\"") {
+          in_string = 1
+          if (in_features) object = object char
+          else if (depth == 1) {
+            capture_key = 1
+            token = ""
+          }
+          continue
+        }
+
+        if (candidate) {
+          if (char ~ /[[:space:]]/) continue
+          if (char == ":") {
+            seek_object = 1
+            candidate = 0
+            continue
+          }
+          candidate = 0
+        }
+
+        if (seek_object) {
+          if (char ~ /[[:space:]]/) continue
+          if (char == "{" && depth == 1) {
+            depth++
+            in_features = 1
+            object = "{"
+            seek_object = 0
+            continue
+          }
+          result = 1
+          exit
+        }
+
+        if (char == "{") {
+          depth++
+          if (in_features) object = object char
+          continue
+        }
+        if (char == "}") {
+          if (in_features) {
+            object = object char
+            if (depth == 2) {
+              pattern = "\\\"" target "\\\"[[:space:]]*:[[:space:]]*true([[:space:],}]|$)"
+              result = object ~ pattern ? 0 : 1
+              exit
+            }
+          }
+          depth--
+          if (depth < 0) {
+            result = 1
+            exit
+          }
+          continue
+        }
+        if (in_features) object = object char
+      }
+    }
+    END {
+      if (result < 0) result = 1
+      exit result
+    }
+  ' "$state"
+}
+
+optional_marker_enabled() {
+  feature=$1
+  marker=$2
+  [ -f "$CONFIG_DIR/$marker" ] && [ ! -L "$CONFIG_DIR/$marker" ] || return 1
+
+  policy_feature_enabled "$feature"
+  policy_status=$?
+  [ "$policy_status" -eq 2 ] && return 0
+  [ "$policy_status" -eq 0 ]
+}
+
 promote_staged_identity() {
   staged_file="$CONFIG_DIR/spoof_build_vars.next"
   active_file="$CONFIG_DIR/spoof_build_vars"
@@ -32,7 +174,7 @@ promote_staged_identity() {
   # Identity refresh is optional and belongs to Spoof Engine. Core boot protection
   # below never depends on either of these files.
   if [ ! -f "$CONFIG_DIR/spoof_enabled" ] || [ -L "$CONFIG_DIR/spoof_enabled" ] ||
-    [ ! -f "$CONFIG_DIR/random_on_boot" ] || [ -L "$CONFIG_DIR/random_on_boot" ]; then
+    ! optional_marker_enabled identityRefresh random_on_boot; then
     rm -f "$staged_file"
     return 0
   fi
@@ -137,7 +279,7 @@ apply_optional_identity_properties() {
   esac
   [ "$boot_mode" != disable ] || return 0
 
-  if [ -f "$CONFIG_DIR/spoof_region_cn" ] && [ ! -L "$CONFIG_DIR/spoof_region_cn" ]; then
+  if optional_marker_enabled regionIdentity spoof_region_cn; then
     # Region Identity and Build Identity are separate child features. A failure in
     # one region property must never suppress the enabled Build Identity below.
     apply_prop ro.boot.hwc CN || true
@@ -147,8 +289,7 @@ apply_optional_identity_properties() {
     apply_prop persist.radio.skhwc_matchres MATCH || true
   fi
 
-  [ -f "$CONFIG_DIR/spoof_build_identity" ] || return 0
-  [ ! -L "$CONFIG_DIR/spoof_build_identity" ] || return 0
+  optional_marker_enabled buildIdentity spoof_build_identity || return 0
   vars_file="$CONFIG_DIR/spoof_build_vars"
   [ -f "$vars_file" ] && [ ! -L "$vars_file" ] || return 0
   vars_size=$(wc -c < "$vars_file" 2>/dev/null) || return 0
