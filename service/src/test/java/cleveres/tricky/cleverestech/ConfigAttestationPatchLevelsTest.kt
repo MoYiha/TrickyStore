@@ -94,14 +94,15 @@ class ConfigAttestationPatchLevelsTest {
             boot=prop
             """.trimIndent(),
         )
-        systemPropertiesGet = { key, default ->
+        val rawPropertyGetter: (String, String?) -> String? = { key, default ->
             when (key) {
                 "ro.build.version.security_patch" -> "2024-01-05"
                 "ro.vendor.build.security_patch" -> "2024-02-05"
-                "ro.bootimage.build.version.security_patch" -> "2024-03-05"
+                BOOT_IMAGE_SECURITY_PATCH_PROPERTY -> "2024-03-05"
                 else -> default
             }
         }
+        systemPropertiesGet = { key, default -> getSystemPropertyCompat(key, default, rawPropertyGetter) }
 
         updateSecurityPatch(patchFile)
 

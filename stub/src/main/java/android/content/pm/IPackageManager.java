@@ -1,6 +1,7 @@
 package android.content.pm;
 
 import android.os.IBinder;
+import li.songe.remap.RemapMethod;
 
 public interface IPackageManager {
     String[] getPackagesForUid(int uid);
@@ -12,6 +13,9 @@ public interface IPackageManager {
     ParceledListSlice<PackageInfo> getInstalledPackages(long flags, int userId);
 
     ParceledListSlice<PackageInfo> getInstalledPackages(int flags, int userId);
+
+    @RemapMethod("getInstalledPackages")
+    PackageInfoList getInstalledPackagesV17(long flags, int userId);
 
     class Stub {
         public static IPackageManager asInterface(IBinder binder) {

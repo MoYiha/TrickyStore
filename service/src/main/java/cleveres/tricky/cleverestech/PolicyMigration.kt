@@ -134,7 +134,7 @@ object PolicyMigration {
                 }
 
                 if (!profile.isNull("keybox")) {
-                    val keybox = profile.optString("keybox").trim()
+                    val keybox = (profile.opt("keybox") as? String)?.trim().orEmpty()
                     if (keybox.isNotEmpty() && !isAvailableKeybox(configRoot, keybox)) {
                         profile.put("keybox", JSONObject.NULL)
                         changed = true
@@ -145,7 +145,7 @@ object PolicyMigration {
         }
 
         if (!json.isNull("activeProfile")) {
-            val active = json.optString("activeProfile").trim()
+            val active = (json.opt("activeProfile") as? String)?.trim().orEmpty()
             if (active.isNotEmpty() && active.lowercase(Locale.ROOT) !in profileNames) {
                 json.put("activeProfile", JSONObject.NULL)
                 changed = true

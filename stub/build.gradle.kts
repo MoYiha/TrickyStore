@@ -25,7 +25,15 @@ android {
     }
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    // The remap processor intentionally claims only @RemapMethod; do not turn unrelated
+    // compile-only AndroidX nullability annotations into -Werror processing warnings.
+    options.compilerArgs.add("-Xlint:-processing")
+}
+
 dependencies {
     compileOnly(libs.annotation)
+    compileOnly(libs.remap.annotation)
+    annotationProcessor(libs.remap.processor)
     implementation(libs.json)
 }

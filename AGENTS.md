@@ -132,6 +132,23 @@ For installer/shell changes, run the matching shellcheck and extraction/security
 
 If an environment cannot run a required check, state exactly which check could not be run and why. Do not silently substitute confidence for execution.
 
+## Functional behavior and platform validation contract
+
+Source-shape assertions such as `includes`, regex matches, expected filenames, or source snippets are architecture guards only. They are not sufficient proof that a user-facing feature works. A green syntax check plus source-shape checks must never be treated as equivalent to executing the affected behavior.
+
+For every user-visible feature change, state transition, persistence path, bridge/API mutation, or bug that could make a control appear to work while runtime state is wrong:
+
+1. Add at least one executable behavior test that invokes the real production function or production code path. Source-shape assertions may remain as supplemental architecture checks, but they do not satisfy regression coverage by themselves.
+2. For WebUI code, prefer loading the real runtime owner in a controlled Node/VM harness or an equivalent browser test and invoking the affected handlers/helpers. A test that only reads `policy.js`, `ux.js`, or `index.html` as text cannot prove click/save/refresh behavior.
+3. For any escaping, sanitization, encoding, quoting, or HTML-construction primitive used with `innerHTML`, template strings, attribute values, labels, or generated markup, execute the primitive against adversarial strings containing at least `&`, `<`, `>`, `"`, and `'`. Assert the exact encoded output and include an attribute-boundary case when the output can enter an attribute. Do not validate escaping solely by checking that a mapping literal exists in source.
+4. For WebUI -> bridge/API -> persistence/runtime chains, test the action-level contract end to end with realistic fakes: the intended request is issued; canonical/persisted success is reflected in returned state; stale UI state is not reused after a successful mutation; a later read-only/presentation refresh failure cannot retroactively turn a committed mutation into failure; and a real backend mutation failure still surfaces as failure.
+5. Exercise both success and failure paths for critical buttons/actions. A successful backend operation followed by a failed refresh, reload, status fetch, localization pass, or other presentation-only step must be tested separately from a failed backend operation.
+6. Runtime owners must be executable in tests deeply enough that replacing a real implementation with a marker, stub, empty shell, or source-pattern decoy fails CI. Representative critical hooks must actually run; file size and regex presence are not acceptable substitutes.
+7. When a defect is first discovered only on a physical device, add the lowest-layer deterministic automated regression test that would have caught the same invariant without the device whenever technically possible. Treat the device finding as evidence that automated coverage was incomplete and strengthen the reusable harness so the same failure class is caught without repeating manual reboot validation.
+8. Device-bound critical paths that depend on Android framework/native behavior require layered automated validation before merge: host/unit contracts, service/bridge contracts where applicable, and an Android emulator/platform contract on the repository's current platform oracle. The emulator job must assert the actual booted API/release rather than trusting package names. Physical KernelSU/APatch testing is not a routine PR merge requirement unless the maintainer explicitly requests it for a specific change.
+9. Automated platform validation must verify observable behavior, not only emulator process health. For a setting/action, verify the mutation, persisted/canonical state, post-action readback, and the closest deterministic runtime/platform effect available in CI. When an invariant cannot be represented directly on the stock emulator because it depends on root-manager or hardware-only facilities, cover the boundary with production-code host tests, protocol/framework contracts, fault injection, and Android instrumentation rather than requiring repetitive manual reboots.
+10. If a new regression demonstrates that the current test suite could pass while the shipped feature is non-functional, strengthen the shared test harness or contract so the entire failure class is detected in future changes. Do not add only a one-off assertion naming the exact line that failed.
+
 ## CI failure discipline
 
 A PR is not "green enough" because one workflow passed. Evaluate the exact final head commit across every workflow selected by the repository's change detection.
@@ -188,7 +205,7 @@ English is the canonical technical documentation language. User-facing documenta
 
 Native runtime health, Binder behavior, TEE timing, and attestation state are release-critical. Agents must treat regressions in these areas as blockers rather than compatibility quirks.
 
-- On KernelSU/APatch device tests, require `native_state=active`, `native_alive=true`, and the expected interceptors to activate when their features are enabled. A yellow-to-red runtime-health transition is a blocker.
+- When KernelSU/APatch exploratory or release-certification device tests are explicitly run, require `native_state=active`, `native_alive=true`, and the expected interceptors to activate when their features are enabled. A yellow-to-red runtime-health transition is a blocker for that certification run, but routine PRs rely on the automated host/emulator contract above.
 - TEE timing-side-channel checks must stay below the project threshold of `1.1x`. A positive result at or above the threshold must be investigated before merge/release; do not suppress the warning or relax the threshold to make a build pass.
 - Treat bootloader / Verified Boot / attestation-state regressions as release blockers. Do not trade attestation correctness for permissive spoofing or compatibility shortcuts.
 - Mount-namespace differences may change device/inode identity between processes. Keep canonical platform-location matching plus fail-closed ELF ABI/build-ID validation; never fall back to same-basename-only symbol resolution.
@@ -206,8 +223,9 @@ Native runtime health, Binder behavior, TEE timing, and attestation state are re
 ## Merge / release verification
 
 - Before merge, require the Build and Security Regression workflows to pass and resolve actionable Codex/review findings, unless the repository owner/maintainer explicitly overrides that requirement in the current instruction. Never infer an override from urgency or confidence.
+- When device-bound Android/runtime paths change, the Security Regression workflow's exact-head Android emulator/platform contract is part of the required merge evidence. Do not substitute a manual device-smoke checkbox for a missing or failing automated platform contract.
 - When native/module paths are selected, Native Hardening and the module artifact build are part of the required final-head verification unless explicitly overridden by the maintainer.
-- For release candidates, verify module archive structure, checksums, native artifact hardening, signed APK verification, and device-level native/TEE behavior.
+- For release candidates, verify module archive structure, checksums, native artifact hardening, signed APK verification, and any explicitly requested release-certification device checks.
 - Do not update `update.json`, release URLs, hashes, or release metadata until the release artifact actually exists and those values are verified from the published artifact.
 
 ## Branch Lifecycle Rules

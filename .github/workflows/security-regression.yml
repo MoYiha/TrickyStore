@@ -5,6 +5,7 @@ on:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -106,6 +107,20 @@ jobs:
             node "$test_file"
           done
 
+      - name: Guard Identity and policy semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :service:testDebugUnitTest \
+            --tests 'cleveres.tricky.cleverestech.PolicyStateTest' \
+            --tests 'cleveres.tricky.cleverestech.LegacyIdentityMarkersTest' \
+            --tests 'cleveres.tricky.cleverestech.IdentityPolicyContractTest' \
+            --tests 'cleveres.tricky.cleverestech.NullablePolicyJsonContractTest' \
+            --tests 'cleveres.tricky.cleverestech.PolicyCompatibilityRecoveryTest' \
+            --tests 'cleveres.tricky.cleverestech.PolicyMutationCoordinatorTest' \
+            --tests 'cleveres.tricky.cleverestech.WebServerIdentityTest' \
+            --warning-mode=fail --console=plain --stacktrace --no-build-cache
+
       - name: Guard Binder cache regressions
         working-directory: rust
         env:
@@ -120,7 +135,7 @@ jobs:
       - name: Run Android JVM unit tests
         id: android_jvm_tests
         continue-on-error: true
-        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache
+        run: ./gradlew :service:testDebugUnitTest :stub:testDebugUnitTest :encryptor-app:testDebugUnitTest --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
 
       - name: Show Android JVM test failures
         if: steps.android_jvm_tests.outcome == 'failure'
@@ -173,6 +188,228 @@ jobs:
 
       - name: Enforce Android JVM unit test result
         if: steps.android_jvm_tests.outcome == 'failure'
+        run: exit 1
+
+  android-platform-contract:
+    name: "🤖 Android 17 API 37 Platform Contracts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+
+      - name: Install Android 17 API 37 emulator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          package_list="$RUNNER_TEMP/sdk-packages.txt"
+          sdkmanager --list --channel=3 > "$package_list"
+          echo "===== Available Android 17 platforms ====="
+          awk -F '|' '$1 ~ /platforms;android-37([.]0)?/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' "$package_list"
+          platform_package=$(awk -F '|' '$1 ~ /^[ \t]*platforms;android-37([.]0)?[ \t]*$/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' "$package_list")
+          if [[ -z "$platform_package" ]]; then
+            echo "::error::No Android 17 API 37/37.0 platform package is available through stable-to-Canary SDK channels"
+            exit 1
+          fi
+          echo "Selected Android 17 platform: $platform_package"
+          echo "ANDROID_17_PLATFORM_PACKAGE=$platform_package" >> "$GITHUB_ENV"
+
+          echo "===== Available Android 17 x86_64 images ====="
+          awk -F '|' '$1 ~ /system-images;android-37([.]0)?;.*;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1}' "$package_list"
+          preferred='system-images;android-37.0;google_apis_ps16k;x86_64'
+          if grep -Fq "$preferred" "$package_list"; then
+            image_package="$preferred"
+          else
+            image_package=$(awk -F '|' '$1 ~ /system-images;android-37([.]0)?;.*;x86_64/ {gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit}' "$package_list")
+          fi
+          if [[ -z "$image_package" ]]; then
+            echo "::error::No Android 17 API 37/37.0 x86_64 emulator image is available through stable-to-Canary SDK channels"
+            exit 1
+          fi
+          echo "Selected Android 17 image: $image_package"
+          echo "ANDROID_17_IMAGE_PACKAGE=$image_package" >> "$GITHUB_ENV"
+          sdkmanager --install \
+            "platform-tools" \
+            "emulator" \
+            "$platform_package" \
+            "$image_package" \
+            --channel=3
+          api_dir=$(printf '%s' "$image_package" | cut -d';' -f2)
+          tag=$(printf '%s' "$image_package" | cut -d';' -f3)
+          echo "ANDROID_17_API_DIR=$api_dir" >> "$GITHUB_ENV"
+          image_properties="$ANDROID_HOME/system-images/$api_dir/$tag/x86_64/source.properties"
+          if [[ ! -f "$image_properties" ]]; then
+            echo "::error::Installed Android 17 system image metadata is missing: $image_properties"
+            exit 1
+          fi
+          echo "===== Android 17 system image ====="
+          cat "$image_properties"
+          api_level=$(sed -n 's/^AndroidVersion.ApiLevel=//p' "$image_properties" | head -n1)
+          if [[ "$api_level" != "37" && "$api_level" != "37.0" ]]; then
+            echo "::error::Expected API 37 system image metadata, got ${api_level:-missing}"
+            exit 1
+          fi
+          revision=$(sed -n 's/^Pkg.Revision=//p' "$image_properties" | head -n1)
+          revision_major=${revision%%.*}
+          if [[ "$tag" == google_apis* ]] && { [[ ! "$revision_major" =~ ^[0-9]+$ ]] || (( revision_major < 5 )); }; then
+            echo "::error::Android 17 Google APIs system image must be revision 5 or newer; got ${revision:-unknown}"
+            exit 1
+          fi
+
+      - name: Boot Android 17 platform oracle
+        id: emulator_boot
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          "$ANDROID_HOME/emulator/emulator" -accel-check || true
+          echo no | avdmanager create avd \
+            --force \
+            --name ct-platform-contract \
+            --package "$ANDROID_17_IMAGE_PACKAGE" \
+            --device "pixel_6"
+          echo "Created AVDs:"
+          "$ANDROID_HOME/emulator/emulator" -list-avds
+          avd_ini="$ANDROID_AVD_HOME/ct-platform-contract.ini"
+          avd_config="$ANDROID_AVD_HOME/ct-platform-contract.avd/config.ini"
+          if [[ ! -f "$avd_ini" || ! -f "$avd_config" ]]; then
+            echo "::error::AVD metadata was not created in $ANDROID_AVD_HOME"
+            find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -print || true
+            exit 1
+          fi
+          target=$(sed -n 's/^target=//p' "$avd_ini" | head -n1)
+          if [[ "$target" != "$ANDROID_17_API_DIR" ]]; then
+            echo "::error::AVD target metadata is corrupted: expected $ANDROID_17_API_DIR, got ${target:-missing}"
+            cat "$avd_ini"
+            exit 1
+          fi
+          if grep -q '^hw.ramSize=' "$avd_config"; then
+            sed -i 's/^hw.ramSize=.*/hw.ramSize=4096/' "$avd_config"
+          else
+            echo 'hw.ramSize=4096' >> "$avd_config"
+          fi
+          "$ANDROID_HOME/emulator/emulator" \
+            -avd ct-platform-contract \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -no-snapshot \
+            -wipe-data \
+            -gpu swangle_indirect \
+            > "$RUNNER_TEMP/ct-emulator.log" 2>&1 &
+          emulator_pid=$!
+          echo "$emulator_pid" > "$RUNNER_TEMP/ct-emulator.pid"
+          booted=false
+          for _ in $(seq 1 240); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "::error::Android emulator process exited before boot completed"
+              tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+              exit 1
+            fi
+            if [[ "$(adb get-state 2>/dev/null || true)" == "device" ]] && \
+               [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              booted=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != "true" ]]; then
+            echo "::error::Android emulator did not complete boot within the platform-contract window"
+            tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          sdk=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
+          release=$(adb shell getprop ro.build.version.release | tr -d '\r')
+          codename=$(adb shell getprop ro.build.version.codename | tr -d '\r')
+          abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')
+          page_size=$(adb shell getconf PAGE_SIZE 2>/dev/null | tr -d '\r' || true)
+          echo "Android platform oracle: release=$release sdk=$sdk codename=$codename abi=$abi page_size=$page_size"
+          if [[ "$sdk" != "37" ]]; then
+            echo "::error::Expected Android API 37, got API $sdk"
+            exit 1
+          fi
+          if [[ "$release" != 17* ]]; then
+            echo "::error::Expected Android 17 release identity, got $release"
+            exit 1
+          fi
+          if [[ "$ANDROID_17_IMAGE_PACKAGE" == *google_apis_ps16k* && "$page_size" != "16384" ]]; then
+            echo "::error::Expected 16 KB page-size API 37 oracle, got ${page_size:-unknown}"
+            exit 1
+          fi
+
+      - name: Run Android 17 platform semantic contracts
+        id: platform_contract
+        if: steps.emulator_boot.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :service:connectedDebugAndroidTest \
+            --warning-mode=fail --console=plain --stacktrace --no-build-cache --rerun-tasks
+
+      - name: Show Android platform contract failure context
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "===== AVD ====="
+          echo "ANDROID_AVD_HOME=${ANDROID_AVD_HOME:-unset}"
+          echo "ANDROID_17_PLATFORM_PACKAGE=${ANDROID_17_PLATFORM_PACKAGE:-unset}"
+          echo "ANDROID_17_IMAGE_PACKAGE=${ANDROID_17_IMAGE_PACKAGE:-unset}"
+          "$ANDROID_HOME/emulator/emulator" -list-avds || true
+          find "${ANDROID_AVD_HOME:-$RUNNER_TEMP/android-avd}" -maxdepth 2 -type f -print 2>/dev/null | sort || true
+          echo "===== emulator ====="
+          tail -n 300 "$RUNNER_TEMP/ct-emulator.log" || true
+          echo "===== adb ====="
+          adb devices -l || true
+          adb shell getprop ro.build.version.sdk || true
+          adb shell getprop ro.build.version.release || true
+          adb shell getconf PAGE_SIZE || true
+          echo "===== instrumentation reports ====="
+          find service/build -type f \( -path '*/androidTests/connected/*' -o -path '*/reports/androidTests/*' \) -print | sort || true
+
+      - name: Upload Android platform contract failure reports
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-17-platform-contract-failure
+          path: |
+            service/build/outputs/androidTest-results
+            service/build/reports/androidTests
+            ${{ runner.temp }}/ct-emulator.log
+            ${{ runner.temp }}/android-avd/ct-platform-contract.ini
+            ${{ runner.temp }}/android-avd/ct-platform-contract.avd/config.ini
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
+
+      - name: Enforce Android platform contract result
+        if: always() && (steps.emulator_boot.outcome == 'failure' || steps.platform_contract.outcome == 'failure')
         run: exit 1
 
   dependency-submission:

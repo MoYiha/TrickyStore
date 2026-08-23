@@ -1,0 +1,249 @@
+package cleveres.tricky.cleverestech
+
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+
+class PolicyMutationCoordinatorTest {
+    @Test
+    fun `concurrent policy mutations keep canonical state and markers in commit order`() {
+        val canonical = AtomicReference("none")
+        val markers = AtomicReference("none")
+        val firstSyncEntered = CountDownLatch(1)
+        val releaseFirstSync = CountDownLatch(1)
+        val secondAttempting = CountDownLatch(1)
+        val secondMutationEntered = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val first =
+                executor.submit<Result<PolicyMutationResult>> {
+                    PolicyMutationCoordinator.mutate(
+                        preflight = {},
+                        mutation = {
+                            canonical.set("A")
+                            Result.success(JSONObject().put("generation", "A"))
+                        },
+                        synchronizeCompatibility = { state ->
+                            firstSyncEntered.countDown()
+                            if (releaseFirstSync.await(2, TimeUnit.SECONDS)) {
+                                markers.set(state.getString("generation"))
+                                Result.success(Unit)
+                            } else {
+                                Result.failure(AssertionError("Timed out waiting to release first sync"))
+                            }
+                        },
+                    )
+                }
+
+            assertTrue(firstSyncEntered.await(2, TimeUnit.SECONDS))
+
+            val second =
+                executor.submit<Result<PolicyMutationResult>> {
+                    secondAttempting.countDown()
+                    PolicyMutationCoordinator.mutate(
+                        preflight = {},
+                        mutation = {
+                            secondMutationEntered.countDown()
+                            canonical.set("B")
+                            Result.success(JSONObject().put("generation", "B"))
+                        },
+                        synchronizeCompatibility = { state ->
+                            markers.set(state.getString("generation"))
+                            Result.success(Unit)
+                        },
+                    )
+                }
+
+            assertTrue(secondAttempting.await(2, TimeUnit.SECONDS))
+            assertFalse(
+                "second canonical mutation must wait for first marker sync",
+                secondMutationEntered.await(150, TimeUnit.MILLISECONDS),
+            )
+
+            releaseFirstSync.countDown()
+            assertTrue(first.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(second.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(secondMutationEntered.await(2, TimeUnit.SECONDS))
+            assertEquals("B", canonical.get())
+            assertEquals(canonical.get(), markers.get())
+        } finally {
+            releaseFirstSync.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `startup compatibility heal cannot publish stale markers after a newer mutation`() {
+        val canonical = AtomicReference("A")
+        val markers = AtomicReference("none")
+        val healSyncEntered = CountDownLatch(1)
+        val releaseHealSync = CountDownLatch(1)
+        val mutationEntered = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val heal =
+                executor.submit<Result<Unit>> {
+                    PolicyMutationCoordinator.synchronizeCurrentCompatibility(
+                        stateProvider = { JSONObject().put("generation", canonical.get()) },
+                        synchronizeCompatibility = { state ->
+                            healSyncEntered.countDown()
+                            if (releaseHealSync.await(2, TimeUnit.SECONDS)) {
+                                markers.set(state.getString("generation"))
+                                Result.success(Unit)
+                            } else {
+                                Result.failure(AssertionError("Timed out waiting to release startup heal"))
+                            }
+                        },
+                    )
+                }
+
+            assertTrue(healSyncEntered.await(2, TimeUnit.SECONDS))
+
+            val mutation =
+                executor.submit<Result<PolicyMutationResult>> {
+                    PolicyMutationCoordinator.mutate(
+                        preflight = {},
+                        mutation = {
+                            mutationEntered.countDown()
+                            canonical.set("B")
+                            Result.success(JSONObject().put("generation", "B"))
+                        },
+                        synchronizeCompatibility = { state ->
+                            markers.set(state.getString("generation"))
+                            Result.success(Unit)
+                        },
+                    )
+                }
+
+            assertFalse(
+                "canonical mutation must wait until startup heal releases the shared policy monitor",
+                mutationEntered.await(150, TimeUnit.MILLISECONDS),
+            )
+
+            releaseHealSync.countDown()
+            assertTrue(heal.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(mutation.get(2, TimeUnit.SECONDS).isSuccess)
+            assertTrue(mutationEntered.await(2, TimeUnit.SECONDS))
+            assertEquals("B", canonical.get())
+            assertEquals("B", markers.get())
+        } finally {
+            releaseHealSync.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `compatibility failure preserves canonical result but marks mutation pending`() {
+        val state = JSONObject().put("generation", 42)
+
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                mutation = { Result.success(state) },
+                synchronizeCompatibility = { Result.failure(IOException("marker write failed")) },
+            )
+
+        assertTrue(result.isSuccess)
+        val value = result.getOrThrow()
+        assertEquals(42, value.state.getInt("generation"))
+        assertEquals(CompatibilitySyncStatus.PENDING, value.compatibilitySync)
+        assertTrue(value.compatibilityError is IOException)
+    }
+
+    @Test
+    fun `thrown mutation failure stays inside Result and skips compatibility sync`() {
+        var synchronized = false
+
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                mutation = { throw IOException("mutation threw") },
+                synchronizeCompatibility = {
+                    synchronized = true
+                    Result.success(Unit)
+                },
+            )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertFalse(synchronized)
+    }
+
+    @Test
+    fun `startup state provider failure stays inside Result`() {
+        var synchronized = false
+
+        val result =
+            PolicyMutationCoordinator.synchronizeCurrentCompatibility(
+                stateProvider = { throw IOException("state read failed") },
+                synchronizeCompatibility = {
+                    synchronized = true
+                    Result.success(Unit)
+                },
+            )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
+        assertFalse(synchronized)
+    }
+
+    @Test
+    fun `pending compatibility response preserves canonical state and exposes retry warning`() {
+        val result =
+            PolicyMutationResult(
+                state = JSONObject().put("generation", 42).put("features", JSONObject().put("buildIdentity", true)),
+                compatibilitySync = CompatibilitySyncStatus.PENDING,
+                compatibilityError = IOException("marker write failed"),
+            )
+
+        val response = PolicyApi.mutationResponse(result)
+
+        assertEquals(42, response.getInt("generation"))
+        assertTrue(response.getJSONObject("features").getBoolean("buildIdentity"))
+        assertEquals("pending", response.getString("compatibilitySync"))
+        assertTrue(response.getString("compatibilityWarning").contains("Retry before reboot"))
+    }
+
+    @Test
+    fun `successful compatibility response reports ok without warning`() {
+        val result =
+            PolicyMutationResult(
+                state = JSONObject().put("generation", 43),
+                compatibilitySync = CompatibilitySyncStatus.OK,
+            )
+
+        val response = PolicyApi.mutationResponse(result)
+
+        assertEquals(43, response.getInt("generation"))
+        assertEquals("ok", response.getString("compatibilitySync"))
+        assertFalse(response.has("compatibilityWarning"))
+    }
+
+    @Test
+    fun `preflight failure rejects mutation before canonical persistence`() {
+        var mutated = false
+
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = { throw IOException("unsafe marker") },
+                mutation = {
+                    mutated = true
+                    Result.success(JSONObject())
+                },
+                synchronizeCompatibility = { Result.success(Unit) },
+            )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is CompatibilityPreflightException)
+        assertFalse(mutated)
+    }
+}
