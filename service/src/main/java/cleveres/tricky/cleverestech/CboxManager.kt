@@ -19,6 +19,13 @@ import java.util.PriorityQueue
 import java.util.concurrent.ConcurrentHashMap
 
 object CboxManager {
+
+    private data class CboxFile(
+        val file: File,
+        val lastModified: Long,
+        val length: Long,
+    )
+
     private data class UnlockedEntry(
         val sourceLastModified: Long,
         val sourceSize: Long,
@@ -61,16 +68,17 @@ object CboxManager {
                 Logger.e("Failed to scan CBOX directory", error)
                 return
             }
-        val currentFiles = files.mapTo(HashSet()) { it.name }
+        val currentFiles = files.mapTo(HashSet()) { it.file.name }
         val crl = if (files.isEmpty()) null else KeyboxVerifier.fetchCrl()
 
-        for (file in files) {
+        for (cbox in files) {
+            val file = cbox.file
             val name = file.name
             val current = unlockedCache[name]
             val metadataMatches =
                 current != null &&
-                    current.sourceLastModified == file.lastModified() &&
-                    current.sourceSize == file.length()
+                    current.sourceLastModified == cbox.lastModified &&
+                    current.sourceSize == cbox.length
             val digestMatches =
                 if (metadataMatches) {
                     val digest = runCatching { digestFile(file) }.getOrNull()
@@ -209,21 +217,23 @@ object CboxManager {
     internal fun isUnlockPasswordWithinLimit(password: String): Boolean = password.length <= MAX_PASSWORD_CHARS
 
     @Throws(IOException::class)
-    private fun listCboxFiles(directory: File): List<File> {
-        val files = PriorityQueue<File>(MAX_CBOX_FILES, compareByDescending { it.name })
+    private fun listCboxFiles(directory: File): List<CboxFile> {
+        val files = PriorityQueue<CboxFile>(MAX_CBOX_FILES, compareByDescending { it.file.name })
         Files.newDirectoryStream(directory.toPath()).use { entries ->
             for (path in entries) {
                 val file = path.toFile()
                 if (!validFilename.matches(file.name) || !isSafeCbox(file)) continue
+                val cboxFile = CboxFile(file, file.lastModified(), file.length())
+
                 if (files.size < MAX_CBOX_FILES) {
-                    files.add(file)
-                } else if (file.name < requireNotNull(files.peek()).name) {
+                    files.add(cboxFile)
+                } else if (file.name < requireNotNull(files.peek()).file.name) {
                     files.poll()
-                    files.add(file)
+                    files.add(cboxFile)
                 }
             }
         }
-        return files.sortedBy { it.name }
+        return files.sortedBy { it.file.name }
     }
 
     private fun loadCached(
