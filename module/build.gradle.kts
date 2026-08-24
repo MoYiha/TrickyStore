@@ -213,7 +213,7 @@ tasks.register<Exec>("cargoBuild") {
 
     dependsOn("installRustTargets")
 
-    environment("RUSTFLAGS", "-D warnings")
+    environment("RUSTFLAGS", "-D warnings -C link-arg=-Wl,-z,max-page-size=16384")
 
     commandLine(
         "cargo",

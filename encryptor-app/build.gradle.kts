@@ -117,7 +117,7 @@ val buildEncryptorRust =
         description = "Builds the Rust CBOX/vault JNI bridge for supported Android ABIs"
         dependsOn(":module:installRustTargets")
         workingDir = file("../rust")
-        environment("RUSTFLAGS", "-D warnings")
+        environment("RUSTFLAGS", "-D warnings -C link-arg=-Wl,-z,max-page-size=16384")
         doFirst {
             generatedRustJni.deleteRecursively()
             generatedRustJni.mkdirs()
