@@ -1,0 +1,3 @@
+🎯 **What:** The testing gap in `KeyboxVerifier.kt` specifically for `checkFile` method was addressed. It was internalised for testability.
+📊 **Coverage:** Scenarios including edge cases (unsafe files, empty keyboxes, null fetcher) and CRL check statuses (VALID, REVOKED, INVALID, ERROR), along with Exception handling, are now successfully tested using JUnit 4 and Mockito.
+✨ **Result:** Solid test coverage ensures `checkFile` reliably evaluates and handles keybox files and exceptions.
