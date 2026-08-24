@@ -261,6 +261,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
                     "auto_keybox_check",
                     "random_on_boot",
                     "telephony",
+                    "global_identity_mode",
                 ),
                 "daily" to setOf(
                     "spoof_enabled",
