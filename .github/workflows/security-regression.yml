@@ -49,7 +49,7 @@ jobs:
             fi
             url="https://repo.maven.apache.org/maven2/org/bouncycastle/${artifact}/${version}/${artifact}-${version}.pom"
             echo "Checking org.bouncycastle:${artifact}:${version}"
-            curl --fail --silent --show-error --location --retry 3 --retry-all-errors --output /dev/null "$url"
+            curl --fail --silent --show-error --location --user-agent "CleveresTricky-CI/1.0" --retry 3 --retry-all-errors --output /dev/null "$url"
           done
 
       - name: Enforce Bouncy Castle test-only security baseline
