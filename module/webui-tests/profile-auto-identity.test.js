@@ -18,8 +18,8 @@ const configOwner = fs.readFileSync(
   path.join(repoRoot, 'service/src/main/java/cleveres/tricky/cleverestech/Config.kt'),
   'utf8',
 );
-const cronOwner = fs.readFileSync(
-  path.join(repoRoot, 'service/src/main/java/cleveres/tricky/cleverestech/CronAutoIdentity.kt'),
+const coordinatorOwner = fs.readFileSync(
+  path.join(repoRoot, 'service/src/main/java/cleveres/tricky/cleverestech/IdentityCoordinator.kt'),
   'utf8',
 );
 const profileStore = fs.readFileSync(
@@ -58,14 +58,19 @@ assert.match(
   'UID Build resolution must use the isolated snapshot only inside profile Auto Identity scope',
 );
 assert.match(
-  cronOwner,
-  /if \(decision\.profileScoped\) \{[\s\S]*?ProfileAutoIdentityStore\.save\(root, resolved\)\.getOrThrow\(\)/,
-  'profile-scoped refresh must persist its own snapshot',
+  coordinatorOwner,
+  /if \(persistProfile\) ProfileAutoIdentityStore\.save\(root, resolved\)\.getOrThrow\(\)/,
+  'profile-scoped refresh must persist its own snapshot through the Identity coordinator',
 );
 assert.match(
-  cronOwner,
-  /if \(!decision\.globalLiveApply\) \{[\s\S]*?global identity storage and Build properties were left unchanged[\s\S]*?return[\s\S]*?AutoIdentityPersistence\.save\(root, resolved\)\.getOrThrow\(\)/,
-  'profile-only refresh must return before global identity persistence',
+  coordinatorOwner,
+  /if \(persistGlobal\) AutoIdentityPersistence\.save\(root, resolved\)\.getOrThrow\(\)/,
+  'global persistence must remain explicitly separate from profile persistence',
+);
+assert.match(
+  coordinatorOwner,
+  /liveApplyGlobal && persistGlobal && PolicyState\.isTopLevelFeatureEnabled\(PolicyState\.Feature\.BUILD_IDENTITY\)/,
+  'profile-only refresh must never trigger global live Build Identity apply',
 );
 assert.doesNotMatch(
   profileStore,

@@ -11,135 +11,72 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
 fi
 
-policy_feature_enabled() {
+boot_policy_feature_enabled() {
   feature=$1
-  state="$CONFIG_DIR/policy_state_v2.json"
+  state="$CONFIG_DIR/boot_policy_state"
 
-  # No v2 state means legacy marker compatibility remains authoritative.
+  # Upgrades may have v2 policy before the managed service has emitted its first
+  # projection. In that case fail closed instead of treating a profile-derived
+  # legacy marker as global policy. Legacy-only installations keep marker fallback.
   if [ ! -e "$state" ] && [ ! -L "$state" ]; then
+    legacy_state="$CONFIG_DIR/policy_state_v2.json"
+    if [ -e "$legacy_state" ] || [ -L "$legacy_state" ]; then
+      return 1
+    fi
     return 2
   fi
-  if [ -L "$state" ] || [ ! -f "$state" ]; then
-    return 1
-  fi
+  [ -f "$state" ] && [ ! -L "$state" ] || return 1
 
   state_size=$(wc -c < "$state" 2>/dev/null) || return 1
   case "$state_size" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$state_size" -ge 1 ] && [ "$state_size" -le 524288 ] || return 1
+  [ "$state_size" -ge 1 ] && [ "$state_size" -le 128 ] || return 1
 
-  case "$feature" in
-    buildIdentity|regionIdentity|identityRefresh) ;;
+  projection_version=
+  projection_build=
+  projection_region=
+  projection_refresh=
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ "${#line}" -le 32 ] || return 1
+    key=${line%%=*}
+    [ "$key" != "$line" ] || return 1
+    value=${line#*=}
+    case "$value" in 0|1) ;; *)
+      [ "$key" = version ] && [ "$value" = 1 ] || return 1
+      ;;
+    esac
+    case "$key" in
+      version)
+        [ -z "$projection_version" ] || return 1
+        projection_version=$value
+        ;;
+      build)
+        [ -z "$projection_build" ] || return 1
+        projection_build=$value
+        ;;
+      region)
+        [ -z "$projection_region" ] || return 1
+        projection_region=$value
+        ;;
+      refresh)
+        [ -z "$projection_refresh" ] || return 1
+        projection_refresh=$value
+        ;;
+      *) return 1 ;;
+    esac
+  done < "$state"
+
+  [ "$projection_version" = 1 ] || return 1
+  case "$projection_build:$projection_region:$projection_refresh" in
+    [01]:[01]:[01]) ;;
     *) return 1 ;;
   esac
 
-  # policy_state_v2.json can also contain per-profile feature overrides. Only
-  # the top-level `features` object may authorize global early-boot properties.
-  # Scan JSON structure rather than grepping the whole file so a nested profile
-  # override can never resurrect a disabled global feature.
-  awk -v target="$feature" '
-    BEGIN {
-      depth = 0
-      in_string = 0
-      escaped = 0
-      capture_key = 0
-      candidate = 0
-      seek_object = 0
-      in_features = 0
-      object = ""
-      result = -1
-    }
-    {
-      for (i = 1; i <= length($0); i++) {
-        char = substr($0, i, 1)
-        if (in_string) {
-          if (escaped) {
-            escaped = 0
-            if (capture_key) token = token char
-            if (in_features) object = object char
-            continue
-          }
-          if (char == "\\") {
-            escaped = 1
-            if (in_features) object = object char
-            continue
-          }
-          if (char == "\"") {
-            in_string = 0
-            if (capture_key) {
-              capture_key = 0
-              candidate = (depth == 1 && token == "features")
-              token = ""
-            }
-            if (in_features) object = object char
-            continue
-          }
-          if (capture_key) token = token char
-          if (in_features) object = object char
-          continue
-        }
-
-        if (char == "\"") {
-          in_string = 1
-          if (in_features) object = object char
-          else if (depth == 1) {
-            capture_key = 1
-            token = ""
-          }
-          continue
-        }
-
-        if (candidate) {
-          if (char ~ /[[:space:]]/) continue
-          if (char == ":") {
-            seek_object = 1
-            candidate = 0
-            continue
-          }
-          candidate = 0
-        }
-
-        if (seek_object) {
-          if (char ~ /[[:space:]]/) continue
-          if (char == "{" && depth == 1) {
-            depth++
-            in_features = 1
-            object = "{"
-            seek_object = 0
-            continue
-          }
-          result = 1
-          exit
-        }
-
-        if (char == "{") {
-          depth++
-          if (in_features) object = object char
-          continue
-        }
-        if (char == "}") {
-          if (in_features) {
-            object = object char
-            if (depth == 2) {
-              pattern = "\\\"" target "\\\"[[:space:]]*:[[:space:]]*true([[:space:],}]|$)"
-              result = object ~ pattern ? 0 : 1
-              exit
-            }
-          }
-          depth--
-          if (depth < 0) {
-            result = 1
-            exit
-          }
-          continue
-        }
-        if (in_features) object = object char
-      }
-    }
-    END {
-      if (result < 0) result = 1
-      exit result
-    }
-  ' "$state"
+  case "$feature" in
+    buildIdentity) [ "$projection_build" = 1 ] ;;
+    regionIdentity) [ "$projection_region" = 1 ] ;;
+    identityRefresh) [ "$projection_refresh" = 1 ] ;;
+    *) return 1 ;;
+  esac
 }
 
 optional_marker_enabled() {
@@ -147,7 +84,7 @@ optional_marker_enabled() {
   marker=$2
   [ -f "$CONFIG_DIR/$marker" ] && [ ! -L "$CONFIG_DIR/$marker" ] || return 1
 
-  policy_feature_enabled "$feature"
+  boot_policy_feature_enabled "$feature"
   policy_status=$?
   [ "$policy_status" -eq 2 ] && return 0
   [ "$policy_status" -eq 0 ]
@@ -171,8 +108,6 @@ promote_staged_identity() {
     return 0
   fi
 
-  # Identity refresh is optional and belongs to Spoof Engine. Core boot protection
-  # below never depends on either of these files.
   if [ ! -f "$CONFIG_DIR/spoof_enabled" ] || [ -L "$CONFIG_DIR/spoof_enabled" ] ||
     ! optional_marker_enabled identityRefresh random_on_boot; then
     rm -f "$staged_file"
@@ -224,10 +159,6 @@ hide_boot_mode() {
 }
 
 apply_core_boot_properties() {
-  # Core bootloader / verified-boot property protection is intentionally
-  # unconditional. Each property is independent: one vendor/property-service
-  # incompatibility must not prevent the remaining protections or the optional
-  # Build Identity phase from running.
   apply_prop ro.boot.vbmeta.device_state locked || true
   apply_prop ro.boot.verifiedbootstate green || true
   apply_prop ro.boot.flash.locked 1 || true
@@ -242,9 +173,7 @@ apply_core_boot_properties() {
   apply_prop ro.vendor.boot.warranty_bit 0 || true
   apply_prop ro.vendor.warranty_bit 0 || true
   android_sdk=$(getprop ro.build.version.sdk)
-  case "$android_sdk" in
-    ''|*[!0-9]*) android_sdk=0 ;;
-  esac
+  case "$android_sdk" in ''|*[!0-9]*) android_sdk=0 ;; esac
   if [ "$android_sdk" -ge 36 ]; then
     remove_prop sys.oem_unlock_allowed || true
   else
@@ -265,7 +194,6 @@ apply_optional_identity_properties() {
     return 0
   }
 
-  # Everything in this phase belongs to optional identity spoofing.
   [ -f "$CONFIG_DIR/spoof_enabled" ] || return 0
   [ ! -L "$CONFIG_DIR/spoof_enabled" ] || return 0
 
@@ -273,15 +201,10 @@ apply_optional_identity_properties() {
   if [ -f "$CONFIG_DIR/boot_props_mode" ] && [ ! -L "$CONFIG_DIR/boot_props_mode" ]; then
     IFS= read -r boot_mode < "$CONFIG_DIR/boot_props_mode"
   fi
-  case "$boot_mode" in
-    force|disable|auto) ;;
-    *) boot_mode=auto ;;
-  esac
+  case "$boot_mode" in force|disable|auto) ;; *) boot_mode=auto ;; esac
   [ "$boot_mode" != disable ] || return 0
 
   if optional_marker_enabled regionIdentity spoof_region_cn; then
-    # Region Identity and Build Identity are separate child features. A failure in
-    # one region property must never suppress the enabled Build Identity below.
     apply_prop ro.boot.hwc CN || true
     apply_prop gsm.operator.iso-country cn || true
     apply_prop gsm.sim.operator.iso-country cn || true
@@ -293,7 +216,8 @@ apply_optional_identity_properties() {
   vars_file="$CONFIG_DIR/spoof_build_vars"
   [ -f "$vars_file" ] && [ ! -L "$vars_file" ] || return 0
   vars_size=$(wc -c < "$vars_file" 2>/dev/null) || return 0
-  [ "$vars_size" -le 1048576 ] || return 0
+  case "$vars_size" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$vars_size" -ge 1 ] && [ "$vars_size" -le 1048576 ] || return 0
 
   if [ "$boot_mode" = auto ]; then
     identity_conflict=false
@@ -362,9 +286,6 @@ apply_optional_identity_properties() {
   }
   case "$CT_FINGERPRINT" in *[!A-Za-z0-9._:/+-]*) return 0 ;; esac
 
-  # Attempt every persisted Build field independently. This prevents one
-  # vendor-specific property failure from turning the remaining identity into a
-  # no-op, while each individual resetprop failure is still logged above.
   apply_prop ro.build.fingerprint "$CT_FINGERPRINT" || true
   if [ -n "$CT_BRAND" ]; then apply_prop ro.product.brand "$CT_BRAND" || true; fi
   if [ -n "$CT_DEVICE" ]; then apply_prop ro.product.device "$CT_DEVICE" || true; fi
@@ -381,9 +302,7 @@ apply_optional_identity_properties() {
   if [ -n "$CT_TAGS" ]; then apply_prop ro.build.tags "$CT_TAGS" || true; fi
   if [ -n "$CT_SECURITY_PATCH" ]; then
     case "$CT_SECURITY_PATCH" in
-      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-        apply_prop ro.build.version.security_patch "$CT_SECURITY_PATCH" || true
-        ;;
+      [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) apply_prop ro.build.version.security_patch "$CT_SECURITY_PATCH" || true ;;
     esac
   fi
 }
@@ -399,9 +318,6 @@ apply_early_properties() {
 }
 
 if [ "${CLEVERES_TRICKY_IDENTITY_ONLY:-0}" = "1" ]; then
-  # post-mount runs after root-manager system.prop loading. Reassert only the
-  # optional identity phase so a later identity provider cannot silently win the
-  # pre-Zygote property race.
   apply_optional_identity_properties
 else
   promote_staged_identity

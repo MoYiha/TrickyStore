@@ -2,23 +2,27 @@ package cleveres.tricky.cleverestech
 
 import android.os.FileObserver
 import androidx.annotation.VisibleForTesting
+import org.json.JSONObject
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-/**
- * Optional daily Auto Identity refresh.
- *
- * Global mode requires both the explicit cron marker and global Build Identity. Profiles can opt
- * in independently through their identityRefresh override while Build Identity is effective for
- * that profile. Profile-only work refreshes the shared identity data but never applies global
- * resetprop changes, so apps outside that profile do not inherit device-wide Build properties.
- */
+/** Daily Auto Identity scheduler with cancellation-safe one-shot rescheduling and bounded backoff. */
 internal object CronAutoIdentity {
     const val TOGGLE_FILE = "cron_auto_identity"
+    private const val INITIAL_DELAY_MS = 60_000L
+    private const val SUCCESS_DELAY_MS = 24L * 60L * 60L * 1000L
+    private val failureBackoffMs =
+        longArrayOf(
+            5L * 60L * 1000L,
+            15L * 60L * 1000L,
+            30L * 60L * 1000L,
+            60L * 60L * 1000L,
+            3L * 60L * 60L * 1000L,
+            6L * 60L * 60L * 1000L,
+        )
 
     private val lock = Any()
 
@@ -31,9 +35,17 @@ internal object CronAutoIdentity {
     @Volatile
     private var observer: FileObserver? = null
 
+    private var scheduled: ScheduledFuture<*>? = null
     private var workerGeneration = 0L
+    private var inFlight = false
+    private var nextRunMs = 0L
+    private var lastAttemptMs = 0L
+    private var lastSuccessMs = 0L
+    private var lastError: String? = null
+    private var failureCount = 0
 
     fun start(root: File) {
+        IdentityCoordinator.initialize(root)
         synchronized(lock) {
             if (configDir?.absoluteFile != root.absoluteFile) {
                 observer?.stopWatching()
@@ -53,6 +65,16 @@ internal object CronAutoIdentity {
         refreshEnabled()
     }
 
+    fun setEnabled(
+        root: File,
+        enabled: Boolean,
+    ) {
+        SafeConfigStore.setMarker(root, TOGGLE_FILE, enabled)
+        if (configDir?.absoluteFile == root.absoluteFile) refreshEnabled()
+    }
+
+    fun isEnabled(root: File): Boolean = runCatching { SafeConfigStore.markerEnabled(root, TOGGLE_FILE) }.getOrDefault(false)
+
     fun onPolicyChanged() {
         if (configDir != null) refreshEnabled()
     }
@@ -70,45 +92,66 @@ internal object CronAutoIdentity {
         synchronized(lock) {
             val root = configDir ?: return
             val decision = currentDecision(root)
-            val current = executor
             if (!decision.shouldRun) {
-                if (current != null) stopExecutorLocked()
+                stopExecutorLocked()
                 return
             }
-            if (current != null && !current.isShutdown) return
-
-            val generation = ++workerGeneration
-            val created =
-                Executors.newSingleThreadScheduledExecutor { runnable ->
-                    Thread(runnable, "CleveresTricky-AutoIdentity").apply {
-                        isDaemon = true
-                        priority = Thread.MIN_PRIORITY
-                    }
-                }
-            executor = created
-            created.scheduleWithFixedDelay(
-                { runCheck(root, generation) },
-                1,
-                1440,
-                TimeUnit.MINUTES,
-            )
-            Logger.i(
-                when {
-                    decision.globalLiveApply && decision.profileScoped ->
-                        "Cron Auto Identity enabled for global and profile scopes; next refresh is scheduled"
-                    decision.globalLiveApply ->
-                        "Cron Auto Identity enabled; next refresh is scheduled"
-                    else ->
-                        "Profile Auto Identity enabled; next refresh is scheduled"
-                },
-            )
+            ensureExecutorLocked()
+            if (!inFlight && scheduled == null) {
+                scheduleLocked(root, workerGeneration, INITIAL_DELAY_MS)
+            }
         }
+    }
+
+    fun statusJson(): JSONObject =
+        synchronized(lock) {
+            val root = configDir
+            val decision = root?.let(::currentDecision)
+            JSONObject()
+                .put("enabled", decision?.shouldRun == true)
+                .put("global", decision?.globalLiveApply == true)
+                .put("profile", decision?.profileScoped == true)
+                .put("running", executor?.isShutdown == false)
+                .put("inFlight", inFlight)
+                .put("nextRunMs", nextRunMs)
+                .put("lastAttemptMs", lastAttemptMs)
+                .put("lastSuccessMs", lastSuccessMs)
+                .put("lastError", lastError ?: JSONObject.NULL)
+                .put("failureCount", failureCount)
+        }
+
+    private fun ensureExecutorLocked() {
+        val current = executor
+        if (current != null && !current.isShutdown) return
+        workerGeneration++
+        executor =
+            Executors.newSingleThreadScheduledExecutor { runnable ->
+                Thread(runnable, "CleveresTricky-AutoIdentity").apply {
+                    isDaemon = true
+                    priority = Thread.MIN_PRIORITY
+                }
+            }
+    }
+
+    private fun scheduleLocked(
+        root: File,
+        generation: Long,
+        delayMs: Long,
+    ) {
+        val current = executor ?: return
+        val boundedDelay = delayMs.coerceAtLeast(1_000L)
+        nextRunMs = System.currentTimeMillis() + boundedDelay
+        scheduled = current.schedule({ runCheck(root, generation) }, boundedDelay, TimeUnit.MILLISECONDS)
     }
 
     private fun stopExecutorLocked() {
         workerGeneration++
+        scheduled?.cancel(true)
+        scheduled = null
         executor?.shutdownNow()
         executor = null
+        inFlight = false
+        nextRunMs = 0L
     }
 
     private fun ownsWork(
@@ -116,78 +159,72 @@ internal object CronAutoIdentity {
         generation: Long,
     ): Boolean =
         synchronized(lock) {
-            val current = executor
             generation == workerGeneration &&
                 configDir?.absoluteFile == root.absoluteFile &&
-                current != null &&
-                !current.isShutdown
+                executor?.isShutdown == false
         }
 
     private fun runCheck(
         root: File,
         generation: Long,
     ) {
-        if (!ownsWork(root, generation) || !currentDecision(root).shouldRun) {
-            refreshEnabled()
-            return
-        }
-        try {
-            Logger.i("Cron Auto Identity: fetching a fresh identity")
-            val resolved = AutoIdentityManager.fetchLatest()
-            if (!ownsWork(root, generation) || !currentDecision(root).shouldRun) {
-                Logger.i("Cron Auto Identity: fetched identity discarded because the worker was disabled or replaced")
-                refreshEnabled()
+        val decision =
+            synchronized(lock) {
+                if (!ownsWorkLocked(root, generation)) return
+                scheduled = null
+                val current = currentDecision(root)
+                if (!current.shouldRun) {
+                    stopExecutorLocked()
+                    return
+                }
+                inFlight = true
+                lastAttemptMs = System.currentTimeMillis()
+                nextRunMs = 0L
+                current
+            }
+
+        val result =
+            IdentityCoordinator.refresh(
+                root = root,
+                persistGlobal = decision.globalLiveApply,
+                persistProfile = decision.profileScoped,
+                liveApplyGlobal = decision.globalLiveApply,
+            )
+
+        synchronized(lock) {
+            if (!ownsWorkLocked(root, generation)) return
+            inFlight = false
+            val current = currentDecision(root)
+            if (!current.shouldRun) {
+                stopExecutorLocked()
                 return
             }
-            val decision = currentDecision(root)
-            if (!decision.shouldRun) {
-                Logger.i("Cron Auto Identity: fetched identity discarded because Auto Identity was disabled")
-                refreshEnabled()
-                return
-            }
-            if (decision.profileScoped) {
-                ProfileAutoIdentityStore.save(root, resolved).getOrThrow()
-            }
-            if (!ownsWork(root, generation)) {
-                Logger.i("Cron Auto Identity: profile snapshot saved but follow-up work skipped because the worker was replaced")
-                return
-            }
-            if (!decision.globalLiveApply) {
-                Logger.i("Cron Auto Identity: profile-scoped identity refreshed; global identity storage and Build properties were left unchanged")
-                return
-            }
-            if (!currentDecision(root).globalLiveApply) {
-                Logger.i("Cron Auto Identity: global identity save skipped because global Auto Identity was disabled")
-                refreshEnabled()
-                return
-            }
-            AutoIdentityPersistence.save(root, resolved).getOrThrow()
-            if (!ownsWork(root, generation) || !currentDecision(root).globalLiveApply) {
-                Logger.i("Cron Auto Identity: global identity refreshed but live apply skipped because the worker or policy changed")
-                refreshEnabled()
-                return
-            }
-            val applied = IdentityRuntimeApplier.apply(root)
-            if (applied.applied) {
-                Logger.i("Cron Auto Identity: refreshed and applied Build Identity without reboot")
-            } else if (applied.rebootRequired) {
-                Logger.w("Cron Auto Identity: identity refreshed; reboot is required on this environment (${applied.reason})")
+            if (result.isSuccess) {
+                failureCount = 0
+                lastError = null
+                lastSuccessMs = System.currentTimeMillis()
+                scheduleLocked(root, generation, SUCCESS_DELAY_MS)
+                Logger.i("Auto Identity refresh completed; next run is scheduled in 24 hours")
             } else {
-                Logger.i("Cron Auto Identity: identity refreshed; live apply skipped (${applied.reason})")
+                failureCount = (failureCount + 1).coerceAtMost(Int.MAX_VALUE)
+                lastError = result.exceptionOrNull()?.javaClass?.simpleName ?: "UnknownFailure"
+                val delay = failureBackoffMs[minOf(failureCount - 1, failureBackoffMs.lastIndex)]
+                scheduleLocked(root, generation, delay)
+                Logger.w("Auto Identity refresh deferred after failure; bounded retry is scheduled")
             }
-        } catch (error: InterruptedException) {
-            Thread.currentThread().interrupt()
-            Logger.i("Cron Auto Identity refresh interrupted because the worker was stopped")
-        } catch (error: Throwable) {
-            Logger.e("Cron Auto Identity refresh failed", error)
         }
     }
 
-    private fun currentDecision(root: File): AutoIdentityPolicy.Decision =
-        AutoIdentityPolicy.evaluate(isRegularMarker(File(root, TOGGLE_FILE)))
+    private fun ownsWorkLocked(
+        root: File,
+        generation: Long,
+    ): Boolean =
+        generation == workerGeneration &&
+            configDir?.absoluteFile == root.absoluteFile &&
+            executor?.isShutdown == false
 
-    private fun isRegularMarker(file: File): Boolean =
-        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file.toPath())
+    private fun currentDecision(root: File): AutoIdentityPolicy.Decision =
+        AutoIdentityPolicy.evaluate(isEnabled(root))
 
     @VisibleForTesting
     internal fun configureForTesting(root: File) {

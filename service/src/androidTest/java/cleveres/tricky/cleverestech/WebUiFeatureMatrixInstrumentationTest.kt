@@ -385,6 +385,7 @@ class WebUiFeatureMatrixInstrumentationTest {
                 FeatureCase("POST", "/api/reset_environment"),
                 FeatureCase("POST", "/api/reload"),
                 FeatureCase("GET", "/api/logs"),
+                FeatureCase("GET", "/api/identity_diagnostics"),
                 FeatureCase("POST", "/api/backup"),
                 FeatureCase("GET", "/api/language", allowedStatuses = setOf(200, 404)),
                 FeatureCase("GET", "/api/resource_usage"),
