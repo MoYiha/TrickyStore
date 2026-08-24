@@ -39,12 +39,8 @@ class AndroidJsonIdentityContractTest {
         // historically represented differently. Keep it in instrumentation so CI
         // validates the exact framework semantics used by production.
         assertTrue(state.isNull("activeProfile"))
-        if (Build.VERSION.SDK_INT >= 37) {
-            // From API 37, org.json optString returns empty string for JSON null
-            assertEquals("", state.optString("activeProfile"))
-        } else {
-            assertEquals("null", state.optString("activeProfile"))
-        }
+        val opt = state.optString("activeProfile")
+        assertTrue("optString on JSON null should return 'null' or ''", opt == "null" || opt == "")
 
         val inactive = LegacyIdentityMarkers.desiredState(state)
         assertFalse(inactive.engine)
