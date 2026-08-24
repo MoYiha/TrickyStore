@@ -290,6 +290,8 @@ jobs:
             --name ct-platform-contract \
             --package "$ANDROID_17_IMAGE_PACKAGE" \
             --device "pixel_6"
+          avd_ini="$ANDROID_AVD_HOME/ct-platform-contract.ini"
+          sed -i "s/^target=.*/target=$ANDROID_17_API_DIR/" "$avd_ini"
           echo "Created AVDs:"
           "$ANDROID_HOME/emulator/emulator" -list-avds
           avd_ini="$ANDROID_AVD_HOME/ct-platform-contract.ini"
