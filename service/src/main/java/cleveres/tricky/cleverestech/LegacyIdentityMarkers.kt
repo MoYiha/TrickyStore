@@ -121,7 +121,8 @@ internal object LegacyIdentityMarkers {
         // only top-level policy may authorize device-wide pre-Zygote properties.
         val activeProfile =
             if (state.has("activeProfile") && !state.isNull("activeProfile")) {
-                (state.opt("activeProfile") as? String)?.trim().orEmpty()
+                val active = state.opt("activeProfile")
+                if (active == JSONObject.NULL) "" else (active as? String)?.trim().orEmpty()
             } else {
                 ""
             }

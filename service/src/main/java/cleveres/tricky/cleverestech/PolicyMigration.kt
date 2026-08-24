@@ -145,7 +145,8 @@ object PolicyMigration {
         }
 
         if (!json.isNull("activeProfile")) {
-            val active = (json.opt("activeProfile") as? String)?.trim().orEmpty()
+            val activeOpt = json.opt("activeProfile")
+            val active = if (activeOpt == JSONObject.NULL) "" else (activeOpt as? String)?.trim().orEmpty()
             if (active.isNotEmpty() && active.lowercase(Locale.ROOT) !in profileNames) {
                 json.put("activeProfile", JSONObject.NULL)
                 changed = true
