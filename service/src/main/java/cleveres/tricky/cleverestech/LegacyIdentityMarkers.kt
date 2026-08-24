@@ -122,7 +122,7 @@ internal object LegacyIdentityMarkers {
         val activeProfile =
             if (state.has("activeProfile") && !state.isNull("activeProfile")) {
                 val active = state.opt("activeProfile")
-                if (active == JSONObject.NULL) "" else (active as? String)?.trim().orEmpty()
+                if (active == JSONObject.NULL || active == null) "" else (active as? String)?.trim().orEmpty()
             } else {
                 ""
             }

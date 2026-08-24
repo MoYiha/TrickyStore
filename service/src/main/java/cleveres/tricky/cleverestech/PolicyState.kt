@@ -531,7 +531,7 @@ object PolicyState {
     private fun nullableString(value: JSONObject, name: String): String? {
         if (!value.has(name) || value.isNull(name)) return null
         val result = value.opt(name)
-        if (result == JSONObject.NULL) {
+        if (result == JSONObject.NULL || result == null) {
             return null
         }
         require(result is String) { "$name must be a string or null" }
@@ -542,7 +542,7 @@ object PolicyState {
     private fun nullableBoolean(value: JSONObject, name: String): Boolean? {
         if (!value.has(name) || value.isNull(name)) return null
         val result = value.opt(name)
-        if (result == JSONObject.NULL) {
+        if (result == JSONObject.NULL || result == null) {
             return null
         }
         require(result is Boolean) { "$name must be a boolean or null" }
