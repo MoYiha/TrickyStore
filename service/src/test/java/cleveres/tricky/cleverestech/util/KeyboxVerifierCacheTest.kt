@@ -101,6 +101,33 @@ class KeyboxVerifierCacheTest {
         }
     }
 
+
+    @Test
+    fun `clearCacheLocked clears cache fields`() {
+        // Set dummy values using reflection
+        val cachedCrlField = KeyboxVerifier::class.java.getDeclaredField("cachedCrl")
+        cachedCrlField.isAccessible = true
+        cachedCrlField.set(KeyboxVerifier, CrlWire.Handle(TEST_GENERATION, rawEntryCount = 1, normalizedEntryCount = 4))
+
+        val cachedEtagField = KeyboxVerifier::class.java.getDeclaredField("cachedEtag")
+        cachedEtagField.isAccessible = true
+        cachedEtagField.set(KeyboxVerifier, "dummy_etag")
+
+        val lastFetchTimeField = KeyboxVerifier::class.java.getDeclaredField("lastFetchTime")
+        lastFetchTimeField.isAccessible = true
+        lastFetchTimeField.set(KeyboxVerifier, 123456789L)
+
+        // Clear cache
+        val method = KeyboxVerifier::class.java.getDeclaredMethod("clearCacheLocked")
+        method.isAccessible = true
+        method.invoke(KeyboxVerifier)
+
+        // Verify cleared values
+        org.junit.Assert.assertNull(cachedCrlField.get(KeyboxVerifier))
+        org.junit.Assert.assertNull(cachedEtagField.get(KeyboxVerifier))
+        org.junit.Assert.assertEquals(0L, lastFetchTimeField.get(KeyboxVerifier))
+    }
+
     private companion object {
         const val TEST_GENERATION = 41L
     }
