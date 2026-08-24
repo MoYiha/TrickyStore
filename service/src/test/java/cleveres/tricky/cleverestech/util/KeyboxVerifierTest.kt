@@ -14,6 +14,21 @@ import org.mockito.Mockito
 
 class KeyboxVerifierTest {
     @Test
+    fun `clearMemoryCacheForTesting clears cache values`() {
+        val etagField = KeyboxVerifier::class.java.getDeclaredField("cachedEtag")
+        etagField.isAccessible = true
+        etagField.set(KeyboxVerifier, "some-etag")
+
+        val timeField = KeyboxVerifier::class.java.getDeclaredField("lastFetchTime")
+        timeField.isAccessible = true
+        timeField.set(KeyboxVerifier, 12345L)
+
+        KeyboxVerifier.clearMemoryCacheForTesting()
+
+        assertEquals(null, etagField.get(KeyboxVerifier))
+        assertEquals(0L, timeField.get(KeyboxVerifier))
+    }
+    @Test
     fun `verifyKeybox returns VALID for unrevoked certificate`() {
         val mockCert = Mockito.mock(X509Certificate::class.java)
         Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger("123456"))
