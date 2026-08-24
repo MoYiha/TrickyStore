@@ -12,42 +12,17 @@ class WebServerCsrfTest {
         host: String,
         origin: String,
     ): NanoHTTPD.IHTTPSession {
-        return object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-
-            override fun getCookies() = null
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getHeaders() =
-                mapOf(
-                    "host" to host,
-                    "origin" to origin,
-                    "content-length" to "0",
-                )
-
-            override fun getInputStream() = null
-
-            override fun getMethod() = NanoHTTPD.Method.POST
-
-            @Deprecated("Use getParameters")
-
-            override fun getParms() = mapOf("token" to server.token)
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getQueryParameterString() = ""
-
-            override fun getUri() = "/api/config"
-
-            override fun parseBody(files: Map<String, String>?) {}
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteIpAddress() = "127.0.0.1"
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteHostName() = "localhost"
-
-            override fun getParameters(): Map<String, List<String>> = mapOf("token" to listOf("testtoken"))
-        }
+        return MockIHTTPSession(
+            uri = "/api/config",
+            method = NanoHTTPD.Method.POST,
+            headers = mapOf(
+                "host" to host,
+                "origin" to origin,
+                "content-length" to "0",
+            ),
+            parms = mapOf("token" to server.token),
+            parameters = mapOf("token" to listOf("testtoken"))
+        )
     }
 
     @Test

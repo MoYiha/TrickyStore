@@ -66,42 +66,16 @@ class WebServerSaveValidationTest {
         filename: String,
         content: String,
     ): NanoHTTPD.IHTTPSession {
-        return object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-
-            override fun getCookies() = null
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getHeaders() = mapOf("content-length" to "100", "host" to "localhost")
-
-            override fun getInputStream(): InputStream? = null
-
-            override fun getMethod() = NanoHTTPD.Method.POST
-
-            @Deprecated("Use getParameters")
-
-            override fun getParms() =
-                mapOf(
-                    "token" to webServer.token,
-                    "filename" to filename,
-                    "content" to content,
-                )
-
-            override fun getParameters(): Map<String, List<String>> = emptyMap<String, List<String>>()
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getQueryParameterString() = ""
-
-            override fun getUri() = "/api/save"
-
-            override fun parseBody(files: MutableMap<String, String>?) {}
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteIpAddress() = "127.0.0.1"
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteHostName() = "localhost"
-        }
+        return MockIHTTPSession(
+            uri = "/api/save",
+            method = NanoHTTPD.Method.POST,
+            headers = mapOf("content-length" to "100", "host" to "localhost"),
+            parms = mapOf(
+                "token" to webServer.token,
+                "filename" to filename,
+                "content" to content,
+            )
+        )
     }
 
     @Test

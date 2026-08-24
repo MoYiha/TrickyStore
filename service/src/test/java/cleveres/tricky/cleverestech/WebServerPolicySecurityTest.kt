@@ -13,36 +13,11 @@ class WebServerPolicySecurityTest {
         uri: String,
         contentLength: String = "0",
     ): NanoHTTPD.IHTTPSession =
-        object : NanoHTTPD.IHTTPSession {
-            override fun execute() {}
-
-            override fun getCookies() = null
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getHeaders() = mapOf("host" to "localhost", "content-length" to contentLength)
-
-            override fun getInputStream(): InputStream? = null
-
-            override fun getMethod() = method
-
-            @Deprecated("Use getParameters")
-            override fun getParms(): Map<String, String> = emptyMap()
-
-            override fun getParameters(): Map<String, List<String>> = emptyMap()
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getQueryParameterString() = ""
-
-            override fun getUri() = uri
-
-            override fun parseBody(files: MutableMap<String, String>?) {}
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteIpAddress() = "127.0.0.1"
-
-            @Deprecated("Deprecated by NanoHTTPD")
-            override fun getRemoteHostName() = "localhost"
-        }
+        MockIHTTPSession(
+            uri = uri,
+            method = method,
+            headers = mapOf("host" to "localhost", "content-length" to contentLength)
+        )
 
     @Test
     fun `policy route retains common tamper protection on native bridge`() {
