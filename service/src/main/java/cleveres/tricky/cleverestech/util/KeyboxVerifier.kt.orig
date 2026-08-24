@@ -122,18 +122,6 @@ object KeyboxVerifier {
     }
 
     @androidx.annotation.VisibleForTesting
-    internal fun isHex(str: String): Boolean {
-        if (str.isEmpty()) return false
-        for (i in 0 until str.length) {
-            val c = str[i]
-            if (!(c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F')) {
-                return false
-            }
-        }
-        return true
-    }
-
-    @androidx.annotation.VisibleForTesting
     fun resetCacheRootForTesting() {
         cacheLock.lock()
         try {

@@ -1,0 +1,21 @@
+--- service/src/main/java/cleveres/tricky/cleverestech/util/KeyboxVerifier.kt
++++ service/src/main/java/cleveres/tricky/cleverestech/util/KeyboxVerifier.kt
+@@ -115,6 +115,18 @@
+         }
+     }
+
++    @androidx.annotation.VisibleForTesting
++    internal fun isHex(str: String): Boolean {
++        if (str.isEmpty()) return false
++        for (i in 0 until str.length) {
++            val c = str[i]
++            if (!(c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F')) {
++                return false
++            }
++        }
++        return true
++    }
++
+     @androidx.annotation.VisibleForTesting
+     fun resetCacheRootForTesting() {
+         cacheLock.lock()
