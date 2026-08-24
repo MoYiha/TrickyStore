@@ -1,19 +1,28 @@
 package cleveres.tricky.cleverestech.util
 
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.MockedStatic
 import org.mockito.Mockito.any
+import org.mockito.Mockito.anyInt
+import org.mockito.Mockito.anyString
 import org.mockito.Mockito.eq
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockConstruction
 import org.mockito.Mockito.mockStatic
+import org.mockito.Mockito.never
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import java.security.KeyStore
+import javax.crypto.KeyGenerator
 import javax.crypto.spec.SecretKeySpec
 
 class DeviceKeyManagerTest {
@@ -78,5 +87,72 @@ class DeviceKeyManagerTest {
         val decrypted = DeviceKeyManager.decrypt(requireNotNull(encrypted))
         assertNotNull(decrypted)
         assertArrayEquals(data, decrypted)
+    }
+
+    @Test
+    fun testInitializeAndroidKeyStoreGeneratesKeyWhenMissing() {
+        val initializeMethod = DeviceKeyManager.javaClass.getDeclaredMethod("initializeAndroidKeyStore")
+        initializeMethod.isAccessible = true
+
+        // mock keystore to NOT contain the alias
+        `when`(keyStoreMock.containsAlias("cleveres_device_cache_key")).thenReturn(false)
+
+        val keyGeneratorMock = mock(KeyGenerator::class.java)
+        mockStatic(KeyGenerator::class.java).use { keyGeneratorStaticMock ->
+            keyGeneratorStaticMock.`when`<KeyGenerator> { KeyGenerator.getInstance(eq(KeyProperties.KEY_ALGORITHM_AES), eq("AndroidKeyStore")) }.thenReturn(keyGeneratorMock)
+
+            mockConstruction(KeyGenParameterSpec.Builder::class.java) { mock, _ ->
+                `when`(mock.setBlockModes(anyString())).thenReturn(mock)
+                `when`(mock.setEncryptionPaddings(anyString())).thenReturn(mock)
+                `when`(mock.setKeySize(anyInt())).thenReturn(mock)
+                `when`(mock.build()).thenReturn(mock(KeyGenParameterSpec::class.java))
+            }.use {
+                initializeMethod.invoke(DeviceKeyManager)
+
+                verify(keyGeneratorMock).init(any(KeyGenParameterSpec::class.java))
+                verify(keyGeneratorMock).generateKey()
+            }
+        }
+    }
+
+    @Test
+    fun testInitializeAndroidKeyStoreSkipsGenerationWhenKeyExists() {
+        val initializeMethod = DeviceKeyManager.javaClass.getDeclaredMethod("initializeAndroidKeyStore")
+        initializeMethod.isAccessible = true
+
+        // mock keystore to contain the alias
+        `when`(keyStoreMock.containsAlias("cleveres_device_cache_key")).thenReturn(true)
+
+        val keyGeneratorMock = mock(KeyGenerator::class.java)
+        mockStatic(KeyGenerator::class.java).use { keyGeneratorStaticMock ->
+            keyGeneratorStaticMock.`when`<KeyGenerator> { KeyGenerator.getInstance(eq(KeyProperties.KEY_ALGORITHM_AES), eq("AndroidKeyStore")) }.thenReturn(keyGeneratorMock)
+
+            initializeMethod.invoke(DeviceKeyManager)
+
+            verify(keyGeneratorMock, never()).init(any(KeyGenParameterSpec::class.java))
+            verify(keyGeneratorMock, never()).generateKey()
+        }
+    }
+
+    @Test
+    fun testInitializeAndroidKeyStoreThrowsWhenEntryNotSecretKey() {
+        val initializeMethod = DeviceKeyManager.javaClass.getDeclaredMethod("initializeAndroidKeyStore")
+        initializeMethod.isAccessible = true
+
+        `when`(keyStoreMock.containsAlias("cleveres_device_cache_key")).thenReturn(true)
+
+        // Return null or wrong entry type
+        `when`(keyStoreMock.getEntry(eq("cleveres_device_cache_key"), any())).thenReturn(null)
+
+        var exception: Exception? = null
+        try {
+            initializeMethod.invoke(DeviceKeyManager)
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            exception = e.targetException as Exception
+        }
+
+        assertNotNull(exception)
+        assertTrue(exception is IllegalArgumentException)
+        assertEquals("AndroidKeyStore did not return the generated AES key", exception?.message)
     }
 }
