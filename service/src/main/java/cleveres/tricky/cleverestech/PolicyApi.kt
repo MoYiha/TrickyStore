@@ -62,6 +62,10 @@ internal object PolicyApi {
             synchronizeCompatibility = { state ->
                 LegacyIdentityMarkers.syncFromPolicyState(Config.getConfigRoot(), state)
             },
+            captureBefore = { JSONObject(PolicyState.stateJson().toString()) },
+            reconcileRuntime = { previousState, resultingState ->
+                IdentityCoordinator.reconcilePolicyTransition(Config.getConfigRoot(), previousState, resultingState)
+            },
         ).fold(
             onSuccess = { result ->
                 if (result.compatibilitySync == CompatibilitySyncStatus.PENDING) {
@@ -163,6 +167,20 @@ internal object PolicyApi {
                 "compatibilityWarning",
                 "Policy is saved, but early-boot compatibility markers are not synchronized. Retry before reboot by reloading this view.",
             )
+        }
+        result.runtimeTransition?.let { transition ->
+            response.put("runtimeTransition", transition.toJson())
+        }
+        result.runtimeTransitionError?.let { error ->
+            response.put(
+                "runtimeTransition",
+                JSONObject().put("rebootRequired", true).put("error", "snapshot_unavailable"),
+            )
+            response.put(
+                "runtimeWarning",
+                "Policy is saved, but live Identity changes were not applied because the rollback snapshot failed. Reboot is required.",
+            )
+            Logger.e("Policy state saved but live Identity transition could not be prepared", error)
         }
         return response
     }
