@@ -1299,6 +1299,13 @@ function renderAll() {
   refreshPresentation();
 }
 
+function applyExternalPolicyState(event) {
+  const state = event && event.detail;
+  if (!state || typeof state !== 'object' || !state.features || !Array.isArray(state.profiles)) return;
+  policyState = safeClone(state);
+  renderAll();
+}
+
 function escapeHtml(value) {
   return String(value == null ? '' : value).replace(/[&<>"']/g,char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 }
@@ -1328,6 +1335,7 @@ async function initialize() {
   installPackagePickers();
 }
 
+if (typeof global.addEventListener === 'function') global.addEventListener('ct-policy-state', applyExternalPolicyState);
 onReady(initialize);
 
 })(window);

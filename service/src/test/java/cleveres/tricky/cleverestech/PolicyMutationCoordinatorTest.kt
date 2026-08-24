@@ -340,8 +340,51 @@ class PolicyMutationCoordinatorTest {
         assertFalse(liveApplyCalled)
         val response = PolicyApi.mutationResponse(result.getOrThrow())
         assertEquals("ok", response.getString("compatibilitySync"))
+        assertEquals("snapshot_unavailable", response.getJSONObject("runtimeTransition").getString("error"))
         assertTrue(response.getJSONObject("runtimeTransition").getBoolean("rebootRequired"))
         assertTrue(response.getString("runtimeWarning").contains("Policy is saved"))
+    }
+
+    @Test
+    fun `runtime transition receives an immutable pre-mutation policy snapshot`() {
+        val captured = policyState(build = false, region = false)
+        var transitionBefore: JSONObject? = null
+
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                captureBefore = { captured },
+                mutation = {
+                    captured.getJSONObject("features").put("buildIdentity", true)
+                    Result.success(captured)
+                },
+                synchronizeCompatibility = { Result.success(Unit) },
+                reconcileRuntime = { before, _ ->
+                    transitionBefore = before
+                    Result.success(IdentityCoordinator.TransitionOutcome(true, null, null))
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        assertFalse(requireNotNull(transitionBefore).getJSONObject("features").getBoolean("buildIdentity"))
+        assertTrue(result.getOrThrow().state.getJSONObject("features").getBoolean("buildIdentity"))
+    }
+
+    @Test
+    fun `non-snapshot runtime errors retain the committed policy with an accurate failure code`() {
+        val response =
+            PolicyApi.mutationResponse(
+                PolicyMutationResult(
+                    state = policyState(build = true, region = false),
+                    compatibilitySync = CompatibilitySyncStatus.OK,
+                    runtimeTransitionError = IOException("shell unavailable"),
+                ),
+            )
+
+        assertTrue(response.getJSONObject("features").getBoolean("buildIdentity"))
+        assertEquals("ok", response.getString("compatibilitySync"))
+        assertEquals("runtime_transition_failed", response.getJSONObject("runtimeTransition").getString("error"))
+        assertTrue(response.getJSONObject("runtimeTransition").getBoolean("rebootRequired"))
     }
 
     @Test

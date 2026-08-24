@@ -41,7 +41,11 @@ internal object PolicyMutationCoordinator {
                 synchronized(PolicyState) {
                     val previous =
                         try {
-                            captureBefore?.invoke()
+                            // A policy mutation may publish a new snapshot by mutating an object returned
+                            // from a test or compatibility adapter. Keep the transition's "before" value
+                            // detached from that object while the canonical PolicyState monitor is held.
+                            // The runtime transition happens later, after this monitor is released.
+                            captureBefore?.invoke()?.let { JSONObject(it.toString()) }
                         } catch (error: Throwable) {
                             return@synchronized Result.failure(error)
                         }
