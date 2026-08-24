@@ -246,4 +246,169 @@ class PolicyMutationCoordinatorTest {
         assertTrue(result.exceptionOrNull() is CompatibilityPreflightException)
         assertFalse(mutated)
     }
+
+    @Test
+    fun `enable transition captures its group before applying live identity`() {
+        val calls = mutableListOf<String>()
+        val result =
+            IdentityCoordinator.reconcilePolicyTransition(
+                root = java.io.File("."),
+                before = policyState(build = false, region = false),
+                after = policyState(build = true, region = false),
+                capture = { _, build, region ->
+                    calls += "capture:$build:$region"
+                    Result.success(snapshot())
+                },
+                applyRuntime = {
+                    calls += "apply"
+                    runtimeResult()
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("capture:true:false", "apply"), calls)
+    }
+
+    @Test
+    fun `region enable captures only the region group before applying live identity`() {
+        val calls = mutableListOf<String>()
+        val result =
+            IdentityCoordinator.reconcilePolicyTransition(
+                root = java.io.File("."),
+                before = policyState(build = false, region = false),
+                after = policyState(build = false, region = true),
+                capture = { _, build, region ->
+                    calls += "capture:$build:$region"
+                    Result.success(snapshot())
+                },
+                applyRuntime = {
+                    calls += "apply"
+                    runtimeResult()
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("capture:false:true", "apply"), calls)
+    }
+
+    @Test
+    fun `disable transition restores only its group`() {
+        val calls = mutableListOf<String>()
+        val result =
+            IdentityCoordinator.reconcilePolicyTransition(
+                root = java.io.File("."),
+                before = policyState(build = true, region = true),
+                after = policyState(build = false, region = true),
+                restoreRuntime = { _, build, region ->
+                    calls += "restore:$build:$region"
+                    runtimeResult()
+                },
+                applyRuntime = {
+                    calls += "apply"
+                    runtimeResult()
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("restore:true:false", "apply"), calls)
+    }
+
+    @Test
+    fun `snapshot capture failure skips live apply and preserves committed compatibility response`() {
+        var liveApplyCalled = false
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                captureBefore = { policyState(build = false, region = false) },
+                mutation = { Result.success(policyState(build = true, region = false)) },
+                synchronizeCompatibility = { Result.success(Unit) },
+                reconcileRuntime = { before, after ->
+                    IdentityCoordinator.reconcilePolicyTransition(
+                        java.io.File("."),
+                        before,
+                        after,
+                        capture = { _, _, _ -> Result.failure(IOException("snapshot failed")) },
+                        applyRuntime = {
+                            liveApplyCalled = true
+                            runtimeResult()
+                        },
+                    )
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        assertFalse(liveApplyCalled)
+        val response = PolicyApi.mutationResponse(result.getOrThrow())
+        assertEquals("ok", response.getString("compatibilitySync"))
+        assertTrue(response.getJSONObject("runtimeTransition").getBoolean("rebootRequired"))
+        assertTrue(response.getString("runtimeWarning").contains("Policy is saved"))
+    }
+
+    @Test
+    fun `compatibility refresh failure after persistence does not turn committed mutation into failure`() {
+        val result =
+            PolicyMutationCoordinator.mutate(
+                preflight = {},
+                captureBefore = { policyState(build = false, region = false) },
+                mutation = { Result.success(policyState(build = true, region = false)) },
+                synchronizeCompatibility = { Result.failure(IOException("presentation refresh failed")) },
+                reconcileRuntime = { _, _ ->
+                    Result.success(IdentityCoordinator.TransitionOutcome(true, null, null))
+                },
+            )
+
+        assertTrue(result.isSuccess)
+        val response = PolicyApi.mutationResponse(result.getOrThrow())
+        assertTrue(response.getJSONObject("features").getBoolean("buildIdentity"))
+        assertEquals("pending", response.getString("compatibilitySync"))
+    }
+
+    @Test
+    fun `runtime reconciliation does not retain the policy monitor`() {
+        val runtimeEntered = CountDownLatch(1)
+        val releaseRuntime = CountDownLatch(1)
+        val policyMonitorAvailable = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        try {
+            val mutation =
+                executor.submit<Result<PolicyMutationResult>> {
+                    PolicyMutationCoordinator.mutate(
+                        preflight = {},
+                        captureBefore = { policyState(build = false, region = false) },
+                        mutation = { Result.success(policyState(build = true, region = false)) },
+                        synchronizeCompatibility = { Result.success(Unit) },
+                        reconcileRuntime = { _, _ ->
+                            runtimeEntered.countDown()
+                            releaseRuntime.await(2, TimeUnit.SECONDS)
+                            Result.success(IdentityCoordinator.TransitionOutcome(true, null, null))
+                        },
+                    )
+                }
+            assertTrue(runtimeEntered.await(2, TimeUnit.SECONDS))
+
+            executor.submit {
+                synchronized(PolicyState) { policyMonitorAvailable.countDown() }
+            }
+            assertTrue(
+                "runtime I/O must run outside the PolicyState monitor",
+                policyMonitorAvailable.await(2, TimeUnit.SECONDS),
+            )
+
+            releaseRuntime.countDown()
+            assertTrue(mutation.get(2, TimeUnit.SECONDS).isSuccess)
+        } finally {
+            releaseRuntime.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    private fun policyState(build: Boolean, region: Boolean): JSONObject =
+        JSONObject().put("features", JSONObject().put("buildIdentity", build).put("regionIdentity", region))
+
+    private fun runtimeResult(): IdentityRuntimeApplier.Result =
+        IdentityRuntimeApplier.Result(true, false, false, "test")
+
+    private fun snapshot(): IdentityRuntimeSnapshot.Snapshot =
+        IdentityRuntimeSnapshot.Snapshot("00000000-0000-0000-0000-000000000000", true, false, emptyMap())
 }

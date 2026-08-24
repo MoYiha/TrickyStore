@@ -100,7 +100,11 @@ internal object IdentityCoordinator {
         root: File,
         before: JSONObject,
         after: JSONObject,
-    ): TransitionOutcome {
+        capture: (File, Boolean, Boolean) -> Result<IdentityRuntimeSnapshot.Snapshot> =
+            IdentityRuntimeSnapshot::capture,
+        restoreRuntime: (File, Boolean, Boolean) -> IdentityRuntimeApplier.Result = IdentityRuntimeApplier::restore,
+        applyRuntime: (File) -> IdentityRuntimeApplier.Result = IdentityRuntimeApplier::apply,
+    ): Result<TransitionOutcome> = runCatching {
         val previous = topLevel(before)
         val current = topLevel(after)
         val enableBuild = !previous.build && current.build
@@ -108,29 +112,30 @@ internal object IdentityCoordinator {
         val disableBuild = previous.build && !current.build
         val disableRegion = previous.region && !current.region
         if (!enableBuild && !enableRegion && !disableBuild && !disableRegion) {
-            return TransitionOutcome(rollbackPrepared = true, restore = null, apply = null)
+            return@runCatching TransitionOutcome(rollbackPrepared = true, restore = null, apply = null)
         }
 
         val rollbackPrepared =
             if (enableBuild || enableRegion) {
-                IdentityRuntimeSnapshot.capture(root, enableBuild, enableRegion).isSuccess
+                capture(root, enableBuild, enableRegion).getOrThrow()
+                true
             } else {
                 true
             }
         val restore =
             if (disableBuild || disableRegion) {
-                IdentityRuntimeApplier.restore(root, disableBuild, disableRegion)
+                restoreRuntime(root, disableBuild, disableRegion)
             } else {
                 null
             }
         val apply =
             if (current.build || current.region) {
-                IdentityRuntimeApplier.apply(root)
+                applyRuntime(root)
             } else {
                 null
             }
         lastRuntime = apply ?: restore
-        return TransitionOutcome(rollbackPrepared, restore, apply)
+        TransitionOutcome(rollbackPrepared, restore, apply)
     }
 
     fun diagnosticsJson(): JSONObject =

@@ -15,6 +15,8 @@ internal data class PolicyMutationResult(
     val compatibilitySync: CompatibilitySyncStatus,
     val compatibilityError: Throwable? = null,
     val previousState: JSONObject? = null,
+    val runtimeTransition: IdentityCoordinator.TransitionOutcome? = null,
+    val runtimeTransitionError: Throwable? = null,
 )
 
 /**
@@ -23,34 +25,57 @@ internal data class PolicyMutationResult(
  * out of order relative to the V2 state that produced them.
  */
 internal object PolicyMutationCoordinator {
+    /* Serializes complete policy-to-runtime transitions without holding PolicyState's monitor over I/O. */
+    private val transitionLock = Any()
+
     fun mutate(
         preflight: () -> Unit,
         mutation: () -> Result<JSONObject>,
         synchronizeCompatibility: (JSONObject) -> Result<Unit>,
         captureBefore: (() -> JSONObject)? = null,
+        reconcileRuntime:
+            ((previous: JSONObject, resulting: JSONObject) -> Result<IdentityCoordinator.TransitionOutcome>)? = null,
     ): Result<PolicyMutationResult> =
-        synchronized(PolicyState) {
-            val previous =
-                try {
-                    captureBefore?.invoke()
-                } catch (error: Throwable) {
-                    return@synchronized Result.failure(error)
-                }
-            try {
-                preflight()
-            } catch (error: Throwable) {
-                return@synchronized Result.failure(CompatibilityPreflightException(error))
-            }
+        synchronized(transitionLock) {
+            val committed =
+                synchronized(PolicyState) {
+                    val previous =
+                        try {
+                            captureBefore?.invoke()
+                        } catch (error: Throwable) {
+                            return@synchronized Result.failure(error)
+                        }
+                    try {
+                        preflight()
+                    } catch (error: Throwable) {
+                        return@synchronized Result.failure(CompatibilityPreflightException(error))
+                    }
 
-            runCatching { mutation().getOrThrow() }.map { state ->
-                val compatibilityResult = runCatching { synchronizeCompatibility(state).getOrThrow() }
-                PolicyMutationResult(
-                    state = state,
-                    compatibilitySync =
-                        if (compatibilityResult.isSuccess) CompatibilitySyncStatus.OK else CompatibilitySyncStatus.PENDING,
-                    compatibilityError = compatibilityResult.exceptionOrNull(),
-                    previousState = previous,
-                )
+                    runCatching { mutation().getOrThrow() }.map { state ->
+                        val compatibilityResult = runCatching { synchronizeCompatibility(state).getOrThrow() }
+                        PolicyMutationResult(
+                            state = state,
+                            compatibilitySync =
+                                if (compatibilityResult.isSuccess) {
+                                    CompatibilitySyncStatus.OK
+                                } else {
+                                    CompatibilitySyncStatus.PENDING
+                                },
+                            compatibilityError = compatibilityResult.exceptionOrNull(),
+                            previousState = previous,
+                        )
+                    }
+                }
+            committed.map { result ->
+                val previous = result.previousState
+                if (previous == null || reconcileRuntime == null) {
+                    result
+                } else {
+                    reconcileRuntime(previous, result.state).fold(
+                        onSuccess = { transition -> result.copy(runtimeTransition = transition) },
+                        onFailure = { error -> result.copy(runtimeTransitionError = error) },
+                    )
+                }
             }
         }
 
