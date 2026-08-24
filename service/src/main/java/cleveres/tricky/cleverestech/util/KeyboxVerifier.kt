@@ -41,7 +41,7 @@ object KeyboxVerifier {
         ERROR,
     }
 
-    private sealed interface RevocationSource {
+    internal sealed interface RevocationSource {
         data class Rust(val handle: CrlWire.Handle) : RevocationSource
 
         data class Legacy(val entries: Set<String>) : RevocationSource
@@ -401,7 +401,7 @@ object KeyboxVerifier {
         lastFetchTime = 0
     }
 
-    private fun checkFile(
+    @androidx.annotation.VisibleForTesting internal fun checkFile(
         file: File,
         scope: KeyboxLoader.FileScope,
         filename: String,
