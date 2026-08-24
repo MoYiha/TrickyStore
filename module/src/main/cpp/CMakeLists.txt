@@ -31,6 +31,7 @@ add_link_options(
     -Wl,-z,relro
     -Wl,-z,now
     -Wl,-z,noexecstack
+    -Wl,-z,max-page-size=16384
 )
 
 add_subdirectory(external)
