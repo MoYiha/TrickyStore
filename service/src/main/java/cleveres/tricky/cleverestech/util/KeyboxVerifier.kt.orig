@@ -41,7 +41,7 @@ object KeyboxVerifier {
         ERROR,
     }
 
-    internal sealed interface RevocationSource {
+    private sealed interface RevocationSource {
         data class Rust(val handle: CrlWire.Handle) : RevocationSource
 
         data class Legacy(val entries: Set<String>) : RevocationSource
@@ -119,18 +119,6 @@ object KeyboxVerifier {
         } finally {
             cacheLock.unlock()
         }
-    }
-
-    @androidx.annotation.VisibleForTesting
-    internal fun isHex(str: String): Boolean {
-        if (str.isEmpty()) return false
-        for (i in 0 until str.length) {
-            val c = str[i]
-            if (!(c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F')) {
-                return false
-            }
-        }
-        return true
     }
 
     @androidx.annotation.VisibleForTesting
@@ -413,7 +401,7 @@ object KeyboxVerifier {
         lastFetchTime = 0
     }
 
-    @androidx.annotation.VisibleForTesting internal fun checkFile(
+    private fun checkFile(
         file: File,
         scope: KeyboxLoader.FileScope,
         filename: String,
