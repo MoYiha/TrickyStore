@@ -17,6 +17,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 
 public class UtilsLeafFastPathTest {
+    private static final byte[] DUMMY_ISSUER_BYTES = new byte[] {0x01, 0x02, 0x03, 0x04};
+
     private static X509Certificate fixtureCertificate() throws Exception {
         String pem = TestKeyboxFixtures.INSTANCE.getCertificate();
         return (X509Certificate) CertificateFactory.getInstance("X.509")
@@ -29,13 +31,13 @@ public class UtilsLeafFastPathTest {
 
         KeyMetadata metadata = new KeyMetadata();
         metadata.certificate = expected.getEncoded();
-        metadata.certificateChain = new byte[] {0x01, 0x02, 0x03, 0x04};
+        metadata.certificateChain = DUMMY_ISSUER_BYTES;
 
         X509Certificate leaf = Utils.getLeafCertificate(metadata);
 
         assertNotNull(leaf);
         assertArrayEquals(expected.getEncoded(), leaf.getEncoded());
-        assertArrayEquals(new byte[] {0x01, 0x02, 0x03, 0x04}, metadata.certificateChain);
+        assertArrayEquals(DUMMY_ISSUER_BYTES, metadata.certificateChain);
     }
 
     @Test
