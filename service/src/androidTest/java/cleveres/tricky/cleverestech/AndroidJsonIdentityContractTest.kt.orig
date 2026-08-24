@@ -90,7 +90,6 @@ class AndroidJsonIdentityContractTest {
                     .put("identityRefresh", false)
                     .put("securityPatch", false)
             val state = policyState(JSONObject().put("name", "unused"), JSONObject.NULL, features)
-            BootPolicyProjection.write(root, state)
 
             LegacyIdentityMarkers.apply(
                 LegacyIdentityMarkers.plan(root, LegacyIdentityMarkers.desiredState(state)),
@@ -105,7 +104,6 @@ class AndroidJsonIdentityContractTest {
 
             features.put("buildIdentity", false)
             features.put("telephonyIdentity", false)
-            BootPolicyProjection.write(root, state)
             LegacyIdentityMarkers.apply(
                 LegacyIdentityMarkers.plan(root, LegacyIdentityMarkers.desiredState(state)),
                 refreshRuntime = {},
