@@ -1057,6 +1057,21 @@ class WebServer(
             }
         }
 
+        return handlePolicyAndConfigRoutes(session, uri, method, headers, trustedBridge)
+            ?: handleKeyboxRoutes(session, uri, method, headers, trustedBridge)
+            ?: handleServerRoutes(session, uri, method, headers, trustedBridge)
+            ?: handleIdentityAndTemplateRoutes(session, uri, method, headers, trustedBridge)
+            ?: handleSystemAndAppRoutes(session, uri, method, headers, trustedBridge)
+            ?: secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+    }
+
+    private fun handlePolicyAndConfigRoutes(
+        session: IHTTPSession,
+        uri: String,
+        method: Method,
+        headers: Map<String, String>,
+        trustedBridge: Boolean
+    ): Response? {
         if (uri == "/api/policy_state" || uri == "/api/effective_state" || uri == "/api/profile_v2") {
             if (method == Method.POST) {
                 val files = HashMap<String, String>()
@@ -1092,6 +1107,38 @@ class WebServer(
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
+        if (uri == "/api/apply_profile" && method == Method.POST) {
+            val map = HashMap<String, String>()
+            try {
+                session.parseBody(map)
+            } catch (e: Exception) {
+                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+            }
+            val profileName = getParam(session, "profile")
+            if (profileName != null && isValidProfile(profileName)) {
+                synchronized(fileLock) {
+                    try {
+                        Config.applyProfile(profileName)
+                        return secureResponse(Response.Status.OK, "text/plain", "Profile Applied")
+                    } catch (e: Exception) {
+                        Logger.e("Failed to apply profile", e)
+                        return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                    }
+                }
+            }
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing profile")
+        }
+
+        return null
+    }
+
+    private fun handleKeyboxRoutes(
+        session: IHTTPSession,
+        uri: String,
+        method: Method,
+        headers: Map<String, String>,
+        trustedBridge: Boolean
+    ): Response? {
             if (uri == "/api/keyboxes" && method == Method.GET) {
             val keyboxes = listKeyboxes()
             val array = JSONArray(keyboxes)
@@ -1131,7 +1178,7 @@ class WebServer(
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 
-        if (uri == "/api/unlock_cbox" && method == Method.POST) {
+        if (uri == "/api/upload_keybox" && method == Method.POST) {
             val map = HashMap<String, String>()
             try {
                 session.parseBody(map)
@@ -1139,22 +1186,187 @@ class WebServer(
                 return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
             }
             val filename = getParam(session, "filename")
-            val password = getParam(session, "password")
-            val pubKey = getParam(session, "public_key")
-
-            if (filename != null && password != null) {
-                if (CboxManager.unlock(filename, password, pubKey)) {
-                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                        return keyboxActivationFailureResponse()
+            val content = getParam(session, "content")
+            val tmpFilePath = map["file"]
+            if (tmpFilePath != null) {
+                val originalName = getParam(session, "filename") ?: "upload.bin"
+                val tmpFile = File(tmpFilePath)
+                val extension = originalName.substringAfterLast('.', "").lowercase()
+                val uploadLimit =
+                    if (extension == "cbox") {
+                        MAX_CBOX_UPLOAD_SIZE
+                    } else {
+                        MAX_KEYBOX_XML_UPLOAD_SIZE
                     }
-                    return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
-                } else {
-                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
+                if (!Files.isRegularFile(tmpFile.toPath(), LinkOption.NOFOLLOW_LINKS) ||
+                    tmpFile.length() !in 1..uploadLimit
+                ) {
+                    if (tmpFile.exists()) tmpFile.delete()
+                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload size")
+                }
+                if (!isValidKeyboxFilename(originalName) || (extension != "xml" && extension != "cbox")) {
+                    tmpFile.delete()
+                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
+                }
+                val bytes = readFileBytesLimited(tmpFile, uploadLimit.toInt())
+                try {
+                    synchronized(fileLock) {
+                        val keyboxDir = File(configDir, "keyboxes")
+                        SecureFile.mkdirs(keyboxDir, 448)
+                        val dest = getSafeFile(keyboxDir, originalName)
+                        if (dest == null) {
+                            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload path")
+                        }
+                        if (extension == "cbox") {
+                            if (!CboxDecryptor.hasSupportedEnvelopeHeader(bytes)) {
+                                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid CBOX envelope")
+                            }
+                            SecureFile.writeBytes(dest, bytes)
+                            CboxManager.refresh()
+                        } else {
+                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
+                            SecureFile.writeBytes(dest, bytes)
+                        }
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
+                        val count = CertHack.getKeyboxSourceCount()
+                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                    }
+                } finally {
+                    bytes.fill(0)
+                    if (tmpFile.exists() && !tmpFile.delete()) Logger.w("Failed to clean upload temp file")
                 }
             }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing params")
+
+            if (
+                filename != null &&
+                content != null &&
+                filename.endsWith(".xml", ignoreCase = true) &&
+                isValidKeyboxFilename(filename)
+            ) {
+                synchronized(fileLock) {
+                    keyboxValidationError(validateUploadedKeyboxXml(content, filename))?.let { return it }
+                    val keyboxDir = File(configDir, "keyboxes")
+                    SecureFile.mkdirs(keyboxDir, 448)
+                    val file = getSafeFile(keyboxDir, filename)
+                    if (file == null) {
+                        return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
+                    }
+                    try {
+                        SecureFile.writeText(file, content)
+                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                            return keyboxActivationFailureResponse()
+                        }
+                        val count = CertHack.getKeyboxSourceCount()
+                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                    } catch (e: Exception) {
+                        Logger.e("Failed to save keybox", e)
+                        return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to save keybox")
+                    }
+                }
+            }
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
         }
 
+        if (uri == "/api/delete_keybox" && method == Method.POST) {
+        val map = HashMap<String, String>()
+        try {
+            session.parseBody(map)
+        } catch (error: Exception) {
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+        }
+        val filename = getParam(session, "filename")
+        val scope = getParam(session, "scope") ?: "keyboxes"
+        if (filename != null) {
+            synchronized(fileLock) {
+                val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                    ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox source")
+                if (source.file.delete()) {
+                    if (source.isCbox) {
+                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                        CboxManager.refresh()
+                    }
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) return keyboxActivationFailureResponse()
+                    return secureResponse(Response.Status.OK, "text/plain", "Deleted")
+                }
+                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
+            }
+        }
+        return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
+    }
+
+    if (uri == "/api/delete_keyboxes" && method == Method.POST) {
+        val map = HashMap<String, String>()
+        try {
+            session.parseBody(map)
+        } catch (error: Exception) {
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+        }
+        val rawItems = getParam(session, "items")
+            ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing items")
+        return synchronized(fileLock) {
+            try {
+                val items = JSONArray(rawItems)
+                if (items.length() !in 1..StoredKeyboxInventory.MAX_STORED_SOURCES) {
+                    return@synchronized secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid item count")
+                }
+                var deleted = 0
+                var failed = 0
+                var cboxChanged = false
+                for (index in 0 until items.length()) {
+                    val item = items.optJSONObject(index)
+                    val filename = item?.optString("filename").orEmpty()
+                    val scope = item?.optString("scope").orEmpty()
+                    val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
+                    if (source == null || !source.file.delete()) {
+                        failed++
+                        continue
+                    }
+                    deleted++
+                    if (source.isCbox) {
+                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
+                        cboxChanged = true
+                    }
+                }
+                if (cboxChanged) CboxManager.refresh()
+                if (!updateKeyboxesFromConfiguredRevocationSource()) return@synchronized keyboxActivationFailureResponse()
+                secureResponse(
+                    if (failed == 0) Response.Status.OK else Response.Status.INTERNAL_ERROR,
+                    "application/json",
+                    JSONObject().put("deleted", deleted).put("failed", failed).toString(),
+                )
+            } catch (error: Exception) {
+                Logger.e("Failed to bulk-delete keyboxes", error)
+                secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox selection")
+            }
+        }
+    }
+
+    if (uri == "/api/verify_keyboxes" && method == Method.POST) {
+            try {
+                synchronized(fileLock) {
+                    val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
+                        ?: KeyboxVerifier.verify(configDir)
+                    val json = createKeyboxVerificationJson(results)
+                    return secureResponse(Response.Status.OK, "application/json", json)
+                }
+            } catch (e: Exception) {
+                Logger.e("Failed to verify keyboxes", e)
+                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
+            }
+        }
+
+        return null
+    }
+
+    private fun handleServerRoutes(
+        session: IHTTPSession,
+        uri: String,
+        method: Method,
+        headers: Map<String, String>,
+        trustedBridge: Boolean
+    ): Response? {
         if (uri == "/api/servers" && method == Method.GET) {
             val json = JSONArray()
             ServerManager.getServers().forEach { s ->
@@ -1255,6 +1467,16 @@ class WebServer(
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing id")
         }
 
+        return null
+    }
+
+    private fun handleIdentityAndTemplateRoutes(
+        session: IHTTPSession,
+        uri: String,
+        method: Method,
+        headers: Map<String, String>,
+        trustedBridge: Boolean
+    ): Response? {
         if (uri == "/api/kernel_identity" && method == Method.GET) {
             return secureResponse(Response.Status.OK, "application/json", KernelIdentityManager.json().toString())
         }
@@ -1347,6 +1569,40 @@ class WebServer(
                 Logger.e("Auto Identity failed", error)
                 secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Auto Identity failed")
             }
+        }
+
+        return null
+    }
+
+    private fun handleSystemAndAppRoutes(
+        session: IHTTPSession,
+        uri: String,
+        method: Method,
+        headers: Map<String, String>,
+        trustedBridge: Boolean
+    ): Response? {
+        if (uri == "/api/unlock_cbox" && method == Method.POST) {
+            val map = HashMap<String, String>()
+            try {
+                session.parseBody(map)
+            } catch (e: Exception) {
+                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+            }
+            val filename = getParam(session, "filename")
+            val password = getParam(session, "password")
+            val pubKey = getParam(session, "public_key")
+
+            if (filename != null && password != null) {
+                if (CboxManager.unlock(filename, password, pubKey)) {
+                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                        return keyboxActivationFailureResponse()
+                    }
+                    return secureResponse(Response.Status.OK, "text/plain", "Unlocked")
+                } else {
+                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Unlock failed")
+                }
+            }
+            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing params")
         }
 
         if (uri == "/api/packages" && method == Method.GET) {
@@ -1580,207 +1836,6 @@ class WebServer(
                 }
             }
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
-        }
-
-        if (uri == "/api/upload_keybox" && method == Method.POST) {
-            val map = HashMap<String, String>()
-            try {
-                session.parseBody(map)
-            } catch (e: Exception) {
-                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
-            }
-            val filename = getParam(session, "filename")
-            val content = getParam(session, "content")
-            val tmpFilePath = map["file"]
-            if (tmpFilePath != null) {
-                val originalName = getParam(session, "filename") ?: "upload.bin"
-                val tmpFile = File(tmpFilePath)
-                val extension = originalName.substringAfterLast('.', "").lowercase()
-                val uploadLimit =
-                    if (extension == "cbox") {
-                        MAX_CBOX_UPLOAD_SIZE
-                    } else {
-                        MAX_KEYBOX_XML_UPLOAD_SIZE
-                    }
-                if (!Files.isRegularFile(tmpFile.toPath(), LinkOption.NOFOLLOW_LINKS) ||
-                    tmpFile.length() !in 1..uploadLimit
-                ) {
-                    if (tmpFile.exists()) tmpFile.delete()
-                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload size")
-                }
-                if (!isValidKeyboxFilename(originalName) || (extension != "xml" && extension != "cbox")) {
-                    tmpFile.delete()
-                    return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
-                }
-                val bytes = readFileBytesLimited(tmpFile, uploadLimit.toInt())
-                try {
-                    synchronized(fileLock) {
-                        val keyboxDir = File(configDir, "keyboxes")
-                        SecureFile.mkdirs(keyboxDir, 448)
-                        val dest = getSafeFile(keyboxDir, originalName)
-                        if (dest == null) {
-                            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload path")
-                        }
-                        if (extension == "cbox") {
-                            if (!CboxDecryptor.hasSupportedEnvelopeHeader(bytes)) {
-                                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid CBOX envelope")
-                            }
-                            SecureFile.writeBytes(dest, bytes)
-                            CboxManager.refresh()
-                        } else {
-                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
-                            SecureFile.writeBytes(dest, bytes)
-                        }
-                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                            return keyboxActivationFailureResponse()
-                        }
-                        val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
-                    }
-                } finally {
-                    bytes.fill(0)
-                    if (tmpFile.exists() && !tmpFile.delete()) Logger.w("Failed to clean upload temp file")
-                }
-            }
-
-            if (
-                filename != null &&
-                content != null &&
-                filename.endsWith(".xml", ignoreCase = true) &&
-                isValidKeyboxFilename(filename)
-            ) {
-                synchronized(fileLock) {
-                    keyboxValidationError(validateUploadedKeyboxXml(content, filename))?.let { return it }
-                    val keyboxDir = File(configDir, "keyboxes")
-                    SecureFile.mkdirs(keyboxDir, 448)
-                    val file = getSafeFile(keyboxDir, filename)
-                    if (file == null) {
-                        return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
-                    }
-                    try {
-                        SecureFile.writeText(file, content)
-                        if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                            return keyboxActivationFailureResponse()
-                        }
-                        val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
-                    } catch (e: Exception) {
-                        Logger.e("Failed to save keybox", e)
-                        return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to save keybox")
-                    }
-                }
-            }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid request")
-        }
-
-        if (uri == "/api/delete_keybox" && method == Method.POST) {
-        val map = HashMap<String, String>()
-        try {
-            session.parseBody(map)
-        } catch (error: Exception) {
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
-        }
-        val filename = getParam(session, "filename")
-        val scope = getParam(session, "scope") ?: "keyboxes"
-        if (filename != null) {
-            synchronized(fileLock) {
-                val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
-                    ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox source")
-                if (source.file.delete()) {
-                    if (source.isCbox) {
-                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
-                        CboxManager.refresh()
-                    }
-                    if (!updateKeyboxesFromConfiguredRevocationSource()) return keyboxActivationFailureResponse()
-                    return secureResponse(Response.Status.OK, "text/plain", "Deleted")
-                }
-                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to delete file")
-            }
-        }
-        return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
-    }
-
-    if (uri == "/api/delete_keyboxes" && method == Method.POST) {
-        val map = HashMap<String, String>()
-        try {
-            session.parseBody(map)
-        } catch (error: Exception) {
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
-        }
-        val rawItems = getParam(session, "items")
-            ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing items")
-        return synchronized(fileLock) {
-            try {
-                val items = JSONArray(rawItems)
-                if (items.length() !in 1..StoredKeyboxInventory.MAX_STORED_SOURCES) {
-                    return@synchronized secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid item count")
-                }
-                var deleted = 0
-                var failed = 0
-                var cboxChanged = false
-                for (index in 0 until items.length()) {
-                    val item = items.optJSONObject(index)
-                    val filename = item?.optString("filename").orEmpty()
-                    val scope = item?.optString("scope").orEmpty()
-                    val source = StoredKeyboxInventory.resolve(configDir, scope, filename)
-                    if (source == null || !source.file.delete()) {
-                        failed++
-                        continue
-                    }
-                    deleted++
-                    if (source.isCbox) {
-                        Files.deleteIfExists(File(source.file.parentFile, "${source.filename}.cache").toPath())
-                        cboxChanged = true
-                    }
-                }
-                if (cboxChanged) CboxManager.refresh()
-                if (!updateKeyboxesFromConfiguredRevocationSource()) return@synchronized keyboxActivationFailureResponse()
-                secureResponse(
-                    if (failed == 0) Response.Status.OK else Response.Status.INTERNAL_ERROR,
-                    "application/json",
-                    JSONObject().put("deleted", deleted).put("failed", failed).toString(),
-                )
-            } catch (error: Exception) {
-                Logger.e("Failed to bulk-delete keyboxes", error)
-                secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid keybox selection")
-            }
-        }
-    }
-
-    if (uri == "/api/verify_keyboxes" && method == Method.POST) {
-            try {
-                synchronized(fileLock) {
-                    val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
-                        ?: KeyboxVerifier.verify(configDir)
-                    val json = createKeyboxVerificationJson(results)
-                    return secureResponse(Response.Status.OK, "application/json", json)
-                }
-            } catch (e: Exception) {
-                Logger.e("Failed to verify keyboxes", e)
-                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error: ${e.message}")
-            }
-        }
-
-        if (uri == "/api/apply_profile" && method == Method.POST) {
-            val map = HashMap<String, String>()
-            try {
-                session.parseBody(map)
-            } catch (e: Exception) {
-                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
-            }
-            val profileName = getParam(session, "profile")
-            if (profileName != null && isValidProfile(profileName)) {
-                synchronized(fileLock) {
-                    try {
-                        Config.applyProfile(profileName)
-                        return secureResponse(Response.Status.OK, "text/plain", "Profile Applied")
-                    } catch (e: Exception) {
-                        Logger.e("Failed to apply profile", e)
-                        return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
-                    }
-                }
-            }
-            return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing profile")
         }
 
         if (uri == "/api/toggle" && method == Method.POST) {
@@ -2035,7 +2090,8 @@ class WebServer(
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "No file uploaded")
         }
 
-        return secureResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
+
+        return null
     }
 
     private fun secureResponse(
