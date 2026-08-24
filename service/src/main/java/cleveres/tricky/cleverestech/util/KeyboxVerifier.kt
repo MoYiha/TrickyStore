@@ -365,13 +365,14 @@ object KeyboxVerifier {
     @androidx.annotation.VisibleForTesting
     fun invalidateBackendGenerationForTesting() = invalidateBackendGeneration()
 
-    private fun isAllowedCrlUrl(
+    @androidx.annotation.VisibleForTesting
+    internal fun isAllowedCrlUrl(
         value: String,
         allowLoopbackHttp: Boolean,
     ): Boolean =
         try {
             val uri = URI(value)
-            val loopback = uri.host == "localhost" || uri.host == "127.0.0.1" || uri.host == "::1"
+            val loopback = uri.host.equals("localhost", ignoreCase = true) || uri.host == "127.0.0.1" || uri.host == "[::1]" || uri.host == "::1"
             uri.isAbsolute &&
                 uri.rawUserInfo == null &&
                 uri.rawFragment == null &&
