@@ -16,9 +16,15 @@ Attestation kimliği değiştirme etkin ve doğrulanmış keybox gerektirir. DRM
 <a id="application-scope"></a>
 ## Application Scope
 
-Application Scope, hangi Android uygulama kullanıcılarının sertifika veya kimlik uyumluluğu alacağını belirler. Targeted mode günlük kullanım için önerilir; `target.txt` içindeki tam paket adları veya sınırlı wildcard kuralları Package Manager üzerinden gerçek caller UID'ye çözülür. Shared UID kullanan paketler Binder açısından aynı kimliği paylaşır.
+Application Scope, hangi Android uygulamalarının sertifika/keybox veya kimlik (Identity) uyumluluğu alacağını belirler. Modül iki ayrı hedef dosyası ve iki ayrı global mod içerir:
 
-Global Mode, `target.txt` girdisi olmadan uygun application UID'lerini hedefler; system kimlikleri ve korunan altyapı kapsam dışında kalır. Paket çözümleme bilinmiyorsa fail closed davranılır. Kurallar ve kısa süreli decision cache birlikte değiştirilir; geçersiz güncelleme son geçerli durumu bozmaz.
+- **Keybox Hedefleri (`target.txt`)**: Global Keybox kapalıyken özel Keybox ve TEE attestation sertifika değişikliğinin uygulanacağı paketleri tanımlar.
+- **Identity Hedefleri (`identity_target.txt`)**: Global Identity kapalıyken uygulama bazlı kimlik (Build, Telephony, Region) özelliklerinin uygulanacağı paketleri tanımlar.
+- **Global Keybox Modu**: Tüm kullanıcı uygulamalarına `target.txt` gerekmeksizin özel Keybox uygular. Sistem ve altyapı UID'leri korunur.
+- **Global Identity Modu**: Sistem seviyesinde `ro.*` build özelliklerini tüm cihaz için uygular. Kapalıyken kimlik yalnızca `identity_target.txt` ve atanmış profillere etki eder.
+- **Bağımsız Security Patch**: Güvenlik yaması modülü Identity motorundan bağımsız olarak Dashboard üzerinden yönetilebilir.
+
+Shared UID kullanan paketler Binder açısından aynı kimliği paylaşır. Geçersiz güncellemeler fail-closed olarak reddedilir ve son geçerli durum korunur.
 
 <a id="attestation"></a>
 ## Attestation

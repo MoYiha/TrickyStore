@@ -283,6 +283,9 @@ object SecureFile {
                 }
             }
 
+            val isWindows = System.getProperty("os.name").orEmpty().contains("Windows", ignoreCase = true)
+            if (isWindows) return
+
             file.setReadable(false, false)
             file.setWritable(false, false)
             file.setExecutable(false, false)

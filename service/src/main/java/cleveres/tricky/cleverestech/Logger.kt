@@ -52,14 +52,14 @@ object Logger {
                 tag: String,
                 msg: String,
             ) {
-                Log.d(tag, msg)
+                runCatching { Log.d(tag, msg) }
             }
 
             override fun e(
                 tag: String,
                 msg: String,
             ) {
-                Log.e(tag, msg)
+                runCatching { Log.e(tag, msg) }
             }
 
             override fun e(
@@ -67,10 +67,12 @@ object Logger {
                 msg: String,
                 t: Throwable?,
             ) {
-                if (t != null) {
-                    Log.e(tag, msg, t)
-                } else {
-                    Log.e(tag, msg)
+                runCatching {
+                    if (t != null) {
+                        Log.e(tag, msg, t)
+                    } else {
+                        Log.e(tag, msg)
+                    }
                 }
             }
 
@@ -78,14 +80,14 @@ object Logger {
                 tag: String,
                 msg: String,
             ) {
-                Log.i(tag, msg)
+                runCatching { Log.i(tag, msg) }
             }
 
             override fun w(
                 tag: String,
                 msg: String,
             ) {
-                Log.w(tag, msg)
+                runCatching { Log.w(tag, msg) }
             }
         }
 

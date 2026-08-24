@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.CrlBackend
 import cleveres.tricky.cleverestech.CrlWire
+import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
@@ -10,8 +11,12 @@ import org.junit.Before
 import org.junit.Test
 
 class KeyboxVerifierCacheTest {
+    private lateinit var tempDir: java.io.File
+
     @Before
     fun setUp() {
+        tempDir = java.nio.file.Files.createTempDirectory("crl_cache_test").toFile()
+        KeyboxVerifier.setCacheRootForTesting(tempDir)
         CrlBackend.refreshOverride = { CrlWire.Handle(TEST_GENERATION, rawEntryCount = 1, normalizedEntryCount = 4) }
     }
 
@@ -19,6 +24,8 @@ class KeyboxVerifierCacheTest {
     fun tearDown() {
         CrlBackend.resetForTesting()
         KeyboxVerifier.resetCrlUrlForTesting()
+        KeyboxVerifier.resetCacheRootForTesting()
+        tempDir.deleteRecursively()
     }
 
     @Test
@@ -91,6 +98,7 @@ class KeyboxVerifierCacheTest {
             val lastFetchTimeField = KeyboxVerifier::class.java.getDeclaredField("lastFetchTime")
             lastFetchTimeField.isAccessible = true
             lastFetchTimeField.set(KeyboxVerifier, 0L)
+            File(tempDir, "attestation_status_cache.json").delete()
 
             val third = requireNotNull(KeyboxVerifier.fetchCrl())
             assertEquals(first, third)

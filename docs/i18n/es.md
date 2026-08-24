@@ -16,9 +16,15 @@ La identidad de attestation requiere un keybox activo y verificado. DRM isolatio
 <a id="application-scope"></a>
 ## Application Scope
 
-Application Scope decide qué UID de aplicaciones Android reciben compatibilidad de certificados o identidad. Targeted mode es el valor recomendado y usa paquetes exactos o wildcards acotados de `target.txt`, resueltos mediante Package Manager al caller real. Los paquetes con un UID compartido comparten la misma identidad Binder.
+Application Scope decide qué aplicaciones Android reciben compatibilidad de certificados/Keybox o de identidad. El módulo cuenta con dos archivos de destino y dos modos globales independientes:
 
-Global Mode selecciona UID sin requerir `target.txt`, pero excluye identidades del sistema e infraestructura protegida. Una resolución desconocida falla de forma cerrada. Reglas y caché corta se sustituyen juntas y una actualización inválida conserva el último estado válido.
+- **Destinos de Keybox (`target.txt`)**: Define los paquetes que reciben Keybox personalizado y atestación TEE cuando el Modo Keybox global está desactivado.
+- **Destinos de Identidad (`identity_target.txt`)**: Define los paquetes que reciben propiedades de identidad por app (Build, Telephony, Region) cuando el Modo Identidad global está desactivado.
+- **Modo Keybox global**: Aplica Keybox personalizado a todas las aplicaciones sin requerir `target.txt`. Las identidades del sistema e infraestructura permanecen protegidas.
+- **Modo Identidad global**: Aplica propiedades de Build a nivel de sistema para todo el dispositivo. Cuando está desactivado, la identidad solo afecta a `identity_target.txt` y perfiles asignados.
+- **Módulo independiente de Parche de seguridad**: El parche de seguridad se gestiona independientemente del motor de identidad desde el Panel.
+
+Los paquetes con un UID compartido comparten la misma identidad Binder. Las actualizaciones no válidas fallan de forma cerrada y conservan el último estado válido.
 
 <a id="attestation"></a>
 ## Attestation

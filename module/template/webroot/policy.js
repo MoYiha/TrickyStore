@@ -27,6 +27,8 @@ const IMPACTS = {
   'Keystore Runtime': 'Estimated impact: CPU very low while idle and low per matching Binder call; RAM low.',
   'Telephony Runtime': 'Estimated impact: CPU low only on matching calls; RAM low.',
   'Global Mode': 'Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.',
+  'Global Keybox Mode': 'Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.',
+  'Global Identity Mode': 'Estimated impact: CPU low at boot/reboot only; RAM negligible.',
   'Automatic Keybox Check': 'Estimated impact: CPU/network low during scheduled verification; RAM low and temporary.',
   'Identity Refresh on Boot': 'Estimated impact: CPU low at boot only; RAM negligible after initialization.',
   'Telephony Interception': 'Estimated impact: CPU low per matching Binder call; RAM low.',
@@ -334,7 +336,7 @@ function markIdentityActionGroups() {
 
 function policyIdentityEnabled() {
   if (!policyState || !policyState.features) return false;
-  return Boolean(policyState.features.securityPatch) || FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
+  return FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
 }
 
 function identityEnabled() {
@@ -363,13 +365,17 @@ function isAutoPatch() {
 }
 
 function buildFeatureCenterMarkup(prefix) {
-  const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
+  const globalKeyboxOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
+  const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
   const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
+  const secPatchChildren = `<div class="ct-subcontrols" id="${prefix}_sec_patch_children" ${secPatchOn ? '' : 'hidden'}><p>Controls system, vendor, and boot security patch levels independently from Identity properties.</p><button type="button" data-open-tab="spoof" class="secondary" style="width:100%;margin-top:8px">Open Patch Settings</button></div>`;
+
   return `<div class="ct-feature-grid">
-    ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
+    ${cardMarkup(`${prefix}_global`,'Global Keybox','Applies custom Keybox attestation spoofing to all applications without requiring target.txt.',globalKeyboxOn,helpMarkup('Global Keybox is the module-wide attestation scope switch. Recommended ON for normal root usage.'))}
+    ${cardMarkup(`${prefix}_sec_patch`,'Security Patch','Controls patch-level presentation independently from the other Identity child features.',secPatchOn,secPatchChildren)}
     ${identityCards}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
@@ -391,10 +397,16 @@ function renderFeatureCenter() {
 
 function bindFeatureCenter(panel, prefix) {
   const globalToggle = panel.querySelector(`#${prefix}_global`);
+  const secPatchToggle = panel.querySelector(`#${prefix}_sec_patch`);
+  const secPatchChildren = panel.querySelector(`#${prefix}_sec_patch_children`);
   const keyboxToggle = panel.querySelector(`#${prefix}_keybox`);
   const drmToggle = panel.querySelector(`#${prefix}_drm_passthrough`);
   const drmChildren = panel.querySelector(`#${prefix}_drm_children`);
   if (globalToggle) globalToggle.onchange = () => setLegacyToggle('global_mode',globalToggle.checked);
+  if (secPatchToggle) secPatchToggle.onchange = () => {
+    if (secPatchChildren) secPatchChildren.hidden = !secPatchToggle.checked;
+    savePolicy(next => { next.features.securityPatch = secPatchToggle.checked; }, 'Security Patch updated');
+  };
   if (keyboxToggle) keyboxToggle.onchange = () => setLegacyToggle('auto_keybox_check',keyboxToggle.checked);
   if (drmToggle) drmToggle.onchange = () => {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
@@ -450,9 +462,11 @@ function identityFeatureCardsMarkup(prefix) {
   const features = policyState ? policyState.features : {};
   const identityOn = policyIdentityEnabled();
   const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
-  const securityPatchRow = `<div class="row"><label for="${prefix}_securityPatch" style="flex:1;min-width:0;padding-right:10px"><strong>Security Patch</strong><span class="res-desc">Controls patch-level presentation independently from the other Identity child features.</span></label>${switchMarkup(`${prefix}_securityPatch`,Boolean(features && features.securityPatch),`data-policy-feature="securityPatch"`)}</div>`;
-  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('') + securityPatchRow;
-  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. Security Patch also has its own child switch so it can be disabled without disabling the other Identity paths.')}</div>`;
+  const globalIdentityOn = Boolean(legacyConfig && legacyConfig.global_identity_mode);
+
+  const globalIdentityRow = `<div class="row" style="padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--border-color,#333)"><label for="${prefix}_global_identity" style="flex:1;padding-right:10px"><strong>Global Identity</strong><span class="res-desc">Applies Build Identity properties system-wide across all apps. When OFF, Identity applies only to identity_target.txt and configured profiles. Requires reboot.</span></label>${switchMarkup(`${prefix}_global_identity`,globalIdentityOn)}</div>`;
+  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
+  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity (App & Profile)</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${globalIdentityRow}${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. When Global Identity is off, these apply only to identity_target.txt and assigned profiles.')}</div>`;
   const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
   return `${core}${camera}`;
 }
@@ -464,14 +478,21 @@ function identityControlsMarkup(prefix) {
 function bindIdentityControls(panel, prefix) {
   const master = panel.querySelector(`#${prefix}_master`);
   const children = panel.querySelector(`#${prefix}_children`);
+  const globalIdentityToggle = panel.querySelector(`#${prefix}_global_identity`);
   const cameraToggle = panel.querySelector(`#${prefix}_camera_visibility`);
+  if (globalIdentityToggle) {
+    globalIdentityToggle.onchange = () => {
+      globalIdentityToggle.classList.add('pending-reboot');
+      notify('Global Identity toggled. A device reboot is required for system properties to take full effect.', 'warning');
+      setLegacyToggle('global_identity_mode', globalIdentityToggle.checked);
+    };
+  }
   if (cameraToggle) cameraToggle.onchange = () => setLegacyToggle('camera_visibility',cameraToggle.checked);
   if (master) master.onchange = () => {
     const enabled = master.checked;
     if (children) children.hidden = !enabled;
     savePolicy(next => {
       FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; });
-      next.features.securityPatch = enabled;
     }, enabled ? 'Identity enabled' : 'Identity disabled');
   };
   panel.querySelectorAll('[data-policy-feature]').forEach(toggle => {
@@ -650,6 +671,12 @@ function staticPages() {
   makeTab('profiles','Profiles','spoof');
 
   const spoofPage = document.getElementById('spoof');
+  let banner = document.getElementById('ct_identity_scope_banner');
+  if (!banner && spoofPage) {
+    banner = document.createElement('div');
+    banner.id = 'ct_identity_scope_banner';
+    spoofPage.prepend(banner);
+  }
   let patchHost = document.getElementById('ct_identity_patch');
   if (!patchHost && spoofPage) {
     patchHost = document.createElement('div');
@@ -657,7 +684,7 @@ function staticPages() {
     patchHost.innerHTML = `<div class="panel"><h3>Security Patch</h3><div id="ct_patch_identity_state" class="scope-note">Enable or disable Security Patch from its Dashboard switch.</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
     const identityManager = [...spoofPage.querySelectorAll('.panel')].find(panel => /^Identity Manager$/i.test((panel.querySelector('h3')?.textContent || '').trim()));
     if (identityManager) identityManager.insertAdjacentElement('afterend', patchHost);
-    else spoofPage.prepend(patchHost);
+    else spoofPage.appendChild(patchHost);
   }
 
   const profilesPage = makePage('profiles','spoof');
@@ -671,6 +698,21 @@ function staticPages() {
     appsPage.appendChild(effective);
   }
   if (effective) effective.innerHTML = '<div class="panel"><h3>Effective State</h3><div class="scope-note">Inspect the exact resolver output for an installed application without exposing private key material.</div><input id="ct_effective_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_effective_load" class="primary" type="button" style="width:100%;margin-top:10px">Inspect</button></div><div class="panel"><h3>Resolved Configuration</h3><div id="ct_effective_result" class="scope-note">Select an app.</div></div>';
+}
+
+function renderIdentityScopeBanner() {
+  const banner = document.getElementById('ct_identity_scope_banner');
+  if (!banner) return;
+  const identityOn = policyIdentityEnabled();
+  const globalIdentityOn = Boolean(legacyConfig && legacyConfig.global_identity_mode);
+
+  if (!identityOn) {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #ef4444;background:rgba(239,68,68,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#ef4444;font-size:1.05em;">Identity: Disabled</strong><div style="margin-top:4px;color:#bbb">Identity engine is currently disabled on Dashboard. No system properties or identity modifications are active.</div></div>`;
+  } else if (globalIdentityOn) {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #3b82f6;background:rgba(59,130,246,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#60a5fa;font-size:1.05em;">Identity: Global Mode Active</strong><div style="margin-top:4px;color:#bbb">Identity system properties are applied system-wide to all applications.</div></div>`;
+  } else {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #10b981;background:rgba(16,185,129,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#34d399;font-size:1.05em;">Identity: App-Scoped Mode Active</strong><div style="margin-top:4px;color:#bbb">Identity properties apply only to applications in identity_target.txt and configured profiles.</div></div>`;
+  }
 }
 
 function patchEditor(prefix, component, title, value, allowInherit) {
@@ -711,9 +753,9 @@ function renderPatchPage() {
   if (!children || !identityState || !auto || !threshold || !host || !saveButton) return;
   const patchOn = Boolean(policyState.features && policyState.features.securityPatch);
   children.hidden = !patchOn;
-  identityState.textContent = patchOn
-    ? 'Security Patch is enabled on Dashboard. Configure its patch modes here.'
-    : 'Enable Security Patch on Dashboard to configure its patch modes.';
+  identityState.innerHTML = patchOn
+    ? `<div style="border-left:4px solid #10b981;background:rgba(16,185,129,0.1);padding:8px 12px;border-radius:4px;margin-bottom:10px;"><strong style="color:#34d399">Security Patch: Enabled</strong><div style="margin-top:2px;color:#bbb">Security patch levels are actively managed according to the component modes below.</div></div>`
+    : `<div style="border-left:4px solid #ef4444;background:rgba(239,68,68,0.1);padding:8px 12px;border-radius:4px;margin-bottom:10px;"><strong style="color:#ef4444">Security Patch: Disabled</strong><div style="margin-top:2px;color:#bbb">Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.</div></div>`;
   auto.checked = isAutoPatch();
   threshold.value = String(policyState.securityPatch.automaticThresholdMonths || 6);
   host.innerHTML = PATCH_COMPONENTS.map(([key,title]) => patchEditor('ct_patch',key,title,policyState.securityPatch[key],false)).join('');
@@ -1289,6 +1331,7 @@ function renderAll() {
   if (!policyState) return;
   renderFeatureCenter();
   renderIdentityControls();
+  renderIdentityScopeBanner();
   installIdentityBanner();
   renderPatchPage();
   renderProfiles();

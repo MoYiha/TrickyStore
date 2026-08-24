@@ -18,9 +18,15 @@ Attestation Identity يحتاج keybox فعالة ومتحققا منها. DRM i
 <a id="application-scope"></a>
 ## Application Scope
 
-يحدد Android UID التي تحصل على certificate/identity compatibility. Targeted Mode يستخدم packages دقيقة أو bounded wildcard في `target.txt` ويحلها عبر Package Manager إلى caller الحقيقي. Shared UID تشترك في Binder identity.
+يحدد أي تطبيقات Android تتلقى توافق الشهادات/Keybox أو الهوية (Identity). تتضمن الوحدة ملفي أهداف ووضعين عامين منفصلين:
 
-Global Mode لا يحتاج target entry لكنه يستبعد system identity والبنية المحمية. Unknown package resolution يفشل بشكل مغلق. يتم استبدال rules وshort decision cache معا.
+- **أهداف Keybox (`target.txt`)**: تحدد الحزم التي تتلقى Keybox المخصص وتصديق TEE عند تعطيل الوضع العام لـ Keybox.
+- **أهداف الهوية (`identity_target.txt`)**: تحدد الحزم لخصائص الهوية الخاصة بكل تطبيق (Build، Telephony، Region) عند تعطيل الوضع العام للهوية.
+- **الوضع العام لـ Keybox**: يطبق Keybox المخصص على جميع تطبيقات المستخدم دون الحاجة إلى `target.txt`. تبقى معرفات النظام والبنية التحتية محمية.
+- **الوضع العام للهوية**: يطبق خصائص Build على مستوى النظام بالكامل. عند تعطيله، تؤثر الهوية فقط على `identity_target.txt` والملفات الشخصية المعينة.
+- **وحدة تصحيح الأمان المستقلة**: يمكن إدارة تصحيح الأمان بشكل مستقل عن محرك الهوية من لوحة التحكم.
+
+تشترك الحزم ذات UID المشترك في هوية Binder. يتم رفض التحديثات غير الصالحة بشكل مغلق (fail-closed).
 
 <a id="attestation"></a>
 ## Attestation

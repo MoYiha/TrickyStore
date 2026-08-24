@@ -16,9 +16,15 @@ Attestation Identity требует активный verified keybox. DRM isolat
 <a id="application-scope"></a>
 ## Application Scope
 
-Определяет UID приложений, которым доступна certificate/identity compatibility. Targeted Mode использует точные package и ограниченные wildcard из `target.txt`, разрешая их через Package Manager к реальному caller. Shared UID означает общую Binder identity.
+Определяет UID приложений, которым доступна совместимость сертификатов/Keybox или идентичности. Модуль включает два отдельных целевых файла и два глобальных режима:
 
-Global Mode не требует записи target, но исключает system identity и protected infrastructure. Неизвестное разрешение fail closed. Rules и короткий decision cache заменяются вместе.
+- **Цели Keybox (`target.txt`)**: Задаёт пакеты, получающие пользовательский Keybox и TEE-аттестацию при выключенном глобальном режиме Keybox.
+- **Цели идентичности (`identity_target.txt`)**: Задаёт пакеты для подмены свойств идентичности (Build, Telephony, Region) при выключенном глобальном режиме идентичности.
+- **Глобальный режим Keybox**: Применяет Keybox ко всем пользовательским приложениям без необходимости `target.txt`. Системные и инфраструктурные UID защищены.
+- **Глобальный режим идентичности**: Применяет Build-свойства на уровне всей системы. В выключенном состоянии затрагивает только `identity_target.txt` и назначенные профили.
+- **Независимый патч безопасности**: Патч безопасности настраивается и переключается на Панели независимо от движка идентичности.
+
+Shared UID означает общую Binder identity. Некорректные обновления отклоняются fail-closed.
 
 <a id="attestation"></a>
 ## Attestation

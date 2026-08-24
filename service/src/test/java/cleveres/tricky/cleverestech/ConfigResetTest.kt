@@ -22,4 +22,20 @@ class ConfigResetTest {
         val size = cacheAfterReset.javaClass.getMethod("size").invoke(cacheAfterReset) as Int
         assertEquals(0, size)
     }
+
+    @Test
+    fun testResetDefaultGlobalModes() {
+        val globalModeField = Config::class.java.getDeclaredField("isGlobalMode")
+        globalModeField.isAccessible = true
+        globalModeField.set(Config, true)
+
+        val globalIdentityField = Config::class.java.getDeclaredField("isGlobalIdentityMode")
+        globalIdentityField.isAccessible = true
+        globalIdentityField.set(Config, true)
+
+        Config.reset()
+
+        org.junit.Assert.assertFalse("Reset must reset isGlobalMode to false", Config.isGlobalMode)
+        org.junit.Assert.assertFalse("Reset must reset isGlobalIdentityMode to false", Config.isGlobalIdentityMode)
+    }
 }

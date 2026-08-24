@@ -16,9 +16,15 @@ Attestation 身份替换需要有效且已验证的 keybox。DRM identifier isol
 <a id="application-scope"></a>
 ## Application Scope
 
-Application Scope 决定哪些 Android 应用 UID 可以接收证书或身份兼容处理。Targeted mode 是日常推荐模式，`target.txt` 的精确包名和有限 wildcard 会通过 Package Manager 解析到真实 caller UID。共享 UID 的应用在 Binder 层属于同一调用身份。
+Application Scope 决定哪些 Android 应用 UID 可以接收证书/密钥盒或身份兼容处理。模块包含两组独立的目标文件与全局模式：
 
-Global Mode 不要求 `target.txt` 条目，但 system identity 和受保护基础设施仍排除在替换范围之外。包解析失败时 fail closed。规则和短期 decision cache 一起原子替换，非法更新不会覆盖最后一个有效状态。
+- **Keybox 目标 (`target.txt`)**：在全局 Keybox 模式关闭时，指定接收自定义 Keybox 和 TEE 认证证书重写的应用。
+- **Identity 目标 (`identity_target.txt`)**：在全局身份模式关闭时，指定接收单应用身份覆盖（Build、Telephony、Region）的应用。
+- **全局 Keybox 模式**：对所有用户应用启用 Keybox/认证伪装，无需在 `target.txt` 中单独配置。系统与基础设施 UID 保持原生保护。
+- **全局 Identity 模式**：在系统级向所有应用应用 Build 属性。关闭时仅作用于 `identity_target.txt` 及已分配档案的应用。
+- **独立安全补丁模块**：安全补丁可脱离身份引擎在仪表盘中独立开关与配置。
+
+共享 UID 的应用在 Binder 层属于同一调用身份。非法更新会被 fail-closed 拦截，保留最后一个有效状态。
 
 <a id="attestation"></a>
 ## Attestation

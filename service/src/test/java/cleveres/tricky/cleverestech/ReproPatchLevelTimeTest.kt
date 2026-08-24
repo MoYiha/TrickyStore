@@ -24,10 +24,8 @@ class ReproPatchLevelTimeTest {
         val file = File.createTempFile("security_patch", "txt")
         file.writeText("today") // Sets default patch to today
 
-        // Use reflection to invoke updateSecurityPatch
-        val method = Config::class.java.declaredMethods.find { it.name.startsWith("updateSecurityPatch") }
-        method!!.isAccessible = true
-        method.invoke(Config, file)
+        // Call updateSecurityPatch
+        Config.updateSecurityPatch(file)
 
         try {
             // 3. Get patch level

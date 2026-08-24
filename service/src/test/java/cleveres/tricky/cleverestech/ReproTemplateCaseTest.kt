@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -8,6 +9,7 @@ import java.io.File
 class ReproTemplateCaseTest {
     @Before
     fun setUp() {
+        Config.reset()
         // Reset Config state
         val tempDir = java.nio.file.Files.createTempDirectory("test_repro_case").toFile()
         tempDir.deleteOnExit()
@@ -84,5 +86,10 @@ class ReproTemplateCaseTest {
         val model = Config.getBuildVar("MODEL", testUid)
 
         assertEquals("CustomModel", model)
+    }
+
+    @After
+    fun tearDown() {
+        Config.reset()
     }
 }
