@@ -9,6 +9,7 @@ import java.security.cert.X509Certificate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
 import org.mockito.Mockito
 
 class KeyboxVerifierTest {
@@ -129,6 +130,40 @@ class KeyboxVerifierTest {
         }
     }
 
+
+    @Test
+    fun `resetCrlUrlForTesting resets URL and clears cache`() {
+        val crlUrlField = KeyboxVerifier::class.java.getDeclaredField("crlUrl")
+        crlUrlField.isAccessible = true
+
+        val cachedCrlField = KeyboxVerifier::class.java.getDeclaredField("cachedCrl")
+        cachedCrlField.isAccessible = true
+
+        val cachedEtagField = KeyboxVerifier::class.java.getDeclaredField("cachedEtag")
+        cachedEtagField.isAccessible = true
+
+        val lastFetchTimeField = KeyboxVerifier::class.java.getDeclaredField("lastFetchTime")
+        lastFetchTimeField.isAccessible = true
+
+        try {
+            KeyboxVerifier.setCrlUrlForTesting("http://127.0.0.1:1234")
+
+            val dummyHandle = cleveres.tricky.cleverestech.CrlWire.Handle(1L, 1, 1)
+            cachedCrlField.set(KeyboxVerifier, dummyHandle)
+            cachedEtagField.set(KeyboxVerifier, "dummy-etag")
+            lastFetchTimeField.set(KeyboxVerifier, 123456789L)
+
+            KeyboxVerifier.resetCrlUrlForTesting()
+
+            assertEquals(KeyboxVerifier::class.java.getDeclaredField("DEFAULT_CRL_URL").apply { isAccessible = true }.get(null) as String, crlUrlField.get(KeyboxVerifier))
+            assertEquals(null, cachedCrlField.get(KeyboxVerifier))
+            assertEquals(null, cachedEtagField.get(KeyboxVerifier))
+            assertEquals(0L, lastFetchTimeField.get(KeyboxVerifier))
+        } finally {
+            KeyboxVerifier.resetCrlUrlForTesting()
+        }
+    }
+
     @Test
     fun `verify rejects keybox directories above the file limit`() {
         val configDir = Files.createTempDirectory("keybox-verifier-limit").toFile()
@@ -144,5 +179,19 @@ class KeyboxVerifierTest {
         } finally {
             configDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `configureCacheRoot sets cacheRoot directory`() {
+        val newCacheDir = File("/test/cache/dir")
+        KeyboxVerifier.configureCacheRoot(newCacheDir)
+
+        val cacheRootField = KeyboxVerifier::class.java.getDeclaredField("cacheRoot")
+        cacheRootField.isAccessible = true
+        val actualCacheRoot = cacheRootField.get(KeyboxVerifier) as File
+
+        assertEquals(newCacheDir, actualCacheRoot)
+
+        KeyboxVerifier.resetCacheRootForTesting()
     }
 }

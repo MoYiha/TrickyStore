@@ -593,7 +593,8 @@ public final class CertHack {
         if (candidates == null || candidates.isEmpty()) return Collections.emptyList();
         List<KeyBox> matches = new ArrayList<>();
         for (KeyBox candidate : candidates) {
-            if (requiredAlgorithm.equals(normalizeAlgorithm(candidate.keyPair.getPublic().getAlgorithm()))) {
+            String alg = candidate.keyPair.getPublic().getAlgorithm();
+            if (requiredAlgorithm.equals(alg) || requiredAlgorithm.equals(normalizeAlgorithm(alg))) {
                 matches.add(candidate);
             }
         }
