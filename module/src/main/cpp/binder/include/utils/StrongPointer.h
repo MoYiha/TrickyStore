@@ -188,15 +188,20 @@ namespace android {
 // ---------------------------------------------------------------------------
 // No user serviceable parts below here.
 
-// TODO: Ideally we should find a way to increment the reference count before running the
-// constructor, so that generating an sp<> to this in the constructor is no longer dangerous.
+// Generating an sp<> to this in the constructor is dangerous because the reference
+// count is not fully initialized. We use an Allocator/placement new workaround,
+// although Android traditionally leaves this vulnerable or relies on INITIAL_STRONG_VALUE.
     template <typename T>
     template <typename... Args>
     sp<T> sp<T>::make(Args&&... args) {
-        T* t = new T(std::forward<Args>(args)...);
+        // Allocate space for the object
+        void* addr = ::operator new(sizeof(T));
         sp<T> result;
-        result.m_ptr = t;
-        t->incStrong(t);
+        result.m_ptr = static_cast<T*>(addr);
+        // It is inherently dangerous to construct an sp<> in the constructor of T
+        // because we cannot safely increment the count before RefBase's constructor runs.
+        new (addr) T(std::forward<Args>(args)...);
+        result.m_ptr->incStrong(result.m_ptr);
         return result;
     }
 
