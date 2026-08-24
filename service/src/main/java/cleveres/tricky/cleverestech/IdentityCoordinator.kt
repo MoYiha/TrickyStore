@@ -5,6 +5,9 @@ import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
 
+internal class IdentityRuntimeSnapshotException(cause: Throwable) :
+    IllegalStateException("Live Identity rollback snapshot is unavailable", cause)
+
 /** Single owner for Identity fetch, persistence, live apply/rollback and diagnostics. */
 internal object IdentityCoordinator {
     data class RefreshOutcome(
@@ -117,7 +120,9 @@ internal object IdentityCoordinator {
 
         val rollbackPrepared =
             if (enableBuild || enableRegion) {
-                capture(root, enableBuild, enableRegion).getOrThrow()
+                capture(root, enableBuild, enableRegion).getOrElse { error ->
+                    throw IdentityRuntimeSnapshotException(error)
+                }
                 true
             } else {
                 true

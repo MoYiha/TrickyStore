@@ -172,13 +172,19 @@ internal object PolicyApi {
             response.put("runtimeTransition", transition.toJson())
         }
         result.runtimeTransitionError?.let { error ->
+            val errorCode =
+                if (error is IdentityRuntimeSnapshotException) {
+                    "snapshot_unavailable"
+                } else {
+                    "runtime_transition_failed"
+                }
             response.put(
                 "runtimeTransition",
-                JSONObject().put("rebootRequired", true).put("error", "snapshot_unavailable"),
+                JSONObject().put("rebootRequired", true).put("error", errorCode),
             )
             response.put(
                 "runtimeWarning",
-                "Policy is saved, but live Identity changes were not applied because the rollback snapshot failed. Reboot is required.",
+                "Policy is saved, but live Identity changes were not applied. Reboot is required.",
             )
             Logger.e("Policy state saved but live Identity transition could not be prepared", error)
         }

@@ -938,9 +938,9 @@
                     await setProfileEnabled(profile, requested);
                     text.textContent = extensionText(requested ? 'Enabled' : 'Disabled');
                     notifyExtension(requested ? 'Profile enabled' : 'Profile disabled');
-                    global.setTimeout(() => {
-                        if (global.location && typeof global.location.reload === 'function') global.location.reload();
-                    }, 250);
+                    if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+                        global.dispatchEvent(new global.CustomEvent('ct-policy-state', { detail: latestPolicyState }));
+                    }
                 } catch (error) {
                     input.checked = !requested;
                     input.disabled = false;
@@ -983,12 +983,14 @@
 
     async function installCronAutoIdentity() {
         const document = global.document;
-        const children = document && document.getElementById('ct_dash_identity_children');
-        if (!children || document.getElementById('ct_cron_auto_identity_row')) return Boolean(children);
+        const identityPanel = document && document.querySelector('#spoof .panel');
+        const autoIdentityNote = identityPanel && identityPanel.querySelector('.scope-note');
+        if (!identityPanel || !autoIdentityNote || document.getElementById('ct_cron_auto_identity_row')) return Boolean(identityPanel);
 
         const row = document.createElement('div');
         row.id = 'ct_cron_auto_identity_row';
         row.className = 'row';
+        row.style.cssText = 'margin:12px 0 0;padding-top:12px;border-top:1px dashed var(--border);';
         const label = document.createElement('label');
         label.htmlFor = 'ct_cron_auto_identity';
         label.style.cssText = 'flex:1;padding-right:10px;';
@@ -1021,7 +1023,7 @@
             }
         });
         row.append(label, toggle);
-        children.appendChild(row);
+        autoIdentityNote.insertAdjacentElement('afterend', row);
 
         try {
             toggle.checked = await getCronAutoIdentity();
@@ -1230,17 +1232,17 @@
         installIdentityPolicyTransitionWatcher();
         const autoIdentityReady = installAutoIdentityOwner() || (typeof global.applyAutoIdentity === 'function' && global.applyAutoIdentity.ctAutoIdentityOwner === true);
 
-        const dashboard = document.getElementById('ct_dashboard_controls');
-        if (dashboard && !dashboard.dataset.ctCronObserver && typeof global.MutationObserver === 'function') {
-            dashboard.dataset.ctCronObserver = '1';
-            new global.MutationObserver(() => installCronAutoIdentity().catch(() => {})).observe(dashboard, { childList: true, subtree: true });
+        const identityPanel = document.querySelector('#spoof .panel');
+        if (identityPanel && !identityPanel.dataset.ctCronObserver && typeof global.MutationObserver === 'function') {
+            identityPanel.dataset.ctCronObserver = '1';
+            new global.MutationObserver(() => installCronAutoIdentity().catch(() => {})).observe(identityPanel, { childList: true, subtree: true });
         }
         const language = document.getElementById('ct_language_selector');
         if (language && !language.dataset.ctExtensionLanguage) {
             language.dataset.ctExtensionLanguage = '1';
             language.addEventListener('change', () => global.setTimeout(refreshExtensionCopy, 0));
         }
-        if (attempt < 100 && (!document.getElementById('ct_profile_list') || !document.getElementById('ct_dash_identity_children') || !logsReady || !autoIdentityReady)) {
+        if (attempt < 100 && (!document.getElementById('ct_profile_list') || !document.getElementById('ct_cron_auto_identity_row') || !logsReady || !autoIdentityReady)) {
             global.setTimeout(() => installRuntimeEnhancements(attempt + 1), 100);
         }
     }

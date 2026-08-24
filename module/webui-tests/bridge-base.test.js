@@ -195,6 +195,25 @@ async function main() {
         JSON.parse(resourceBody)
     );
 
+    let profileMutationCommand = '';
+    const profileState = JSON.stringify({
+        features: {},
+        profiles: [{ name: 'Daily', enabled: false }]
+    });
+    const profileBridge = createBridge(
+        callback => callback(0, envelope(profileState), ''),
+        null,
+        command => { profileMutationCommand = command; }
+    );
+    const updatedProfileState = await profileBridge.setProfileEnabled({ name: 'Daily', enabled: true }, false);
+    assert.strictEqual(updatedProfileState.profiles[0].enabled, false, 'profile toggle must use the canonical response state');
+    const encodedProfileRequest = profileMutationCommand.match(/'call' '([^']+)'/);
+    assert.ok(encodedProfileRequest, 'profile toggle must issue a native bridge call');
+    const profileRequest = JSON.parse(Buffer.from(encodedProfileRequest[1], 'base64url').toString('utf8'));
+    assert.strictEqual(profileRequest.path, '/api/profile_v2');
+    assert.strictEqual(profileRequest.parameters.action[0], 'edit');
+    assert.strictEqual(JSON.parse(profileRequest.parameters.data[0]).profile.enabled, false);
+
     let communityCommand = '';
     const communityBridge = createBridge(
         callback => callback(0, '', ''),
@@ -274,7 +293,7 @@ async function main() {
     });
     assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
     assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
-    assert.ok(indexSource.includes('<script src="bridge.js?revision=11"></script>'));
+    assert.ok(indexSource.includes('<script src="bridge.js?revision=14"></script>'));
     assert.match(bridgeSource, /ux\.js\?revision=9/);
     assert.ok(!bridgeSource.includes('ux.js?revision=3'), 'Bridge must not request the retired cached UX loader');
 
