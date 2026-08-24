@@ -9,6 +9,7 @@ import java.security.cert.X509Certificate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.File
 import org.mockito.Mockito
 
 class KeyboxVerifierTest {
@@ -144,5 +145,19 @@ class KeyboxVerifierTest {
         } finally {
             configDir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun `configureCacheRoot sets cacheRoot directory`() {
+        val newCacheDir = File("/test/cache/dir")
+        KeyboxVerifier.configureCacheRoot(newCacheDir)
+
+        val cacheRootField = KeyboxVerifier::class.java.getDeclaredField("cacheRoot")
+        cacheRootField.isAccessible = true
+        val actualCacheRoot = cacheRootField.get(KeyboxVerifier) as File
+
+        assertEquals(newCacheDir, actualCacheRoot)
+
+        KeyboxVerifier.resetCacheRootForTesting()
     }
 }
