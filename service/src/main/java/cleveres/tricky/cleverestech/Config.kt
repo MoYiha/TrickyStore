@@ -36,6 +36,8 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 object Config {
+    private const val HEX_ALPHABET = "0123456789ABCDEF"
+    private const val SERIAL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val runtimeControllerSignal = Semaphore(0)
     private const val MAX_UID_CACHE_ENTRIES = 4096
@@ -938,17 +940,15 @@ object Config {
     }
 
     private fun deterministicHex(length: Int, entropy: ByteArray): String {
-        val alphabet = "0123456789ABCDEF"
         val output = StringBuilder(length)
-        for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % 16])
+        for (index in 0 until length) output.append(HEX_ALPHABET[(entropy[index % entropy.size].toInt() and 0xff) % 16])
         entropy.fill(0)
         return output.toString()
     }
 
     private fun deterministicSerial(length: Int, entropy: ByteArray): String {
-        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         val output = StringBuilder(length)
-        for (index in 0 until length) output.append(alphabet[(entropy[index % entropy.size].toInt() and 0xff) % alphabet.length])
+        for (index in 0 until length) output.append(SERIAL_ALPHABET[(entropy[index % entropy.size].toInt() and 0xff) % SERIAL_ALPHABET.length])
         entropy.fill(0)
         return output.toString()
     }
