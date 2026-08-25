@@ -19,10 +19,10 @@
 - **Context-aware detail panels.** Sub-feature sections on the Identity page (such as Telephony identifiers, Hardware/Camera count, and Kernel Identity) adapt dynamically based on active feature toggles.
 - **Multilingual status banners.** Added localized informative banners to Identity and Security Patch pages (supporting English, Turkish, Chinese, and others) clarifying active operation modes.
 
-### Platform validation and CI hardening
+### Android 17 and runtime stability
 
-- **Android 17 API 37 contract verification.** Updated maximum profile markers and instrumentation test matrices to validate `global_identity_mode` on Android 17 API 37 platform emulators.
-- **Hardened build and security workflows.** Ensured 100% pass across native ELF hardening, Bouncy Castle security checks, WebUI behavior tests, and CodeQL static analysis.
+- **Android 17 (API 37) compatibility.** Enhanced framework integration and verified stability on the latest Android 17 platform environments.
+- **Resilient live identity mutations.** Live identity transitions, target filtering, and profile overrides apply cleanly without unexpected resets.
 
 ## V2.6.2
 
