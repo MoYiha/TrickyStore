@@ -418,6 +418,61 @@ function buildFeatureCenterMarkup(prefix) {
   </div>`;
 }
 
+function refreshDynamicVisibility() {
+  const patchTab = document.getElementById('tab_patch');
+  const spoofTab = document.getElementById('tab_spoof');
+  const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
+  const identityOn = identityEnabled();
+
+  if (patchTab) {
+    patchTab.style.display = secPatchOn ? '' : 'none';
+    if (!secPatchOn && patchTab.classList.contains('active')) {
+      if (typeof global.switchTab === 'function') global.switchTab('dashboard');
+    }
+  }
+
+  if (spoofTab) {
+    spoofTab.style.display = identityOn ? '' : 'none';
+    if (!identityOn && spoofTab.classList.contains('active')) {
+      if (typeof global.switchTab === 'function') global.switchTab('dashboard');
+    }
+  }
+
+  const spoofPage = document.getElementById('spoof');
+  if (spoofPage && policyState && policyState.features) {
+    const features = policyState.features;
+    const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
+    const telephonyOn = Boolean(features.telephonyIdentity);
+
+    const headers = spoofPage.querySelectorAll('.section-header');
+    headers.forEach(header => {
+      const text = (header.textContent || '').trim();
+      if (text.startsWith('SIM') || text.includes('Telephony')) {
+        header.style.display = telephonyOn ? '' : 'none';
+        const next = header.nextElementSibling;
+        if (next && (next.classList.contains('grid-2') || next.tagName === 'DIV')) {
+          next.style.display = telephonyOn ? '' : 'none';
+        }
+      } else if (text.includes('Hardware') || text.includes('Camera')) {
+        header.style.display = cameraOn ? '' : 'none';
+        const next = header.nextElementSibling;
+        if (next && (next.classList.contains('grid-2') || next.tagName === 'DIV')) {
+          next.style.display = cameraOn ? '' : 'none';
+        }
+      }
+    });
+
+    const kernelPanel = document.getElementById('ct_kernel_identity_panel');
+    if (kernelPanel) {
+      const kernelEnabled = document.getElementById('ct_kernel_enabled');
+      const kernelChildren = document.getElementById('ct_kernel_children');
+      if (kernelChildren && kernelEnabled) {
+        kernelChildren.hidden = !kernelEnabled.checked;
+      }
+    }
+  }
+}
+
 function renderFeatureCenter() {
   if (!policyState) return;
   const panel = document.getElementById('ct_dashboard_controls');
@@ -426,6 +481,7 @@ function renderFeatureCenter() {
   if (!host) return;
   host.innerHTML = buildFeatureCenterMarkup('ct_dash');
   bindFeatureCenter(panel,'ct_dash');
+  refreshDynamicVisibility();
   const status = document.getElementById('keyboxStatus');
   if (status && legacyConfig && Number.isFinite(Number(legacyConfig.keybox_count))) status.textContent = `${Number(legacyConfig.keybox_count)} Keys Loaded`;
 }
@@ -1373,6 +1429,7 @@ function renderAll() {
   if (inspect) inspect.onclick = inspectEffective;
   removeLegacySurfaces();
   sanitizeResourceTable();
+  refreshDynamicVisibility();
   refreshPresentation();
 }
 
