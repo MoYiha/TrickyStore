@@ -378,12 +378,14 @@ function switchMarkup(id, checked, extra) {
   if (id && id.includes('global_identity')) {
     isPending = isPendingReboot('global_identity_mode') || Boolean(legacyConfig && legacyConfig.global_identity_mode);
   }
-  const pendingClass = isPending ? ' pending-reboot' : '';
   const extraAttr = extra || '';
   if (extraAttr.includes('class="')) {
     return `<input id="${id}" type="checkbox" ${extraAttr.replace('class="', `class="${isPending ? 'pending-reboot ' : ''}`)} ${checked ? 'checked' : ''}>`;
   }
-  return `<input id="${id}" type="checkbox" class="ct-switch${pendingClass}" ${extraAttr} ${checked ? 'checked' : ''}>`;
+  if (isPending) {
+    return `<input id="${id}" type="checkbox" class="ct-switch pending-reboot" ${extraAttr} ${checked ? 'checked' : ''}>`;
+  }
+  return `<input id="${id}" type="checkbox" class="ct-switch" ${extraAttr} ${checked ? 'checked' : ''}>`;
 }
 
 function cardMarkup(id, title, description, checked, children) {
