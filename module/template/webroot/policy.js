@@ -424,16 +424,22 @@ function refreshDynamicVisibility() {
   const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
   const identityOn = identityEnabled();
 
-  if (patchTab) {
+  if (patchTab && patchTab.style) {
     patchTab.style.display = secPatchOn ? '' : 'none';
-    if (!secPatchOn && patchTab.classList.contains('active')) {
+    const isPatchActive = (patchTab.classList && typeof patchTab.classList.contains === 'function')
+      ? patchTab.classList.contains('active')
+      : String(patchTab.className || '').includes('active');
+    if (!secPatchOn && isPatchActive) {
       if (typeof global.switchTab === 'function') global.switchTab('dashboard');
     }
   }
 
-  if (spoofTab) {
+  if (spoofTab && spoofTab.style) {
     spoofTab.style.display = identityOn ? '' : 'none';
-    if (!identityOn && spoofTab.classList.contains('active')) {
+    const isSpoofActive = (spoofTab.classList && typeof spoofTab.classList.contains === 'function')
+      ? spoofTab.classList.contains('active')
+      : String(spoofTab.className || '').includes('active');
+    if (!identityOn && isSpoofActive) {
       if (typeof global.switchTab === 'function') global.switchTab('dashboard');
     }
   }
@@ -444,19 +450,20 @@ function refreshDynamicVisibility() {
     const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
     const telephonyOn = Boolean(features.telephonyIdentity);
 
-    const headers = spoofPage.querySelectorAll('.section-header');
+    const headers = (typeof spoofPage.querySelectorAll === 'function') ? (spoofPage.querySelectorAll('.section-header') || []) : [];
     headers.forEach(header => {
+      if (!header || !header.style) return;
       const text = (header.textContent || '').trim();
       if (text.startsWith('SIM') || text.includes('Telephony')) {
         header.style.display = telephonyOn ? '' : 'none';
         const next = header.nextElementSibling;
-        if (next && (next.classList.contains('grid-2') || next.tagName === 'DIV')) {
+        if (next && next.style) {
           next.style.display = telephonyOn ? '' : 'none';
         }
       } else if (text.includes('Hardware') || text.includes('Camera')) {
         header.style.display = cameraOn ? '' : 'none';
         const next = header.nextElementSibling;
-        if (next && (next.classList.contains('grid-2') || next.tagName === 'DIV')) {
+        if (next && next.style) {
           next.style.display = cameraOn ? '' : 'none';
         }
       }
