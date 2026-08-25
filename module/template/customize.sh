@@ -167,8 +167,8 @@ for legacy_webui_file in web_port web_token.txt; do
   fi
 done
 
-for config_file in spoof_build_vars security_patch.txt target.txt drm_packages.txt boot_props_mode \
-  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode tee_broken_mode \
+for config_file in spoof_build_vars security_patch.txt target.txt identity_target.txt drm_packages.txt boot_props_mode \
+  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode global_identity_mode tee_broken_mode \
   auto_keybox_check random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
@@ -272,6 +272,14 @@ if [ ! -f "$CONFIG_DIR/target.txt" ]; then
 fi
 chmod 600 "$CONFIG_DIR/target.txt" || abort "! Could not secure target.txt"
 
+if [ ! -f "$CONFIG_DIR/identity_target.txt" ]; then
+  ui_print "- Adding default identity target scope"
+  extract "$ZIPFILE" 'identity_target.txt' "$TMPDIR"
+  mv "$TMPDIR/identity_target.txt" "$CONFIG_DIR/identity_target.txt" \
+    || abort "! Could not install identity_target.txt"
+fi
+chmod 600 "$CONFIG_DIR/identity_target.txt" || abort "! Could not secure identity_target.txt"
+
 if [ ! -f "$CONFIG_DIR/drm_packages.txt" ]; then
   ui_print "- Adding default DRM passthrough scope"
   extract "$ZIPFILE" 'drm_packages.txt' "$TMPDIR"
@@ -296,11 +304,13 @@ for optional_flag in auto_keybox_check drm_passthrough hide_sensitive_props debu
 done
 
 chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
-  "$CONFIG_DIR/target.txt" "$CONFIG_DIR/drm_packages.txt" \
+  "$CONFIG_DIR/target.txt" "$CONFIG_DIR/identity_target.txt" "$CONFIG_DIR/drm_packages.txt" \
   "$CONFIG_DIR/boot_props_mode" "$CONFIG_DIR/spoof_switch_initialized" \
   || abort "! Could not set configuration file ownership"
 [ ! -e "$CONFIG_DIR/global_mode" ] || chown 0:0 "$CONFIG_DIR/global_mode" \
   || abort "! Could not set Global Mode switch ownership"
+[ ! -e "$CONFIG_DIR/global_identity_mode" ] || chown 0:0 "$CONFIG_DIR/global_identity_mode" \
+  || abort "! Could not set Global Identity Mode switch ownership"
 [ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chown 0:0 "$CONFIG_DIR/auto_keybox_check" \
   || abort "! Could not set keybox revocation switch ownership"
 [ ! -e "$CONFIG_DIR/policy_state_v2.json" ] || chown 0:0 "$CONFIG_DIR/policy_state_v2.json" \

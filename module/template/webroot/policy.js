@@ -27,6 +27,8 @@ const IMPACTS = {
   'Keystore Runtime': 'Estimated impact: CPU very low while idle and low per matching Binder call; RAM low.',
   'Telephony Runtime': 'Estimated impact: CPU low only on matching calls; RAM low.',
   'Global Mode': 'Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.',
+  'Global Keybox Mode': 'Estimated impact: CPU very low per UID decision; RAM low with a bounded UID cache.',
+  'Global Identity Mode': 'Estimated impact: CPU low at boot/reboot only; RAM negligible.',
   'Automatic Keybox Check': 'Estimated impact: CPU/network low during scheduled verification; RAM low and temporary.',
   'Identity Refresh on Boot': 'Estimated impact: CPU low at boot only; RAM negligible after initialization.',
   'Telephony Interception': 'Estimated impact: CPU low per matching Binder call; RAM low.',
@@ -216,9 +218,12 @@ function injectStyles() {
     input[type="checkbox"].ct-switch::after{content:''!important;position:absolute!important;width:22px!important;height:22px!important;left:2px!important;top:2px!important;border-radius:50%!important;background:#f4f4f5!important;box-shadow:0 1px 4px rgba(0,0,0,.45)!important;transform:translateX(0)!important;transition:transform .18s cubic-bezier(.22,.8,.25,1),background .18s ease!important}
     input[type="checkbox"].ct-switch:checked{background:#16634d!important;border-color:#34d399!important}
     input[type="checkbox"].ct-switch:checked::after{transform:translateX(20px)!important;background:#ecfdf5!important}
+    input[type="checkbox"].ct-switch.pending-reboot,input[type="checkbox"].toggle.pending-reboot{background:#854d0e!important;border-color:#eab308!important;box-shadow:0 0 8px rgba(234,179,8,.4)!important}
+    input[type="checkbox"].ct-switch.pending-reboot:checked,input[type="checkbox"].toggle.pending-reboot:checked{background:#d97706!important;border-color:#fbbf24!important;box-shadow:0 0 10px rgba(251,191,36,.5)!important}
+    input[type="checkbox"].ct-switch.pending-reboot:checked::after{transform:translateX(20px)!important;background:#fef3c7!important}
     input[type="checkbox"].ct-switch:focus-visible{outline:2px solid var(--accent)!important;outline-offset:3px!important}
     input[type="checkbox"].ct-switch:disabled{opacity:.5!important;cursor:not-allowed!important}
-    #dashboard,#info,#spoof,#profiles,#effective,#apps{padding-bottom:max(120px,calc(78px + env(safe-area-inset-bottom)))!important}
+    #dashboard,#info,#spoof,#patch,#profiles,#effective,#apps{padding-bottom:max(120px,calc(78px + env(safe-area-inset-bottom)))!important}
     @media(max-width:640px){.ct-feature-grid,.ct-choice-grid{grid-template-columns:1fr}.ct-action-grid{grid-template-columns:1fr!important}.identity-actions{display:grid!important;grid-template-columns:1fr!important;width:100%}.identity-actions>button{width:100%!important;min-width:0!important;white-space:normal}.grid-2{grid-template-columns:1fr!important}.panel{padding:16px}.ct-profile-item{align-items:flex-start;flex-wrap:wrap}.ct-profile-item button{width:100%}}
   `;
   document.head.appendChild(style);
@@ -332,9 +337,32 @@ function markIdentityActionGroups() {
   });
 }
 
+function getPendingRebootSettings() {
+  try {
+    const raw = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('ct_pending_reboot');
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function markPendingReboot(setting) {
+  try {
+    const pending = getPendingRebootSettings();
+    pending.add(setting);
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('ct_pending_reboot', JSON.stringify([...pending]));
+    }
+  } catch (e) {}
+}
+
+function isPendingReboot(setting) {
+  return getPendingRebootSettings().has(setting);
+}
+
 function policyIdentityEnabled() {
   if (!policyState || !policyState.features) return false;
-  return Boolean(policyState.features.securityPatch) || FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
+  return FEATURE_KEYS.some(([key]) => Boolean(policyState.features[key]));
 }
 
 function identityEnabled() {
@@ -346,7 +374,18 @@ function helpMarkup(text) {
 }
 
 function switchMarkup(id, checked, extra) {
-  return `<input id="${id}" type="checkbox" class="ct-switch" ${extra || ''} ${checked ? 'checked' : ''}>`;
+  let isPending = false;
+  if (id && id.includes('global_identity')) {
+    isPending = isPendingReboot('global_identity_mode') || Boolean(legacyConfig && legacyConfig.global_identity_mode);
+  }
+  const extraAttr = extra || '';
+  if (extraAttr.includes('class="')) {
+    return `<input id="${id}" type="checkbox" ${extraAttr.replace('class="', `class="${isPending ? 'pending-reboot ' : ''}`)} ${checked ? 'checked' : ''}>`;
+  }
+  if (isPending) {
+    return `<input id="${id}" type="checkbox" class="ct-switch pending-reboot" ${extraAttr} ${checked ? 'checked' : ''}>`;
+  }
+  return `<input id="${id}" type="checkbox" class="ct-switch" ${extraAttr} ${checked ? 'checked' : ''}>`;
 }
 
 function cardMarkup(id, title, description, checked, children) {
@@ -363,18 +402,84 @@ function isAutoPatch() {
 }
 
 function buildFeatureCenterMarkup(prefix) {
-  const globalOn = Boolean(legacyConfig && legacyConfig.global_mode);
+  const globalKeyboxOn = Boolean(legacyConfig && legacyConfig.global_mode);
   const keyboxOn = Boolean(legacyConfig && legacyConfig.auto_keybox_check);
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
+  const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
   const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
+  const secPatchChildren = `<div class="ct-subcontrols" id="${prefix}_sec_patch_children" ${secPatchOn ? '' : 'hidden'}><p>Controls system, vendor, and boot security patch levels independently from Identity properties.</p><button type="button" data-open-tab="patch" class="secondary" style="width:100%;margin-top:8px">Open Patch Settings</button></div>`;
+
   return `<div class="ct-feature-grid">
-    ${cardMarkup(`${prefix}_global`,'Global Mode','Applies target rules globally when no narrower application rule wins. Fresh installs default to ON.',globalOn,helpMarkup('Global Mode is the module-wide application scope switch.'))}
+    ${cardMarkup(`${prefix}_global`,'Global Keybox','Applies custom Keybox attestation spoofing to all applications without requiring target.txt.',globalKeyboxOn,helpMarkup('Global Keybox is the module-wide attestation scope switch. Recommended ON for normal root usage.'))}
+    ${cardMarkup(`${prefix}_sec_patch`,'Security Patch','Controls system, vendor, and boot security patch levels independently from Identity properties.',secPatchOn,secPatchChildren)}
     ${identityCards}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
     ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
     <div class="ct-feature-card"><strong>Keybox / TEE path</strong><p>Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.</p>${helpMarkup('The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.')}<button type="button" data-open-tab="keys" style="width:100%;margin-top:10px">Open keyboxes</button></div>
   </div>`;
+}
+
+function refreshDynamicVisibility() {
+  const patchTab = document.getElementById('tab_patch');
+  const spoofTab = document.getElementById('tab_spoof');
+  const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
+  const identityOn = identityEnabled();
+
+  if (patchTab && patchTab.style) {
+    patchTab.style.display = secPatchOn ? '' : 'none';
+    const isPatchActive = (patchTab.classList && typeof patchTab.classList.contains === 'function')
+      ? patchTab.classList.contains('active')
+      : String(patchTab.className || '').includes('active');
+    if (!secPatchOn && isPatchActive) {
+      if (typeof global.switchTab === 'function') global.switchTab('dashboard');
+    }
+  }
+
+  if (spoofTab && spoofTab.style) {
+    spoofTab.style.display = identityOn ? '' : 'none';
+    const isSpoofActive = (spoofTab.classList && typeof spoofTab.classList.contains === 'function')
+      ? spoofTab.classList.contains('active')
+      : String(spoofTab.className || '').includes('active');
+    if (!identityOn && isSpoofActive) {
+      if (typeof global.switchTab === 'function') global.switchTab('dashboard');
+    }
+  }
+
+  const spoofPage = document.getElementById('spoof');
+  if (spoofPage && policyState && policyState.features) {
+    const features = policyState.features;
+    const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
+    const telephonyOn = Boolean(features.telephonyIdentity);
+
+    const headers = (typeof spoofPage.querySelectorAll === 'function') ? (spoofPage.querySelectorAll('.section-header') || []) : [];
+    headers.forEach(header => {
+      if (!header || !header.style) return;
+      const text = (header.textContent || '').trim();
+      if (text.startsWith('SIM') || text.includes('Telephony')) {
+        header.style.display = telephonyOn ? '' : 'none';
+        const next = header.nextElementSibling;
+        if (next && next.style) {
+          next.style.display = telephonyOn ? '' : 'none';
+        }
+      } else if (text.includes('Hardware') || text.includes('Camera')) {
+        header.style.display = cameraOn ? '' : 'none';
+        const next = header.nextElementSibling;
+        if (next && next.style) {
+          next.style.display = cameraOn ? '' : 'none';
+        }
+      }
+    });
+
+    const kernelPanel = document.getElementById('ct_kernel_identity_panel');
+    if (kernelPanel) {
+      const kernelEnabled = document.getElementById('ct_kernel_enabled');
+      const kernelChildren = document.getElementById('ct_kernel_children');
+      if (kernelChildren && kernelEnabled) {
+        kernelChildren.hidden = !kernelEnabled.checked;
+      }
+    }
+  }
 }
 
 function renderFeatureCenter() {
@@ -385,16 +490,23 @@ function renderFeatureCenter() {
   if (!host) return;
   host.innerHTML = buildFeatureCenterMarkup('ct_dash');
   bindFeatureCenter(panel,'ct_dash');
+  refreshDynamicVisibility();
   const status = document.getElementById('keyboxStatus');
   if (status && legacyConfig && Number.isFinite(Number(legacyConfig.keybox_count))) status.textContent = `${Number(legacyConfig.keybox_count)} Keys Loaded`;
 }
 
 function bindFeatureCenter(panel, prefix) {
   const globalToggle = panel.querySelector(`#${prefix}_global`);
+  const secPatchToggle = panel.querySelector(`#${prefix}_sec_patch`);
+  const secPatchChildren = panel.querySelector(`#${prefix}_sec_patch_children`);
   const keyboxToggle = panel.querySelector(`#${prefix}_keybox`);
   const drmToggle = panel.querySelector(`#${prefix}_drm_passthrough`);
   const drmChildren = panel.querySelector(`#${prefix}_drm_children`);
   if (globalToggle) globalToggle.onchange = () => setLegacyToggle('global_mode',globalToggle.checked);
+  if (secPatchToggle) secPatchToggle.onchange = () => {
+    if (secPatchChildren) secPatchChildren.hidden = !secPatchToggle.checked;
+    savePolicy(next => { next.features.securityPatch = secPatchToggle.checked; }, secPatchToggle.checked ? 'Security Patch enabled' : 'Security Patch disabled');
+  };
   if (keyboxToggle) keyboxToggle.onchange = () => setLegacyToggle('auto_keybox_check',keyboxToggle.checked);
   if (drmToggle) drmToggle.onchange = () => {
     if (drmChildren) drmChildren.hidden = !drmToggle.checked;
@@ -450,9 +562,11 @@ function identityFeatureCardsMarkup(prefix) {
   const features = policyState ? policyState.features : {};
   const identityOn = policyIdentityEnabled();
   const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
-  const securityPatchRow = `<div class="row"><label for="${prefix}_securityPatch" style="flex:1;min-width:0;padding-right:10px"><strong>Security Patch</strong><span class="res-desc">Controls patch-level presentation independently from the other Identity child features.</span></label>${switchMarkup(`${prefix}_securityPatch`,Boolean(features && features.securityPatch),`data-policy-feature="securityPatch"`)}</div>`;
-  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('') + securityPatchRow;
-  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. Security Patch also has its own child switch so it can be disabled without disabling the other Identity paths.')}</div>`;
+  const globalIdentityOn = Boolean(legacyConfig && legacyConfig.global_identity_mode);
+
+  const globalIdentityRow = `<div class="row" style="padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--border-color,#333)"><label for="${prefix}_global_identity" style="flex:1;padding-right:10px"><strong>Global Identity</strong><span class="res-desc">Applies Build Identity properties system-wide across all apps. When OFF, Identity applies only to identity_target.txt and configured profiles. Requires reboot.</span></label>${switchMarkup(`${prefix}_global_identity`,globalIdentityOn)}</div>`;
+  const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
+  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity Engine</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${globalIdentityRow}${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. When Global Identity is off, these apply only to identity_target.txt and assigned profiles.')}</div>`;
   const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
   return `${core}${camera}`;
 }
@@ -464,14 +578,22 @@ function identityControlsMarkup(prefix) {
 function bindIdentityControls(panel, prefix) {
   const master = panel.querySelector(`#${prefix}_master`);
   const children = panel.querySelector(`#${prefix}_children`);
+  const globalIdentityToggle = panel.querySelector(`#${prefix}_global_identity`);
   const cameraToggle = panel.querySelector(`#${prefix}_camera_visibility`);
+  if (globalIdentityToggle) {
+    globalIdentityToggle.onchange = () => {
+      markPendingReboot('global_identity_mode');
+      globalIdentityToggle.classList.add('pending-reboot');
+      notify('Global Identity toggled. A device reboot is required for system properties to take full effect.', 'warning');
+      setLegacyToggle('global_identity_mode', globalIdentityToggle.checked);
+    };
+  }
   if (cameraToggle) cameraToggle.onchange = () => setLegacyToggle('camera_visibility',cameraToggle.checked);
   if (master) master.onchange = () => {
     const enabled = master.checked;
     if (children) children.hidden = !enabled;
     savePolicy(next => {
       FEATURE_KEYS.forEach(([key]) => { next.features[key] = enabled; });
-      next.features.securityPatch = enabled;
     }, enabled ? 'Identity enabled' : 'Identity disabled');
   };
   panel.querySelectorAll('[data-policy-feature]').forEach(toggle => {
@@ -643,25 +765,29 @@ function staticPages() {
   if (tabs && dashboardTab && keyboxTab && dashboardTab.nextElementSibling !== keyboxTab) tabs.insertBefore(keyboxTab,dashboardTab.nextSibling);
   const staleEffectiveTab = document.getElementById('tab_effective');
   if (staleEffectiveTab) staleEffectiveTab.remove();
-  const stalePatchTab = document.getElementById('tab_patch');
-  if (stalePatchTab) stalePatchTab.remove();
-  const stalePatchPage = document.getElementById('patch');
-  if (stalePatchPage) stalePatchPage.remove();
-  makeTab('profiles','Profiles','spoof');
+
+  makeTab('patch','Security Patch','spoof');
+  makeTab('profiles','Profiles','patch');
 
   const spoofPage = document.getElementById('spoof');
-  let patchHost = document.getElementById('ct_identity_patch');
-  if (!patchHost && spoofPage) {
-    patchHost = document.createElement('div');
-    patchHost.id = 'ct_identity_patch';
-    patchHost.innerHTML = `<div class="panel"><h3>Security Patch</h3><div id="ct_patch_identity_state" class="scope-note">Enable or disable Security Patch from its Dashboard switch.</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
-    const identityManager = [...spoofPage.querySelectorAll('.panel')].find(panel => /^Identity Manager$/i.test((panel.querySelector('h3')?.textContent || '').trim()));
-    if (identityManager) identityManager.insertAdjacentElement('afterend', patchHost);
-    else spoofPage.prepend(patchHost);
+  let banner = document.getElementById('ct_identity_scope_banner');
+  if (!banner && spoofPage) {
+    banner = document.createElement('div');
+    banner.id = 'ct_identity_scope_banner';
+    spoofPage.prepend(banner);
+  }
+  const stalePatchHost = document.getElementById('ct_identity_patch');
+  if (stalePatchHost) stalePatchHost.remove();
+
+  const patchPage = makePage('patch','spoof');
+  if (patchPage && !document.getElementById('ct_patch_identity_state')) {
+    patchPage.innerHTML = `<div class="panel"><h3>Security Patch</h3><div id="ct_patch_identity_state" class="scope-note">Enable or disable Security Patch from its Dashboard switch.</div><div id="ct_patch_children"><div class="row"><label for="ct_patch_auto" style="flex:1;padding-right:12px"><strong style="color:#fff">Auto Security Patch</strong><span class="res-desc">Use automatic mode for System, Vendor and Boot.</span></label>${switchMarkup('ct_patch_auto',false)}</div><div style="margin:12px 0"><label for="ct_patch_threshold">Stale ROM threshold (months)</label><input id="ct_patch_threshold" type="number" min="1" max="24" inputmode="numeric"></div><div id="ct_patch_components"></div><button id="ct_patch_save" class="primary" type="button" style="width:100%">Save Security Patch</button></div></div><div class="panel"><h3>Resolve for an app</h3><div class="scope-note">Shows captured, configured and effective values from the runtime resolver.</div><input id="ct_patch_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_patch_inspect" type="button" style="width:100%;margin-top:10px">Resolve</button><div id="ct_patch_result" class="scope-note" style="margin-top:12px"></div></div>`;
   }
 
-  const profilesPage = makePage('profiles','spoof');
-  profilesPage.innerHTML = `<div class="panel"><h3>Profiles</h3><div class="scope-note">App-centric configuration. Assign installed apps or wildcards, then choose privacy, identity, keybox and feature overrides.</div><div class="ct-toolbar"><button id="ct_profile_new" type="button" class="primary">New profile</button><button id="ct_profile_export" type="button">Export</button><button id="ct_profile_import" type="button">Import</button><input id="ct_profile_import_file" type="file" accept="application/json,.json" hidden></div><div id="ct_profile_list" style="margin-top:12px"></div></div><div class="panel" id="ct_profile_editor_panel" hidden><h3>Profile Editor</h3><div class="ct-choice-grid"><div><label for="ct_profile_name">Name</label><input id="ct_profile_name" type="text" maxlength="64"></div><div><label for="ct_profile_privacy">DRM / privacy mode</label><select id="ct_profile_privacy"><option value="inherit">Inherit</option><option value="isolate">Isolate - app-scoped pseudonymous DRM ID</option><option value="redact">Redact</option></select></div></div><div style="margin-top:12px"><label for="ct_profile_app_picker">Add installed app</label><div class="ct-toolbar"><input id="ct_profile_app_picker" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_profile_add_app" type="button">Add app</button></div><label for="ct_profile_apps" style="display:block;margin-top:10px">Assignments (one package or wildcard per line)</label><textarea id="ct_profile_apps" rows="4" maxlength="16384" placeholder="com.example.app&#10;com.example.*"></textarea><div id="ct_profile_app_chips" class="ct-chip-wrap"></div></div><div class="ct-choice-grid" style="margin-top:12px"><div><label for="ct_profile_template">Identity template</label><select id="ct_profile_template"><option value="">Inherit / none</option></select></div><div><label for="ct_profile_keybox">Keybox</label><select id="ct_profile_keybox"><option value="">Inherit / none</option></select></div></div><div class="section-header">Feature overrides</div><div id="ct_profile_features"></div><div class="section-header">Security Patch override</div><div class="row"><label for="ct_profile_patch_master" style="flex:1">Security Patch</label><select id="ct_profile_patch_master" style="max-width:180px"><option value="inherit">Inherit</option><option value="true">Enabled</option><option value="false">Disabled</option></select></div><div id="ct_profile_patch_children" hidden></div><div class="ct-toolbar" style="margin-top:16px"><button id="ct_profile_save" type="button" class="primary">Save profile</button><button id="ct_profile_clone" type="button">Clone</button><button id="ct_profile_delete" type="button" class="danger">Delete</button></div></div>`;
+  const profilesPage = makePage('profiles','patch');
+  if (!profilesPage.innerHTML) {
+    profilesPage.innerHTML = `<div class="panel"><h3>Profiles</h3><div class="scope-note">App-centric configuration. Assign installed apps or wildcards, then choose privacy, identity, keybox and feature overrides.</div><div class="ct-toolbar"><button id="ct_profile_new" type="button" class="primary">New profile</button><button id="ct_profile_export" type="button">Export</button><button id="ct_profile_import" type="button">Import</button><input id="ct_profile_import_file" type="file" accept="application/json,.json" hidden></div><div id="ct_profile_list" style="margin-top:12px"></div></div><div class="panel" id="ct_profile_editor_panel" hidden><h3>Profile Editor</h3><div class="ct-choice-grid"><div><label for="ct_profile_name">Name</label><input id="ct_profile_name" type="text" maxlength="64"></div><div><label for="ct_profile_privacy">DRM / privacy mode</label><select id="ct_profile_privacy"><option value="inherit">Inherit</option><option value="isolate">Isolate - app-scoped pseudonymous DRM ID</option><option value="redact">Redact</option></select></div></div><div style="margin-top:12px"><label for="ct_profile_app_picker">Add installed app</label><div class="ct-toolbar"><input id="ct_profile_app_picker" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_profile_add_app" type="button">Add app</button></div><label for="ct_profile_apps" style="display:block;margin-top:10px">Assignments (one package or wildcard per line)</label><textarea id="ct_profile_apps" rows="4" maxlength="16384" placeholder="com.example.app&#10;com.example.*"></textarea><div id="ct_profile_app_chips" class="ct-chip-wrap"></div></div><div class="ct-choice-grid" style="margin-top:12px"><div><label for="ct_profile_template">Identity template</label><select id="ct_profile_template"><option value="">Inherit / none</option></select></div><div><label for="ct_profile_keybox">Keybox</label><select id="ct_profile_keybox"><option value="">Inherit / none</option></select></div></div><div class="section-header">Feature overrides</div><div id="ct_profile_features"></div><div class="section-header">Security Patch override</div><div class="row"><label for="ct_profile_patch_master" style="flex:1">Security Patch</label><select id="ct_profile_patch_master" style="max-width:180px"><option value="inherit">Inherit</option><option value="true">Enabled</option><option value="false">Disabled</option></select></div><div id="ct_profile_patch_children" hidden></div><div class="ct-toolbar" style="margin-top:16px"><button id="ct_profile_save" type="button" class="primary">Save profile</button><button id="ct_profile_clone" type="button">Clone</button><button id="ct_profile_delete" type="button" class="danger">Delete</button></div></div>`;
+  }
 
   const appsPage = document.getElementById('apps');
   let effective = document.getElementById('ct_effective_apps_host');
@@ -671,6 +797,21 @@ function staticPages() {
     appsPage.appendChild(effective);
   }
   if (effective) effective.innerHTML = '<div class="panel"><h3>Effective State</h3><div class="scope-note">Inspect the exact resolver output for an installed application without exposing private key material.</div><input id="ct_effective_package" type="search" placeholder="com.example.app" autocomplete="off"><button id="ct_effective_load" class="primary" type="button" style="width:100%;margin-top:10px">Inspect</button></div><div class="panel"><h3>Resolved Configuration</h3><div id="ct_effective_result" class="scope-note">Select an app.</div></div>';
+}
+
+function renderIdentityScopeBanner() {
+  const banner = document.getElementById('ct_identity_scope_banner');
+  if (!banner) return;
+  const identityOn = policyIdentityEnabled();
+  const globalIdentityOn = Boolean(legacyConfig && legacyConfig.global_identity_mode);
+
+  if (!identityOn) {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #ef4444;background:rgba(239,68,68,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#ef4444;font-size:1.05em;">Identity: Disabled</strong><div style="margin-top:4px;color:#bbb">Identity engine is currently disabled on Dashboard. No system properties or identity modifications are active.</div></div>`;
+  } else if (globalIdentityOn) {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #3b82f6;background:rgba(59,130,246,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#60a5fa;font-size:1.05em;">Identity: Global Mode Active</strong><div style="margin-top:4px;color:#bbb">Identity system properties are applied system-wide to all applications.</div></div>`;
+  } else {
+    banner.innerHTML = `<div class="scope-note" style="border-left:4px solid #10b981;background:rgba(16,185,129,0.1);padding:12px 14px;margin-bottom:14px;border-radius:6px;"><strong style="color:#34d399;font-size:1.05em;">Identity: App-Scoped Mode Active</strong><div style="margin-top:4px;color:#bbb">Identity properties apply only to applications in identity_target.txt and configured profiles.</div></div>`;
+  }
 }
 
 function patchEditor(prefix, component, title, value, allowInherit) {
@@ -711,9 +852,9 @@ function renderPatchPage() {
   if (!children || !identityState || !auto || !threshold || !host || !saveButton) return;
   const patchOn = Boolean(policyState.features && policyState.features.securityPatch);
   children.hidden = !patchOn;
-  identityState.textContent = patchOn
-    ? 'Security Patch is enabled on Dashboard. Configure its patch modes here.'
-    : 'Enable Security Patch on Dashboard to configure its patch modes.';
+  identityState.innerHTML = patchOn
+    ? `<div style="border-left:4px solid #10b981;background:rgba(16,185,129,0.1);padding:8px 12px;border-radius:4px;margin-bottom:10px;"><strong style="color:#34d399">Security Patch: Enabled</strong><div style="margin-top:2px;color:#bbb">Security patch levels are actively managed according to the component modes below.</div></div>`
+    : `<div style="border-left:4px solid #ef4444;background:rgba(239,68,68,0.1);padding:8px 12px;border-radius:4px;margin-bottom:10px;"><strong style="color:#ef4444">Security Patch: Disabled</strong><div style="margin-top:2px;color:#bbb">Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.</div></div>`;
   auto.checked = isAutoPatch();
   threshold.value = String(policyState.securityPatch.automaticThresholdMonths || 6);
   host.innerHTML = PATCH_COMPONENTS.map(([key,title]) => patchEditor('ct_patch',key,title,policyState.securityPatch[key],false)).join('');
@@ -1289,6 +1430,7 @@ function renderAll() {
   if (!policyState) return;
   renderFeatureCenter();
   renderIdentityControls();
+  renderIdentityScopeBanner();
   installIdentityBanner();
   renderPatchPage();
   renderProfiles();
@@ -1296,6 +1438,7 @@ function renderAll() {
   if (inspect) inspect.onclick = inspectEffective;
   removeLegacySurfaces();
   sanitizeResourceTable();
+  refreshDynamicVisibility();
   refreshPresentation();
 }
 

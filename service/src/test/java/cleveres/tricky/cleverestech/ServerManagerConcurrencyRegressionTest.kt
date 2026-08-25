@@ -47,7 +47,7 @@ class ServerManagerConcurrencyRegressionTest {
         var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
         repeat(6) {
             val candidate = File(current, "service/src/main/java/cleveres/tricky/cleverestech/ServerManager.kt")
-            if (candidate.isFile) return candidate.readText()
+            if (candidate.isFile) return candidate.readText().replace("\r\n", "\n")
             current = current.parentFile ?: return@repeat
         }
         error("Repository root not found")

@@ -131,10 +131,23 @@ object Config {
     @Volatile
     private var targetState = TargetState(PackageTrie())
 
+    private class IdentityTargetState(
+        val packages: PackageTrie<Boolean>,
+    ) {
+        val cache = ConcurrentHashMap<Int, CachedDecision>()
+    }
+
+    @Volatile
+    private var identityTargetState = IdentityTargetState(PackageTrie())
+
     private val rkpInfrastructureCache = ConcurrentHashMap<Int, CachedDecision>()
 
     @Volatile
     var isGlobalMode = false
+        private set
+
+    @Volatile
+    var isGlobalIdentityMode = false
         private set
 
     @Volatile
@@ -401,6 +414,31 @@ object Config {
             Logger.e("failed to update target files", it)
         }
 
+    private fun updateIdentityTargetPackages(f: File?) =
+        runCatching {
+            if (isGlobalIdentityMode) {
+                identityTargetState = IdentityTargetState(PackageTrie())
+                Logger.i("Global Identity mode is enabled, skipping updateIdentityTargetPackages execution.")
+                return@runCatching
+            }
+            Logger.d("updateIdentityTargetPackages: reading ${f?.absolutePath} (exists=${f?.exists()})")
+            val packages =
+                if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                    require(Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                        "identity_target.txt must be a regular file"
+                    }
+                    val text = readUtf8FileSnapshotBounded(f, 0, MAX_TARGET_FILE_BYTES)
+                    parsePackages(text.lineSequence(), MAX_TARGET_PACKAGE_RULES)
+                } else {
+                    Logger.d("updateIdentityTargetPackages: identity target file missing or null, using empty package list")
+                    parsePackages(emptySequence())
+                }
+            identityTargetState = IdentityTargetState(packages)
+            Logger.i { "Updated identity target packages: ${packages.size}" }
+        }.onFailure {
+            Logger.e("failed to update identity target files", it)
+        }
+
     private data class KeyboxFileCache(
         val snapshotSha256: String,
         val keyboxes: List<CertHack.KeyBox>,
@@ -557,6 +595,12 @@ object Config {
         Logger.i("Global mode is ${if (isGlobalMode) "enabled" else "disabled"}")
     }
 
+    private fun updateGlobalIdentityMode(f: File?) {
+        isGlobalIdentityMode = isRegularFlagFile(f)
+        identityTargetState.cache.clear()
+        Logger.i("Global Identity mode is ${if (isGlobalIdentityMode) "enabled" else "disabled"}")
+    }
+
     private fun updateSpoofEnabled(f: File?) {
         val enabled = isRegularFlagFile(f)
         val changed = isSpoofEnabled != enabled
@@ -625,6 +669,11 @@ object Config {
                 updateGlobalMode(file)
                 updateTargetPackages(File(root, TARGET_FILE))
             }
+            GLOBAL_IDENTITY_MODE_FILE -> {
+                updateGlobalIdentityMode(file)
+                updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
+            }
+            IDENTITY_TARGET_FILE -> updateIdentityTargetPackages(file)
             TEE_BROKEN_MODE_FILE -> {
                 updateTeeBrokenMode(file)
                 updateTargetPackages(File(root, TARGET_FILE))
@@ -1404,7 +1453,7 @@ object Config {
         )
     }
 
-    private fun updateSecurityPatch(f: File?) =
+    internal fun updateSecurityPatch(f: File?) =
         runCatching {
             val newPatch = mutableMapOf<String, Any>()
             val legacyRules = PackageTrie<Any>()
@@ -1517,10 +1566,12 @@ object Config {
     private const val CONFIG_PATH = "/data/adb/cleverestricky"
     private const val KEYBOX_DIR = "keyboxes"
     private const val TARGET_FILE = "target.txt"
+    private const val IDENTITY_TARGET_FILE = "identity_target.txt"
     private const val KEYBOX_FILE = "keybox.xml"
     private const val SPOOF_ENABLED_FILE = "spoof_enabled"
     private const val BUILD_IDENTITY_FILE = "spoof_build_identity"
     private const val GLOBAL_MODE_FILE = "global_mode"
+    private const val GLOBAL_IDENTITY_MODE_FILE = "global_identity_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val TELEPHONY_FILE = "telephony"
     private const val CAMERA_VISIBILITY_FILE = "camera_visibility"
@@ -1697,6 +1748,7 @@ object Config {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
                 SecureFile.touch(File(root, BUILD_IDENTITY_FILE), 384)
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
+                SecureFile.touch(File(root, GLOBAL_IDENTITY_MODE_FILE), 384)
                 removeConfigFiles(TEE_BROKEN_MODE_FILE, BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, DRM_PASSTHROUGH_FILE)
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
@@ -1705,14 +1757,14 @@ object Config {
             }
             "daily" -> {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
-                removeConfigFiles(GLOBAL_MODE_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE, BootLogic.FILE_HIDE_PROPS,
+                removeConfigFiles(GLOBAL_MODE_FILE, GLOBAL_IDENTITY_MODE_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE, BootLogic.FILE_HIDE_PROPS,
                     BootLogic.FILE_SPOOF_CN, TELEPHONY_FILE, BUILD_IDENTITY_FILE)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
             }
             "minimal" -> {
-                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, GLOBAL_MODE_FILE, TEE_BROKEN_MODE_FILE,
+                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, GLOBAL_MODE_FILE, GLOBAL_IDENTITY_MODE_FILE, TEE_BROKEN_MODE_FILE,
                     RANDOM_ON_BOOT_FILE, BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, AUTO_KEYBOX_CHECK_FILE,
                     TELEPHONY_FILE)
                 SecureFile.touch(File(root, DRM_PASSTHROUGH_FILE), 384)
@@ -1720,13 +1772,14 @@ object Config {
             "default" -> {
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
-                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE,
+                removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, GLOBAL_IDENTITY_MODE_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE,
                     BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, TELEPHONY_FILE, RKP_PASSTHROUGH_FILE, DRM_PASSTHROUGH_FILE)
             }
         }
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
+        updateGlobalIdentityMode(File(root, GLOBAL_IDENTITY_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
         updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
@@ -1734,6 +1787,7 @@ object Config {
         updateDrmPassthrough(File(root, DRM_PASSTHROUGH_FILE))
         updateBuildVars(File(root, SPOOF_BUILD_VARS_FILE))
         updateTargetPackages(File(root, TARGET_FILE))
+        updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
         if (profile == "default") PolicyState.applyRecommendedDefaults() else PolicyState.synchronizeBuiltInProfile()
         updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
         KeyboxAutoCleaner.setEnabled(isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE)))
@@ -1809,6 +1863,7 @@ object Config {
             val f = when (event) { CLOSE_WRITE, MOVED_TO -> File(root, path); DELETE, MOVED_FROM -> null; else -> return }
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
+                IDENTITY_TARGET_FILE -> updateIdentityTargetPackages(f)
                 KEYBOX_FILE -> updateKeyBoxes()
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
@@ -1820,6 +1875,7 @@ object Config {
                 SPOOF_ENABLED_FILE -> { updateSpoofEnabled(f); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
                 BUILD_IDENTITY_FILE -> updateBuildIdentity(f)
                 GLOBAL_MODE_FILE -> { updateGlobalMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
+                GLOBAL_IDENTITY_MODE_FILE -> { updateGlobalIdentityMode(f); updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE)) }
                 TEE_BROKEN_MODE_FILE -> { updateTeeBrokenMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
                 TELEPHONY_FILE -> updateTelephony(f)
                 CAMERA_VISIBILITY_FILE -> updateCameraVisibility(f)
@@ -1854,6 +1910,7 @@ object Config {
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
+        updateGlobalIdentityMode(File(root, GLOBAL_IDENTITY_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
         updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
@@ -1878,6 +1935,8 @@ object Config {
             Logger.i("Config.initialize: global mode active; all application UIDs are targeted")
             updateTargetPackages(File(root, TARGET_FILE))
         }
+        val identityTargetFile = File(root, IDENTITY_TARGET_FILE)
+        if (identityTargetFile.exists()) updateIdentityTargetPackages(identityTargetFile) else updateIdentityTargetPackages(null)
         updateKeyBoxesSync()
         ConfigObserver.startWatching()
         KeyboxDirObserver.startWatching()
@@ -2037,6 +2096,19 @@ object Config {
 
     fun needHack(callingUid: Int): Boolean = isTargetedUid(callingUid)
 
+    fun isIdentityTargeted(callingUid: Int): Boolean {
+        if (callingUid < FIRST_APPLICATION_UID) return false
+        if (isProtectedInfrastructureUid(callingUid)) return false
+        if (isGlobalIdentityMode) return true
+        if (getAppConfig(callingUid) != null) return true
+        val state = identityTargetState
+        val cached = getCachedDecision(state.cache, callingUid)
+        if (cached != null) return cached
+        val result = checkPackages(state.packages, callingUid)
+        cacheDecision(state.cache, callingUid, result)
+        return result
+    }
+
     @androidx.annotation.VisibleForTesting
     fun reset() {
         ConfigObserver.stopWatching()
@@ -2050,6 +2122,9 @@ object Config {
         iPm = null
         appConfigState = AppConfigState(PackageTrie())
         targetState = TargetState(PackageTrie())
+        identityTargetState = IdentityTargetState(PackageTrie())
+        isGlobalMode = false
+        isGlobalIdentityMode = false
         rkpInfrastructureCache.clear()
         buildVars = emptyMap()
         attestationIds = emptyMap()

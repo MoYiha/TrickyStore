@@ -943,8 +943,9 @@
                     }
                 } catch (error) {
                     input.checked = !requested;
-                    input.disabled = false;
                     if (typeof global.notify === 'function') global.notify(error.message || 'Could not update profile', 'error');
+                } finally {
+                    input.disabled = false;
                 }
             });
             label.append(text, input);
@@ -980,11 +981,11 @@
         await execHostCommand(command, 5000);
         return Boolean(enabled);
     }
-
     async function installCronAutoIdentity() {
         const document = global.document;
         const identityPanel = document && document.querySelector('#spoof .panel');
-        const autoIdentityNote = identityPanel && identityPanel.querySelector('.scope-note');
+        const notes = identityPanel ? Array.from(identityPanel.querySelectorAll('.scope-note')) : [];
+        const autoIdentityNote = notes.length > 1 ? notes[notes.length - 1] : notes[0];
         if (!identityPanel || !autoIdentityNote || document.getElementById('ct_cron_auto_identity_row')) return Boolean(identityPanel);
 
         const row = document.createElement('div');

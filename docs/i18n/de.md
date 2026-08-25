@@ -16,9 +16,15 @@ Attestation-Identity benötigt eine aktive verifizierte Keybox. DRM Identifier I
 <a id="application-scope"></a>
 ## Application Scope
 
-Bestimmt, welche Android-App-UIDs Zertifikat- oder Identitätskompatibilität erhalten. Targeted Mode nutzt exakte Pakete oder begrenzte Wildcards aus `target.txt` und löst sie über Package Manager zum realen Caller auf. Shared UIDs teilen Binder-Identität.
+Bestimmt, welche Android-App-UIDs Zertifikat-, Keybox- oder Identitätskompatibilität erhalten. Das Modul bietet zwei getrennte Zieldateien und zwei globale Modi:
 
-Global Mode benötigt keinen Target-Eintrag, schließt Systemidentitäten und geschützte Infrastruktur aber weiter aus. Unbekannte Paketauflösung schlägt geschlossen fehl. Regeln und kurzer Decision-Cache werden gemeinsam ersetzt.
+- **Keybox-Ziele (`target.txt`)**: Definiert Pakete, die bei deaktiviertem globalen Keybox-Modus ein benutzerdefiniertes Keybox und TEE-Attestation-Zertifikat erhalten.
+- **Identitäts-Ziele (`identity_target.txt`)**: Definiert Pakete für App-basierte Identitätseigenschaften (Build, Telephony, Region) bei deaktiviertem globalen Identitätsmodus.
+- **Globaler Keybox-Modus**: Wendet benutzerdefinierte Keyboxen auf alle Benutzeranwendungen an, ohne `target.txt` zu erfordern. System- und Infrastruktur-UIDs bleiben geschützt.
+- **Globaler Identitäts-Modus**: Wendet Build-Eigenschaften systemweit auf das gesamte Gerät an. Deaktiviert betrifft Identität nur `identity_target.txt` und zugewiesene Profile.
+- **Unabhängiges Sicherheitspatch-Modul**: Das Sicherheitspatch kann unabhängig von der Identitäts-Engine in der Übersicht gesteuert werden.
+
+Shared UIDs teilen die Binder-Identität. Ungültige Aktualisierungen schlagen geschlossen fehl und behalten den letzten gültigen Zustand bei.
 
 <a id="attestation"></a>
 ## Attestation

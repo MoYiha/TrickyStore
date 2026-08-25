@@ -64,6 +64,40 @@ class ConfigTargetStateTest {
         assertTrue("Core targeting must remain active while identity spoofing is off", Config.needHack(uid))
     }
 
+    @Test
+    fun `isIdentityTargeted behaves correctly in targeted mode and global identity mode`() {
+        val appUid = 10_010
+        val systemUid = 1000
+        val nonTargetUid = 10_011
+
+        mockPackage(appUid, arrayOf("com.android.vending"))
+        mockPackage(systemUid, arrayOf("android"))
+        mockPackage(nonTargetUid, arrayOf("com.example.untargeted"))
+
+        val trie = PackageTrie<Boolean>()
+        trie.add("com.android.vending", true)
+        val idState = createIdentityTargetState(trie)
+        setPrivateField(Config, "identityTargetState", idState)
+        setPrivateField(Config, "isGlobalIdentityMode", false)
+
+        assertTrue("Targeted app in identity_target.txt must be targeted for identity", Config.isIdentityTargeted(appUid))
+        assertFalse("Untargeted app must not be targeted for identity when global identity mode is off", Config.isIdentityTargeted(nonTargetUid))
+        assertFalse("System UID must never be targeted for identity", Config.isIdentityTargeted(systemUid))
+
+        // Enable Global Identity Mode
+        setPrivateField(Config, "isGlobalIdentityMode", true)
+        assertTrue("Untargeted app must be targeted when global identity mode is on", Config.isIdentityTargeted(nonTargetUid))
+        assertTrue("Targeted app must still be targeted when global identity mode is on", Config.isIdentityTargeted(appUid))
+        assertFalse("System UID must still be protected when global identity mode is on", Config.isIdentityTargeted(systemUid))
+    }
+
+    private fun createIdentityTargetState(packages: PackageTrie<Boolean>): Any {
+        val clazz = Class.forName("cleveres.tricky.cleverestech.Config\$IdentityTargetState")
+        val constructor = clazz.getDeclaredConstructor(PackageTrie::class.java)
+        constructor.isAccessible = true
+        return constructor.newInstance(packages)
+    }
+
     private fun createTargetState(hack: PackageTrie<Boolean>): Any {
         val clazz = Class.forName("cleveres.tricky.cleverestech.Config\$TargetState")
         val constructor = clazz.getDeclaredConstructor(PackageTrie::class.java)

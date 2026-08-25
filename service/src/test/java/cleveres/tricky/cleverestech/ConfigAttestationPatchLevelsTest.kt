@@ -113,10 +113,7 @@ class ConfigAttestationPatchLevelsTest {
     }
 
     private fun updateSecurityPatch(file: File) {
-        val method =
-            Config::class.java.declaredMethods.first { it.name.startsWith("updateSecurityPatch") }
-        method.isAccessible = true
-        method.invoke(Config, file)
+        Config.updateSecurityPatch(file)
     }
 
     private fun cachePackages(

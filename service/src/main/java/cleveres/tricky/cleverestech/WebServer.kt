@@ -1093,6 +1093,7 @@ class WebServer(
             val files = JSONArray()
             files.put("keybox.xml")
             files.put("target.txt")
+            files.put("identity_target.txt")
             files.put("security_patch.txt")
             files.put("spoof_build_vars")
             files.put("app_config")
@@ -2238,10 +2239,12 @@ class WebServer(
                 "telephony",
                 "camera_visibility",
                 "drm_passthrough",
+                "global_identity_mode",
             )
         private val EDITABLE_CONFIG_FILES =
             setOf(
                 "target.txt",
+                "identity_target.txt",
                 "security_patch.txt",
                 "spoof_build_vars",
                 "app_config",
@@ -2253,6 +2256,7 @@ class WebServer(
         private val BACKUP_CONFIG_FILES =
             setOf(
                 "target.txt",
+                "identity_target.txt",
                 "security_patch.txt",
                 "spoof_build_vars",
                 "app_config",
@@ -2263,6 +2267,7 @@ class WebServer(
                 "custom_templates",
                 "spoof_enabled",
                 "spoof_build_identity",
+                "global_identity_mode",
                 "global_mode",
                 "tee_broken_mode",
                 "auto_keybox_check",
@@ -2382,7 +2387,7 @@ class WebServer(
             if (filename == PolicyState.STATE_FILE) {
                 return PolicyState.validateStateJson(content, validateReferences = false).isSuccess
             }
-            if (filename == "target.txt") {
+            if (filename == "target.txt" || filename == "identity_target.txt") {
                 var ruleCount = 0
                 val lines = content.lineSequence()
                 return lines.all {

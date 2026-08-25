@@ -146,6 +146,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
     private fun editableContent(filename: String): String =
         when (filename) {
             "target.txt" -> "com.example.editor\n"
+            "identity_target.txt" -> "com.example.identity\n"
             "security_patch.txt" -> "system=2026-08-05\n"
             "spoof_build_vars" -> "MODEL=Pixel API37 Editor\n"
             "app_config" -> "com.example.editor null null redact\n"
@@ -226,6 +227,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
         private val EDITABLE_CONFIG_FILES =
             listOf(
                 "target.txt",
+                "identity_target.txt",
                 "security_patch.txt",
                 "spoof_build_vars",
                 "app_config",
@@ -247,6 +249,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
                 "telephony",
                 "camera_visibility",
                 "drm_passthrough",
+                "global_identity_mode",
             )
 
         private val PROFILE_MARKERS =
@@ -258,6 +261,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
                     "auto_keybox_check",
                     "random_on_boot",
                     "telephony",
+                    "global_identity_mode",
                 ),
                 "daily" to setOf(
                     "spoof_enabled",

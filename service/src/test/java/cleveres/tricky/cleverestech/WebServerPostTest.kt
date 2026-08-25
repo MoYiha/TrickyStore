@@ -97,4 +97,45 @@ class WebServerPostTest {
         assertTrue("File should exist", savedFile.exists())
         assertEquals("File content mismatch", "BODY_CONTENT", savedFile.readText())
     }
+
+    @Test
+    fun testSaveIdentityTargetFile() {
+        val port = server.listeningPort
+        val token = server.token
+        val saveUrl = URL("http://localhost:$port/api/save?token=$token")
+
+        val conn = saveUrl.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+        val postData = "filename=identity_target.txt&content=com.android.vending%0Aio.github.vvb2060.keyattestation"
+        val postDataBytes = postData.toByteArray(StandardCharsets.UTF_8)
+
+        conn.outputStream.use { it.write(postDataBytes) }
+
+        assertEquals(200, conn.responseCode)
+        val savedFile = File(configDir, "identity_target.txt")
+        assertTrue("identity_target.txt should exist", savedFile.exists())
+        assertEquals("com.android.vending\nio.github.vvb2060.keyattestation", savedFile.readText())
+    }
+
+    @Test
+    fun testSetGlobalIdentityMode() {
+        val port = server.listeningPort
+        val token = server.token
+        val toggleUrl = URL("http://localhost:$port/api/toggle?token=$token")
+
+        val conn = toggleUrl.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+        val postData = "setting=global_identity_mode&value=true"
+        conn.outputStream.use { it.write(postData.toByteArray(StandardCharsets.UTF_8)) }
+
+        assertEquals(200, conn.responseCode)
+        val savedFile = File(configDir, "global_identity_mode")
+        assertTrue("global_identity_mode should exist", savedFile.exists())
+    }
 }

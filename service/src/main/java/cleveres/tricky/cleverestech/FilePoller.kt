@@ -19,7 +19,9 @@ class FilePoller(
         val exists: Boolean,
         val lastModified: Long,
         val length: Long,
+        val creationTime: Long,
         val fileKey: Any?,
+        val contentHash: Int?,
     )
 
     @Volatile
@@ -188,17 +190,26 @@ class FilePoller(
                     LinkOption.NOFOLLOW_LINKS,
                 )
             if (!attributes.isRegularFile) {
-                Snapshot(false, 0L, 0L, null)
+                Snapshot(false, 0L, 0L, 0L, null, null)
             } else {
+                val fileKey = attributes.fileKey()
+                val contentHash =
+                    if (fileKey == null) {
+                        runCatching { file.readBytes().contentHashCode() }.getOrNull()
+                    } else {
+                        null
+                    }
                 Snapshot(
                     exists = true,
                     lastModified = attributes.lastModifiedTime().toMillis(),
                     length = attributes.size(),
-                    fileKey = attributes.fileKey(),
+                    creationTime = attributes.creationTime().toMillis(),
+                    fileKey = fileKey,
+                    contentHash = contentHash,
                 )
             }
         } catch (_: IOException) {
-            Snapshot(false, 0L, 0L, null)
+            Snapshot(false, 0L, 0L, 0L, null, null)
         }
     }
 }

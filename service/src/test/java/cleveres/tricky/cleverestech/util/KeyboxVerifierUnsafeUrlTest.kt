@@ -10,10 +10,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
-
 class KeyboxVerifierUnsafeUrlTest {
+    private lateinit var tempDir: java.io.File
+
     @Before
     fun setUp() {
+        tempDir = java.nio.file.Files.createTempDirectory("unsafe_url_test").toFile()
+        KeyboxVerifier.setCacheRootForTesting(tempDir)
         KeyboxVerifier.clearMemoryCacheForTesting()
         // Override CrlBackend to fail when parsing invalid JSON (which represents unparseable responses)
         CrlBackend.refreshOverride = { raw ->
@@ -38,7 +41,9 @@ class KeyboxVerifierUnsafeUrlTest {
     @After
     fun tearDown() {
         KeyboxVerifier.resetCrlUrlForTesting()
+        KeyboxVerifier.resetCacheRootForTesting()
         CrlBackend.resetForTesting()
+        tempDir.deleteRecursively()
     }
 
     @Test

@@ -1,5 +1,29 @@
 # Changelog
 
+## V2.6.3
+
+### Dual target scopes and Global Identity
+
+- **Separated target scopes for Keybox and Identity properties.** Standard Keybox attestation spoofing uses `target.txt`, while Build, Attestation, and Telephony identity properties use `identity_target.txt`.
+- **Added Global Identity mode.** The new `global_identity_mode` toggle allows Build Identity properties to apply system-wide across all applications (when enabled) or strictly to targeted packages and assigned profiles (when disabled).
+- **Persistent reboot-pending visual indicators.** Switches requiring a device restart to take full effect (such as Global Identity) remain highlighted in amber/yellow (`.pending-reboot`) across WebUI sessions until rebooted.
+
+### Standalone Security Patch architecture
+
+- **Security Patch decoupled from Identity Engine.** Security Patch now has its own standalone top-level card on Dashboard (`#ct_dash_sec_patch`) and its own dedicated top-level navigation tab (`#tab_patch`) and configuration page (`#patch`).
+- **Independent feature mutations.** Toggling the Identity Engine master switch affects only core identity features, preserving Security Patch state independently.
+
+### Dynamic navigation and cleaner detail views
+
+- **Dashboard-driven menu visibility.** Navigation tabs for Security Patch and Identity are displayed only when their corresponding features are enabled on Dashboard, keeping the interface uncluttered. Disabling a feature while viewing its page smoothly routes back to the Dashboard.
+- **Context-aware detail panels.** Sub-feature sections on the Identity page (such as Telephony identifiers, Hardware/Camera count, and Kernel Identity) adapt dynamically based on active feature toggles.
+- **Multilingual status banners.** Added localized informative banners to Identity and Security Patch pages (supporting English, Turkish, Chinese, and others) clarifying active operation modes.
+
+### Platform validation and CI hardening
+
+- **Android 17 API 37 contract verification.** Updated maximum profile markers and instrumentation test matrices to validate `global_identity_mode` on Android 17 API 37 platform emulators.
+- **Hardened build and security workflows.** Ensured 100% pass across native ELF hardening, Bouncy Castle security checks, WebUI behavior tests, and CodeQL static analysis.
+
 ## V2.6.2
 
 ### Safer keybox and CBOX handling
