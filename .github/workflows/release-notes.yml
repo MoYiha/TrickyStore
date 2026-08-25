@@ -96,4 +96,12 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --json body \
             --jq '.body' > "$RUNNER_TEMP/published-release-body.md"
-          diff -u release-notes.md "$RUNNER_TEMP/published-release-body.md"
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          canonical = Path("release-notes.md").read_text().strip()
+          published = Path(sys.argv[1]).read_text().strip()
+          if canonical != published:
+              print(f"Published release body does not match canonical release notes:\nCanonical:\n{canonical}\n\nPublished:\n{published}", file=sys.stderr)
+              sys.exit(1)
+          PY "$RUNNER_TEMP/published-release-body.md"
