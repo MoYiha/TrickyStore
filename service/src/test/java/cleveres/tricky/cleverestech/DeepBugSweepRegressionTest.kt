@@ -136,6 +136,64 @@ class DeepBugSweepRegressionTest {
     }
 
     @Test
+    fun `keybox validation wipes parser copy without retaining original payload`() {
+        val root = Files.createTempDirectory("cleveres-keybox-parser-copy").toFile()
+        var parserInput: ByteArray? = null
+        var stagedInput: ByteArray? = null
+        try {
+            val zip = ByteArrayOutputStream()
+            ZipOutputStream(zip).use { zos ->
+                zos.putNextEntry(ZipEntry("keybox.xml"))
+                zos.write("private-key-material-placeholder".toByteArray())
+                zos.closeEntry()
+            }
+            KeyboxLoader.parserOverride = { input, _ ->
+                parserInput = input
+                emptyList()
+            }
+            WebServer.backupEntryWipeObserver = { stagedInput = it.copyOf() }
+
+            assertThrows(IOException::class.java) {
+                WebServer.restoreBackupZip(root, ByteArrayInputStream(zip.toByteArray()))
+            }
+
+            assertNotNull(parserInput)
+            assertTrue(requireNotNull(parserInput).all { it == 0.toByte() })
+            assertNotNull(stagedInput)
+            assertTrue(requireNotNull(stagedInput).all { it == 0.toByte() })
+        } finally {
+            KeyboxLoader.parserOverride = null
+            WebServer.backupEntryWipeObserver = null
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `invalid privacy seed is rejected and zeroized`() {
+        val root = Files.createTempDirectory("cleveres-privacy-seed-zeroize").toFile()
+        var wiped: ByteArray? = null
+        try {
+            val zip = ByteArrayOutputStream()
+            ZipOutputStream(zip).use { zos ->
+                zos.putNextEntry(ZipEntry("privacy_seed"))
+                zos.write("not-a-privacy-seed".toByteArray())
+                zos.closeEntry()
+            }
+            WebServer.backupEntryWipeObserver = { wiped = it.copyOf() }
+
+            assertThrows(IOException::class.java) {
+                WebServer.restoreBackupZip(root, ByteArrayInputStream(zip.toByteArray()))
+            }
+
+            assertNotNull(wiped)
+            assertTrue(requireNotNull(wiped).all { it == 0.toByte() })
+        } finally {
+            WebServer.backupEntryWipeObserver = null
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `published policy validation rejects unavailable references without changing active state`() {
         val root = Files.createTempDirectory("cleveres-policy-validation").toFile()
         try {
@@ -168,6 +226,18 @@ class DeepBugSweepRegressionTest {
             assertFalse(PolicyState.stateJson().getJSONObject("features").getBoolean("buildIdentity"))
         } finally {
             PolicyState.resetForTesting()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `restore template initialization does not materialize missing defaults`() {
+        val root = Files.createTempDirectory("cleveres-restore-templates").toFile()
+        try {
+            DeviceTemplateManager.initialize(root, persistBuiltInTemplates = false)
+            assertTrue(DeviceTemplateManager.listTemplates().isNotEmpty())
+            assertFalse(File(root, "templates.json").exists())
+        } finally {
             root.deleteRecursively()
         }
     }

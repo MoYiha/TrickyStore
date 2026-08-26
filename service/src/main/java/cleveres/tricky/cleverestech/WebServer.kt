@@ -229,7 +229,7 @@ class WebServer(
         )
 
     private fun refreshRuntimeAfterRestoreRollback(configDir: File) {
-        DeviceTemplateManager.initialize(configDir)
+        DeviceTemplateManager.initialize(configDir, persistBuiltInTemplates = false)
         WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
         Config.refreshRestoredConfiguration().getOrThrow()
         if (!updateKeyboxesFromConfiguredRevocationSource()) {
@@ -2072,7 +2072,7 @@ class WebServer(
                                 configDir,
                                 ByteArrayInputStream(decrypted),
                                 afterMutation = {
-                                    DeviceTemplateManager.initialize(configDir)
+                                    DeviceTemplateManager.initialize(configDir, persistBuiltInTemplates = false)
                                     PolicyState.validatePublishedState().getOrThrow()
                                     WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
                                     Config.refreshRestoredConfiguration().getOrThrow()
@@ -2867,6 +2867,21 @@ class WebServer(
             backupEntryWipeObserver?.let { observer -> runCatching { observer(bytes) } }
         }
 
+        private fun isValidPrivacySeedBytes(bytes: ByteArray): Boolean {
+            var start = 0
+            var end = bytes.size
+            while (start < end && (bytes[start].toInt() and 0xff) <= 0x20) start++
+            while (end > start && (bytes[end - 1].toInt() and 0xff) <= 0x20) end--
+            if (end - start != 64) return false
+            for (index in start until end) {
+                val value = bytes[index].toInt() and 0xff
+                if (!((value in '0'.code..'9'.code) || (value in 'a'.code..'f'.code) || (value in 'A'.code..'F'.code))) {
+                    return false
+                }
+            }
+            return true
+        }
+
         private fun readAndValidateZipEntry(
             input: InputStream,
             name: String,
@@ -2916,8 +2931,19 @@ class WebServer(
                 return
             }
             if (isBackupKeyboxEntry(name)) {
-                if (KeyboxLoader.parse(bytes.copyOf(), name).isEmpty()) {
-                    throw IOException("Backup keybox is empty: $name")
+                val parserInput = bytes.copyOf()
+                try {
+                    if (KeyboxLoader.parse(parserInput, name).isEmpty()) {
+                        throw IOException("Backup keybox is empty: $name")
+                    }
+                } finally {
+                    parserInput.fill(0)
+                }
+                return
+            }
+            if (name == "privacy_seed") {
+                if (!isValidPrivacySeedBytes(bytes)) {
+                    throw IOException("Backup privacy seed is invalid: $name")
                 }
                 return
             }

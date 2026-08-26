@@ -206,12 +206,15 @@ object DeviceTemplateManager {
         )
 
     @Synchronized
-    fun initialize(configDir: File) {
+    fun initialize(
+        configDir: File,
+        persistBuiltInTemplates: Boolean = true,
+    ) {
         val generation = initializationGeneration.incrementAndGet()
         templates = builtInTemplates.associateByTo(LinkedHashMap()) { it.id.lowercase() }
         cachedList = null
         cancelPendingInitialization()
-        initFuture = executor.submit { loadCustomTemplates(configDir, generation) }
+        initFuture = executor.submit { loadCustomTemplates(configDir, generation, persistBuiltInTemplates) }
     }
 
     @Synchronized
@@ -229,6 +232,7 @@ object DeviceTemplateManager {
     private fun loadCustomTemplates(
         configDir: File,
         generation: Long,
+        persistBuiltInTemplates: Boolean,
     ) {
         val file = File(configDir, TEMPLATES_FILE)
         if (Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -257,9 +261,11 @@ object DeviceTemplateManager {
                 Logger.e("Failed to load templates.json", e)
             }
         } else if (!file.exists()) {
-            synchronized(this) {
-                if (initializationGeneration.get() != generation) return
-                saveTemplatesInternal(configDir)
+            if (persistBuiltInTemplates) {
+                synchronized(this) {
+                    if (initializationGeneration.get() != generation) return
+                    saveTemplatesInternal(configDir)
+                }
             }
         } else {
             Logger.e("Refusing non-regular templates.json")
