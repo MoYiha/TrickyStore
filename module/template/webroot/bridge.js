@@ -1119,31 +1119,6 @@
         continueIdentitySaveWrapper(0);
     }
 
-    function installIdentityPolicyTransitionWatcher() {
-        const document = global.document;
-        if (!document || !document.documentElement || document.documentElement.dataset.ctIdentityTransitionWatcher) return;
-        document.documentElement.dataset.ctIdentityTransitionWatcher = '1';
-        document.addEventListener('change', event => {
-            const target = event.target;
-            if (!target || target.type !== 'checkbox') return;
-            const feature = target.dataset && target.dataset.policyFeature;
-            const isBuildOrRegion = feature === 'buildIdentity' || feature === 'regionIdentity';
-            const isMaster = typeof target.id === 'string' && /_identity_master$/.test(target.id);
-            if (!isBuildOrRegion && !isMaster) return;
-            const previous = latestPolicyState && latestPolicyState.features ? latestPolicyState.features : {};
-            const previouslyRuntimeVisible = Boolean(previous.buildIdentity || previous.regionIdentity);
-            global.setTimeout(async () => {
-                try {
-                    const state = await readPolicyState();
-                    const enabled = Boolean(state.features && (state.features.buildIdentity || state.features.regionIdentity));
-                    if (enabled) notifyLiveIdentityResult(await applyIdentityLive(state));
-                    else if (previouslyRuntimeVisible) notifyExtension('Disabling an already applied Build/region identity may require a reboot to restore original properties.', 'error');
-                } catch (_) {
-                }
-            }, 500);
-        }, true);
-    }
-
     function installAutoIdentityOwner() {
         const current = global.applyAutoIdentity;
         if (typeof current !== 'function' || current.ctAutoIdentityOwner) return false;
@@ -1230,7 +1205,6 @@
         installCronAutoIdentity().catch(() => {});
         const logsReady = installLogsOwner() || (typeof global.fetchLogs === 'function' && global.fetchLogs.ctCleveresLogs === true);
         installIdentitySaveWrapper();
-        installIdentityPolicyTransitionWatcher();
         const autoIdentityReady = installAutoIdentityOwner() || (typeof global.applyAutoIdentity === 'function' && global.applyAutoIdentity.ctAutoIdentityOwner === true);
 
         const identityPanel = document.querySelector('#spoof .panel');

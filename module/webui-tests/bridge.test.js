@@ -4,6 +4,7 @@ const path = require('path');
 const vm = require('vm');
 
 const webroot = 'module/template/webroot';
+const bridgeSource = fs.readFileSync(path.join(webroot, 'bridge.js'), 'utf8');
 const uxSource = fs.readFileSync(path.join(webroot, 'ux.js'), 'utf8');
 const policySource = fs.readFileSync(path.join(webroot, 'policy.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(webroot, 'index.html'), 'utf8');
@@ -52,6 +53,7 @@ assert.match(policySource, /CPU very low per UID decision; RAM low with a bounde
 assert.match(policySource, /function installTabNavigationOwner\(\)/);
 assert.match(policySource, /event\.stopImmediatePropagation\(\)/);
 assert.ok(!policySource.includes('bindCommunityExternally'), 'Policy must not own the community link');
+assert.ok(!bridgeSource.includes('installIdentityPolicyTransitionWatcher'), 'Policy saves already reconcile live Identity transitions; bridge must not apply them a second time from change events');
 assert.ok(!policySource.includes('watchCommunityBriefly'), 'Policy must not poll/watch for the community card');
 assert.ok(!policySource.includes('ctPolicyExternal'), 'Policy must not attach a second community click handler');
 assert.ok(!policySource.includes('global.switchTab = wrapped'), 'Policy must not monkey-patch the global tab router');
