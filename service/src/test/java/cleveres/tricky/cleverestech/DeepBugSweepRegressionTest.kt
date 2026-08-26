@@ -243,6 +243,27 @@ class DeepBugSweepRegressionTest {
     }
 
     @Test
+    fun `restore rejects known degenerate privacy seeds`() {
+        val root = Files.createTempDirectory("cleveres-degenerate-privacy-seed").toFile()
+        try {
+            listOf("00", "ff").forEach { byteHex ->
+                val zip = ByteArrayOutputStream()
+                ZipOutputStream(zip).use { zos ->
+                    zos.putNextEntry(ZipEntry("privacy_seed"))
+                    zos.write(byteHex.repeat(32).toByteArray())
+                    zos.closeEntry()
+                }
+
+                assertThrows(IOException::class.java) {
+                    WebServer.restoreBackupZip(root, ByteArrayInputStream(zip.toByteArray()))
+                }
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `restore transaction commits replacements creations and deletions together`() {
         val root = Files.createTempDirectory("cleveres-restore-commit").toFile()
         try {

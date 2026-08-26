@@ -1129,7 +1129,17 @@ object Config {
             }
             output[index] = ((high shl 4) or low).toByte()
         }
+        if (output.all { it == output[0] }) {
+            output.fill(0)
+            return null
+        }
         return output
+    }
+
+    internal fun isValidPrivacySeedEncoding(value: ByteArray): Boolean {
+        val decoded = decodePrivacySeed(value, value.size) ?: return false
+        decoded.fill(0)
+        return true
     }
 
     private fun decodeHex(value: Byte): Int {

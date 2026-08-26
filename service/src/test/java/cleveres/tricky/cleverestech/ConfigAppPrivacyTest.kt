@@ -73,6 +73,14 @@ class ConfigAppPrivacyTest {
     }
 
     @Test
+    fun `degenerate privacy seeds are rejected during refresh`() {
+        listOf("00", "ff").forEach { byteHex ->
+            File(configDir, "privacy_seed").writeText(byteHex.repeat(32))
+            assertTrue(Config.refreshPrivacySeed().isFailure)
+        }
+    }
+
+    @Test
     fun `redaction takes precedence for shared uid`() {
         val uid = 12003
         setPackageCache(uid, arrayOf("com.example.isolated", "com.example.redacted"))
