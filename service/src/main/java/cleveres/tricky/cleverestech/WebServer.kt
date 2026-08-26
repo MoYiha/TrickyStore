@@ -108,6 +108,8 @@ private fun isValidSecurityPatchValue(
     return runCatching { value.convertPatchLevel(false) }.isSuccess
 }
 
+private class RestoreKeyboxActivationException : IOException("Keybox activation failed after restore")
+
 private fun isValidFilename(s: String): Boolean {
     if (s.isEmpty()) return false
     for (i in 0 until s.length) {
@@ -225,6 +227,15 @@ class WebServer(
             "text/plain",
             "Keybox activation unavailable; previous active snapshot preserved",
         )
+
+    private fun refreshRuntimeAfterRestoreRollback(configDir: File) {
+        DeviceTemplateManager.initialize(configDir)
+        WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
+        Config.refreshRestoredConfiguration().getOrThrow()
+        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+            throw RestoreKeyboxActivationException()
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun getParam(
@@ -2057,22 +2068,34 @@ class WebServer(
                     val decrypted = BackupEncryptor.decrypt(encryptedBytes, pw)
                     try {
                         synchronized(fileLock) {
-                            restoreBackupZip(configDir, ByteArrayInputStream(decrypted))
+                            restoreBackupZip(
+                                configDir,
+                                ByteArrayInputStream(decrypted),
+                                afterMutation = {
+                                    DeviceTemplateManager.initialize(configDir)
+                                    PolicyState.validatePublishedState().getOrThrow()
+                                    WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
+                                    Config.refreshRestoredConfiguration().getOrThrow()
+                                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                        throw RestoreKeyboxActivationException()
+                                    }
+                                },
+                                onRollback = {
+                                    refreshRuntimeAfterRestoreRollback(configDir)
+                                },
+                            )
                             val target = File(configDir, "target.txt")
                             if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                                 target.setLastModified(System.currentTimeMillis())
-                            }
-                            WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
-                            DeviceTemplateManager.initialize(configDir)
-                            Config.refreshRestoredConfiguration().getOrThrow()
-                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                                return keyboxActivationFailureResponse()
                             }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
                     } finally {
                         decrypted.fill(0)
                     }
+                } catch (e: RestoreKeyboxActivationException) {
+                    Logger.e("Keybox activation failed during backup restore", e)
+                    keyboxActivationFailureResponse()
                 } catch (e: RustBackendUnavailableException) {
                     Logger.e("Rust backend unavailable during backup restore", e)
                     secureResponse(
@@ -2149,6 +2172,9 @@ class WebServer(
     }
 
     companion object {
+        @androidx.annotation.VisibleForTesting
+        internal var backupEntryWipeObserver: ((ByteArray) -> Unit)? = null
+
         private val MAX_UPLOAD_SIZE = CboxWireLimits.MAX_BYTES.toLong() + 1024 * 1024L
         private const val MAX_NATIVE_UPLOAD_SIZE = 20 * 1024 * 1024L
         private const val MAX_NATIVE_REQUEST_SIZE = MAX_NATIVE_UPLOAD_SIZE + 1024 * 1024L
@@ -2692,6 +2718,8 @@ class WebServer(
         fun restoreBackupZip(
             configDir: File,
             inputStream: InputStream,
+            afterMutation: (() -> Unit)? = null,
+            onRollback: (() -> Unit)? = null,
         ) {
             val staged = LinkedHashMap<String, ByteArray>()
             var totalBytes = 0
@@ -2713,13 +2741,12 @@ class WebServer(
                         }
 
                         val entryLimit = backupEntryLimit(name)
-                        val bytes = readZipEntry(zis, entryLimit)
+                        val bytes = readAndValidateZipEntry(zis, name, entryLimit)
                         totalBytes += bytes.size
                         if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
-                            bytes.fill(0)
+                            wipeBackupEntry(bytes)
                             throw IOException("Backup exceeds uncompressed size limit")
                         }
-                        validateBackupEntry(name, bytes)
                         staged[name] = bytes
                         zis.closeEntry()
                         entry = zis.nextEntry
@@ -2805,7 +2832,12 @@ class WebServer(
                 staleConfigFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
                 staleKeyboxFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
                 invalidatedCacheFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
-                BackupRestoreTransaction.apply(configDir, mutations)
+                BackupRestoreTransaction.apply(
+                    configDir,
+                    mutations,
+                    afterMutation = afterMutation,
+                    onRollback = onRollback,
+                )
             } finally {
                 staged.values.forEach { it.fill(0) }
             }
@@ -2828,6 +2860,26 @@ class WebServer(
                 filename.length in 5..128 &&
                 !filename.startsWith('.') &&
                 filename.all { it.isLetterOrDigit() || it == '_' || it == '-' || it == '.' }
+        }
+
+        private fun wipeBackupEntry(bytes: ByteArray) {
+            bytes.fill(0)
+            backupEntryWipeObserver?.let { observer -> runCatching { observer(bytes) } }
+        }
+
+        private fun readAndValidateZipEntry(
+            input: InputStream,
+            name: String,
+            maxBytes: Int,
+        ): ByteArray {
+            val bytes = readZipEntry(input, maxBytes)
+            return try {
+                validateBackupEntry(name, bytes)
+                bytes
+            } catch (error: Throwable) {
+                wipeBackupEntry(bytes)
+                throw error
+            }
         }
 
         private fun readZipEntry(

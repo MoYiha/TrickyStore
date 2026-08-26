@@ -96,17 +96,29 @@ jobs:
             android_app=true
           fi
 
-          # Changes to this workflow should exercise every path it controls.
-          if has_match '^\.github/workflows/build\.yml$'; then
+          # Rust is part of the service/module/native integration contract. Any change in
+          # those consumers must run the full workspace quality gate, not only selected tests.
+          if [[ "$module" == "true" || "$android_app" == "true" ]]; then
+            rust=true
+            build=true
+          fi
+
+          # Root native build metadata can affect the Rust-facing integration even when it is
+          # outside the module/service directory scopes above.
+          if has_match '(^|/)(CMakeLists\.txt|[^/]+\.cmake|Android\.bp|Android\.mk)$|(^|/)(ndk|externalNativeBuild)/'; then
+            rust=true
+            module=true
+            build=true
+          fi
+
+          # Every workflow change must exercise the complete set of controlled quality gates.
+          if has_match '^\.github/workflows/'; then
             rust=true
             gradle=true
             shell=true
             webui=true
             module=true
             android_app=true
-          fi
-
-          if [[ "$module" == "true" || "$android_app" == "true" ]]; then
             build=true
           fi
 
