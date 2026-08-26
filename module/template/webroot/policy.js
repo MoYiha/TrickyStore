@@ -55,6 +55,7 @@ let templates = [];
 let selectedProfileIndex = -1;
 let saving = false;
 let savedBuildIdentity = Object.freeze({});
+const REBOOT_POLICY_FEATURES = new Set(['buildIdentity', 'regionIdentity', 'identityRefresh']);
 
 function onReady(fn) {
   // policy.js is loaded at the end of <body>, before the legacy inline bootstrap.
@@ -83,9 +84,12 @@ function policyCompatibilityWarning(state) {
 }
 
 function notifyPolicyMutation(successMessage, state) {
+  const message = successMessage || 'Saved';
   const warning = policyCompatibilityWarning(state);
-  if (warning) notify(`${successMessage || 'Saved'}. Warning: ${warning}`);
-  else notify(successMessage || 'Saved');
+  const runtimeWarning = state && state.runtimeWarning;
+  if (runtimeWarning) notify(`${message}. Warning: ${runtimeWarning}`, 'warning');
+  else if (warning) notify(`${message}. Warning: ${warning}`);
+  else notify(message);
 }
 
 function refreshPresentation() {
@@ -156,16 +160,40 @@ function stateForSave(source) {
   };
 }
 
+function transitionRequiresReboot(transition, feature) {
+  if (!transition || typeof transition !== 'object') return true;
+  if (transition.rebootRequired !== true) return false;
+  const appliedKey = feature === 'buildIdentity' ? 'buildApplied' : 'regionApplied';
+  return ![transition.restore, transition.apply].some(result => result && result[appliedKey] === true);
+}
+
+function reconcilePolicyPendingReboot(previous, next) {
+  const previousFeatures = previous && previous.features ? previous.features : {};
+  const nextFeatures = next && next.features ? next.features : {};
+  REBOOT_POLICY_FEATURES.forEach(feature => {
+    const before = Boolean(previousFeatures[feature]);
+    const after = Boolean(nextFeatures[feature]);
+    if (before === after) return;
+    if (feature === 'identityRefresh' || transitionRequiresReboot(next.runtimeTransition, feature)) {
+      markPendingReboot(`feature:${feature}`);
+    } else {
+      clearPendingReboot(`feature:${feature}`);
+    }
+  });
+}
+
 async function savePolicy(mutator, successMessage) {
   if (!policyState || saving) return;
   saving = true;
   document.documentElement.classList.add('ct-saving');
   try {
+    const previous = safeClone(policyState);
     const next = safeClone(policyState);
     mutator(next);
     const body = new URLSearchParams();
     body.set('data', JSON.stringify(stateForSave(next)));
     policyState = await request('/api/policy_state', {method:'POST', body});
+    reconcilePolicyPendingReboot(previous, policyState);
     renderAll();
     notifyPolicyMutation(successMessage, policyState);
   } catch (error) {
@@ -340,9 +368,16 @@ function markIdentityActionGroups() {
 function getPendingRebootSettings() {
   try {
     const raw = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('ct_pending_reboot');
-    return raw ? new Set(JSON.parse(raw)) : new Set();
+    const parsed = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string') : []);
   } catch (e) {
     return new Set();
+  }
+}
+
+function writePendingRebootSettings(pending) {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('ct_pending_reboot', JSON.stringify([...pending]));
   }
 }
 
@@ -350,9 +385,15 @@ function markPendingReboot(setting) {
   try {
     const pending = getPendingRebootSettings();
     pending.add(setting);
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('ct_pending_reboot', JSON.stringify([...pending]));
-    }
+    writePendingRebootSettings(pending);
+  } catch (e) {}
+}
+
+function clearPendingReboot(setting) {
+  try {
+    const pending = getPendingRebootSettings();
+    pending.delete(setting);
+    writePendingRebootSettings(pending);
   } catch (e) {}
 }
 
@@ -373,17 +414,25 @@ function helpMarkup(text) {
   return `<details class="ct-help"><summary>What does this do?</summary><p>${escapeHtml(text)}</p></details>`;
 }
 
+function policyFeatureFromMarkup(extra) {
+  const match = String(extra || '').match(/data-policy-feature="([^"]+)"/);
+  return match ? match[1] : '';
+}
+
 function switchMarkup(id, checked, extra) {
-  let isPending = false;
-  if (id && id.includes('global_identity')) {
-    isPending = isPendingReboot('global_identity_mode') || Boolean(legacyConfig && legacyConfig.global_identity_mode);
-  }
   const extraAttr = extra || '';
+  const feature = policyFeatureFromMarkup(extraAttr);
+  const pendingKey = feature ? `feature:${feature}` : '';
+  const isPending = Boolean(
+    (pendingKey && isPendingReboot(pendingKey)) ||
+    (id && id.includes('global_identity') && (isPendingReboot('global_identity_mode') || Boolean(legacyConfig && legacyConfig.global_identity_mode))),
+  );
+  const pendingAttr = isPending ? 'data-pending-reboot="true"' : '';
   if (extraAttr.includes('class="')) {
-    return `<input id="${id}" type="checkbox" ${extraAttr.replace('class="', `class="${isPending ? 'pending-reboot ' : ''}`)} ${checked ? 'checked' : ''}>`;
+    return `<input id="${id}" type="checkbox" ${extraAttr.replace('class="', `class="${isPending ? 'pending-reboot ' : ''}`)} ${pendingAttr} ${checked ? 'checked' : ''}>`;
   }
   if (isPending) {
-    return `<input id="${id}" type="checkbox" class="ct-switch pending-reboot" ${extraAttr} ${checked ? 'checked' : ''}>`;
+    return `<input id="${id}" type="checkbox" class="ct-switch pending-reboot" ${extraAttr} ${pendingAttr} ${checked ? 'checked' : ''}>`;
   }
   return `<input id="${id}" type="checkbox" class="ct-switch" ${extraAttr} ${checked ? 'checked' : ''}>`;
 }
@@ -517,22 +566,22 @@ function bindFeatureCenter(panel, prefix) {
 }
 
 async function setLegacyToggle(setting, enabled) {
+  let updated = false;
   try {
     const body = new URLSearchParams();
     body.set('setting',setting);
     body.set('value',String(Boolean(enabled)));
     await request('/api/toggle',{method:'POST',body});
+    updated = true;
     await loadLegacyConfig();
-    renderFeatureCenter();
-    renderIdentityControls();
-    refreshPresentation();
   } catch (error) {
     notify(error.message || 'Could not update setting','error');
     await loadLegacyConfig();
-    renderFeatureCenter();
-    renderIdentityControls();
-    refreshPresentation();
   }
+  renderFeatureCenter();
+  renderIdentityControls();
+  refreshPresentation();
+  return updated;
 }
 
 function installFeatureCenter() {
@@ -585,7 +634,13 @@ function bindIdentityControls(panel, prefix) {
       markPendingReboot('global_identity_mode');
       globalIdentityToggle.classList.add('pending-reboot');
       notify('Global Identity toggled. A device reboot is required for system properties to take full effect.', 'warning');
-      setLegacyToggle('global_identity_mode', globalIdentityToggle.checked);
+      setLegacyToggle('global_identity_mode', globalIdentityToggle.checked).then(updated => {
+        if (!updated) {
+          clearPendingReboot('global_identity_mode');
+          renderFeatureCenter();
+          renderIdentityControls();
+        }
+      });
     };
   }
   if (cameraToggle) cameraToggle.onchange = () => setLegacyToggle('camera_visibility',cameraToggle.checked);
@@ -1216,6 +1271,10 @@ function installIdentityManagerState() {
     const wrappedApply = async function() {
       const result = await originalApply.apply(this,arguments);
       const refreshError = await refreshSavedBuildIdentityBestEffort();
+      if (policyState && policyState.features && policyState.features.buildIdentity) {
+        markPendingReboot('feature:buildIdentity');
+        renderFeatureCenter();
+      }
       if (refreshError) {
         notify('Identity was applied. Warning: the saved identity view could not be refreshed. Reload to retry.');
       }
@@ -1283,8 +1342,15 @@ function installAutoIdentityOverride() {
       }
       if (await refreshSavedBuildIdentityBestEffort()) refreshFailed = true;
       const success = `Identity ready: ${data.model || data.device || 'Pixel'} · ${data.build_id || data.buildId || 'current build'}`;
+      const rebootPending = Boolean(policyState && policyState.features && policyState.features.buildIdentity);
+      if (rebootPending) {
+        markPendingReboot('feature:buildIdentity');
+        renderFeatureCenter();
+      }
       if (refreshFailed) {
         notify(`${success}. Warning: the Identity Manager view could not be fully refreshed. Reload to retry.`);
+      } else if (rebootPending) {
+        notify(`${success}. Reboot required for Build Identity to take effect.`, 'warning');
       } else {
         notify(success);
       }
