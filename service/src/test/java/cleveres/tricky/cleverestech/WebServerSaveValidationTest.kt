@@ -240,6 +240,16 @@ class WebServerSaveValidationTest {
     }
 
     @Test
+    fun testDegeneratePrivacySeedValidation() {
+        listOf("00", "ff").forEach { byteHex ->
+            assertFalse(WebServer.validateContent("privacy_seed", byteHex.repeat(32)))
+        }
+
+        val valid = "0123456789abcdef".repeat(4)
+        assertTrue(WebServer.validateContent("privacy_seed", valid))
+    }
+
+    @Test
     fun testTemplatesJsonValidation() {
         val valid =
             """

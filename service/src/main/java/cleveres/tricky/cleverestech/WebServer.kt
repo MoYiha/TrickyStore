@@ -2540,8 +2540,12 @@ class WebServer(
                 }
             }
             if (filename == "privacy_seed") {
-                val value = content.trim()
-                return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
+                val bytes = content.toByteArray(Charsets.UTF_8)
+                return try {
+                    Config.isValidPrivacySeedEncoding(bytes)
+                } finally {
+                    bytes.fill(0)
+                }
             }
             if (filename == "templates.json") {
                 return runCatching {

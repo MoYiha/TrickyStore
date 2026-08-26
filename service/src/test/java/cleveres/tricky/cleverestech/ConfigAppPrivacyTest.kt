@@ -63,7 +63,8 @@ class ConfigAppPrivacyTest {
         assertEquals(14, first.meid?.length)
         assertTrue(isValidLuhn(requireNotNull(first.imei)))
         assertTrue(isValidLuhn(requireNotNull(first.iccid)))
-        assertTrue(File(configDir, "privacy_seed").readText().matches(Regex("[0-9a-f]{64}")))
+        val persistedSeed = File(configDir, "privacy_seed").readText()
+        assertTrue(persistedSeed.matches(Regex("[0-9a-f]{64}")))
         assertArrayEquals(requireNotNull(first.imei).toByteArray(), Config.getAttestationId("IMEI", firstUid))
         Config.refreshPrivacySeed().getOrThrow()
         assertEquals(first, Config.getTelephonyIdentityOverrides(firstUid))
@@ -78,6 +79,7 @@ class ConfigAppPrivacyTest {
             File(configDir, "privacy_seed").writeText(byteHex.repeat(32))
             assertTrue(Config.refreshPrivacySeed().isFailure)
         }
+        assertTrue(Config.isValidPrivacySeedEncoding("0123456789abcdef".repeat(4).toByteArray()))
     }
 
     @Test
