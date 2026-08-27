@@ -11,6 +11,12 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  NO_COLOR: "1"
+  GH_FORCE_COLOR: "0"
+  GH_FORCE_TTY: "0"
+  GH_PAGER: cat
+
 jobs:
   sync-release-notes:
     name: "📝 Sync Release Notes"
@@ -173,7 +179,7 @@ jobs:
             '.version = $version | .versionCode = $versionCode | .zipUrl = $zipUrl | .changelog = $changelog' \
             update.json > "$tmp"
 
-          if cmp -s "$tmp" update.json; then
+          if diff -u <(jq -S . update.json) <(jq -S . "$tmp") >/dev/null; then
             echo "update.json already matches the published release artifact"
             exit 0
           fi
