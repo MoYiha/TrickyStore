@@ -11,7 +11,6 @@ import org.junit.Test
 import org.mockito.Mockito
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
 import java.security.cert.X509Certificate
 import cleveres.tricky.cleverestech.util.KeyboxVerifier.RevocationSource
 
