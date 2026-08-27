@@ -487,15 +487,17 @@ function buildFeatureCenterMarkup(prefix) {
   const drmOn = Boolean(legacyConfig && legacyConfig.drm_passthrough);
   const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
   const identityCards = identityFeatureCardsMarkup(`${prefix}_identity`);
+  const drmHelp = helpMarkup("DRM App Passthrough keeps configured packages on Android's genuine Keystore path. It does not fake a DRM security level; use Profiles > Privacy > Isolate for app-scoped DRM device identifiers.");
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy <b>Isolate</b> replaces only DRM <code>deviceUniqueId</code> with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
+  const secPatchHelp = helpMarkup('Security Patch is independent from Identity. It controls system, vendor, and boot security patch levels; use Device Default to keep captured values, Automatic for calendar-based policy, or Manual for an explicit date.');
   const secPatchChildren = `<div class="ct-subcontrols" id="${prefix}_sec_patch_children" ${secPatchOn ? '' : 'hidden'}><p>Controls system, vendor, and boot security patch levels independently from Identity properties.</p><button type="button" data-open-tab="patch" class="secondary" style="width:100%;margin-top:8px">Open Patch Settings</button></div>`;
 
   return `<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Keybox','Applies custom Keybox attestation spoofing to all applications without requiring target.txt.',globalKeyboxOn,helpMarkup('Global Keybox is the module-wide attestation scope switch. Recommended ON for normal root usage.'))}
-    ${cardMarkup(`${prefix}_sec_patch`,'Security Patch','Controls system, vendor, and boot security patch levels independently from Identity properties.',secPatchOn,secPatchChildren)}
+    ${cardMarkup(`${prefix}_sec_patch`,'Security Patch','Controls system, vendor, and boot security patch levels independently from Identity properties.',secPatchOn,secPatchHelp + secPatchChildren)}
     ${identityCards}
     ${cardMarkup(`${prefix}_keybox`,'Auto Keybox Check','Checks configured keyboxes against the module revocation source when enabled.',keyboxOn,helpMarkup('Optional network-backed keybox hygiene; manual management remains available.'))}
-    ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmChildren)}
+    ${cardMarkup(`${prefix}_drm_passthrough`,'DRM App Passthrough',"Keeps packages from drm_packages.txt on Android's genuine Keystore path. This does not fake a DRM security level.",drmOn,drmHelp + drmChildren)}
     <div class="ct-feature-card"><strong>Keybox / TEE path</strong><p>Keyboxes are selected per profile or from the stored pool. Stored XML/CBOX sources are reloaded without requiring an environment reset.</p>${helpMarkup('The core Keystore hook remains separate from Identity. Certificate chains are cached to avoid repeated expensive work.')}<button type="button" data-open-tab="keys" style="width:100%;margin-top:10px">Open keyboxes</button></div>
   </div>`;
 }

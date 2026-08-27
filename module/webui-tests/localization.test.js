@@ -4,6 +4,7 @@ const vm = require('vm');
 
 const uxSource = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
 const indexSource = fs.readFileSync('module/template/webroot/index.html', 'utf8');
+const policySource = fs.readFileSync('module/template/webroot/policy.js', 'utf8');
 const catalogMarker = '    let locale = readLocale();';
 const instrumentedSource = uxSource.replace(
     catalogMarker,
@@ -80,6 +81,8 @@ const completeSurfaces = [
     'Random',
     'Identity value randomized',
     'What does this do?',
+    'Security Patch is independent from Identity. It controls system, vendor, and boot security patch levels; use Device Default to keep captured values, Automatic for calendar-based policy, or Manual for an explicit date.',
+    "DRM App Passthrough keeps configured packages on Android's genuine Keystore path. It does not fake a DRM security level; use Profiles > Privacy > Isolate for app-scoped DRM device identifiers.",
     'Main controls are here. Parent features reveal only the settings that belong to them.',
     'Security Patch',
     'Profiles',
@@ -103,6 +106,10 @@ assert.match(uxSource, /title\.textContent = tr\('CleveresTech Community'\)/, 'T
 assert.match(uxSource, /copy\.textContent = tr\('Join our Telegram group for mutual help, testing, discussion, and development of CleveresTricky\.'\)/, 'Telegram card description must use the localization owner');
 assert.match(uxSource, /link\.textContent = tr\('Open Telegram Community'\)/, 'Telegram card action must use the localization owner');
 assert.match(indexSource, /id="dropZone"[^>]*aria-label="Upload Keybox or CBOX file"/, 'Keybox drop zone must expose a localized accessible name');
+assert.match(policySource, /const secPatchHelp = helpMarkup\('Security Patch is independent from Identity\./, 'Security Patch must expose a card-level What Does This Do help block');
+assert.match(policySource, /const drmHelp = helpMarkup\("DRM App Passthrough keeps configured packages/, 'DRM App Passthrough must expose a card-level What Does This Do help block');
+assert.match(policySource, /secPatchOn,secPatchHelp \+ secPatchChildren/, 'Security Patch help must be attached to its card');
+assert.match(policySource, /drmOn,drmHelp \+ drmChildren/, 'DRM App Passthrough help must be attached to its card');
 
 const runtimeGlobal = 'Native runtime is active with 4 verified keyboxes. Global application scope is enabled. Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
 const runtimeTargeted = 'Native runtime is active with 2 verified keyboxes. Targeted mode is enabled, so app rules determine scope. Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
