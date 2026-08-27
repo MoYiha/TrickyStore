@@ -297,6 +297,67 @@ async function main() {
     assert.match(bridgeSource, /ux\.js\?revision=9/);
     assert.ok(!bridgeSource.includes('ux.js?revision=3'), 'Bridge must not request the retired cached UX loader');
 
+    const uploadFunctionStart = indexSource.indexOf('async function loadFileContent');
+    const uploadFunctionEnd = indexSource.indexOf('\n        function resetDropZone', uploadFunctionStart);
+    assert.ok(uploadFunctionStart >= 0 && uploadFunctionEnd > uploadFunctionStart, 'upload handler source is missing');
+    const uploadNodes = new Map([
+        ['dropZoneContent', { innerHTML: '', style: {} }],
+        ['dropZone', { style: {} }],
+        ['kbContent', { value: '' }],
+        ['keyboxStatus', { innerText: '' }]
+    ]);
+    class FakeFile {
+        constructor(name, size) { this.name = name; this.size = size; }
+    }
+    class FakeFormData {
+        append() {}
+    }
+    const uploadDocument = {
+        createElement() {
+            let value = '';
+            return {
+                set innerText(next) { value = String(next); },
+                get innerHTML() {
+                    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                }
+            };
+        },
+        getElementById(id) { return uploadNodes.get(id) || null; }
+    };
+    const uploadContext = {
+        console,
+        File: FakeFile,
+        FormData: FakeFormData,
+        document: uploadDocument,
+        setTimeout() {},
+        notify() {},
+        loadKeyInfo() {},
+        loadKeyboxes() {},
+        resetDropZone() {},
+        fetchAuth: async () => ({
+            ok: true,
+            clone: () => ({ json: async () => ({ filename: 'keybox_1.xml', keybox_count: 1 }) })
+        })
+    };
+    vm.createContext(uploadContext);
+    vm.runInContext(`${indexSource.slice(uploadFunctionStart, uploadFunctionEnd)}; this.loadFileContent = loadFileContent;`, uploadContext, { filename: 'index-upload-handler.js' });
+    await uploadContext.loadFileContent(new FakeFile('keybox (1).xml', 64));
+    assert.match(uploadNodes.get('dropZoneContent').innerHTML, /OK - keybox_1\.xml/);
+    assert.ok(!uploadNodes.get('dropZoneContent').innerHTML.includes('keybox (1).xml'), 'UI must show the effective stored filename');
+
+    const escapingContext = {
+        ...uploadContext,
+        fetchAuth: async () => ({
+            ok: true,
+            clone: () => ({ json: async () => ({ filename: '<img src=x onerror=alert(1)>', keybox_count: 1 }) })
+        })
+    };
+    vm.createContext(escapingContext);
+    vm.runInContext(`${indexSource.slice(uploadFunctionStart, uploadFunctionEnd)}; this.loadFileContent = loadFileContent;`, escapingContext, { filename: 'index-upload-handler-escaping.js' });
+    await escapingContext.loadFileContent(new FakeFile('safe.xml', 64));
+    assert.ok(escapingContext.document.getElementById('dropZoneContent').innerHTML.includes('&lt;img'), 'effective filename must be HTML-escaped');
+    assert.ok(!escapingContext.document.getElementById('dropZoneContent').innerHTML.includes('<img'), 'effective filename must not create markup');
+
     console.log('Native WebUI bridge compatibility tests passed');
 }
 

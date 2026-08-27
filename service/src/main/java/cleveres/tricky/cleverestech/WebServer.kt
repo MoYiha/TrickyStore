@@ -48,6 +48,15 @@ private fun isValidTemplateName(s: String): Boolean {
     return true
 }
 
+private val clonedKeyboxFilenameSuffix = Regex("""\s*\((\d+)\)(?=\s*(?:\(\d+\)\s*)*\.[^.]+$)""")
+
+/**
+ * Android file providers commonly append " (1)" when a filename is copied. Keep the strict
+ * basename policy, but canonicalize that provider-generated suffix before validation and storage.
+ */
+private fun normalizeKeyboxUploadFilename(name: String): String =
+    name.replace(clonedKeyboxFilenameSuffix) { match -> "_${match.groupValues[1]}" }
+
 private fun isValidKeyboxFilename(s: String): Boolean {
     if (s.length !in 5..128 || s.startsWith('.')) return false
     for (i in 0 until s.length) {
@@ -1202,8 +1211,9 @@ class WebServer(
             val tmpFilePath = map["file"]
             if (tmpFilePath != null) {
                 val originalName = getParam(session, "filename") ?: "upload.bin"
+                val storedName = normalizeKeyboxUploadFilename(originalName)
                 val tmpFile = File(tmpFilePath)
-                val extension = originalName.substringAfterLast('.', "").lowercase()
+                val extension = storedName.substringAfterLast('.', "").lowercase()
                 val uploadLimit =
                     if (extension == "cbox") {
                         MAX_CBOX_UPLOAD_SIZE
@@ -1216,7 +1226,7 @@ class WebServer(
                     if (tmpFile.exists()) tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload size")
                 }
-                if (!isValidKeyboxFilename(originalName) || (extension != "xml" && extension != "cbox")) {
+                if (!isValidKeyboxFilename(storedName) || (extension != "xml" && extension != "cbox")) {
                     tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
                 }
@@ -1225,7 +1235,7 @@ class WebServer(
                     synchronized(fileLock) {
                         val keyboxDir = File(configDir, "keyboxes")
                         SecureFile.mkdirs(keyboxDir, 448)
-                        val dest = getSafeFile(keyboxDir, originalName)
+                        val dest = getSafeFile(keyboxDir, storedName)
                         if (dest == null) {
                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload path")
                         }
@@ -1236,14 +1246,18 @@ class WebServer(
                             SecureFile.writeBytes(dest, bytes)
                             CboxManager.refresh()
                         } else {
-                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
+                            keyboxValidationError(validateUploadedKeyboxXml(bytes, storedName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
                         if (!updateKeyboxesFromConfiguredRevocationSource()) {
                             return keyboxActivationFailureResponse()
                         }
                         val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                        val response = JSONObject()
+                        response.put("status", "ok")
+                        response.put("filename", storedName)
+                        response.put("keybox_count", count)
+                        return secureResponse(Response.Status.OK, "application/json", response.toString())
                     }
                 } finally {
                     bytes.fill(0)
@@ -1251,17 +1265,18 @@ class WebServer(
                 }
             }
 
+            val storedName = filename?.let(::normalizeKeyboxUploadFilename)
             if (
-                filename != null &&
+                storedName != null &&
                 content != null &&
-                filename.endsWith(".xml", ignoreCase = true) &&
-                isValidKeyboxFilename(filename)
+                storedName.endsWith(".xml", ignoreCase = true) &&
+                isValidKeyboxFilename(storedName)
             ) {
                 synchronized(fileLock) {
-                    keyboxValidationError(validateUploadedKeyboxXml(content, filename))?.let { return it }
+                    keyboxValidationError(validateUploadedKeyboxXml(content, storedName))?.let { return it }
                     val keyboxDir = File(configDir, "keyboxes")
                     SecureFile.mkdirs(keyboxDir, 448)
-                    val file = getSafeFile(keyboxDir, filename)
+                    val file = getSafeFile(keyboxDir, storedName)
                     if (file == null) {
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
                     }
@@ -1271,7 +1286,11 @@ class WebServer(
                             return keyboxActivationFailureResponse()
                         }
                         val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                        val response = JSONObject()
+                        response.put("status", "ok")
+                        response.put("filename", storedName)
+                        response.put("keybox_count", count)
+                        return secureResponse(Response.Status.OK, "application/json", response.toString())
                     } catch (e: Exception) {
                         Logger.e("Failed to save keybox", e)
                         return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to save keybox")
