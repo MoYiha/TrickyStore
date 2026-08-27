@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech.util
 
 import java.io.File
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
