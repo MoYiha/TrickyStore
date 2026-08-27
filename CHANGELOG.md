@@ -6,4 +6,5 @@
 - **More reliable keybox handling:** recovery, cache updates and backend restarts preserve working keybox state more consistently; temporary boot-time CRL/network delays retry promptly instead of postponing activation for several minutes.
 - **Easier keybox uploads:** copied names such as `keybox (1).xml` and `encrypted (1).cbox` are safely stored as `keybox_1.xml` and `encrypted_1.cbox`.
 - **Clearer reboot feedback:** identity settings stay visibly marked until the required device restart is completed.
+- **More predictable patch settings:** date-formatted security patch rules keep their configured format until runtime resolution, improving compatibility across patch and attestation paths.
 - **Stronger protection and checks:** sensitive backup material is cleaned up sooner, degenerate privacy seeds are rejected, encryption dependencies are updated, and native/Rust checks cover integration changes more reliably.
