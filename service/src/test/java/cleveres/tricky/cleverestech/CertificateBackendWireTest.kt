@@ -1,6 +1,6 @@
 package cleveres.tricky.cleverestech
 
-import java.io.IOException
+
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
