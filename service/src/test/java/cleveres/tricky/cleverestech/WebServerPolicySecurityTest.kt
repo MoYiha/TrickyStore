@@ -3,8 +3,6 @@ package cleveres.tricky.cleverestech
 import fi.iki.elonen.NanoHTTPD
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.io.File
-import java.io.InputStream
 import java.nio.file.Files
 
 class WebServerPolicySecurityTest {
