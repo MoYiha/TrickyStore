@@ -6,7 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.mockito.MockedStatic
@@ -16,12 +15,9 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.mockStatic
 import org.mockito.Mockito.`when`
 import java.io.File
-import java.io.IOException
-import java.nio.file.Files
 import java.nio.file.Path
 import java.security.KeyStore
 import javax.crypto.spec.SecretKeySpec
-import kotlin.io.path.createFile
 import kotlin.io.path.createTempDirectory
 
 class DeviceKeyManagerInitializeTest {
