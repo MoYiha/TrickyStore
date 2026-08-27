@@ -598,8 +598,8 @@ object KeyboxVerifier {
     ): Boolean {
         if (revoked.contains(certificate.serialNumber.toString(16))) return true
         val spki = certificate.publicKey.encoded ?: return false
-        for (algorithm in LEGACY_HASH_ALGORITHMS) {
-            val digest = runCatching { MessageDigest.getInstance(algorithm).digest(spki) }.getOrNull() ?: continue
+        for (md in legacyMessageDigests.get()!!) {
+            val digest = md.digest(spki)
             val hex = buildString(digest.size * 2) {
                 for (byte in digest) append(HEX[(byte.toInt() ushr 4) and 0xf]).append(HEX[byte.toInt() and 0xf])
             }
@@ -651,6 +651,11 @@ object KeyboxVerifier {
     }
 
     private val LEGACY_HASH_ALGORITHMS = arrayOf("SHA-1", "SHA-256", "MD5")
+    private val legacyMessageDigests = ThreadLocal.withInitial {
+        LEGACY_HASH_ALGORITHMS.mapNotNull {
+            runCatching { MessageDigest.getInstance(it) }.getOrNull()
+        }
+    }
     private val FULL_SHA256_PATTERN = Regex("[0-9a-f]{64}")
     private const val HEX = "0123456789abcdef"
 }
