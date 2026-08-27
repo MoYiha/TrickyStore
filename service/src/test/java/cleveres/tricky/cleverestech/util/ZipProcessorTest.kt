@@ -17,8 +17,15 @@ import java.util.zip.ZipOutputStream
 
 class ZipProcessorTest {
 
+    private var originalLoggerImpl: Logger.LogImpl? = null
+
     @Before
     fun setUp() {
+        // Save the original logger using reflection
+        val implField = Logger::class.java.getDeclaredField("impl")
+        implField.isAccessible = true
+        originalLoggerImpl = implField.get(null) as Logger.LogImpl
+
         Logger.setImpl(object : Logger.LogImpl {
             override fun d(tag: String, msg: String) {}
             override fun e(tag: String, msg: String) {}
@@ -30,6 +37,9 @@ class ZipProcessorTest {
 
     @After
     fun tearDown() {
+        originalLoggerImpl?.let {
+            Logger.setImpl(it)
+        }
     }
 
     private fun createZipStream(entries: Map<String, ByteArray>): InputStream {
