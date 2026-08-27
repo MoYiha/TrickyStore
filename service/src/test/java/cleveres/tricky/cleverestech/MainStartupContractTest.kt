@@ -29,6 +29,23 @@ class MainStartupContractTest {
     }
 
     @Test
+    fun `configured keybox source probe scans the runtime keybox directory`() {
+        val root = NioFiles.createTempDirectory("cleverestricky-keyboxes-probe").toFile()
+        try {
+            val keyboxes = File(root, "keyboxes")
+            assertTrue(keyboxes.mkdir())
+            File(keyboxes, "encrypted.cbox").writeText("placeholder")
+            File(keyboxes, "ignored.txt").writeText("placeholder")
+            assertTrue(hasConfiguredKeyboxSource(root))
+
+            File(keyboxes, "encrypted.cbox").delete()
+            assertFalse(hasConfiguredKeyboxSource(root))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `deferred keybox retry recovers on an early attempt`() = runBlocking {
         val waits = mutableListOf<Long>()
         var attempts = 0
