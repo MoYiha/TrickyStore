@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: master
 
       - name: Resolve release version
         id: version
@@ -104,3 +104,82 @@ jobs:
               print(f"Published release body does not match canonical release notes:\nCanonical:\n{canonical}\n\nPublished:\n{published}", file=sys.stderr)
               sys.exit(1)
           PY
+
+      - name: Update update.json from published release artifact
+        if: steps.sync_body.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_master=$(git ls-remote origin refs/heads/master | awk 'NR == 1 { print $1 }')
+          if [[ -n "${BUILD_SHA:-}" && "$current_master" != "$BUILD_SHA" ]]; then
+            echo "Build $BUILD_SHA is stale; current master is $current_master. Skipping metadata commit."
+            exit 0
+          fi
+
+          release_json=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets)
+          zip_name=$(jq -r --arg prefix "CleveresTricky-${RELEASE_TAG}-" '
+            [.assets[] | select(.name | startswith($prefix) and endswith(".zip")) | .name]
+            | if length == 1 then .[0] else error("expected exactly one module release ZIP") end
+          ' <<<"$release_json")
+          expected_digest=$(jq -r --arg name "$zip_name" '
+            [.assets[] | select(.name == $name) | .digest]
+            | if length == 1 then .[0] else error("module release ZIP digest is missing") end
+          ' <<<"$release_json")
+          case "$expected_digest" in
+            sha256:*) expected_digest="${expected_digest#sha256:}" ;;
+            *) echo "::error::Published ZIP has no SHA-256 digest"; exit 1 ;;
+          esac
+
+          artifact_dir="$RUNNER_TEMP/release-artifact"
+          mkdir -p "$artifact_dir"
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "$zip_name" \
+            --dir "$artifact_dir"
+          zip_path="$artifact_dir/$zip_name"
+          actual_digest=$(sha256sum "$zip_path" | awk '{ print $1 }')
+          if [[ "$actual_digest" != "$expected_digest" ]]; then
+            echo "::error::Downloaded release ZIP digest does not match GitHub asset digest"
+            exit 1
+          fi
+
+          version_code=$(unzip -p "$zip_path" module.prop | sed -n 's/^versionCode=//p')
+          if [[ ! "$version_code" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not read numeric versionCode from published module.prop"
+            exit 1
+          fi
+          asset_stem="${zip_name%.zip}"
+          artifact_suffix="${asset_stem#CleveresTricky-${RELEASE_TAG}-}"
+          if [[ "$artifact_suffix" == "$asset_stem" || ! "$artifact_suffix" =~ ^${version_code}-.+-release$ ]]; then
+            echo "::error::Published ZIP name does not match its versionCode"
+            exit 1
+          fi
+
+          metadata_version="${RELEASE_TAG} (${artifact_suffix})"
+          zip_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${zip_name}"
+          changelog_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/master/CHANGELOG.md"
+          tmp="$RUNNER_TEMP/update.json"
+          jq \
+            --arg version "$metadata_version" \
+            --argjson versionCode "$version_code" \
+            --arg zipUrl "$zip_url" \
+            --arg changelog "$changelog_url" \
+            '.version = $version | .versionCode = $versionCode | .zipUrl = $zipUrl | .changelog = $changelog' \
+            update.json > "$tmp"
+
+          if cmp -s "$tmp" update.json; then
+            echo "update.json already matches the published release artifact"
+            exit 0
+          fi
+          mv "$tmp" update.json
+
+          git config user.name "cleverestricky-release-bot"
+          git config user.email "cleverestricky-release-bot@users.noreply.github.com"
+          git add update.json
+          git commit -m "docs(release): sync $RELEASE_TAG update metadata"
+          git push origin HEAD:master
