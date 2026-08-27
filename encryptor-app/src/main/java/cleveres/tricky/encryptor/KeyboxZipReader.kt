@@ -1,7 +1,6 @@
 package cleveres.tricky.encryptor
 
 import java.io.BufferedInputStream
-import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.zip.ZipEntry
