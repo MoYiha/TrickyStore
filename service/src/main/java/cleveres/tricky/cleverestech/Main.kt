@@ -84,17 +84,24 @@ internal suspend fun retryDeferredKeyboxRefresh(
     return isActive()
 }
 
-private fun directoryHasConfiguredKeyboxSource(root: File): Boolean {
+private fun directoryHasConfiguredKeyboxSource(
+    root: File,
+    allowCbox: Boolean,
+): Boolean {
     if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return false
-    return root.listFiles()?.any { file ->
-        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
-            (file.name.endsWith(".xml", ignoreCase = true) || file.name.endsWith(".cbox", ignoreCase = true))
-    } == true
+    return Files.newDirectoryStream(root.toPath()).use { entries ->
+        entries.any { entry ->
+            if (!Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) return@any false
+            val filename = entry.fileName.toString()
+            filename.endsWith(".xml", ignoreCase = true) ||
+                (allowCbox && filename.endsWith(".cbox", ignoreCase = true))
+        }
+    }
 }
 
 internal fun hasConfiguredKeyboxSource(configDir: File): Boolean =
-    directoryHasConfiguredKeyboxSource(configDir) ||
-        directoryHasConfiguredKeyboxSource(File(configDir, "keyboxes"))
+    directoryHasConfiguredKeyboxSource(configDir, allowCbox = false) ||
+        directoryHasConfiguredKeyboxSource(File(configDir, "keyboxes"), allowCbox = true)
 
 fun main(args: Array<String>) {
     Logger.i("Welcome to Service!")

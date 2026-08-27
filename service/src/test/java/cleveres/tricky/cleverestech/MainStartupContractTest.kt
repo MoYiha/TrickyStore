@@ -21,6 +21,8 @@ class MainStartupContractTest {
             } finally {
                 outside.delete()
             }
+            File(root, "root.cbox").writeText("placeholder")
+            assertFalse(hasConfiguredKeyboxSource(root))
             File(root, "keybox.xml").writeText("placeholder")
             assertTrue(hasConfiguredKeyboxSource(root))
         } finally {
