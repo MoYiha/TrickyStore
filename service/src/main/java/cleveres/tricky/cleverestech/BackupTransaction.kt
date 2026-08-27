@@ -56,9 +56,27 @@ internal object BackupRestoreTransaction {
         val backup: File?,
     )
 
+    /** Preserves the original before-mutation callback API for existing callers. */
     fun apply(
         configDir: File,
         mutations: List<Mutation>,
+        beforeMutation: ((Int, File) -> Unit)? = null,
+    ) {
+        apply(
+            configDir,
+            mutations,
+            afterMutation = null,
+            onRollback = null,
+            beforeMutation = beforeMutation,
+        )
+    }
+
+    /** Applies mutations and optionally validates/publishes runtime state before committing. */
+    fun apply(
+        configDir: File,
+        mutations: List<Mutation>,
+        afterMutation: (() -> Unit)?,
+        onRollback: (() -> Unit)?,
         beforeMutation: ((Int, File) -> Unit)? = null,
     ) {
         if (mutations.isEmpty()) return
@@ -105,6 +123,7 @@ internal object BackupRestoreTransaction {
                 originals += Original(mutation.target, existed, backup)
             }
 
+            var afterMutationInvoked = false
             try {
                 unique.values.forEachIndexed { index, mutation ->
                     beforeMutation?.invoke(index, mutation.target)
@@ -119,6 +138,10 @@ internal object BackupRestoreTransaction {
                         }
                         SecureFile.writeBytes(mutation.target, replacement)
                     }
+                }
+                if (afterMutation != null) {
+                    afterMutationInvoked = true
+                    afterMutation.invoke()
                 }
             } catch (failure: Throwable) {
                 var rollbackFailure: Throwable? = null
@@ -148,6 +171,18 @@ internal object BackupRestoreTransaction {
                         } else {
                             Files.deleteIfExists(original.target.toPath())
                         }
+                    } catch (error: Throwable) {
+                        val existingFailure = rollbackFailure
+                        if (existingFailure == null) {
+                            rollbackFailure = error
+                        } else {
+                            existingFailure.addSuppressed(error)
+                        }
+                    }
+                }
+                if (afterMutationInvoked && onRollback != null) {
+                    try {
+                        onRollback.invoke()
                     } catch (error: Throwable) {
                         val existingFailure = rollbackFailure
                         if (existingFailure == null) {

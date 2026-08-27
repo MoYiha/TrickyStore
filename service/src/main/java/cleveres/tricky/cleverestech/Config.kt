@@ -1102,7 +1102,13 @@ object Config {
         }
     }
 
-    private fun generatePrivacySeed(): ByteArray = ByteArray(PRIVACY_SEED_BYTES).also { SecureRandom().nextBytes(it) }
+    private fun generatePrivacySeed(): ByteArray {
+        val seed = ByteArray(PRIVACY_SEED_BYTES)
+        do {
+            SecureRandom().nextBytes(seed)
+        } while (isDegeneratePrivacySeed(seed))
+        return seed
+    }
 
     private fun writePrivacySeed(file: File, seed: ByteArray) {
         val encoded = encodePrivacySeed(seed)
@@ -1129,8 +1135,20 @@ object Config {
             }
             output[index] = ((high shl 4) or low).toByte()
         }
+        if (isDegeneratePrivacySeed(output)) {
+            output.fill(0)
+            return null
+        }
         return output
     }
+
+    internal fun isValidPrivacySeedEncoding(value: ByteArray): Boolean {
+        val decoded = decodePrivacySeed(value, value.size) ?: return false
+        decoded.fill(0)
+        return true
+    }
+
+    private fun isDegeneratePrivacySeed(value: ByteArray): Boolean = value.isNotEmpty() && value.all { it == value[0] }
 
     private fun decodeHex(value: Byte): Int {
         val unsigned = value.toInt() and 0xff

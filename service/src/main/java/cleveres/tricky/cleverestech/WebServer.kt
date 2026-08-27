@@ -48,6 +48,15 @@ private fun isValidTemplateName(s: String): Boolean {
     return true
 }
 
+private val clonedKeyboxFilenameSuffix = Regex("""\s*\((\d+)\)(?=\s*(?:\(\d+\)\s*)*\.[^.]+$)""")
+
+/**
+ * Android file providers commonly append " (1)" when a filename is copied. Keep the strict
+ * basename policy, but canonicalize that provider-generated suffix before validation and storage.
+ */
+private fun normalizeKeyboxUploadFilename(name: String): String =
+    name.replace(clonedKeyboxFilenameSuffix) { match -> "_${match.groupValues[1]}" }
+
 private fun isValidKeyboxFilename(s: String): Boolean {
     if (s.length !in 5..128 || s.startsWith('.')) return false
     for (i in 0 until s.length) {
@@ -107,6 +116,8 @@ private fun isValidSecurityPatchValue(
     }
     return runCatching { value.convertPatchLevel(false) }.isSuccess
 }
+
+private class RestoreKeyboxActivationException : IOException("Keybox activation failed after restore")
 
 private fun isValidFilename(s: String): Boolean {
     if (s.isEmpty()) return false
@@ -225,6 +236,15 @@ class WebServer(
             "text/plain",
             "Keybox activation unavailable; previous active snapshot preserved",
         )
+
+    private fun refreshRuntimeAfterRestoreRollback(configDir: File) {
+        DeviceTemplateManager.initialize(configDir, persistBuiltInTemplates = false)
+        WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
+        Config.refreshRestoredConfiguration().getOrThrow()
+        if (!updateKeyboxesFromConfiguredRevocationSource()) {
+            throw RestoreKeyboxActivationException()
+        }
+    }
 
     @Suppress("DEPRECATION")
     private fun getParam(
@@ -1191,8 +1211,9 @@ class WebServer(
             val tmpFilePath = map["file"]
             if (tmpFilePath != null) {
                 val originalName = getParam(session, "filename") ?: "upload.bin"
+                val storedName = normalizeKeyboxUploadFilename(originalName)
                 val tmpFile = File(tmpFilePath)
-                val extension = originalName.substringAfterLast('.', "").lowercase()
+                val extension = storedName.substringAfterLast('.', "").lowercase()
                 val uploadLimit =
                     if (extension == "cbox") {
                         MAX_CBOX_UPLOAD_SIZE
@@ -1205,7 +1226,7 @@ class WebServer(
                     if (tmpFile.exists()) tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload size")
                 }
-                if (!isValidKeyboxFilename(originalName) || (extension != "xml" && extension != "cbox")) {
+                if (!isValidKeyboxFilename(storedName) || (extension != "xml" && extension != "cbox")) {
                     tmpFile.delete()
                     return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload filename")
                 }
@@ -1214,7 +1235,7 @@ class WebServer(
                     synchronized(fileLock) {
                         val keyboxDir = File(configDir, "keyboxes")
                         SecureFile.mkdirs(keyboxDir, 448)
-                        val dest = getSafeFile(keyboxDir, originalName)
+                        val dest = getSafeFile(keyboxDir, storedName)
                         if (dest == null) {
                             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid upload path")
                         }
@@ -1225,14 +1246,18 @@ class WebServer(
                             SecureFile.writeBytes(dest, bytes)
                             CboxManager.refresh()
                         } else {
-                            keyboxValidationError(validateUploadedKeyboxXml(bytes, originalName))?.let { return it }
+                            keyboxValidationError(validateUploadedKeyboxXml(bytes, storedName))?.let { return it }
                             SecureFile.writeBytes(dest, bytes)
                         }
                         if (!updateKeyboxesFromConfiguredRevocationSource()) {
                             return keyboxActivationFailureResponse()
                         }
                         val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                        val response = JSONObject()
+                        response.put("status", "ok")
+                        response.put("filename", storedName)
+                        response.put("keybox_count", count)
+                        return secureResponse(Response.Status.OK, "application/json", response.toString())
                     }
                 } finally {
                     bytes.fill(0)
@@ -1240,17 +1265,18 @@ class WebServer(
                 }
             }
 
+            val storedName = filename?.let(::normalizeKeyboxUploadFilename)
             if (
-                filename != null &&
+                storedName != null &&
                 content != null &&
-                filename.endsWith(".xml", ignoreCase = true) &&
-                isValidKeyboxFilename(filename)
+                storedName.endsWith(".xml", ignoreCase = true) &&
+                isValidKeyboxFilename(storedName)
             ) {
                 synchronized(fileLock) {
-                    keyboxValidationError(validateUploadedKeyboxXml(content, filename))?.let { return it }
+                    keyboxValidationError(validateUploadedKeyboxXml(content, storedName))?.let { return it }
                     val keyboxDir = File(configDir, "keyboxes")
                     SecureFile.mkdirs(keyboxDir, 448)
-                    val file = getSafeFile(keyboxDir, filename)
+                    val file = getSafeFile(keyboxDir, storedName)
                     if (file == null) {
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Path traversal attempt detected")
                     }
@@ -1260,7 +1286,11 @@ class WebServer(
                             return keyboxActivationFailureResponse()
                         }
                         val count = CertHack.getKeyboxSourceCount()
-                        return secureResponse(Response.Status.OK, "application/json", """{"status":"ok","keybox_count":$count}""")
+                        val response = JSONObject()
+                        response.put("status", "ok")
+                        response.put("filename", storedName)
+                        response.put("keybox_count", count)
+                        return secureResponse(Response.Status.OK, "application/json", response.toString())
                     } catch (e: Exception) {
                         Logger.e("Failed to save keybox", e)
                         return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to save keybox")
@@ -2057,22 +2087,34 @@ class WebServer(
                     val decrypted = BackupEncryptor.decrypt(encryptedBytes, pw)
                     try {
                         synchronized(fileLock) {
-                            restoreBackupZip(configDir, ByteArrayInputStream(decrypted))
+                            restoreBackupZip(
+                                configDir,
+                                ByteArrayInputStream(decrypted),
+                                afterMutation = {
+                                    DeviceTemplateManager.initialize(configDir, persistBuiltInTemplates = false)
+                                    PolicyState.validatePublishedState().getOrThrow()
+                                    WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
+                                    Config.refreshRestoredConfiguration().getOrThrow()
+                                    if (!updateKeyboxesFromConfiguredRevocationSource()) {
+                                        throw RestoreKeyboxActivationException()
+                                    }
+                                },
+                                onRollback = {
+                                    refreshRuntimeAfterRestoreRollback(configDir)
+                                },
+                            )
                             val target = File(configDir, "target.txt")
                             if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
                                 target.setLastModified(System.currentTimeMillis())
-                            }
-                            WEB_UI_SETTINGS.forEach(Config::refreshRuntimeSetting)
-                            DeviceTemplateManager.initialize(configDir)
-                            Config.refreshRestoredConfiguration().getOrThrow()
-                            if (!updateKeyboxesFromConfiguredRevocationSource()) {
-                                return keyboxActivationFailureResponse()
                             }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
                     } finally {
                         decrypted.fill(0)
                     }
+                } catch (e: RestoreKeyboxActivationException) {
+                    Logger.e("Keybox activation failed during backup restore", e)
+                    keyboxActivationFailureResponse()
                 } catch (e: RustBackendUnavailableException) {
                     Logger.e("Rust backend unavailable during backup restore", e)
                     secureResponse(
@@ -2149,6 +2191,9 @@ class WebServer(
     }
 
     companion object {
+        @androidx.annotation.VisibleForTesting
+        internal var backupEntryWipeObserver: ((ByteArray) -> Unit)? = null
+
         private val MAX_UPLOAD_SIZE = CboxWireLimits.MAX_BYTES.toLong() + 1024 * 1024L
         private const val MAX_NATIVE_UPLOAD_SIZE = 20 * 1024 * 1024L
         private const val MAX_NATIVE_REQUEST_SIZE = MAX_NATIVE_UPLOAD_SIZE + 1024 * 1024L
@@ -2514,8 +2559,12 @@ class WebServer(
                 }
             }
             if (filename == "privacy_seed") {
-                val value = content.trim()
-                return value.length == 64 && value.all { it.digitToIntOrNull(16) != null }
+                val bytes = content.toByteArray(Charsets.UTF_8)
+                return try {
+                    Config.isValidPrivacySeedEncoding(bytes)
+                } finally {
+                    bytes.fill(0)
+                }
             }
             if (filename == "templates.json") {
                 return runCatching {
@@ -2692,6 +2741,8 @@ class WebServer(
         fun restoreBackupZip(
             configDir: File,
             inputStream: InputStream,
+            afterMutation: (() -> Unit)? = null,
+            onRollback: (() -> Unit)? = null,
         ) {
             val staged = LinkedHashMap<String, ByteArray>()
             var totalBytes = 0
@@ -2713,13 +2764,12 @@ class WebServer(
                         }
 
                         val entryLimit = backupEntryLimit(name)
-                        val bytes = readZipEntry(zis, entryLimit)
+                        val bytes = readAndValidateZipEntry(zis, name, entryLimit)
                         totalBytes += bytes.size
                         if (totalBytes > MAX_BACKUP_UNCOMPRESSED_BYTES) {
-                            bytes.fill(0)
+                            wipeBackupEntry(bytes)
                             throw IOException("Backup exceeds uncompressed size limit")
                         }
-                        validateBackupEntry(name, bytes)
                         staged[name] = bytes
                         zis.closeEntry()
                         entry = zis.nextEntry
@@ -2805,7 +2855,12 @@ class WebServer(
                 staleConfigFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
                 staleKeyboxFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
                 invalidatedCacheFiles.forEach { mutations += BackupRestoreTransaction.Mutation(it, null) }
-                BackupRestoreTransaction.apply(configDir, mutations)
+                BackupRestoreTransaction.apply(
+                    configDir,
+                    mutations,
+                    afterMutation = afterMutation,
+                    onRollback = onRollback,
+                )
             } finally {
                 staged.values.forEach { it.fill(0) }
             }
@@ -2828,6 +2883,28 @@ class WebServer(
                 filename.length in 5..128 &&
                 !filename.startsWith('.') &&
                 filename.all { it.isLetterOrDigit() || it == '_' || it == '-' || it == '.' }
+        }
+
+        private fun wipeBackupEntry(bytes: ByteArray) {
+            bytes.fill(0)
+            backupEntryWipeObserver?.let { observer -> runCatching { observer(bytes) } }
+        }
+
+        private fun isValidPrivacySeedBytes(bytes: ByteArray): Boolean = Config.isValidPrivacySeedEncoding(bytes)
+
+        private fun readAndValidateZipEntry(
+            input: InputStream,
+            name: String,
+            maxBytes: Int,
+        ): ByteArray {
+            val bytes = readZipEntry(input, maxBytes)
+            return try {
+                validateBackupEntry(name, bytes)
+                bytes
+            } catch (error: Throwable) {
+                wipeBackupEntry(bytes)
+                throw error
+            }
         }
 
         private fun readZipEntry(
@@ -2864,8 +2941,19 @@ class WebServer(
                 return
             }
             if (isBackupKeyboxEntry(name)) {
-                if (KeyboxLoader.parse(bytes.copyOf(), name).isEmpty()) {
-                    throw IOException("Backup keybox is empty: $name")
+                val parserInput = bytes.copyOf()
+                try {
+                    if (KeyboxLoader.parse(parserInput, name).isEmpty()) {
+                        throw IOException("Backup keybox is empty: $name")
+                    }
+                } finally {
+                    parserInput.fill(0)
+                }
+                return
+            }
+            if (name == "privacy_seed") {
+                if (!isValidPrivacySeedBytes(bytes)) {
+                    throw IOException("Backup privacy seed is invalid: $name")
                 }
                 return
             }

@@ -1,10 +1,126 @@
 package cleveres.tricky.cleverestech
 
 import java.io.File
+import java.nio.file.Files as NioFiles
+import java.util.concurrent.CancellationException
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainStartupContractTest {
+    @Test
+    fun `configured keybox source probe ignores symlinks`() {
+        val root = NioFiles.createTempDirectory("cleverestricky-source-probe").toFile()
+        try {
+            val outside = NioFiles.createTempFile("cleverestricky-outside", ".xml").toFile()
+            try {
+                NioFiles.createSymbolicLink(File(root, "linked.xml").toPath(), outside.toPath())
+                assertFalse(hasConfiguredKeyboxSource(root))
+            } finally {
+                outside.delete()
+            }
+            File(root, "keybox.xml").writeText("placeholder")
+            assertTrue(hasConfiguredKeyboxSource(root))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `deferred keybox retry recovers on an early attempt`() = runBlocking {
+        val waits = mutableListOf<Long>()
+        var attempts = 0
+        var active = false
+
+        val recovered =
+            retryDeferredKeyboxRefresh(
+                isActive = { active },
+                refresh = {
+                    attempts++
+                    active = attempts == 2
+                    active
+                },
+                wait = { waits += it },
+                retryDelaysMs = longArrayOf(1L, 5L, 15L),
+            )
+
+        assertTrue(recovered)
+        assertEquals(2, attempts)
+        assertEquals(listOf(1L, 5L), waits)
+    }
+
+    @Test
+    fun `deferred keybox retry remains bounded when refresh never recovers`() = runBlocking {
+        var attempts = 0
+        val recovered =
+            retryDeferredKeyboxRefresh(
+                isActive = { false },
+                refresh = {
+                    attempts++
+                    false
+                },
+                wait = {},
+                retryDelaysMs = longArrayOf(1L, 5L),
+                maxAttempts = 3,
+            )
+
+        assertFalse(recovered)
+        assertEquals(3, attempts)
+    }
+
+    @Test
+    fun `deferred keybox retry reuses the final backoff delay after schedule exhaustion`() = runBlocking {
+        val waits = mutableListOf<Long>()
+        retryDeferredKeyboxRefresh(
+            isActive = { false },
+            refresh = { false },
+            wait = { waits += it },
+            retryDelaysMs = longArrayOf(1L, 5L),
+            maxAttempts = 4,
+        )
+
+        assertEquals(listOf(1L, 5L, 5L, 5L), waits)
+    }
+
+    @Test
+    fun `deferred keybox retry stops when the source disappears`() = runBlocking {
+        var attempts = 0
+        var sourceExists = true
+        val recovered =
+            retryDeferredKeyboxRefresh(
+                isActive = { false },
+                refresh = {
+                    attempts++
+                    sourceExists = false
+                    false
+                },
+                wait = {},
+                retryDelaysMs = longArrayOf(1L, 5L),
+                shouldRetry = { sourceExists },
+            )
+
+        assertFalse(recovered)
+        assertEquals(1, attempts)
+    }
+
+    @Test
+    fun `deferred keybox retry propagates cancellation from refresh`() = runBlocking {
+        val cancellation = CancellationException("cancelled")
+        try {
+            retryDeferredKeyboxRefresh(
+                isActive = { false },
+                refresh = { throw cancellation },
+                wait = {},
+                retryDelaysMs = longArrayOf(1L),
+            )
+            throw AssertionError("cancellation must propagate")
+        } catch (caught: CancellationException) {
+            assertTrue(caught === cancellation)
+        }
+    }
+
     @Test
     fun `web ui adapter registers before backend readiness gate`() {
         val root = locateRoot()

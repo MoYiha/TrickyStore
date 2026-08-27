@@ -1144,14 +1144,19 @@ if (file) {
             resetDropZone();
             return;
         }
-        dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color:var(--success); font-weight:bold;">OK - ' + safeFileName + '</div>';
-        notify('Uploaded Successfully', 'normal');
+        let storedName = file.name;
         document.getElementById('kbContent').value = '';
         try {
             const body = await res.clone().json();
+            if (typeof body.filename === 'string' && body.filename) storedName = body.filename;
             if (body.keybox_count !== undefined) {
                 document.getElementById('keyboxStatus').innerText = body.keybox_count + ' Keys Loaded';
             }
+            const storedNameDiv = document.createElement('div');
+            storedNameDiv.innerText = storedName;
+            const safeStoredName = storedNameDiv.innerHTML;
+            dz.innerHTML = '<div style="font-size: 1.5em; margin-bottom: 10px; color:var(--success); font-weight:bold;">OK - ' + safeStoredName + '</div>';
+            notify('Uploaded Successfully', 'normal');
         } catch(e) { console.error(e); notify('Error: ' + e.message, 'error'); resetDropZone(); return; }
         loadKeyInfo();
         setTimeout(resetDropZone, 3000);

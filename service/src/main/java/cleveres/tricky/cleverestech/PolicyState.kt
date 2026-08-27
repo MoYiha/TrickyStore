@@ -262,6 +262,17 @@ object PolicyState {
             loadPublishedState()
         }.onFailure { Logger.e("Policy state reload failed; retaining current snapshot", it) }
 
+    /** Validates the currently published file without changing the active snapshot or falling back. */
+    @Synchronized
+    internal fun validatePublishedState(): Result<Unit> =
+        runCatching {
+            if (!initialized) return@runCatching
+            val state = File(root, STATE_FILE)
+            if (Files.exists(state.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                parseStateFile(state, "validation")
+            }
+        }
+
     @Synchronized
     fun onLegacySettingsChanged() {
         if (!initialized || snapshot.explicit) return

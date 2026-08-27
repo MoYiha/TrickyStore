@@ -2623,7 +2623,14 @@
         formData.append('file', file);
         formData.append('filename', entry.uploadName);
         const response = await global.fetchAuth('/api/upload_keybox', { method: 'POST', body: formData, timeoutMs: 120000 });
-        if (response.ok) return { ok: true, name: entry.uploadName };
+        if (response.ok) {
+            let storedName = entry.uploadName;
+            try {
+                const body = await response.clone().json();
+                if (typeof body.filename === 'string' && body.filename) storedName = body.filename;
+            } catch (_) {}
+            return { ok: true, name: storedName };
+        }
         let detail = '';
         try { detail = (await response.text()).replace(/[\r\n]+/g, ' ').trim().slice(0, 160); } catch (_) {}
         return { ok: false, name: entry.uploadName, detail };

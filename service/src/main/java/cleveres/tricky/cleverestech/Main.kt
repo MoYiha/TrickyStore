@@ -3,17 +3,21 @@ package cleveres.tricky.cleverestech
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.KeyboxAutoCleaner
 import cleveres.tricky.cleverestech.util.SecureFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.LinkOption
 
 private const val CONFIG_DIR_MODE = 448
 private const val BACKEND_STARTUP_TIMEOUT_MS = 30_000L
 private const val WEB_UI_START_ATTEMPTS = 12
 private const val WEB_UI_START_INITIAL_DELAY_MS = 50L
 private const val WEB_UI_START_MAX_DELAY_MS = 1_000L
+private val DEFERRED_KEYBOX_REFRESH_DELAYS_MS = longArrayOf(1_000L, 5_000L, 15_000L, 30_000L, 60_000L, 120_000L, 300_000L)
 
 private fun startWebUiBridge(
     configDir: File,
@@ -44,7 +48,43 @@ private fun startWebUiBridge(
     return null
 }
 
-private fun hasConfiguredKeyboxSource(configDir: File): Boolean {
+private fun activeKeyboxCountOrZero(): Int =
+    try {
+        CertHack.getKeyboxCount()
+    } catch (_: Exception) {
+        0
+    }
+
+internal suspend fun retryDeferredKeyboxRefresh(
+    isActive: () -> Boolean,
+    refresh: () -> Boolean,
+    wait: suspend (Long) -> Unit = { delay(it) },
+    retryDelaysMs: LongArray = DEFERRED_KEYBOX_REFRESH_DELAYS_MS,
+    shouldRetry: () -> Boolean = { true },
+    maxAttempts: Int? = null,
+): Boolean {
+    require(retryDelaysMs.isNotEmpty()) { "At least one deferred keybox retry delay is required" }
+    require(maxAttempts == null || maxAttempts >= 0) { "Deferred keybox retry attempts must not be negative" }
+    var attempt = 0
+    while (maxAttempts == null || attempt < maxAttempts) {
+        wait(retryDelaysMs[minOf(attempt, retryDelaysMs.lastIndex)])
+        if (isActive()) return true
+        if (!shouldRetry()) return false
+        val refreshed =
+            try {
+                refresh()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                false
+            }
+        if (refreshed && isActive()) return true
+        attempt++
+    }
+    return isActive()
+}
+
+internal fun hasConfiguredKeyboxSource(configDir: File): Boolean {
     val roots =
         listOf(
             configDir,
@@ -52,8 +92,9 @@ private fun hasConfiguredKeyboxSource(configDir: File): Boolean {
             File("/data/adb/tricky_store/keybox"),
         )
     return roots.any { root ->
+        if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@any false
         root.listFiles()?.any { file ->
-            file.isFile &&
+            Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
                 (file.name.endsWith(".xml", ignoreCase = true) || file.name.endsWith(".cbox", ignoreCase = true))
         } == true
     }
@@ -186,19 +227,19 @@ fun main(args: Array<String>) {
         // checks intentionally fail closed, so a verified keybox may be unavailable on the first
         // scan even though the stored source is valid. Retry a few times in the background instead
         // of requiring a destructive environment reset from WebUI.
-        if (CertHack.getKeyboxCount() == 0 && hasConfiguredKeyboxSource(configDir)) {
+        if (activeKeyboxCountOrZero() == 0 && hasConfiguredKeyboxSource(configDir)) {
             launch(Dispatchers.IO) {
-                val retryDelaysMs = longArrayOf(5_000L, 15_000L, 45_000L, 120_000L, 300_000L)
-                for (retryDelay in retryDelaysMs) {
-                    delay(retryDelay)
-                    if (CertHack.getKeyboxCount() > 0) break
-                    runCatching { Config.updateKeyBoxesSync() }
-                        .onFailure { Logger.d { "Deferred keybox refresh failed: ${it.javaClass.simpleName}" } }
-                    val recovered = CertHack.getKeyboxCount()
-                    if (recovered > 0) {
-                        Logger.i("Deferred keybox refresh activated $recovered verified keybox(es)")
-                        break
-                    }
+                val recovered =
+                    retryDeferredKeyboxRefresh(
+                        isActive = { activeKeyboxCountOrZero() > 0 },
+                        refresh = { Config.updateKeyBoxesSync() },
+                        wait = { retryDelay -> delay(retryDelay) },
+                        shouldRetry = { hasConfiguredKeyboxSource(configDir) },
+                    )
+                if (recovered) {
+                    Logger.i("Deferred keybox refresh activated ${activeKeyboxCountOrZero()} verified keybox(es)")
+                } else {
+                    Logger.d("Deferred keybox refresh exhausted without an active verified keybox")
                 }
             }
         }

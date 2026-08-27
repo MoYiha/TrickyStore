@@ -228,7 +228,7 @@ class WebServerUXTest {
             """
             version=2
             state=failed
-            pid=1
+            pid=2147483647
             start_ticks=1
             entry=entry
             failure=symbol_resolution
