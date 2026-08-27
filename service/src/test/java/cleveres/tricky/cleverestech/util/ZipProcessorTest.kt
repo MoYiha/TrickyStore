@@ -24,7 +24,7 @@ class ZipProcessorTest {
         // Save the original logger using reflection
         val implField = Logger::class.java.getDeclaredField("impl")
         implField.isAccessible = true
-        originalLoggerImpl = implField.get(null) as Logger.LogImpl
+        originalLoggerImpl = implField.get(Logger) as Logger.LogImpl
 
         Logger.setImpl(object : Logger.LogImpl {
             override fun d(tag: String, msg: String) {}
