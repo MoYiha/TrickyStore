@@ -84,21 +84,17 @@ internal suspend fun retryDeferredKeyboxRefresh(
     return isActive()
 }
 
-internal fun hasConfiguredKeyboxSource(configDir: File): Boolean {
-    val roots =
-        listOf(
-            configDir,
-            File(configDir, "keyboxes"),
-            File("/data/adb/tricky_store/keybox"),
-        )
-    return roots.any { root ->
-        if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return@any false
-        root.listFiles()?.any { file ->
-            Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
-                (file.name.endsWith(".xml", ignoreCase = true) || file.name.endsWith(".cbox", ignoreCase = true))
-        } == true
-    }
+private fun directoryHasConfiguredKeyboxSource(root: File): Boolean {
+    if (!Files.isDirectory(root.toPath(), LinkOption.NOFOLLOW_LINKS)) return false
+    return root.listFiles()?.any { file ->
+        Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            (file.name.endsWith(".xml", ignoreCase = true) || file.name.endsWith(".cbox", ignoreCase = true))
+    } == true
 }
+
+internal fun hasConfiguredKeyboxSource(configDir: File): Boolean =
+    directoryHasConfiguredKeyboxSource(configDir) ||
+        directoryHasConfiguredKeyboxSource(File(configDir, "keyboxes"))
 
 fun main(args: Array<String>) {
     Logger.i("Welcome to Service!")
