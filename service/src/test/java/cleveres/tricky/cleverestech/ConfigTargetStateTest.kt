@@ -98,11 +98,11 @@ class ConfigTargetStateTest {
         return constructor.newInstance(packages)
     }
 
-    private fun createTargetState(hack: PackageTrie<Boolean>): Any {
+    private fun createTargetState(packages: PackageTrie<Boolean>): Any {
         val clazz = Class.forName("cleveres.tricky.cleverestech.Config\$TargetState")
         val constructor = clazz.getDeclaredConstructor(PackageTrie::class.java)
         constructor.isAccessible = true
-        return constructor.newInstance(hack)
+        return constructor.newInstance(packages)
     }
 
     private fun getFieldFromTargetState(
