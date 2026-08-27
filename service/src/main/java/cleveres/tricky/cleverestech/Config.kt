@@ -1362,7 +1362,7 @@ object Config {
             val sample = value.replace("YYYY", "2024").replace("MM", "06").replace("DD", "15")
             return runCatching { sample.convertPatchLevel(false) }.map { value }.getOrNull()
         }
-        return runCatching { value.convertPatchLevel(false) }.onFailure { Logger.w("Ignoring invalid security patch setting") }.getOrNull()
+        return runCatching { value.convertPatchLevel(false) }.map { value }.onFailure { Logger.w("Ignoring invalid security patch setting") }.getOrNull()
     }
 
     private fun parseComponentPatchSetting(value: String): Any? =
@@ -1375,7 +1375,7 @@ object Config {
                 val sample = value.replace("YYYY", "2024").replace("MM", "06").replace("DD", "15")
                 runCatching { sample.convertPatchLevel(false) }.map { value }.getOrNull()
             }
-            else -> runCatching { value.convertPatchLevel(false); value }.getOrNull()
+            else -> runCatching { value.convertPatchLevel(false) }.map { value }.getOrNull()
         }
 
     private fun resolvePatchValue(value: String, long: Boolean): Int {
