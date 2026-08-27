@@ -4,9 +4,7 @@ import cleveres.tricky.cleverestech.CrlBackend
 import cleveres.tricky.cleverestech.CrlWire
 import cleveres.tricky.cleverestech.Logger
 import java.net.ServerSocket
-import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
