@@ -120,10 +120,17 @@ fn create_socket() -> io::Result<RawFd> {
     // descriptor on success. No pointers or shared state are involved.
     let raw = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC, 0) };
     if raw < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(raw)
+        return Err(io::Error::last_os_error());
     }
+    
+    // Fallback for older Android kernels that may silently ignore SOCK_CLOEXEC in socket()
+    // SAFETY: F_GETFD and F_SETFD are safe, scalar operations on a live descriptor.
+    let flags = unsafe { libc::fcntl(raw, libc::F_GETFD) };
+    if flags >= 0 {
+        unsafe { libc::fcntl(raw, libc::F_SETFD, flags | libc::FD_CLOEXEC) };
+    }
+    
+    Ok(raw)
 }
 
 fn abstract_address(name: &[u8]) -> (libc::sockaddr_un, libc::socklen_t) {

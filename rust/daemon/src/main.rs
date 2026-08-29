@@ -128,6 +128,8 @@ fn run() -> io::Result<()> {
         Ok(listener) => listener,
         Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
             if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
                 if let Ok(creds) = peer_credentials(&stream) {
                     if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
                         if let Ok(header) = read_header(&mut stream) {
@@ -148,24 +150,6 @@ fn run() -> io::Result<()> {
     };
     let file_listener = match bind_abstract(FILE_SOCKET_NAME) {
         Ok(listener) => listener,
-        Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
-            if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
-                if let Ok(creds) = peer_credentials(&stream) {
-                    if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
-                        if let Ok(header) = read_header(&mut stream) {
-                            if header.opcode == OP_PING && header.flags == 0 {
-                                eprintln!(
-                                    "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
-                                    creds.pid
-                                );
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
-            }
-            return Err(error);
-        }
         Err(error) => return Err(error),
     };
     let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
@@ -330,7 +314,7 @@ fn spawn_android_adapter(module_dir: &Path) -> io::Result<Child> {
     let backend_auth = backend_auth_env()?;
     let mut command = Command::new("/system/bin/app_process");
     command
-        .arg("/system/bin")
+        .arg("/")
         .arg("--nice-name=CleveresTricky")
         .arg("cleveres.tricky.cleverestech.MainKt")
         .env("CLASSPATH", classpath)
