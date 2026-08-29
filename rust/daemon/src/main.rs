@@ -254,10 +254,23 @@ fn backend_auth_env() -> io::Result<OsString> {
 }
 
 fn harden_process() -> io::Result<()> {
+    let parent_pid = unsafe { libc::getppid() };
+    if parent_pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "shell supervisor is unavailable",
+        ));
+    }
     // SAFETY: `prctl(PR_SET_PDEATHSIG, SIGTERM)` has no pointer arguments. If the shell supervisor
     // dies, the daemon must also terminate to avoid orphaning and socket port conflicts.
     if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
         return Err(io::Error::last_os_error());
+    }
+    if unsafe { libc::getppid() } != parent_pid {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "shell supervisor changed during hardening",
+        ));
     }
     // SAFETY: `umask` takes a value argument only, has process-global semantics intended for this
     // single-purpose daemon, and retains no pointers or references.

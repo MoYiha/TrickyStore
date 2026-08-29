@@ -2,77 +2,36 @@
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
-SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
+SUPERVISOR_PID_FILE="$CONFIG_DIR/supervisor.pid"
 DAEMON_PID_FILE="$CONFIG_DIR/daemon.pid"
 
+terminate_pid() {
+  pid_file=$1
+  name=$2
+  max_wait=$3
+  [ -f "$pid_file" ] || return 0
+  old_pid=$(cat "$pid_file" 2>/dev/null)
+  if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
+    log -t CleveresTricky "Stopping previous $name (PID $old_pid)"
+    kill -TERM "$old_pid" 2>/dev/null || true
+    wait_count=0
+    while [ -d "/proc/$old_pid" ] && [ "$wait_count" -lt "$max_wait" ]; do
+      sleep 0.1
+      wait_count=$((wait_count + 1))
+    done
+    if [ -d "/proc/$old_pid" ]; then
+      kill -9 "$old_pid" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$pid_file"
+}
+
 terminate_previous_instances() {
-  if [ -f "$SUPERVISOR_PID_FILE" ]; then
-    old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
-    if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
-      log -t CleveresTricky "Stopping previous supervisor (PID $old_pid)"
-      kill -TERM "$old_pid" 2>/dev/null || true
-      wait_count=0
-      while [ -d "/proc/$old_pid" ] && [ "$wait_count" -lt 15 ]; do
-        sleep 0.1
-        wait_count=$((wait_count + 1))
-      done
-      if [ -d "/proc/$old_pid" ]; then
-        kill -9 "$old_pid" 2>/dev/null || true
-      fi
-    fi
-    rm -f "$SUPERVISOR_PID_FILE"
-  fi
-
-  if [ -f "$DAEMON_PID_FILE" ]; then
-    old_daemon_pid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
-    if [ -n "$old_daemon_pid" ] && [ -d "/proc/$old_daemon_pid" ]; then
-      log -t CleveresTricky "Stopping previous daemon (PID $old_daemon_pid)"
-      kill -TERM "$old_daemon_pid" 2>/dev/null || true
-      wait_count=0
-      while [ -d "/proc/$old_daemon_pid" ] && [ "$wait_count" -lt 10 ]; do
-        sleep 0.1
-        wait_count=$((wait_count + 1))
-      done
-      if [ -d "/proc/$old_daemon_pid" ]; then
-        kill -9 "$old_daemon_pid" 2>/dev/null || true
-      fi
-    fi
-    rm -f "$DAEMON_PID_FILE"
-  fi
-
-  if [ -f "$CONFIG_DIR/adapter.pid" ]; then
-    old_adapter_pid=$(cat "$CONFIG_DIR/adapter.pid" 2>/dev/null)
-    if [ -n "$old_adapter_pid" ] && [ -d "/proc/$old_adapter_pid" ]; then
-      log -t CleveresTricky "Stopping previous adapter (PID $old_adapter_pid)"
-      kill -TERM "$old_adapter_pid" 2>/dev/null || true
-      wait_count=0
-      while [ -d "/proc/$old_adapter_pid" ] && [ "$wait_count" -lt 20 ]; do
-        sleep 0.1
-        wait_count=$((wait_count + 1))
-      done
-      if [ -d "/proc/$old_adapter_pid" ]; then
-        kill -9 "$old_adapter_pid" 2>/dev/null || true
-      fi
-    fi
-    rm -f "$CONFIG_DIR/adapter.pid"
-  fi
-
-  if [ -f "$CONFIG_DIR/backend.pid" ]; then
-    old_backend_pid=$(cat "$CONFIG_DIR/backend.pid" 2>/dev/null)
-    if [ -n "$old_backend_pid" ] && [ -d "/proc/$old_backend_pid" ]; then
-      log -t CleveresTricky "Stopping previous backend (PID $old_backend_pid)"
-      kill -TERM "$old_backend_pid" 2>/dev/null || true
-      wait_count=0
-      while [ -d "/proc/$old_backend_pid" ] && [ "$wait_count" -lt 10 ]; do
-        sleep 0.1
-        wait_count=$((wait_count + 1))
-      done
-      if [ -d "/proc/$old_backend_pid" ]; then
-        kill -9 "$old_backend_pid" 2>/dev/null || true
-      fi
-    fi
-    rm -f "$CONFIG_DIR/backend.pid"
-  fi
+  terminate_pid "$CONFIG_DIR/supervisor.pid" "supervisor" 15
+  terminate_pid "$MODDIR/supervisor.pid" "supervisor" 15
+  terminate_pid "$CONFIG_DIR/daemon.pid" "daemon" 10
+  terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 20
+  terminate_pid "$CONFIG_DIR/backend.pid" "backend" 10
 }
 
 terminate_previous_instances
@@ -344,6 +303,10 @@ while true; do
     log -t CleveresTricky "Module disabled or pending removal after daemon exit; supervisor stopped"
     break
   fi
+
+  terminate_pid "$DAEMON_PID_FILE" "daemon" 5
+  terminate_pid "$CONFIG_DIR/backend.pid" "backend" 5
+  terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 5
 
   log -t CleveresTricky \
     "Daemon exited with code $exit_code after ${runtime}s; retrying in ${retry_delay}s"

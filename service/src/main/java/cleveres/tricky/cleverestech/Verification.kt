@@ -8,7 +8,8 @@ import java.nio.file.LinkOption
 
 object Verification {
     private val MODULE_PATH = getModuleDir()
-    private val IGNORED_FILES = setOf("disable", "remove", "update", "tampered")
+    private val IGNORED_FILES =
+        setOf("disable", "remove", "update", "tampered", "supervisor.pid", "daemon.pid", "adapter.pid", "backend.pid")
 
     fun check(root: File = File(MODULE_PATH)): Boolean {
         return try {
