@@ -377,10 +377,11 @@ fn run_backend_once(
     let (mut child, broker) = spawn_backend(module_dir, lease.pid)?;
     let backend_pid = child.id();
     let _ = root.atomic_write("backend.pid", backend_pid.to_string().as_bytes(), 0o600);
+    let broker_root = Arc::clone(&root);
     let broker_thread = match thread::Builder::new()
         .name("ct-keybox-broker".to_string())
         .spawn(move || {
-            if let Err(error) = keybox_file_broker::serve(broker, &root) {
+            if let Err(error) = keybox_file_broker::serve(broker, &broker_root) {
                 eprintln!("cleverestrickyd: keybox broker failed: {error}");
                 let _ = unsafe { libc::kill(backend_pid as libc::pid_t, libc::SIGTERM) };
             }
