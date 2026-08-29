@@ -247,6 +247,6 @@ Diagnosen gehen in Android logcat, nicht in eine separate Plaintext-Logdatei. Ha
 <a id="theme"></a>
 ## UI Theme
 
-Minimalistisches monochromes Nothing-OS/iOS-Hybrid: dunkler Charcoal-Hintergrund, hellgrauer Text, silberner Accent, dunkle Panels, grüner Success, roter Danger. System Sans, technische Daten Monospace, Dynamic Island, runde Buttons, iOS-Toggles und Mobile-first Layout.
+Minimalistisches monochromes Nothing-OS/Modern-Hybrid: dunkler Charcoal-Hintergrund, hellgrauer Text, silberner Accent, dunkle Panels, grüner Success, roter Danger. System Sans, technische Daten Monospace, Dynamic Island, runde Buttons, Modern-Toggles und Mobile-first Layout.
 
 Touch-Ziele mindestens etwa 44px, vertikaler Flow bevorzugt und Optimierung für Bedienung im KernelSU/APatch-Modulmanager.

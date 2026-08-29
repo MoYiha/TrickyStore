@@ -247,6 +247,6 @@ Diagnostics пишутся в Android logcat, отдельного plaintext log
 <a id="theme"></a>
 ## UI Theme
 
-Минималистичный monochrome Nothing OS/iOS hybrid: charcoal background, light gray text, silver accent, dark panels, green success, red danger. System sans, monospace для technical data, Dynamic Island, rounded buttons, iOS toggles, mobile-first layout.
+Минималистичный monochrome Nothing OS/Modern hybrid: charcoal background, light gray text, silver accent, dark panels, green success, red danger. System sans, monospace для technical data, Dynamic Island, rounded buttons, Modern toggles, mobile-first layout.
 
 Touch target около 44px+, вертикальный flow приоритетен и UI оптимизирован для телефона внутри KernelSU/APatch.

@@ -3,15 +3,62 @@ MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
 SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
+DAEMON_PID_FILE="$CONFIG_DIR/daemon.pid"
 
-if [ -f "$SUPERVISOR_PID_FILE" ]; then
-  old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
-  if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
-    log -t CleveresTricky "Killing previous supervisor (PID $old_pid) to prevent port conflicts"
-    kill -9 "$old_pid" 2>/dev/null
-    sleep 1
+terminate_previous_instances() {
+  if [ -f "$SUPERVISOR_PID_FILE" ]; then
+    old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
+    if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
+      log -t CleveresTricky "Stopping previous supervisor (PID $old_pid)"
+      kill -TERM "$old_pid" 2>/dev/null || true
+      wait_count=0
+      while [ -d "/proc/$old_pid" ] && [ "$wait_count" -lt 15 ]; do
+        sleep 0.1
+        wait_count=$((wait_count + 1))
+      done
+      if [ -d "/proc/$old_pid" ]; then
+        kill -9 "$old_pid" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$SUPERVISOR_PID_FILE"
   fi
-fi
+
+  if [ -f "$DAEMON_PID_FILE" ]; then
+    old_daemon_pid=$(cat "$DAEMON_PID_FILE" 2>/dev/null)
+    if [ -n "$old_daemon_pid" ] && [ -d "/proc/$old_daemon_pid" ]; then
+      log -t CleveresTricky "Stopping previous daemon (PID $old_daemon_pid)"
+      kill -TERM "$old_daemon_pid" 2>/dev/null || true
+      wait_count=0
+      while [ -d "/proc/$old_daemon_pid" ] && [ "$wait_count" -lt 10 ]; do
+        sleep 0.1
+        wait_count=$((wait_count + 1))
+      done
+      if [ -d "/proc/$old_daemon_pid" ]; then
+        kill -9 "$old_daemon_pid" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$DAEMON_PID_FILE"
+  fi
+
+  if [ -f "$CONFIG_DIR/adapter.pid" ]; then
+    old_adapter_pid=$(cat "$CONFIG_DIR/adapter.pid" 2>/dev/null)
+    if [ -n "$old_adapter_pid" ] && [ -d "/proc/$old_adapter_pid" ]; then
+      log -t CleveresTricky "Stopping previous adapter (PID $old_adapter_pid)"
+      kill -TERM "$old_adapter_pid" 2>/dev/null || true
+      wait_count=0
+      while [ -d "/proc/$old_adapter_pid" ] && [ "$wait_count" -lt 20 ]; do
+        sleep 0.1
+        wait_count=$((wait_count + 1))
+      done
+      if [ -d "/proc/$old_adapter_pid" ]; then
+        kill -9 "$old_adapter_pid" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$CONFIG_DIR/adapter.pid"
+  fi
+}
+
+terminate_previous_instances
 
 (
 retry_delay=2

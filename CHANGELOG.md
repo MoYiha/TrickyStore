@@ -1,11 +1,11 @@
 # Changelog
 
-## V2.6.6
+## V2.6.7
 
-- **Modern & Refined WebUI:** Polished typography, form layouts, floating dynamic alerts, adaptive mobile navigation tabs, and responsive table views for a cleaner, smoother experience.
-- **Smooth mobile scrolling and interactions:** Fixed WebView scroll locks and touch handling so all pages scroll naturally and seamlessly on mobile devices.
-- **Instant keybox synchronization:** Stored keybox updates synchronize immediately across the system, and keybox deletion operates reliably without spurious error prompts.
-- **Clean Donate presentation:** Streamlined Donate tab styling to match system accent colors without distracting shadows or box overlays.
-- **WebUI startup readiness:** The interface gracefully waits for backend initialization and retries connections automatically on first launch.
-- **Robust background daemon lifecycle:** Fixed port/address conflicts (`os error 98`) via strict supervisor process management and child lifecycle bindings.
-- **Stronger resource boundaries:** Polling overhead has been replaced with event-driven coordination, and memory limits are strictly enforced across uploads and staging operations.
+- **WebUI Stability:** Resolved "policy controls unavailable" errors and IPC timeouts caused by daemon crash loops and orphaned processes.
+- **Daemon Lifecycle:** Fixed severe port conflicts (`os error 98`) by writing `daemon.pid` only after successful socket binding, preventing PID file corruption that left zombie daemons untrackable.
+- **Adapter Orphan Elimination:** Added `adapter.pid` tracking so the supervisor explicitly kills old Android adapter processes during upgrades, preventing concurrent adapter instances that caused native SIGSEGV crashes.
+- **Crash Loop Circuit Breaker:** After 10 rapid adapter failures, the daemon now enters a 120-second cooldown instead of spinning indefinitely, protecting battery and system resources.
+- **Missing File Errors:** Eliminated KernelSU/APatch `SuFilePathHandler` 404 errors for `favicon.ico` by embedding a blank data URI favicon in the WebUI HTML.
+- **Documentation:** Updated design references from platform-specific terminology to "Modern" across all translations.
+- **Development Process:** Strengthened AGENTS.md and SKILL.md rules against log-silencing, lazy workarounds, and covering up defects instead of fixing root causes.

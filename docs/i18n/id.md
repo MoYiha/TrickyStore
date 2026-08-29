@@ -247,6 +247,6 @@ Diagnostics ditulis ke Android logcat, tidak ada separate plaintext log. Perinta
 <a id="theme"></a>
 ## UI Theme
 
-UI memakai minimal monochrome Nothing OS/iOS hybrid: charcoal background, light gray text, silver accent, dark panel, green success, red danger. System sans, monospace technical data, Dynamic Island, rounded buttons, iOS toggles dan mobile-first layout.
+UI memakai minimal monochrome Nothing OS/Modern hybrid: charcoal background, light gray text, silver accent, dark panel, green success, red danger. System sans, monospace technical data, Dynamic Island, rounded buttons, Modern toggles dan mobile-first layout.
 
 Touch target sekitar 44px+, vertical flow diprioritaskan dan UI dioptimalkan untuk penggunaan di KernelSU/APatch pada ponsel.

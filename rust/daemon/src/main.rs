@@ -33,6 +33,8 @@ const BACKEND_MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKEND_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(60);
 const ADAPTER_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const ADAPTER_MAX_BACKOFF: Duration = Duration::from_secs(30);
+const ADAPTER_CIRCUIT_FAILURES: u32 = 10;
+const ADAPTER_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(120);
 const ADAPTER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_BROKER_FD: RawFd = 9;
 const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
@@ -68,23 +70,21 @@ impl AdapterIdentity {
 
     fn publish(&self, pid: u32) -> AdapterLease {
         assert_ne!(pid, 0);
+        let mut current = self.state.load(std::sync::atomic::Ordering::Acquire);
         loop {
-            let current = self.state.load(std::sync::atomic::Ordering::Acquire);
+            let next_generation = (current >> 32).wrapping_add(1) as u32;
             let lease = AdapterLease {
                 pid,
-                generation: ((current >> 32) as u32).wrapping_add(1),
+                generation: next_generation,
             };
-            if self
-                .state
-                .compare_exchange(
-                    current,
-                    Self::pack(lease),
-                    std::sync::atomic::Ordering::AcqRel,
-                    std::sync::atomic::Ordering::Acquire,
-                )
-                .is_ok()
-            {
-                return lease;
+            match self.state.compare_exchange_weak(
+                current,
+                Self::pack(lease),
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            ) {
+                Ok(_) => return lease,
+                Err(new) => current = new,
             }
         }
     }
@@ -108,6 +108,7 @@ impl AdapterIdentity {
 struct AdapterRetryPlan {
     rapid_failures: u32,
     delay: Duration,
+    circuit_open: bool,
 }
 
 fn main() {
@@ -125,6 +126,7 @@ fn run() -> io::Result<()> {
     let config_root = Arc::new(config_file_broker::prepare_root()?);
     let web_listener = bind_abstract(DAEMON_SOCKET_NAME)?;
     let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
+    let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
     let adapter_identity = Arc::new(AdapterIdentity::default());
 
     let web_identity = Arc::clone(&adapter_identity);
@@ -156,6 +158,7 @@ fn run() -> io::Result<()> {
         match spawn_android_adapter(&module_dir) {
             Ok(mut adapter) => {
                 let lease = adapter_identity.publish(adapter.id());
+                let _ = config_root.atomic_write("adapter.pid", adapter.id().to_string().as_bytes(), 0o600);
                 eprintln!(
                     "cleverestrickyd: Android adapter generation {} started as pid {}",
                     lease.generation, lease.pid
@@ -170,6 +173,7 @@ fn run() -> io::Result<()> {
                         lease.generation
                     ),
                 }
+                let _ = config_root.unlink_file("adapter.pid");
                 adapter_identity.invalidate(lease);
             }
             Err(error) => eprintln!("cleverestrickyd: Android adapter launch failed: {error}"),
@@ -177,10 +181,17 @@ fn run() -> io::Result<()> {
 
         let plan = adapter_retry_plan(rapid_failures, started.elapsed());
         rapid_failures = plan.rapid_failures;
-        eprintln!(
-            "cleverestrickyd: restarting Android adapter after {}s",
-            plan.delay.as_secs()
-        );
+        if plan.circuit_open {
+            eprintln!(
+                "cleverestrickyd: adapter circuit open after {ADAPTER_CIRCUIT_FAILURES} rapid failures; retrying after {}s",
+                plan.delay.as_secs()
+            );
+        } else {
+            eprintln!(
+                "cleverestrickyd: restarting Android adapter after {}s",
+                plan.delay.as_secs()
+            );
+        }
         thread::sleep(plan.delay);
     }
 }
@@ -432,13 +443,22 @@ fn adapter_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> Adapte
         return AdapterRetryPlan {
             rapid_failures: 0,
             delay: Duration::from_secs(1),
+            circuit_open: false,
         };
     }
     let rapid_failures = previous_rapid_failures.saturating_add(1);
+    if rapid_failures >= ADAPTER_CIRCUIT_FAILURES {
+        return AdapterRetryPlan {
+            rapid_failures: 0,
+            delay: ADAPTER_CIRCUIT_COOLDOWN,
+            circuit_open: true,
+        };
+    }
     let backoff_seconds = 1u64 << rapid_failures.min(5);
     AdapterRetryPlan {
         rapid_failures,
         delay: Duration::from_secs(backoff_seconds).min(ADAPTER_MAX_BACKOFF),
+        circuit_open: false,
     }
 }
 
@@ -1039,13 +1059,22 @@ mod tests {
     #[test]
     fn adapter_restart_backoff_is_bounded_and_resets_after_stability() {
         let mut failures = 0;
-        for _ in 0..16 {
+        let mut circuit_opened = false;
+        for _ in 0..20 {
             let plan = adapter_retry_plan(failures, Duration::from_secs(1));
-            assert!(plan.delay <= ADAPTER_MAX_BACKOFF);
+            if plan.circuit_open {
+                circuit_opened = true;
+                assert_eq!(plan.delay, ADAPTER_CIRCUIT_COOLDOWN);
+                assert_eq!(plan.rapid_failures, 0);
+            } else {
+                assert!(plan.delay <= ADAPTER_MAX_BACKOFF);
+            }
             failures = plan.rapid_failures;
         }
+        assert!(circuit_opened, "circuit breaker should have opened");
         let stable = adapter_retry_plan(failures, ADAPTER_STABLE_INTERVAL);
         assert_eq!(stable.rapid_failures, 0);
         assert_eq!(stable.delay, Duration::from_secs(1));
+        assert!(!stable.circuit_open);
     }
 }

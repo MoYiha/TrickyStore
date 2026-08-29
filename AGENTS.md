@@ -82,7 +82,8 @@ Do not:
 - relax security thresholds, parser limits, hardening checks, warnings-as-errors, or lint rules to hide a defect;
 - change expected values to match broken behavior unless the behavior change is intentional and justified by the project contract;
 - swallow exceptions, add broad catch-and-ignore blocks, or convert failures to empty/default success values without proving that is the intended API behavior;
-- use `pkill`, `sleep` loops, log-filtering, or blanket catch-alls to hide symptoms of process crashes, port conflicts, or zombie processes. You must investigate the lifecycle and fix the root cause (e.g. process orphanage) rather than merely cleaning up the logs or treating the symptom;
+- use `pkill`, `sleep` loops, log-filtering, log-clearing, or blanket catch-alls to hide symptoms of process crashes, port conflicts, or zombie processes. You must investigate the lifecycle and fix the root cause (e.g. process orphanage) rather than merely cleaning up the logs, silencing them, or covering them up;
+- employ lazy workarounds instead of fixing the underlying defect. If an error is logged, eliminate the underlying reason for the error;
 - add duplicate `*-fix`, `*-patch`, compatibility wrappers, second owners, or temporary runtime layers when the existing owner should be corrected;
 - leave required tests, cleanup, or cross-path auditing as `TODO` follow-up work when it belongs to the same fix;
 - claim a change is safe because it "should compile" or because a similar path passed previously;

@@ -247,6 +247,6 @@ CleveresTricky ayrı plain log file tutmaz; tanılama Android logcat'e yazılır
 <a id="theme"></a>
 ## UI Theme
 
-WebUI minimalist monochrome Nothing OS / iOS hybrid tasarım kullanır. Arka plan koyu charcoal, foreground light gray, accent silver, panel dark gray, success emerald ve danger red'dir. Typography system sans-serif, teknik veri monospace; Dynamic Island bildirimleri, rounded buttons, iOS-style toggles ve responsive mobile-first layout kullanılır.
+WebUI minimalist monochrome Nothing OS / Modern hybrid tasarım kullanır. Arka plan koyu charcoal, foreground light gray, accent silver, panel dark gray, success emerald ve danger red'dir. Typography system sans-serif, teknik veri monospace; Dynamic Island bildirimleri, rounded buttons, Modern-style toggles ve responsive mobile-first layout kullanılır.
 
 Touch target'lar en az yaklaşık 44 px olmalı, vertical flow horizontal karmaşıklığa tercih edilmeli ve tasarım KernelSU/APatch içindeki telefon kullanımına optimize edilmelidir.

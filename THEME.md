@@ -4,11 +4,11 @@
 
 This document tracks the color palette and design system used in the CleveresTricky Web UI.
 
-## Design Philosophy: "Nothing / iOS Hybrid"
+## Design Philosophy: "Nothing / Modern Hybrid"
 
-The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and **iOS**.
+The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and **Modern**.
 * **Nothing OS Influence:** Use of dot-matrix fonts (simulated via monospace), raw industrial look, high contrast black/white, and "glitch" aesthetic for technical data.
-* **iOS Influence:** Fluid animations, "Dynamic Island" for notifications, rounded corners (Apple-style), and blur effects.
+* **Modern Influence:** Fluid animations, "Dynamic Island" for notifications, rounded corners (Apple-style), and blur effects.
 
 ## Color Palette
 
@@ -34,7 +34,7 @@ The UI follows a minimalist, monochrome aesthetic inspired by **Nothing OS** and
 * **Dynamic Island**: Floating notification pill, black background, box-shadow.
 * **Tabs**: Panel background, bottom border, active state uses Accent color.
 * **Buttons**: Uppercase, rounded corners (6px), flat design. Primary buttons use Accent color.
-* **Toggles**: iOS-style switches.
+* **Toggles**: Modern-style switches.
 
 ## Mobile-First Design
 
