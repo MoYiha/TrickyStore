@@ -28,7 +28,7 @@
             --info: #64d2ff;
             --fg: #ffffff;
             --muted: #8e8e93;
-            --content-width: 1100px;
+            --content-width: 1240px;
         }
         * { box-sizing: border-box; }
         html {
@@ -41,9 +41,12 @@
         body {
             background-color: var(--bg);
             color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", -system-ui, system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
             margin: 0 auto;
-            padding: 0;
+            padding: 0 16px;
             min-height: 100dvh;
             width: 100%;
             max-width: var(--content-width);
@@ -51,23 +54,24 @@
             overscroll-behavior-y: contain;
             -webkit-tap-highlight-color: transparent;
             display: grid;
-            grid-template-columns: minmax(214px, 252px) minmax(0, 1fr);
+            grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
             grid-template-rows: auto 1fr;
+            column-gap: 28px;
         }
-        .island-container { display: flex; justify-content: center; position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 0; right: 0; padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); box-sizing: border-box; z-index: 1100; pointer-events: none; }
-        .island { background: rgba(28, 28, 30, 0.95); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 24px; width: min(90vw, 680px); max-width: min(90vw, 680px); min-height: 44px; padding: 10px 14px 10px 18px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; transition: opacity 0.16s ease, transform 0.20s cubic-bezier(.22,.8,.25,1), visibility 0s linear 0.20s; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6); font-size: 0.9em; font-weight: 500; opacity: 0; transform: translateY(-8px) scale(0.985); visibility: hidden; pointer-events: none; white-space: normal; overflow-wrap: anywhere; max-height: min(42dvh, 320px); overflow: auto; will-change: opacity, transform; }
-        .island.active { opacity: 1; transform: translateY(0) scale(1); visibility: visible; pointer-events: auto; transition-delay: 0s; }
-        .island.error { background: rgba(55, 10, 10, 0.95); border: 1px solid var(--danger); }
-        .island.error #islandText { color: #fecaca; }
-        .spinner { width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 10px; display: none; }
+        .island-container { display: flex; justify-content: center; position: fixed; top: calc(env(safe-area-inset-top) + 12px); left: 0; right: 0; padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); box-sizing: border-box; z-index: 9999; pointer-events: none; }
+        .island { background: rgba(28, 28, 30, 0.88); backdrop-filter: blur(32px) saturate(190%); -webkit-backdrop-filter: blur(32px) saturate(190%); color: #ffffff; border: 0.5px solid rgba(255, 255, 255, 0.2); border-radius: 36px; width: auto; max-width: min(92vw, 540px); min-width: 200px; min-height: 48px; padding: 8px 18px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(0, 0, 0, 0.85); font-size: 0.92rem; font-weight: 600; letter-spacing: -0.015em; opacity: 0; transform: translateY(-24px) scale(0.85); filter: blur(6px); visibility: hidden; pointer-events: none; white-space: normal; overflow-wrap: anywhere; max-height: min(42dvh, 320px); overflow: auto; will-change: opacity, transform, filter; transition: transform 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.15), opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), filter 0.24s ease, visibility 0s linear 0.42s; }
+        .island.active { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+        .island.error { background: rgba(55, 12, 12, 0.92); border-color: rgba(255, 69, 58, 0.55); box-shadow: 0 14px 40px rgba(255, 69, 58, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.9); }
+        .island.error #islandText { color: #ffe4e6; }
+        .spinner { width: 16px; height: 16px; border: 2.5px solid rgba(255, 255, 255, 0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 12px; display: none; flex-shrink: 0; }
         .island.working .spinner { display: block; }
-        .inline-spinner { width: 18px; height: 18px; border: 2px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; margin-right: 10px; }
-        .error-icon { display: none; margin-right: 10px; color: var(--danger); font-size: 1.2em; font-weight: bold; }
-        .island.error .error-icon { display: block; }
-        .success-icon { display: none; margin-right: 10px; color: var(--success); font-size: 1.2em; font-weight: bold; }
-        .island.normal .success-icon { display: block; }
-        .island-close { background: transparent; border: none; color: var(--text-muted); font-size: 1.5em; padding: 0; margin-left: 15px; cursor: pointer; min-height: 44px; min-width: 44px; display: flex; align-items: center; justify-content: center; touch-action: manipulation; pointer-events: auto; }
-        .island-close:hover { color: #fff; }
+        .inline-spinner { width: 18px; height: 18px; border: 2.5px solid var(--accent); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; margin-right: 10px; }
+        .error-icon { display: none; margin-right: 12px; color: #ffffff; background: var(--danger); border-radius: 50%; width: 20px; height: 20px; font-size: 0.75rem; font-weight: 800; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; text-align: center; }
+        .island.error .error-icon { display: flex; }
+        .success-icon { display: none; margin-right: 12px; color: #ffffff; background: var(--success); border-radius: 50%; width: 20px; height: 20px; font-size: 0.75rem; font-weight: 800; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; text-align: center; }
+        .island.normal .success-icon { display: flex; }
+        .island-close { background: rgba(255, 255, 255, 0.1); border: none; color: var(--text-muted); font-size: 1.1rem; padding: 0; margin-left: 14px; cursor: pointer; min-height: 28px; min-width: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; touch-action: manipulation; pointer-events: auto; transition: background 0.15s, color 0.15s; flex-shrink: 0; }
+        .island-close:hover { color: #ffffff; background: rgba(255, 255, 255, 0.2); }
         #islandText { flex: 1; min-width: 0; line-height: 1.4; }
         @keyframes spin { to { transform: rotate(360deg); } }
         h1 {
@@ -75,12 +79,12 @@
             grid-row: 1;
             text-align: left;
             margin: 0;
-            padding: 32px 24px 20px;
+            padding: 32px 16px 20px 8px;
             color: var(--text);
-            font-size: 1.15rem;
-            line-height: 1.25;
-            font-weight: 700;
-            letter-spacing: -0.02em;
+            font-size: 1.65rem;
+            line-height: 1.15;
+            font-weight: 800;
+            letter-spacing: -0.035em;
             text-transform: none;
             box-sizing: border-box;
         }
@@ -88,33 +92,33 @@
             grid-column: 1;
             grid-row: 2;
             position: sticky;
-            top: 24px;
+            top: 20px;
             align-self: start;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            gap: 6px;
-            height: calc(100dvh - 48px);
+            gap: 4px;
+            height: calc(100dvh - 100px);
             box-sizing: border-box;
-            padding: 12px 14px 20px;
+            padding: 12px 10px 14px;
             overflow-x: hidden;
             overflow-y: auto;
             border: 1px solid var(--border);
             border-radius: 18px;
             background: var(--panel);
-            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
             scrollbar-width: thin;
         }
         .tab {
             width: 100%;
-            min-height: 44px;
+            min-height: 42px;
             justify-content: flex-start;
             padding: 10px 14px;
             border: 1px solid transparent;
             border-radius: 10px;
             color: var(--text-muted);
             opacity: 1;
-            font-size: 0.88rem;
+            font-size: 0.90rem;
             font-weight: 600;
             letter-spacing: -0.01em;
             text-transform: none;
@@ -123,36 +127,53 @@
             align-items: center;
             box-sizing: border-box;
             white-space: nowrap;
-            transition: all 0.18s ease;
+            transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+        .tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
         .tab.active {
-            color: var(--text);
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.15);
-            box-shadow: inset 3px 0 0 var(--accent);
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow: inset 3.5px 0 0 var(--accent);
         }
-        #tab_donate { margin-left: 0 !important; margin-top: auto; color: var(--accent) !important; }
+        #tab_donate {
+            margin-left: 0 !important;
+            margin-top: auto;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--accent) !important;
+            background: rgba(10, 132, 255, 0.12) !important;
+            border: 1px solid rgba(10, 132, 255, 0.25) !important;
+            border-radius: 10px;
+            justify-content: center;
+            text-align: center;
+            font-weight: 600;
+        }
+        #tab_donate:hover {
+            background: rgba(10, 132, 255, 0.22) !important;
+            color: #ffffff !important;
+            border-color: rgba(10, 132, 255, 0.4) !important;
+        }
         .content {
             grid-column: 2;
             grid-row: 1 / span 2;
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
-            padding: 32px 28px 56px;
+            padding: 32px 12px 64px;
             margin: 0;
             display: none;
             overflow-x: hidden;
         }
-        .content.active { display: block; animation: fadeIn 0.2s ease both; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+        .content.active { display: block; animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         .panel {
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 20px;
-            margin-bottom: 18px;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+            border-radius: 18px;
+            padding: 22px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
             box-sizing: border-box;
             max-width: 100%;
         }
@@ -162,17 +183,18 @@
         }
         h3 {
             margin-top: 0;
-            font-weight: 600;
+            font-weight: 700;
             color: var(--text);
-            font-size: 1.05em;
-            letter-spacing: -0.01em;
+            font-size: 1.15rem;
+            letter-spacing: -0.02em;
             border-bottom: 1px solid var(--border);
-            padding-bottom: 10px;
-            margin-bottom: 16px;
+            padding-bottom: 12px;
+            margin-bottom: 18px;
         }
         .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; min-height: 48px; width: 100%; box-sizing: border-box; }
         .row.wrap { flex-wrap: wrap; }
-        label { font-size: 0.95em; color: #BBB; cursor: pointer; }
+        label { font-size: 0.84rem; font-weight: 600; color: var(--text-muted); margin-bottom: 7px; cursor: pointer; display: block; letter-spacing: -0.01em; }
+        .row > label { display: inline; margin-bottom: 0; font-size: 0.95em; color: var(--text); }
         input[type="text"], input[type="tel"], input[type="password"], input[type="search"], input[type="number"], textarea, select {
             background: var(--input-bg);
             border: 1px solid var(--border);
@@ -182,15 +204,16 @@
             width: 100%;
             box-sizing: border-box;
             font-family: inherit;
-            transition: border-color 0.2s, box-shadow 0.2s;
-            font-size: 0.95em;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+            font-size: 0.94rem;
             min-height: 44px;
             min-width: 44px;
         }
         input[type="text"]:focus, input[type="tel"]:focus, input[type="password"]:focus, input[type="search"]:focus, input[type="number"]:focus, textarea:focus, select:focus {
             border-color: var(--accent);
             outline: none;
-            box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.25);
+            box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.3);
+            background: #323236;
         }
         button {
             background: var(--panel-elevated);
@@ -201,8 +224,8 @@
             cursor: pointer;
             font-family: inherit;
             font-weight: 600;
-            font-size: 0.9em;
-            transition: all 0.18s ease;
+            font-size: 0.92rem;
+            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
             text-transform: none;
             letter-spacing: -0.01em;
             min-height: 44px;
@@ -230,7 +253,8 @@
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600; }
         td { padding: 10px; border-bottom: 1px solid var(--border); color: #ccc; }
         .tag { display: inline-block; padding: 3px 8px; border-radius: 8px; background: var(--panel-elevated); color: var(--text-muted); font-size: 0.75em; margin-right: 5px; font-weight: 600; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; width: 100%; box-sizing: border-box; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; box-sizing: border-box; margin-bottom: 16px; }
+        .grid-2 > div { min-width: 0; display: flex; flex-direction: column; }
         .identity-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; }
         .identity-input-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }
         .identity-input-slot { min-width: 0; }
@@ -256,7 +280,7 @@
         .error-msg { color: var(--danger); font-size: 0.8em; margin-top: 4px; display: none; }
         button.confirm-active { background: var(--danger) !important; color: #fff !important; font-weight: bold; border-color: var(--danger) !important; }
         .res-desc { display: block; font-size: 0.8em; color: var(--text-muted); margin-top: 4px; line-height: 1.3; }
-        .search-container { position: relative; margin-bottom: 10px; width: 100%; box-sizing: border-box; }
+        .search-container { position: relative; margin-bottom: 0; width: 100%; box-sizing: border-box; }
         .search-container input[type="search"], .search-container input[type="text"] { width: 100%; padding-right: 44px; }
         .clear-btn { position: absolute; right: 0; top: 0; bottom: 0; height: 100%; min-height: 44px; min-width: 44px; background: transparent; border: none; color: var(--text-muted); font-size: 1.2em; padding: 0; cursor: pointer; display: none; touch-action: manipulation; align-items: center; justify-content: center; }
         .clear-btn:hover { color: #fff; background: transparent; }
@@ -335,7 +359,7 @@
         #logViewer { display: block; width: 100%; height: min(400px, 55dvh) !important; min-height: 220px; box-sizing: border-box; resize: vertical; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: clamp(0.75rem, 0.72rem + 0.2vw, 0.86rem); line-height: 1.4; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--input-bg); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
         @media screen and (max-width: 900px) {
             body { grid-template-columns: minmax(180px, 210px) minmax(0, 1fr); }
-            .content { padding-left: 20px; padding-right: 20px; }
+            .content { padding-left: 14px; padding-right: 14px; }
             .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
         @media screen and (max-width: 700px) {
@@ -350,7 +374,7 @@
             }
             h1 {
                 padding: calc(env(safe-area-inset-top) + 16px) 18px 14px;
-                font-size: 1.1rem;
+                font-size: 1.4rem;
                 justify-content: center;
                 text-align: center;
             }
@@ -402,7 +426,7 @@
                 background: rgba(255, 255, 255, 0.16);
                 box-shadow: none;
             }
-            #tab_donate { margin-top: 0 !important; }
+            #tab_donate { margin-top: 0 !important; border-top: none !important; }
             .content {
                 padding: 10px 14px calc(104px + env(safe-area-inset-bottom));
                 width: 100%;
@@ -410,11 +434,11 @@
                 box-sizing: border-box;
                 overflow-x: hidden;
             }
-            .panel { padding: 16px; border-radius: 14px; margin-bottom: 14px; }
+            .panel { padding: 18px 16px; border-radius: 14px; margin-bottom: 16px; }
             .status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
             .status-card { padding: 12px; }
             .status-label { font-size: 0.66rem; }
-            .grid-2 { grid-template-columns: 1fr; }
+            .grid-2 { grid-template-columns: 1fr; gap: 14px; }
             .row { flex-wrap: wrap; gap: 10px; }
             .row > label, .row > span, .row > h3 { flex: 1; min-width: 0; line-height: 1.4; }
             .row > input[type="checkbox"].toggle { flex: 0 0 auto; }
@@ -561,9 +585,9 @@
         </div>
         <div class="panel">
 <h3>New Rule</h3>
-<div style="margin-bottom:10px;"><label for="appPkg">Package Name</label><div class="search-container"><input type="text" id="appPkg" placeholder="Type to search packages..." oninput="toggleAddButton(); document.getElementById('clearPkgBtn').style.display=this.value?'flex':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:44px;"><button id="clearPkgBtn" class="clear-btn" onclick="document.getElementById('appPkg').value=''; this.style.display='none'; toggleAddButton(); document.getElementById('appPkg').focus();" >&times;</button></div></div>
-<div class="grid-2" style="margin-bottom:10px;"><div><label for="appTemplate">Attestation Identity Profile</label><select id="appTemplate"><option value="null">No identity override</option></select></div><div><label for="appKeybox">Custom Keybox</label><div class="search-container"><input type="text" id="appKeybox" placeholder="Custom Keybox" oninput="document.getElementById('clearKbBtn').style.display=this.value?'flex':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:44px;"><button id="clearKbBtn" class="clear-btn" onclick="document.getElementById('appKeybox').value=''; this.style.display='none'; document.getElementById('appKeybox').focus();" >&times;</button></div></div></div>
-<div style="margin-bottom:10px;"><label for="appPrivacy">Privacy Policy</label><select id="appPrivacy"><option value="inherit">Use global identity</option><option value="isolate">Stable isolated identity</option><option value="redact">Blank supported identifiers</option></select></div>
+<div style="margin-bottom:14px;"><label for="appPkg">Package Name</label><div class="search-container"><input type="text" id="appPkg" placeholder="Type to search packages..." oninput="toggleAddButton(); document.getElementById('clearPkgBtn').style.display=this.value?'flex':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:44px;"><button id="clearPkgBtn" class="clear-btn" onclick="document.getElementById('appPkg').value=''; this.style.display='none'; toggleAddButton(); document.getElementById('appPkg').focus();" >&times;</button></div></div>
+<div class="grid-2"><div><label for="appTemplate">Attestation Identity Profile</label><select id="appTemplate"><option value="null">No identity override</option></select></div><div><label for="appKeybox">Custom Keybox</label><div class="search-container"><input type="text" id="appKeybox" placeholder="Custom Keybox" oninput="document.getElementById('clearKbBtn').style.display=this.value?'flex':'none';" onkeydown="if(event.key==='Enter') addAppRule()" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" style="padding-right:44px;"><button id="clearKbBtn" class="clear-btn" onclick="document.getElementById('appKeybox').value=''; this.style.display='none'; document.getElementById('appKeybox').focus();" >&times;</button></div></div></div>
+<div style="margin-bottom:18px;"><label for="appPrivacy">Privacy Policy</label><select id="appPrivacy"><option value="inherit">Use global identity</option><option value="isolate">Stable isolated identity</option><option value="redact">Blank supported identifiers</option></select></div>
 <button id="btnAddRule" class="primary" style="width:100%" onclick="addAppRule()" disabled>Add Rule</button>
         </div>
         <div class="panel">
