@@ -459,28 +459,38 @@ object Config {
     private var lastKeyboxInventoryFingerprint: Long = 0L
 
     internal fun computeKeyboxInventoryFingerprint(): Long {
-        var fp = root.lastModified() xor (File(root, KEYBOX_FILE).lastModified() shl 1) xor (File(root, "keybox.cbox").lastModified() shl 2)
-        val dir = keyboxDir
-        if (dir.exists() && dir.isDirectory) {
-            fp = fp xor (dir.lastModified() shl 3)
-            val files = dir.listFiles()
-            if (files != null) {
-                fp = fp xor (files.size.toLong() shl 4)
-                for (f in files) {
-                    fp = fp xor (f.lastModified() shl 5) xor f.name.hashCode().toLong() xor (f.length() shl 6)
+        return try {
+            if (!root.exists() || !root.isDirectory) return 0L
+            var fp = root.lastModified() xor (File(root, KEYBOX_FILE).lastModified() shl 1) xor (File(root, "keybox.cbox").lastModified() shl 2)
+            val dir = keyboxDir
+            if (dir.exists() && dir.isDirectory) {
+                fp = fp xor (dir.lastModified() shl 3)
+                val files = dir.listFiles()
+                if (files != null) {
+                    fp = fp xor (files.size.toLong() shl 4)
+                    for (f in files) {
+                        fp = fp xor (f.lastModified() shl 5) xor f.name.hashCode().toLong() xor (f.length() shl 6)
+                    }
                 }
             }
+            fp
+        } catch (_: Exception) {
+            0L
         }
-        return fp
     }
 
-    fun ensureFreshKeyboxes(): Boolean {
-        val currentFp = computeKeyboxInventoryFingerprint()
-        if (currentFp != lastKeyboxInventoryFingerprint) {
-            return updateKeyBoxesSync()
+    fun ensureFreshKeyboxes(): Boolean =
+        try {
+            val currentFp = computeKeyboxInventoryFingerprint()
+            if (currentFp != 0L && currentFp != lastKeyboxInventoryFingerprint) {
+                updateKeyBoxesSync()
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            Logger.e("Failed to ensure fresh keyboxes", e)
+            false
         }
-        return true
-    }
 
     fun updateKeyBoxes(): Job = keyboxRefreshScheduler.submit()
 
@@ -1691,6 +1701,7 @@ object Config {
         privacySeed = null
         ProfileAutoIdentityStore.resetForTesting()
         root = newRoot
+        lastKeyboxInventoryFingerprint = computeKeyboxInventoryFingerprint()
         KeyboxLoader.fileParserOverride = { scope, filename ->
             val file =
                 when (scope) {
@@ -1943,7 +1954,7 @@ object Config {
                             KeyboxDirObserver.stopWatching()
                             KeyboxDirObserver.startWatching()
                         } catch (e: Exception) {
-                            Logger.w("Failed to re-attach KeyboxDirObserver", e)
+                            Logger.w("Failed to re-attach KeyboxDirObserver: ${e.message}")
                         }
                     }
                     updateKeyBoxes()

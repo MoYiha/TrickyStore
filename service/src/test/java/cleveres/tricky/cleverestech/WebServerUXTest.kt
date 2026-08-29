@@ -246,6 +246,6 @@ class WebServerUXTest {
     private fun fetchHtml(): String {
         val url = URL("http://localhost:${server.listeningPort}/?token=${server.token}")
         val conn = url.openConnection() as HttpURLConnection
-        return conn.inputStream.bufferedReader().readText()
+        return conn.inputStream.bufferedReader().readText().replace("\r\n", "\n")
     }
 }

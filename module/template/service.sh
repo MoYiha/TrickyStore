@@ -68,8 +68,9 @@ mirror_root_keyboxes() {
   chcon u:object_r:system_file:s0 "$keybox_dir" 2>/dev/null
 
   for source_dir in "$CONFIG_DIR" "$MODDIR" "$MODDIR/keyboxes"; do
-    [ -d "$source_dir" ] && [ ! -L "$source_dir" ] || continue
-    [ "$source_dir" != "$keybox_dir" ] || continue
+    if [ ! -d "$source_dir" ] || [ -L "$source_dir" ] || [ "$source_dir" = "$keybox_dir" ]; then
+      continue
+    fi
 
     for source in "$source_dir"/*.xml "$source_dir"/*.cbox; do
       if [ ! -f "$source" ] || [ -L "$source" ]; then

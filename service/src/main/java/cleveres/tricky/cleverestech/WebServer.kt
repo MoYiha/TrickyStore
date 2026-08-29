@@ -1215,7 +1215,8 @@ class WebServer(
             files.put("boot_props_mode")
             json.put("files", files)
             Config.ensureFreshKeyboxes()
-            json.put("keybox_count", CertHack.getKeyboxSourceCount())
+            val keyboxCount = runCatching { CertHack.getKeyboxSourceCount() }.getOrDefault(0)
+            json.put("keybox_count", keyboxCount)
             val templates = JSONArray()
             Config.getTemplateNames().forEach { name -> templates.put(name) }
             json.put("templates", templates)
@@ -2152,7 +2153,7 @@ class WebServer(
             val json = JSONObject()
             json.put("version_name", BuildConfig.VERSION_NAME)
             json.put("version_code", BuildConfig.VERSION_CODE)
-            val keyboxCount = CertHack.getKeyboxSourceCount()
+            val keyboxCount = runCatching { CertHack.getKeyboxSourceCount() }.getOrDefault(0)
             json.put("keybox_count", keyboxCount)
             val appConfig = File(configDir, "app_config")
             val appConfigSize =

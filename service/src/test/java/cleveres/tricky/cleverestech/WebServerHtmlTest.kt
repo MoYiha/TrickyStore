@@ -187,7 +187,7 @@ class WebServerHtmlTest {
         val token = server.token
         val url = URL("http://localhost:$port/?token=$token")
         val conn = url.openConnection() as HttpURLConnection
-        val html = conn.inputStream.bufferedReader().readText()
+        val html = conn.inputStream.bufferedReader().readText().replace("\r\n", "\n")
 
         assertTrue(
             "Missing focus-visible CSS",

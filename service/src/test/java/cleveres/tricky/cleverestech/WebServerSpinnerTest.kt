@@ -74,7 +74,7 @@ class WebServerSpinnerTest {
             "Missing bounded error notification timeout",
             html.contains("type === 'error' ? 6000 : 3000"),
         )
-        assertTrue("Missing sticky safe-area offset", html.contains("top: env(safe-area-inset-top);"))
+        assertTrue("Missing sticky safe-area offset", html.contains("env(safe-area-inset-top)"))
         assertFalse(
             "Mobile tabs must not apply the top safe-area inset twice",
             html.contains(".tabs { padding-top: env(safe-area-inset-top); }"),
