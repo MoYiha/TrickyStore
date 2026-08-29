@@ -1,6 +1,6 @@
 # Changelog
 
-## V2.6.7
+## V2.6.6
 
 - **WebUI Stability:** Resolved "policy controls unavailable" errors and IPC timeouts caused by daemon crash loops and orphaned processes.
 - **Daemon Lifecycle:** Fixed severe port conflicts (`os error 98`) by writing `daemon.pid` only after successful socket binding, preventing PID file corruption that left zombie daemons untrackable.
