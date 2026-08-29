@@ -5,12 +5,12 @@ mod keybox_file_broker;
 use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
     read_header_bounded, relay_exact, write_frame, write_header, FrameHeader, FLAG_ERROR,
-    MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
+    HEADER_BYTES, MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
     STREAM_COPY_BYTES,
 };
 use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_service_core::unix_socket::{
-    bind_abstract, peer_credentials, DAEMON_SOCKET_NAME,
+    bind_abstract, connect_abstract, peer_credentials, DAEMON_SOCKET_NAME,
 };
 use std::env;
 use std::ffi::OsString;
@@ -124,8 +124,52 @@ fn run() -> io::Result<()> {
     validate_module_directory(&module_dir)?;
 
     let config_root = Arc::new(config_file_broker::prepare_root()?);
-    let web_listener = bind_abstract(DAEMON_SOCKET_NAME)?;
-    let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
+    let web_listener = match bind_abstract(DAEMON_SOCKET_NAME) {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+            if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
+                if let Ok(creds) = peer_credentials(&stream) {
+                    if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
+                        let mut header_buf = [0u8; HEADER_BYTES];
+                        if let Ok(header) = read_header_bounded(&mut stream, &mut header_buf) {
+                            if header.opcode == OP_PING && header.flags == 0 {
+                                eprintln!(
+                                    "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
+                                    creds.pid
+                                );
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
+    let file_listener = match bind_abstract(FILE_SOCKET_NAME) {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+            if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
+                if let Ok(creds) = peer_credentials(&stream) {
+                    if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
+                        let mut header_buf = [0u8; HEADER_BYTES];
+                        if let Ok(header) = read_header_bounded(&mut stream, &mut header_buf) {
+                            if header.opcode == OP_PING && header.flags == 0 {
+                                eprintln!(
+                                    "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
+                                    creds.pid
+                                );
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
     let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
     let adapter_identity = Arc::new(AdapterIdentity::default());
 
@@ -288,7 +332,7 @@ fn spawn_android_adapter(module_dir: &Path) -> io::Result<Child> {
     let backend_auth = backend_auth_env()?;
     let mut command = Command::new("/system/bin/app_process");
     command
-        .arg("/")
+        .arg("/system/bin")
         .arg("--nice-name=CleveresTricky")
         .arg("cleveres.tricky.cleverestech.MainKt")
         .env("CLASSPATH", classpath)

@@ -295,6 +295,11 @@ while true; do
   stopped_at=$(date +%s)
   runtime=$((stopped_at - started_at))
 
+  if [ "$exit_code" -eq 0 ]; then
+    log -t CleveresTricky "Daemon exited cleanly or deferred to existing active instance; supervisor finished"
+    break
+  fi
+
   if [ "$runtime" -ge "$stable_runtime" ]; then
     retry_delay=2
   fi
