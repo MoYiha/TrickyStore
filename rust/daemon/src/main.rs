@@ -599,8 +599,8 @@ fn serve_capability_worker(
             Ok(_) => continue,
             Err(_) => continue,
         };
-        client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-        client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        let _ = client.set_read_timeout(Some(CLIENT_TIMEOUT));
+        let _ = client.set_write_timeout(Some(CLIENT_TIMEOUT));
         let peer_pid = u32::try_from(credentials.pid).ok();
         let peer_is_adapter = adapter_identity
             .current()
@@ -663,8 +663,8 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
             Ok(_) => continue,
             Err(_) => continue,
         };
-        client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-        client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        let _ = client.set_read_timeout(Some(CLIENT_TIMEOUT));
+        let _ = client.set_write_timeout(Some(CLIENT_TIMEOUT));
         let header = match read_header_bounded(&mut client, MAX_FRAME_BYTES) {
             Ok(value) => value,
             Err(error) => {
@@ -701,14 +701,16 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
                     );
                     continue;
                 }
-                write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok")?;
+                if write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok").is_err() {
+                    continue;
+                }
                 adapter = Some(RegisteredAdapter {
                     stream: client,
                     lease,
                 });
             }
             OP_PING if header.flags == 0 && header.payload_len == 0 => {
-                write_frame(&mut client, OP_PING, 0, b"pong")?;
+                let _ = write_frame(&mut client, OP_PING, 0, b"pong");
             }
             OP_WEB_REQUEST if header.flags == 0 && header.payload_len <= MAX_FRAME_BYTES => {
                 if let Err(error) = forward_web_request_with_timeout(

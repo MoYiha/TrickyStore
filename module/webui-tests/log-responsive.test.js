@@ -102,7 +102,23 @@ vm.runInNewContext(
   await first;
   assert.equal(viewer.value, 'newest logs', 'a stale response must not overwrite the newest logs');
   assert.deepEqual(notifications, ['Logs refreshed'], 'aborted refreshes must not produce error or success noise');
-  console.log('Logs refresh cancellation regression checks passed');
+
+  // Test consecutive duplicate log lines collapsing
+  const thirdResponse = Promise.resolve({
+    ok: true,
+    text: async () => 'line A\nrepeated error\nrepeated error\nrepeated error\nline B\nline B',
+  });
+  const originalFetchAuth = context.fetchAuth;
+  context.fetchAuth = () => thirdResponse;
+  await context.fetchLogs();
+  assert.equal(
+    viewer.value,
+    'line A\nrepeated error (x3)\nline B (x2)',
+    'consecutive identical log lines must be collapsed with count suffix',
+  );
+  context.fetchAuth = originalFetchAuth;
+
+  console.log('Logs refresh cancellation and duplicate collapsing regression checks passed');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

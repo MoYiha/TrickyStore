@@ -1274,7 +1274,30 @@ try {
     if (controller.signal.aborted) return;
     const viewer = document.getElementById('logViewer');
     if (!viewer) return;
-    viewer.value = data;
+    function collapseConsecutiveLogLines(rawLogs) {
+        if (typeof rawLogs !== 'string' || !rawLogs) return '';
+        const lines = rawLogs.split(/\r?\n/);
+        const collapsed = [];
+        let currentLine = null;
+        let count = 0;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line === currentLine && line.trim() !== '') {
+                count++;
+            } else {
+                if (currentLine !== null) {
+                    collapsed.push(count > 1 ? `${currentLine} (x${count})` : currentLine);
+                }
+                currentLine = line;
+                count = 1;
+            }
+        }
+        if (currentLine !== null) {
+            collapsed.push(count > 1 ? `${currentLine} (x${count})` : currentLine);
+        }
+        return collapsed.join('\n');
+    }
+    viewer.value = collapseConsecutiveLogLines(data);
     viewer.scrollTop = viewer.scrollHeight;
     notify('Logs refreshed', 'normal');
 } catch (e) {
