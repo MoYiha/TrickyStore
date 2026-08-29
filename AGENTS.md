@@ -82,6 +82,8 @@ Do not:
 - relax security thresholds, parser limits, hardening checks, warnings-as-errors, or lint rules to hide a defect;
 - change expected values to match broken behavior unless the behavior change is intentional and justified by the project contract;
 - swallow exceptions, add broad catch-and-ignore blocks, or convert failures to empty/default success values without proving that is the intended API behavior;
+- use `pkill`, `sleep` loops, or blanket catch-alls to hide symptoms of process crashes, port conflicts, or zombie processes. You must investigate the lifecycle and fix the root cause (e.g. process orphanage) rather than treating the symptom;
+- ignore, obfuscate, or leave behind traces of accidental secrets, confidential information, or malicious code. You must remove them completely and ensure no remnants exist in the git history (e.g. by squashing commits) rather than just deleting them in a new commit;
 - add duplicate `*-fix`, `*-patch`, compatibility wrappers, second owners, or temporary runtime layers when the existing owner should be corrected;
 - leave required tests, cleanup, or cross-path auditing as `TODO` follow-up work when it belongs to the same fix;
 - claim a change is safe because it "should compile" or because a similar path passed previously;
