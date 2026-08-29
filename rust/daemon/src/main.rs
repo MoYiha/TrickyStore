@@ -573,6 +573,15 @@ fn serve_capability_worker(
         let (mut client, _) = match listener.accept() {
             Ok(value) => value,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS)
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             Err(error) => return Err(error),
         };
         let credentials = match peer_credentials(&client) {
@@ -637,6 +646,15 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
         let (mut client, _) = match listener.accept() {
             Ok(value) => value,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS)
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             Err(error) => return Err(error),
         };
         let credentials = match peer_credentials(&client) {

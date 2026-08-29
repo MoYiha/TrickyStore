@@ -32,6 +32,7 @@ terminate_previous_instances() {
   terminate_pid "$CONFIG_DIR/daemon.pid" "daemon" 10
   terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 20
   terminate_pid "$CONFIG_DIR/backend.pid" "backend" 10
+  rm -f "$CONFIG_DIR"/.native_runtime.pipe.* "$CONFIG_DIR"/.native_runtime.log.* "$CONFIG_DIR"/.policy_state_v2.json.* "$CONFIG_DIR"/keyboxes/.*.tmp.* 2>/dev/null || true
 }
 
 terminate_previous_instances

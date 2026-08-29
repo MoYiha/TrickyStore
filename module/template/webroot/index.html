@@ -841,6 +841,12 @@ if (btn.dataset.confirming === "true") {
     btn.dataset.confirming = "false";
     btn.innerText = btn.dataset.origText;
     btn.classList.remove('confirm-active');
+    if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
+    if (btn._abortHandler) {
+        document.removeEventListener('click', btn._abortHandler);
+        document.removeEventListener('input', btn._abortHandler);
+        delete btn._abortHandler;
+    }
     if (btn._onCancel) delete btn._onCancel;
     action();
 } else {
@@ -856,10 +862,9 @@ if (btn.dataset.confirming === "true") {
     const abortHandler = (e) => {
         if (e.target !== btn) {
             resetConfirm(btn);
-            document.removeEventListener('click', abortHandler);
-            document.removeEventListener('input', abortHandler);
         }
     };
+    btn._abortHandler = abortHandler;
     setTimeout(() => {
         if (btn.dataset.confirming === "true") {
             document.addEventListener('click', abortHandler);
@@ -875,6 +880,11 @@ if (btn.dataset.confirming === "true") {
     btn.innerText = btn.dataset.origText;
     btn.classList.remove('confirm-active');
     if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
+    if (btn._abortHandler) {
+        document.removeEventListener('click', btn._abortHandler);
+        document.removeEventListener('input', btn._abortHandler);
+        delete btn._abortHandler;
+    }
     if (btn._onCancel) {
         btn._onCancel();
         delete btn._onCancel;
