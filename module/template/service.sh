@@ -33,6 +33,9 @@ terminate_previous_instances() {
   terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 20
   terminate_pid "$CONFIG_DIR/backend.pid" "backend" 10
   rm -f "$CONFIG_DIR"/.native_runtime.pipe.* "$CONFIG_DIR"/.native_runtime.log.* "$CONFIG_DIR"/.policy_state_v2.json.* "$CONFIG_DIR"/keyboxes/.*.tmp.* 2>/dev/null || true
+  if [ -f "$NATIVE_LOG" ] && [ ! -L "$NATIVE_LOG" ]; then
+    : > "$NATIVE_LOG" 2>/dev/null || true
+  fi
 }
 
 terminate_previous_instances
