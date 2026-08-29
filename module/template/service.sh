@@ -56,6 +56,23 @@ terminate_previous_instances() {
     fi
     rm -f "$CONFIG_DIR/adapter.pid"
   fi
+
+  if [ -f "$CONFIG_DIR/backend.pid" ]; then
+    old_backend_pid=$(cat "$CONFIG_DIR/backend.pid" 2>/dev/null)
+    if [ -n "$old_backend_pid" ] && [ -d "/proc/$old_backend_pid" ]; then
+      log -t CleveresTricky "Stopping previous backend (PID $old_backend_pid)"
+      kill -TERM "$old_backend_pid" 2>/dev/null || true
+      wait_count=0
+      while [ -d "/proc/$old_backend_pid" ] && [ "$wait_count" -lt 10 ]; do
+        sleep 0.1
+        wait_count=$((wait_count + 1))
+      done
+      if [ -d "/proc/$old_backend_pid" ]; then
+        kill -9 "$old_backend_pid" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$CONFIG_DIR/backend.pid"
+  fi
 }
 
 terminate_previous_instances

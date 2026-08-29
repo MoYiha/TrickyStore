@@ -376,6 +376,7 @@ fn run_backend_once(
 ) -> io::Result<BackendRunOutcome> {
     let (mut child, broker) = spawn_backend(module_dir, lease.pid)?;
     let backend_pid = child.id();
+    let _ = root.atomic_write("backend.pid", backend_pid.to_string().as_bytes(), 0o600);
     let broker_thread = match thread::Builder::new()
         .name("ct-keybox-broker".to_string())
         .spawn(move || {
@@ -386,6 +387,7 @@ fn run_backend_once(
         }) {
         Ok(handle) => handle,
         Err(error) => {
+            let _ = root.unlink_file("backend.pid");
             let _ = child.kill();
             let _ = child.wait();
             return Err(error);
@@ -403,6 +405,7 @@ fn run_backend_once(
         }
         thread::sleep(ADAPTER_POLL_INTERVAL);
     };
+    let _ = root.unlink_file("backend.pid");
     broker_thread
         .join()
         .map_err(|_| io::Error::other("keybox broker thread panicked"))?;

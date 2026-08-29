@@ -19,7 +19,7 @@ use cleverestricky_service_core::ipc::{
 use cleverestricky_service_core::unix_socket::{bind_abstract, peer_credentials};
 use std::env;
 use std::io::{self, Read, Write};
-use std::os::fd::{FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::process;
 use std::time::Duration;
@@ -217,7 +217,57 @@ fn set_limit(resource: libc::c_int, value: libc::rlim_t) -> io::Result<()> {
 }
 
 fn serve(listener: UnixListener, adapter_pid: u32, broker: &mut UnixStream) -> io::Result<()> {
+    let listener_fd = listener.as_raw_fd();
+    let broker_fd = broker.as_raw_fd();
+
     loop {
+        let mut poll_fds = [
+            libc::pollfd {
+                fd: listener_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: broker_fd,
+                events: libc::POLLIN | libc::POLLHUP | libc::POLLERR,
+                revents: 0,
+            },
+        ];
+
+        // SAFETY: poll receives a pointer to a live 2-element pollfd array.
+        let poll_res = unsafe { libc::poll(poll_fds.as_mut_ptr(), 2, -1) };
+        if poll_res < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+
+        // If the supervisor broker channel hung up or encountered an error, exit cleanly immediately.
+        if (poll_fds[1].revents & (libc::POLLHUP | libc::POLLERR)) != 0 {
+            return Ok(());
+        }
+        if (poll_fds[1].revents & libc::POLLIN) != 0 {
+            let mut test_buf = [0u8; 1];
+            // SAFETY: MSG_PEEK | MSG_DONTWAIT checks for EOF without draining data from the broker.
+            let peek_res = unsafe {
+                libc::recv(
+                    broker_fd,
+                    test_buf.as_mut_ptr().cast(),
+                    1,
+                    libc::MSG_PEEK | libc::MSG_DONTWAIT,
+                )
+            };
+            if peek_res == 0 {
+                return Ok(());
+            }
+        }
+
+        if (poll_fds[0].revents & libc::POLLIN) == 0 {
+            continue;
+        }
+
         let (mut stream, _) = match listener.accept() {
             Ok(value) => value,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,

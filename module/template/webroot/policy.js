@@ -1628,8 +1628,27 @@ async function initialize() {
   markIdentityActionGroups();
   installAutoIdentityOverride();
 
-  try { policyState = normalizePolicyState(await request('/api/policy_state')); }
-  catch (error) { notify(`Policy controls unavailable: ${error.message}`,'error'); return; }
+  try {
+    policyState = normalizePolicyState(await request('/api/policy_state'));
+  } catch (error) {
+    notify(`Policy controls unavailable: ${error.message}`, 'error');
+    if (typeof global.setTimeout === 'function') {
+      global.setTimeout(async () => {
+        try {
+          if (!policyState) {
+            policyState = normalizePolicyState(await request('/api/policy_state'));
+            await loadReferenceData();
+            installIdentityManagerState();
+            renderAll();
+            sanitizeErrors();
+            installResourceOwner();
+            installPackagePickers();
+          }
+        } catch (_) {}
+      }, 2000);
+    }
+    return;
+  }
   await loadReferenceData();
   installIdentityManagerState();
   renderAll();
