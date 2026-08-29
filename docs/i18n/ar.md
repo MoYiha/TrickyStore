@@ -249,7 +249,7 @@ Diagnostics تكتب إلى Android logcat ولا يوجد plaintext log مست�
 <a id="theme"></a>
 ## UI Theme
 
-تصميم minimal monochrome hybrid بين Nothing OS وiOS: خلفية charcoal ونص light gray وaccent فضي وpanels داكنة وsuccess أخضر وdanger أحمر. System sans وmonospace للبيانات التقنية وDynamic Island وأزرار rounded وiOS toggles وmobile-first layout.
+تصميم minimal monochrome hybrid بين Nothing OS وModern: خلفية charcoal ونص light gray وaccent فضي وpanels داكنة وsuccess أخضر وdanger أحمر. System sans وmonospace للبيانات التقنية وDynamic Island وأزرار rounded وModern toggles وmobile-first layout.
 
 Touch targets تقريبا 44px أو أكثر، vertical flow مفضل والواجهة محسنة للاستخدام على الهاتف داخل KernelSU/APatch.
 

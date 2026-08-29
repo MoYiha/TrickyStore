@@ -213,8 +213,8 @@ object Config {
             cacheValue(state.cache, uid, null)
             return PolicyState.resolveAppConfig(uid, null)
         }
-        val pkgs = getPackages(uid)
         getCachedValue(state.cache, uid)?.let { return PolicyState.resolveAppConfig(uid, it.value) }
+        val pkgs = getPackages(uid)
         var result: AppSpoofConfig? = null
         val len = pkgs.size
         for (i in 0 until len) {
@@ -235,8 +235,8 @@ object Config {
             cacheValue(state.privacyCache, uid, AppPrivacyMode.INHERIT)
             return AppPrivacyMode.INHERIT
         }
-        val packages = getPackages(uid)
         getCachedValue(state.privacyCache, uid)?.let { return it.value }
+        val packages = getPackages(uid)
         var selected = AppPrivacyMode.INHERIT
         for (packageName in packages) {
             when (state.configs.get(packageName)?.privacyMode) {
@@ -986,9 +986,9 @@ object Config {
         }
 
     private fun getIsolatedIdentity(uid: Int): IdentityOverrides {
-        val packages = getPackages(uid).asSequence().distinct().sorted().toList()
         val state = appConfigState
         getCachedValue(state.identityCache, uid)?.let { return it.value }
+        val packages = getPackages(uid).asSequence().distinct().sorted().toList()
         val context = if (packages.isEmpty()) "uid:$uid" else packages.joinToString("\u0000")
         fun derived(field: String): ByteArray = derivePrivacyBytes(context, field)
         val identity =

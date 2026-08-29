@@ -4,13 +4,13 @@ mod keybox_file_broker;
 
 use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
-    read_header_bounded, relay_exact, write_frame, write_header, FrameHeader, FLAG_ERROR,
-    MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
+    read_header, read_header_bounded, relay_exact, write_frame, write_header, FrameHeader,
+    FLAG_ERROR, MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
     STREAM_COPY_BYTES,
 };
 use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_service_core::unix_socket::{
-    bind_abstract, peer_credentials, DAEMON_SOCKET_NAME,
+    bind_abstract, connect_abstract, peer_credentials, DAEMON_SOCKET_NAME,
 };
 use std::env;
 use std::ffi::OsString;
@@ -33,6 +33,8 @@ const BACKEND_MAX_BACKOFF: Duration = Duration::from_secs(30);
 const BACKEND_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(60);
 const ADAPTER_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const ADAPTER_MAX_BACKOFF: Duration = Duration::from_secs(30);
+const ADAPTER_CIRCUIT_FAILURES: u32 = 10;
+const ADAPTER_CIRCUIT_COOLDOWN: Duration = Duration::from_secs(120);
 const ADAPTER_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_BROKER_FD: RawFd = 9;
 const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
@@ -68,23 +70,21 @@ impl AdapterIdentity {
 
     fn publish(&self, pid: u32) -> AdapterLease {
         assert_ne!(pid, 0);
+        let mut current = self.state.load(std::sync::atomic::Ordering::Acquire);
         loop {
-            let current = self.state.load(std::sync::atomic::Ordering::Acquire);
+            let next_generation = (current >> 32).wrapping_add(1) as u32;
             let lease = AdapterLease {
                 pid,
-                generation: ((current >> 32) as u32).wrapping_add(1),
+                generation: next_generation,
             };
-            if self
-                .state
-                .compare_exchange(
-                    current,
-                    Self::pack(lease),
-                    std::sync::atomic::Ordering::AcqRel,
-                    std::sync::atomic::Ordering::Acquire,
-                )
-                .is_ok()
-            {
-                return lease;
+            match self.state.compare_exchange_weak(
+                current,
+                Self::pack(lease),
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+            ) {
+                Ok(_) => return lease,
+                Err(new) => current = new,
             }
         }
     }
@@ -108,6 +108,7 @@ impl AdapterIdentity {
 struct AdapterRetryPlan {
     rapid_failures: u32,
     delay: Duration,
+    circuit_open: bool,
 }
 
 fn main() {
@@ -123,8 +124,32 @@ fn run() -> io::Result<()> {
     validate_module_directory(&module_dir)?;
 
     let config_root = Arc::new(config_file_broker::prepare_root()?);
-    let web_listener = bind_abstract(DAEMON_SOCKET_NAME)?;
+    let web_listener = match bind_abstract(DAEMON_SOCKET_NAME) {
+        Ok(listener) => listener,
+        Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+            if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
+                let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+                let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+                if let Ok(creds) = peer_credentials(&stream) {
+                    if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
+                        if let Ok(header) = read_header(&mut stream) {
+                            if header.opcode == OP_PING && header.flags == 0 {
+                                eprintln!(
+                                    "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
+                                    creds.pid
+                                );
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+            return Err(error);
+        }
+        Err(error) => return Err(error),
+    };
     let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
+    let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
     let adapter_identity = Arc::new(AdapterIdentity::default());
 
     let web_identity = Arc::clone(&adapter_identity);
@@ -156,6 +181,11 @@ fn run() -> io::Result<()> {
         match spawn_android_adapter(&module_dir) {
             Ok(mut adapter) => {
                 let lease = adapter_identity.publish(adapter.id());
+                let _ = config_root.atomic_write(
+                    "adapter.pid",
+                    adapter.id().to_string().as_bytes(),
+                    0o600,
+                );
                 eprintln!(
                     "cleverestrickyd: Android adapter generation {} started as pid {}",
                     lease.generation, lease.pid
@@ -170,6 +200,7 @@ fn run() -> io::Result<()> {
                         lease.generation
                     ),
                 }
+                let _ = config_root.unlink_file("adapter.pid");
                 adapter_identity.invalidate(lease);
             }
             Err(error) => eprintln!("cleverestrickyd: Android adapter launch failed: {error}"),
@@ -177,10 +208,17 @@ fn run() -> io::Result<()> {
 
         let plan = adapter_retry_plan(rapid_failures, started.elapsed());
         rapid_failures = plan.rapid_failures;
-        eprintln!(
-            "cleverestrickyd: restarting Android adapter after {}s",
-            plan.delay.as_secs()
-        );
+        if plan.circuit_open {
+            eprintln!(
+                "cleverestrickyd: adapter circuit open after {ADAPTER_CIRCUIT_FAILURES} rapid failures; retrying after {}s",
+                plan.delay.as_secs()
+            );
+        } else {
+            eprintln!(
+                "cleverestrickyd: restarting Android adapter after {}s",
+                plan.delay.as_secs()
+            );
+        }
         thread::sleep(plan.delay);
     }
 }
@@ -239,10 +277,23 @@ fn backend_auth_env() -> io::Result<OsString> {
 }
 
 fn harden_process() -> io::Result<()> {
+    let parent_pid = unsafe { libc::getppid() };
+    if parent_pid <= 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "shell supervisor is unavailable",
+        ));
+    }
     // SAFETY: `prctl(PR_SET_PDEATHSIG, SIGTERM)` has no pointer arguments. If the shell supervisor
     // dies, the daemon must also terminate to avoid orphaning and socket port conflicts.
     if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
         return Err(io::Error::last_os_error());
+    }
+    if unsafe { libc::getppid() } != parent_pid {
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "shell supervisor changed during hardening",
+        ));
     }
     // SAFETY: `umask` takes a value argument only, has process-global semantics intended for this
     // single-purpose daemon, and retains no pointers or references.
@@ -361,16 +412,19 @@ fn run_backend_once(
 ) -> io::Result<BackendRunOutcome> {
     let (mut child, broker) = spawn_backend(module_dir, lease.pid)?;
     let backend_pid = child.id();
+    let _ = root.atomic_write("backend.pid", backend_pid.to_string().as_bytes(), 0o600);
+    let broker_root = Arc::clone(&root);
     let broker_thread = match thread::Builder::new()
         .name("ct-keybox-broker".to_string())
         .spawn(move || {
-            if let Err(error) = keybox_file_broker::serve(broker, &root) {
+            if let Err(error) = keybox_file_broker::serve(broker, &broker_root) {
                 eprintln!("cleverestrickyd: keybox broker failed: {error}");
                 let _ = unsafe { libc::kill(backend_pid as libc::pid_t, libc::SIGTERM) };
             }
         }) {
         Ok(handle) => handle,
         Err(error) => {
+            let _ = root.unlink_file("backend.pid");
             let _ = child.kill();
             let _ = child.wait();
             return Err(error);
@@ -388,6 +442,7 @@ fn run_backend_once(
         }
         thread::sleep(ADAPTER_POLL_INTERVAL);
     };
+    let _ = root.unlink_file("backend.pid");
     broker_thread
         .join()
         .map_err(|_| io::Error::other("keybox broker thread panicked"))?;
@@ -432,13 +487,22 @@ fn adapter_retry_plan(previous_rapid_failures: u32, runtime: Duration) -> Adapte
         return AdapterRetryPlan {
             rapid_failures: 0,
             delay: Duration::from_secs(1),
+            circuit_open: false,
         };
     }
     let rapid_failures = previous_rapid_failures.saturating_add(1);
+    if rapid_failures >= ADAPTER_CIRCUIT_FAILURES {
+        return AdapterRetryPlan {
+            rapid_failures: 0,
+            delay: ADAPTER_CIRCUIT_COOLDOWN,
+            circuit_open: true,
+        };
+    }
     let backoff_seconds = 1u64 << rapid_failures.min(5);
     AdapterRetryPlan {
         rapid_failures,
         delay: Duration::from_secs(backoff_seconds).min(ADAPTER_MAX_BACKOFF),
+        circuit_open: false,
     }
 }
 
@@ -509,6 +573,15 @@ fn serve_capability_worker(
         let (mut client, _) = match listener.accept() {
             Ok(value) => value,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS)
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             Err(error) => return Err(error),
         };
         let credentials = match peer_credentials(&client) {
@@ -516,8 +589,8 @@ fn serve_capability_worker(
             Ok(_) => continue,
             Err(_) => continue,
         };
-        client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-        client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        let _ = client.set_read_timeout(Some(CLIENT_TIMEOUT));
+        let _ = client.set_write_timeout(Some(CLIENT_TIMEOUT));
         let peer_pid = u32::try_from(credentials.pid).ok();
         let peer_is_adapter = adapter_identity
             .current()
@@ -573,6 +646,15 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
         let (mut client, _) = match listener.accept() {
             Ok(value) => value,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error)
+                if matches!(
+                    error.raw_os_error(),
+                    Some(libc::EMFILE) | Some(libc::ENFILE) | Some(libc::ENOBUFS)
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(50));
+                continue;
+            }
             Err(error) => return Err(error),
         };
         let credentials = match peer_credentials(&client) {
@@ -580,8 +662,8 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
             Ok(_) => continue,
             Err(_) => continue,
         };
-        client.set_read_timeout(Some(CLIENT_TIMEOUT))?;
-        client.set_write_timeout(Some(CLIENT_TIMEOUT))?;
+        let _ = client.set_read_timeout(Some(CLIENT_TIMEOUT));
+        let _ = client.set_write_timeout(Some(CLIENT_TIMEOUT));
         let header = match read_header_bounded(&mut client, MAX_FRAME_BYTES) {
             Ok(value) => value,
             Err(error) => {
@@ -618,14 +700,16 @@ fn serve_web(listener: UnixListener, adapter_identity: Arc<AdapterIdentity>) -> 
                     );
                     continue;
                 }
-                write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok")?;
+                if write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok").is_err() {
+                    continue;
+                }
                 adapter = Some(RegisteredAdapter {
                     stream: client,
                     lease,
                 });
             }
             OP_PING if header.flags == 0 && header.payload_len == 0 => {
-                write_frame(&mut client, OP_PING, 0, b"pong")?;
+                let _ = write_frame(&mut client, OP_PING, 0, b"pong");
             }
             OP_WEB_REQUEST if header.flags == 0 && header.payload_len <= MAX_FRAME_BYTES => {
                 if let Err(error) = forward_web_request_with_timeout(
@@ -1039,13 +1123,22 @@ mod tests {
     #[test]
     fn adapter_restart_backoff_is_bounded_and_resets_after_stability() {
         let mut failures = 0;
-        for _ in 0..16 {
+        let mut circuit_opened = false;
+        for _ in 0..20 {
             let plan = adapter_retry_plan(failures, Duration::from_secs(1));
-            assert!(plan.delay <= ADAPTER_MAX_BACKOFF);
+            if plan.circuit_open {
+                circuit_opened = true;
+                assert_eq!(plan.delay, ADAPTER_CIRCUIT_COOLDOWN);
+                assert_eq!(plan.rapid_failures, 0);
+            } else {
+                assert!(plan.delay <= ADAPTER_MAX_BACKOFF);
+            }
             failures = plan.rapid_failures;
         }
+        assert!(circuit_opened, "circuit breaker should have opened");
         let stable = adapter_retry_plan(failures, ADAPTER_STABLE_INTERVAL);
         assert_eq!(stable.rapid_failures, 0);
         assert_eq!(stable.delay, Duration::from_secs(1));
+        assert!(!stable.circuit_open);
     }
 }

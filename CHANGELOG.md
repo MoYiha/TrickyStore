@@ -1,11 +1,11 @@
 # Changelog
 
-## V2.6.6
+## V2.6.7
 
-- **Modern & Refined WebUI:** Polished typography, form layouts, floating dynamic alerts, adaptive mobile navigation tabs, and responsive table views for a cleaner, smoother experience.
-- **Smooth mobile scrolling and interactions:** Fixed WebView scroll locks and touch handling so all pages scroll naturally and seamlessly on mobile devices.
-- **Instant keybox synchronization:** Stored keybox updates synchronize immediately across the system, and keybox deletion operates reliably without spurious error prompts.
-- **Clean Donate presentation:** Streamlined Donate tab styling to match system accent colors without distracting shadows or box overlays.
-- **WebUI startup readiness:** The interface gracefully waits for backend initialization and retries connections automatically on first launch.
-- **Robust background daemon lifecycle:** Fixed port/address conflicts (`os error 98`) via strict supervisor process management and child lifecycle bindings.
-- **Stronger resource boundaries:** Polling overhead has been replaced with event-driven coordination, and memory limits are strictly enforced across uploads and staging operations.
+- **Memory & Resource Optimization:** Streamlined package enumeration directly from process output streams without buffering large byte arrays in memory, significantly eliminating ART GC pressure and reducing service RAM usage.
+- **IPC Resilience & Keybox Updates:** Added automatic reconnect and retry tolerance for native backend socket communication, preventing transient `Broken pipe` errors and keybox update failures during daemon restarts.
+- **Daemon Lifecycle & Supervisor Cleanup:** Fixed supervisor retry handling to immediately exit cleanly on code 0, eliminating redundant retry loops and log spam when an active daemon is running. Port conflicts and abstract socket collisions are prevented via strict singleton process tracking.
+- **WebUI Performance & Stability:** Optimized log viewer rendering and line collapsing with single-pass string processing, reducing WebView memory consumption and resolving "policy controls unavailable" freezes.
+- **Auto Identity Preview Tracking:** Enhanced Android developer portal crawling to prioritize developer preview releases and newer Android preview tracks for automatic Pixel identity generation.
+- **WebUI Asset Fix:** Eliminated KernelSU/APatch 404 errors for `favicon.ico` by embedding a data URI favicon directly in the WebUI.
+- **Crash Loop Circuit Breaker:** After 10 rapid adapter failures, the daemon enters a cooldown period instead of spinning indefinitely, saving battery and system resources.

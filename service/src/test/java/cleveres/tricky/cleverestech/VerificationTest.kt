@@ -128,7 +128,7 @@ class VerificationTest {
 
     @Test
     fun managerStateFilesMayRemainUnchecked() {
-        for (name in listOf("disable", "remove", "update", "tampered")) {
+        for (name in listOf("disable", "remove", "update", "tampered", "supervisor.pid", "daemon.pid", "adapter.pid", "backend.pid")) {
             File(tempDir, name).writeText("")
         }
 

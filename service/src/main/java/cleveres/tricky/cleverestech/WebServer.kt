@@ -2095,7 +2095,7 @@ class WebServer(
                     when (type) {
                         "errors" -> arrayOf("logcat", "-d", "-t", "1000", "*:E")
                         "system" -> arrayOf("logcat", "-d", "-t", "1000")
-                        else -> arrayOf("logcat", "-d", "-t", "2000", "-s", "cleverestricky:V")
+                        else -> arrayOf("logcat", "-d", "-t", "1000", "-s", "cleverestricky:V")
                     }
                 val logs = readCommandOutput(cmd)
                 secureResponse(Response.Status.OK, "text/plain", logs.ifBlank { "No logs found." })

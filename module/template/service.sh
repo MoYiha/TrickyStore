@@ -2,16 +2,43 @@
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
-SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
+SUPERVISOR_PID_FILE="$CONFIG_DIR/supervisor.pid"
+DAEMON_PID_FILE="$CONFIG_DIR/daemon.pid"
 
-if [ -f "$SUPERVISOR_PID_FILE" ]; then
-  old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
+terminate_pid() {
+  pid_file=$1
+  name=$2
+  max_wait=$3
+  [ -f "$pid_file" ] || return 0
+  old_pid=$(cat "$pid_file" 2>/dev/null)
   if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
-    log -t CleveresTricky "Killing previous supervisor (PID $old_pid) to prevent port conflicts"
-    kill -9 "$old_pid" 2>/dev/null
-    sleep 1
+    log -t CleveresTricky "Stopping previous $name (PID $old_pid)"
+    kill -TERM "$old_pid" 2>/dev/null || true
+    wait_count=0
+    while [ -d "/proc/$old_pid" ] && [ "$wait_count" -lt "$max_wait" ]; do
+      sleep 0.1
+      wait_count=$((wait_count + 1))
+    done
+    if [ -d "/proc/$old_pid" ]; then
+      kill -9 "$old_pid" 2>/dev/null || true
+    fi
   fi
-fi
+  rm -f "$pid_file"
+}
+
+terminate_previous_instances() {
+  terminate_pid "$CONFIG_DIR/supervisor.pid" "supervisor" 15
+  terminate_pid "$MODDIR/supervisor.pid" "supervisor" 15
+  terminate_pid "$CONFIG_DIR/daemon.pid" "daemon" 10
+  terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 20
+  terminate_pid "$CONFIG_DIR/backend.pid" "backend" 10
+  rm -f "$CONFIG_DIR"/.native_runtime.pipe.* "$CONFIG_DIR"/.native_runtime.log.* "$CONFIG_DIR"/.policy_state_v2.json.* "$CONFIG_DIR"/keyboxes/.*.tmp.* 2>/dev/null || true
+  if [ -f "$NATIVE_LOG" ] && [ ! -L "$NATIVE_LOG" ]; then
+    : > "$NATIVE_LOG" 2>/dev/null || true
+  fi
+}
+
+terminate_previous_instances
 
 (
 retry_delay=2
@@ -203,7 +230,7 @@ run_daemon_with_bounded_log() {
           capture_ok=false
         else
           line_count=$((line_count + 1))
-          if [ "$line_count" -ge 32 ]; then
+          if [ "$line_count" -ge 128 ]; then
             rotate_native_log || capture_ok=false
             line_count=0
           fi
@@ -272,6 +299,11 @@ while true; do
   stopped_at=$(date +%s)
   runtime=$((stopped_at - started_at))
 
+  if [ "$exit_code" -eq 0 ]; then
+    log -t CleveresTricky "Daemon exited cleanly or deferred to existing active instance; supervisor finished"
+    break
+  fi
+
   if [ "$runtime" -ge "$stable_runtime" ]; then
     retry_delay=2
   fi
@@ -280,6 +312,10 @@ while true; do
     log -t CleveresTricky "Module disabled or pending removal after daemon exit; supervisor stopped"
     break
   fi
+
+  terminate_pid "$DAEMON_PID_FILE" "daemon" 5
+  terminate_pid "$CONFIG_DIR/backend.pid" "backend" 5
+  terminate_pid "$CONFIG_DIR/adapter.pid" "adapter" 5
 
   log -t CleveresTricky \
     "Daemon exited with code $exit_code after ${runtime}s; retrying in ${retry_delay}s"

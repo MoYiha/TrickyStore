@@ -220,12 +220,25 @@ object AutoIdentityManager {
         )
     }
 
-    internal fun findLatestVersionPath(html: String): String? =
-        Regex("""href=["'](/about/versions/(\d{1,2}))["']""")
-            .findAll(html)
-            .map { match -> match.groupValues[1] to match.groupValues[2].toInt() }
-            .maxByOrNull { it.second }
-            ?.first
+    internal fun findLatestVersionPath(html: String): String? {
+        val candidates =
+            Regex("""(?:data-icon=["']preview["'][^>]*href=["']|href=["'])(/about/versions/([^"'/\s>]+))["']""", RegexOption.IGNORE_CASE)
+                .findAll(html)
+                .map { match ->
+                    val path = match.groupValues[1]
+                    val token = match.groupValues[2]
+                    val numeric = Regex("""\d+""").find(token)?.value?.toIntOrNull() ?: 0
+                    val isPreview = match.value.contains("preview", ignoreCase = true)
+                    Triple(path, numeric, isPreview)
+                }
+                .filter { it.second > 0 }
+                .toList()
+
+        return candidates.maxWithOrNull(
+            compareBy<Triple<String, Int, Boolean>> { it.second }
+                .thenBy { it.third },
+        )?.first
+    }
 
     internal fun extractDownloadLinks(html: String): List<String> =
         Regex("""href=["']([^"']*download(?:-ota)?[^"']*)["']""", RegexOption.IGNORE_CASE)

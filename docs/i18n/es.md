@@ -38,7 +38,7 @@ La operación de clave privada sigue realizándose en Android KeyMint o StrongBo
 <a id="automatic-keybox-check"></a>
 ## Automatic Keybox Check
 
-Mantiene keyboxes y estado de revocación actualizados sin escanear continuamente. File observers manejan cambios normales y se usa un fallback de baja frecuencia cuando el filesystem lo requiere; errores repetidos no crean workers superpuestos.
+Mantiene keyboxes y estado de revocación actualizados sin escanear continuamente. File observers manejan cambmodern normales y se usa un fallback de baja frecuencia cuando el filesystem lo requiere; errores repetidos no crean workers superpuestos.
 
 Cada refresh repite la validación de clave, cadena, algoritmo, validez, ambigüedad y revocación. Material nuevo no se activa si no puede establecerse la revocación. Las cachés están limitadas por número y tamaño de archivos.
 
@@ -47,7 +47,7 @@ Cada refresh repite la validación de clave, cadena, algoritmo, validez, ambigü
 
 Exporta configuración y material autorizado dentro de un archive autenticado y cifrado. Requiere contraseña de al menos 12 caracteres y usa una allowlist de archivos conocidos; symlinks, rutas desconocidas y límites excesivos se rechazan.
 
-Import acepta solo CTSB cifrado y limita upload, entries, keyboxes, tamaños individuales y total expandido. Traversal, duplicados, directorios, symlink destinations, texto, settings o keyboxes inválidos se rechazan antes de escribir. El estado de policy v2 también se valida y publica como un snapshot completo.
+Import acepta solo CTSB cifrado y limita upload, entries, keyboxes, tamaños individuales y total expandido. Traversal, duplicados, directormodern, symlink destinations, texto, settings o keyboxes inválidos se rechazan antes de escribir. El estado de policy v2 también se valida y publica como un snapshot completo.
 
 <a id="boot-properties"></a>
 ## Boot Properties
@@ -214,16 +214,16 @@ En móvil hay navegación inferior, controles táctiles, paneles responsive, pas
 <a id="changelog"></a>
 ## CHANGELOG
 
-V2.6.2 refuerza refresh, recovery y publicación de keybox/CBOX con snapshots estables verificados y publicación atómica, reduciendo carreras entre lectores, quarantine y recuperación del backend; también mejora reinicios del servidor, invalidación de caché y validación de autenticación. Auto Identity enlaza ahora el security patch de Pixel con la fila correcta del boletín; WebUI maneja mejor aborts, respuestas y exports. Backup/restore es más transaccional, bugreport y lecturas de archivos tienen límites y protección de symlink más estrictos, y se actualizó la compatibilidad Rust X.509/Rust 1.98.
+V2.6.2 refuerza refresh, recovery y publicación de keybox/CBOX con snapshots estables verificados y publicación atómica, reduciendo carreras entre lectores, quarantine y recuperación del backend; también mejora reinicmodern del servidor, invalidación de caché y validación de autenticación. Auto Identity enlaza ahora el security patch de Pixel con la fila correcta del boletín; WebUI maneja mejor aborts, respuestas y exports. Backup/restore es más transaccional, bugreport y lecturas de archivos tienen límites y protección de symlink más estrictos, y se actualizó la compatibilidad Rust X.509/Rust 1.98.
 
 V2.5.3 añadió controles granulares de identity/security patch, profiles y Effective State; endureció attestation, KeyMint/StrongBox, privacidad DRM, upgrades y Android 17; consolidó WebUI, restauró traducciones y mejoró Configuration Management; añadió KeyboxHub con apertura en navegador externo; y reforzó diagnostics, caches, dependency security, regression y validación de artefactos.
 
 <a id="contributing"></a>
 ## Contributing
 
-Los cambios deben mantener el modelo fail closed, Android 12-17 y KernelSU/APatch, sin afirmar integridad hardware no verificable. Deben pasar checks Kotlin/Android/Rust; native portable nuevo va en Rust, C first-party está prohibido y `binder_interceptor.cpp` es la única excepción C++.
+Los cambmodern deben mantener el modelo fail closed, Android 12-17 y KernelSU/APatch, sin afirmar integridad hardware no verificable. Deben pasar checks Kotlin/Android/Rust; native portable nuevo va en Rust, C first-party está prohibido y `binder_interceptor.cpp` es la única excepción C++.
 
-Binder/XML/ZIP/CBOX/HTTP/path/PID son untrusted y requieren límites explícitos y regression tests de fallos. No se deben commitear claves privadas, keyboxes, tokens, secretos, APKs o ZIPs generados. Cambios visibles requieren actualizar docs.
+Binder/XML/ZIP/CBOX/HTTP/path/PID son untrusted y requieren límites explícitos y regression tests de fallos. No se deben commitear claves privadas, keyboxes, tokens, secretos, APKs o ZIPs generados. Cambmodern visibles requieren actualizar docs.
 
 <a id="donate"></a>
 ## Development Support
@@ -247,6 +247,6 @@ CleveresTricky escribe diagnostics en Android logcat y no guarda un log plaintex
 <a id="theme"></a>
 ## UI Theme
 
-La WebUI usa un diseño monocromo minimalista híbrido Nothing OS/iOS: fondo charcoal, texto gris claro, accent plateado, panel oscuro, success verde y danger rojo. Usa system sans-serif, datos técnicos monospace, Dynamic Island, botones redondeados, toggles iOS y layout mobile-first.
+La WebUI usa un diseño monocromo minimalista híbrido Nothing OS/Modern: fondo charcoal, texto gris claro, accent plateado, panel oscuro, success verde y danger rojo. Usa system sans-serif, datos técnicos monospace, Dynamic Island, botones redondeados, toggles Modern y layout mobile-first.
 
 Los touch targets deben rondar al menos 44px, se prioriza el flujo vertical y la experiencia está optimizada para uso desde KernelSU/APatch en teléfono.

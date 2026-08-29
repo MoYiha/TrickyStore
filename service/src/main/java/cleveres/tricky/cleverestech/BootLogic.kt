@@ -250,12 +250,18 @@ object BootLogic {
                 .redirectOutput(nullDevice)
                 .redirectError(nullDevice)
                 .start()
-        if (!process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-            throw IOException("Command timed out: ${command.firstOrNull().orEmpty()}")
-        }
-        if (process.exitValue() != 0) {
-            throw IOException("Command failed with exit ${process.exitValue()}: ${command.firstOrNull().orEmpty()}")
+        try {
+            if (!process.waitFor(COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                throw IOException("Command timed out: ${command.firstOrNull().orEmpty()}")
+            }
+            if (process.exitValue() != 0) {
+                throw IOException("Command failed with exit ${process.exitValue()}: ${command.firstOrNull().orEmpty()}")
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 }
