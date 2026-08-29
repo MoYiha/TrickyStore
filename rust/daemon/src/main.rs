@@ -158,7 +158,11 @@ fn run() -> io::Result<()> {
         match spawn_android_adapter(&module_dir) {
             Ok(mut adapter) => {
                 let lease = adapter_identity.publish(adapter.id());
-                let _ = config_root.atomic_write("adapter.pid", adapter.id().to_string().as_bytes(), 0o600);
+                let _ = config_root.atomic_write(
+                    "adapter.pid",
+                    adapter.id().to_string().as_bytes(),
+                    0o600,
+                );
                 eprintln!(
                     "cleverestrickyd: Android adapter generation {} started as pid {}",
                     lease.generation, lease.pid
