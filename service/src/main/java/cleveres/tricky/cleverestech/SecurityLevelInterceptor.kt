@@ -107,7 +107,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
             OverrideReply(0, replacement)
         } catch (error: Throwable) {
             replacement.recycle()
-            if (error !is android.os.ServiceSpecificException) {
+            if (error.javaClass.simpleName != "ServiceSpecificException") {
                 Logger.e("Could not rewrite a generated attestation chain: ${error.javaClass.simpleName}")
             }
             Skip
