@@ -58,6 +58,11 @@ function assertIdentity(actual, expected, context) {
   }
 }
 
+if (process.platform === 'win32') {
+  console.log('Skipping boot-build-identity-runtime shell harness on Windows (runs on Linux CI)');
+  process.exit(0);
+}
+
 function execute(script, env) {
   const result = spawnSync('/bin/sh', [script], {
     cwd: repoRoot,

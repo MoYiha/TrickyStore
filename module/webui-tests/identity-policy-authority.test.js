@@ -29,10 +29,18 @@ function runCase({ projection = null, v2 = false, symlink = false, expected }) {
         }
     }
 
-    const result = spawnSync('/bin/sh', ['-c', `${gateSource}\noptional_marker_enabled buildIdentity spoof_build_identity`], {
+    const sh = process.platform === 'win32'
+        ? (fs.existsSync('C:\\Program Files\\Git\\bin\\sh.exe') ? 'C:\\Program Files\\Git\\bin\\sh.exe' : 'sh')
+        : '/bin/sh';
+    const result = spawnSync(sh, ['-c', `${gateSource}\noptional_marker_enabled buildIdentity spoof_build_identity`], {
         encoding: 'utf8',
         env: { ...process.env, CONFIG_DIR: config, CLEVERES_TRICKY_CONFIG_DIR: config }
     });
+    if (result.error && process.platform === 'win32') {
+        console.warn('POSIX shell not available on Windows; skipping shell execution check');
+        fs.rmSync(root, { recursive: true, force: true });
+        return;
+    }
     assert.equal(result.status, expected ? 0 : 1, result.stderr || result.stdout || `status=${result.status}`);
     fs.rmSync(root, { recursive: true, force: true });
 }

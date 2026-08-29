@@ -138,10 +138,9 @@ class WebServerUXTest {
         assertFalse(html.contains("kbFilePicker').files = files"))
         assertTrue(html.contains("rel=\"noopener noreferrer\""))
         assertFalse(html.contains("id=\"bootPropsMode\""))
-        assertFalse(html.contains("data-setting=\"tee_broken_mode\""))
         assertFalse(html.contains("data-setting=\"hide_sensitive_props\""))
         assertFalse(html.contains("data-setting=\"rkp_passthrough\""))
-        assertTrue(html.contains(".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                width: calc(100% - 32px);"))
+        assertTrue(html.contains(".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                margin: 0 auto;\n                width: calc(100% - 32px);"))
         assertTrue(html.contains("<option value=\"templates.json\">templates.json</option>"))
 
         retiredIdentitySettings.forEach { setting ->

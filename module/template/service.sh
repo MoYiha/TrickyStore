@@ -67,30 +67,37 @@ mirror_root_keyboxes() {
   chmod 700 "$keybox_dir" 2>/dev/null
   chcon u:object_r:system_file:s0 "$keybox_dir" 2>/dev/null
 
-  for source in "$CONFIG_DIR"/*.xml "$CONFIG_DIR"/*.cbox; do
-    if [ ! -f "$source" ] || [ -L "$source" ]; then
-      continue
-    fi
-    base=${source##*/}
-    # keybox.xml is the legacy primary source and is already loaded directly.
-    [ "$base" != "keybox.xml" ] || continue
-    case "$base" in
-      .*|*[!A-Za-z0-9_.-]*) continue ;;
-    esac
-    lower=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-    case "$lower" in *.xml|*.cbox) ;; *) continue ;; esac
+  for source_dir in "$CONFIG_DIR" "$MODDIR" "$MODDIR/keyboxes"; do
+    [ -d "$source_dir" ] && [ ! -L "$source_dir" ] || continue
+    [ "$source_dir" != "$keybox_dir" ] || continue
 
-    destination="$keybox_dir/$base"
-    [ ! -L "$destination" ] || continue
-    tmp="$keybox_dir/.${base}.tmp.$$"
-    if cp -f "$source" "$tmp" 2>/dev/null; then
-      chown 0:0 "$tmp" 2>/dev/null
-      chmod 600 "$tmp" 2>/dev/null
-      chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
-      mv -f "$tmp" "$destination" 2>/dev/null || rm -f "$tmp"
-    else
-      rm -f "$tmp"
-    fi
+    for source in "$source_dir"/*.xml "$source_dir"/*.cbox; do
+      if [ ! -f "$source" ] || [ -L "$source" ]; then
+        continue
+      fi
+      base=${source##*/}
+      # keybox.xml is the legacy primary source and is already loaded directly if in CONFIG_DIR.
+      if [ "$source_dir" = "$CONFIG_DIR" ] && [ "$base" = "keybox.xml" ]; then
+        continue
+      fi
+      case "$base" in
+        .*|*[!A-Za-z0-9_.-]*) continue ;;
+      esac
+      lower=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
+      case "$lower" in *.xml|*.cbox) ;; *) continue ;; esac
+
+      destination="$keybox_dir/$base"
+      [ ! -L "$destination" ] || continue
+      tmp="$keybox_dir/.${base}.tmp.$$"
+      if cp -f "$source" "$tmp" 2>/dev/null; then
+        chown 0:0 "$tmp" 2>/dev/null
+        chmod 600 "$tmp" 2>/dev/null
+        chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
+        mv -f "$tmp" "$destination" 2>/dev/null || rm -f "$tmp"
+      else
+        rm -f "$tmp"
+      fi
+    done
   done
 }
 

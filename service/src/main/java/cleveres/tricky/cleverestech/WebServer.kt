@@ -1214,6 +1214,7 @@ class WebServer(
             files.put("drm_packages.txt")
             files.put("boot_props_mode")
             json.put("files", files)
+            Config.ensureFreshKeyboxes()
             json.put("keybox_count", CertHack.getKeyboxSourceCount())
             val templates = JSONArray()
             Config.getTemplateNames().forEach { name -> templates.put(name) }
@@ -1253,7 +1254,8 @@ class WebServer(
         headers: Map<String, String>,
         trustedBridge: Boolean
     ): Response? {
-            if (uri == "/api/keyboxes" && method == Method.GET) {
+        if (uri == "/api/keyboxes" && method == Method.GET) {
+            Config.ensureFreshKeyboxes()
             val keyboxes = listKeyboxes()
             val array = JSONArray(keyboxes)
             return secureResponse(Response.Status.OK, "application/json", array.toString())
@@ -1261,6 +1263,7 @@ class WebServer(
 
         if (uri == "/api/keybox_inventory" && method == Method.GET) {
             return try {
+                Config.ensureFreshKeyboxes()
                 secureResponse(Response.Status.OK, "application/json", keyboxInventoryJson())
             } catch (error: Exception) {
                 Logger.e("Failed to enumerate stored keyboxes", error)
@@ -1269,6 +1272,7 @@ class WebServer(
         }
 
         if (uri == "/api/cbox_status" && method == Method.GET) {
+            Config.ensureFreshKeyboxes()
             val json = JSONObject()
             val locked = JSONArray()
             CboxManager.getLockedFiles().forEach { locked.put(it) }
@@ -1952,6 +1956,8 @@ class WebServer(
                     if (saveFile(filename, content)) {
                         if (filename == "templates.json") {
                             DeviceTemplateManager.initialize(configDir)
+                        } else if (filename == "keybox.xml") {
+                            updateKeyboxesFromConfiguredRevocationSource()
                         }
                         return secureResponse(Response.Status.OK, "text/plain", "Saved")
                     }

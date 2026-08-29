@@ -455,6 +455,33 @@ object Config {
             updateKeyBoxesSync()
         }
 
+    @Volatile
+    private var lastKeyboxInventoryFingerprint: Long = 0L
+
+    internal fun computeKeyboxInventoryFingerprint(): Long {
+        var fp = root.lastModified() xor (File(root, KEYBOX_FILE).lastModified() shl 1) xor (File(root, "keybox.cbox").lastModified() shl 2)
+        val dir = keyboxDir
+        if (dir.exists() && dir.isDirectory) {
+            fp = fp xor (dir.lastModified() shl 3)
+            val files = dir.listFiles()
+            if (files != null) {
+                fp = fp xor (files.size.toLong() shl 4)
+                for (f in files) {
+                    fp = fp xor (f.lastModified() shl 5) xor f.name.hashCode().toLong() xor (f.length() shl 6)
+                }
+            }
+        }
+        return fp
+    }
+
+    fun ensureFreshKeyboxes(): Boolean {
+        val currentFp = computeKeyboxInventoryFingerprint()
+        if (currentFp != lastKeyboxInventoryFingerprint) {
+            return updateKeyBoxesSync()
+        }
+        return true
+    }
+
     fun updateKeyBoxes(): Job = keyboxRefreshScheduler.submit()
 
     fun updateKeyBoxesSync(): Boolean =
@@ -505,6 +532,7 @@ object Config {
     ): Boolean =
         KeyboxActivation.coordinateRefresh {
             val refreshTicket = KeyboxActivation.beginRefresh()
+            lastKeyboxInventoryFingerprint = computeKeyboxInventoryFingerprint()
             runCatching {
                 Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
                 val allKeyboxes = ArrayList<CertHack.KeyBox>(KeyboxLoader.MAX_ACTIVE_KEYS)
@@ -1902,14 +1930,24 @@ object Config {
         enforceRandomization()
     }
 
-    object ConfigObserver : FileObserver(root, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
+    object ConfigObserver : FileObserver(root, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB) {
         override fun onEvent(event: Int, path: String?) {
             path ?: return
-            val f = when (event) { CLOSE_WRITE, MOVED_TO -> File(root, path); DELETE, MOVED_FROM -> null; else -> return }
+            val f = when (event) { CREATE, CLOSE_WRITE, MOVED_TO, MODIFY, ATTRIB -> File(root, path); DELETE, MOVED_FROM -> null; else -> return }
             when (path) {
                 TARGET_FILE -> updateTargetPackages(f)
                 IDENTITY_TARGET_FILE -> updateIdentityTargetPackages(f)
-                KEYBOX_FILE -> updateKeyBoxes()
+                KEYBOX_FILE, KEYBOX_DIR, "keybox.cbox" -> {
+                    if (path == KEYBOX_DIR && f != null && f.isDirectory) {
+                        try {
+                            KeyboxDirObserver.stopWatching()
+                            KeyboxDirObserver.startWatching()
+                        } catch (e: Exception) {
+                            Logger.w("Failed to re-attach KeyboxDirObserver", e)
+                        }
+                    }
+                    updateKeyBoxes()
+                }
                 SPOOF_BUILD_VARS_FILE -> updateBuildVars(f)
                 SECURITY_PATCH_FILE -> updateSecurityPatch(f)
                 PolicyState.STATE_FILE -> { PolicyState.reload(); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
@@ -1936,7 +1974,7 @@ object Config {
         }
     }
 
-    object KeyboxDirObserver : FileObserver(keyboxDir, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
+    object KeyboxDirObserver : FileObserver(keyboxDir, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB) {
         override fun onEvent(event: Int, path: String?) {
             Logger.i("Keybox directory event: $path")
             updateKeyBoxes()

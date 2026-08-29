@@ -23,7 +23,7 @@ requireToken('done < "$vars_file"');
 assert.doesNotMatch(postFs, /awk -v target=|policy_state_v2\.json.*awk|depth == 1 && token == "features"/, 'shell must not parse policy JSON');
 
 const conflictMatch = postFs.match(
-  /if \[ "\$identity_conflict" = true \]; then([\s\S]*?)\n\s*fi\n\s*fi\n\n\s*CT_FINGERPRINT=/,
+  /if \[ "\$identity_conflict" = true \]; then([\s\S]*?)\r?\n\s*fi\r?\n\s*fi\r?\n\r?\n\s*CT_FINGERPRINT=/,
 );
 assert.ok(conflictMatch, 'boot identity conflict branch must remain explicit and adjacent to identity application');
 assert.doesNotMatch(conflictMatch[1], /\breturn\s+0\b/);
@@ -31,7 +31,7 @@ assert.match(conflictMatch[1], /reasserting the enabled CleveresTricky Build Ide
 
 requireToken('apply_core_boot_properties');
 requireToken('apply_optional_identity_properties');
-const earlyOwner = postFs.match(/apply_early_properties\(\) \{([\s\S]*?)\n\}/);
+const earlyOwner = postFs.match(/apply_early_properties\(\) \{([\s\S]*?)\r?\n\}/);
 assert.ok(earlyOwner, 'early property owner must remain explicit');
 assert.match(earlyOwner[1], /apply_core_boot_properties/);
 assert.match(earlyOwner[1], /apply_optional_identity_properties/);
