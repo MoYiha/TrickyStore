@@ -36,7 +36,6 @@
             background: var(--bg);
             width: 100%;
             max-width: 100%;
-            overflow-x: hidden;
         }
         body {
             background-color: var(--bg);
@@ -81,10 +80,10 @@
             margin: 0;
             padding: 32px 16px 20px 8px;
             color: var(--text);
-            font-size: 1.65rem;
+            font-size: 1.85rem;
             line-height: 1.15;
             font-weight: 800;
-            letter-spacing: -0.035em;
+            letter-spacing: -0.04em;
             text-transform: none;
             box-sizing: border-box;
         }
@@ -142,17 +141,11 @@
             padding-top: 10px;
             border-top: 1px solid rgba(255, 255, 255, 0.08);
             color: var(--accent) !important;
-            background: rgba(10, 132, 255, 0.12) !important;
-            border: 1px solid rgba(10, 132, 255, 0.25) !important;
-            border-radius: 10px;
             justify-content: center;
             text-align: center;
-            font-weight: 600;
         }
         #tab_donate:hover {
-            background: rgba(10, 132, 255, 0.22) !important;
             color: #ffffff !important;
-            border-color: rgba(10, 132, 255, 0.4) !important;
         }
         .content {
             grid-column: 2;
@@ -373,10 +366,13 @@
                 box-sizing: border-box;
             }
             h1 {
-                padding: calc(env(safe-area-inset-top) + 16px) 18px 14px;
-                font-size: 1.4rem;
+                padding: calc(env(safe-area-inset-top) + 20px) 18px 16px;
+                font-size: 1.85rem;
+                font-weight: 800;
+                letter-spacing: -0.04em;
                 justify-content: center;
                 text-align: center;
+                color: #ffffff;
             }
             .tabs {
                 position: fixed;
@@ -499,7 +495,7 @@
         <div class="tab" id="tab_info" onclick="switchTab('info')" role="tab" tabindex="-1" aria-selected="false" aria-controls="info" onkeydown="handleTabNavigation(event, 'info')">Info &amp; Resources</div> <div class="tab" id="tab_guide" onclick="switchTab('guide')" role="tab" tabindex="-1" aria-selected="false" aria-controls="guide" onkeydown="handleTabNavigation(event, 'guide')">Guide</div>
         <div class="tab" id="tab_log" onclick="switchTab('log')" role="tab" tabindex="-1" aria-selected="false" aria-controls="log" onkeydown="handleTabNavigation(event, 'log')">Logs</div>
         <div class="tab" id="tab_editor" onclick="switchTab('editor')" role="tab" tabindex="-1" aria-selected="false" aria-controls="editor" onkeydown="handleTabNavigation(event, 'editor')">Editor</div>
-        <div class="tab" id="tab_donate" onclick="switchTab('donate')" role="tab" tabindex="-1" aria-selected="false" aria-controls="donate" onkeydown="handleTabNavigation(event, 'donate')" style="margin-left:auto; color:var(--accent);">Donate</div>
+        <div class="tab" id="tab_donate" onclick="switchTab('donate')" role="tab" tabindex="-1" aria-selected="false" aria-controls="donate" onkeydown="handleTabNavigation(event, 'donate')">Donate</div>
     </div>
 
     <div id="dashboard" class="content active" role="tabpanel" aria-labelledby="tab_dashboard">
@@ -526,7 +522,24 @@
             </div>
         </div>
 
-        <div class="panel panel-config"><h3>Configuration Management</h3><div style="margin-bottom:10px;"><label for="backupPw">Backup Password (required, at least 12 characters)</label><div class="pwd-wrapper"><input type="password" id="backupPw" placeholder="Enter a strong backup password" minlength="12" maxlength="1024" spellcheck="false" autocomplete="new-password" autocorrect="off" autocapitalize="off"><button type="button" class="pwd-toggle" onclick="togglePassword(this)">Show</button></div></div><div class="grid-2"><button onclick="runWithState(this, 'Exporting...', backupConfig)">Export Encrypted Settings</button><button onclick="document.getElementById('restoreInput').click()">Import Encrypted Settings</button><input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".ctsb"></div><div style="margin-top:10px;"><button id="runtimeSyncBtn" onclick="runWithState(this, 'Synchronizing...', synchronizeRuntimeSettings)" class="primary" style="width:100%;">Synchronize Runtime</button></div></div>
+        <div class="panel panel-config">
+            <h3>Configuration Management</h3>
+            <div style="margin-bottom:16px;">
+                <label for="backupPw">Backup Password (required, at least 12 characters)</label>
+                <div class="pwd-wrapper">
+                    <input type="password" id="backupPw" placeholder="Enter a strong backup password" minlength="12" maxlength="1024" spellcheck="false" autocomplete="new-password" autocorrect="off" autocapitalize="off">
+                    <button type="button" class="pwd-toggle" onclick="togglePassword(this)">Show</button>
+                </div>
+            </div>
+            <div class="grid-2">
+                <button onclick="runWithState(this, 'Exporting...', backupConfig)">Export Encrypted Settings</button>
+                <button onclick="document.getElementById('restoreInput').click()">Import Encrypted Settings</button>
+                <input type="file" id="restoreInput" style="display:none" onchange="restoreConfig(this)" accept=".ctsb">
+            </div>
+            <div style="margin-top:14px;">
+                <button id="runtimeSyncBtn" onclick="runWithState(this, 'Synchronizing...', synchronizeRuntimeSettings)" class="primary" style="width:100%;">Synchronize Runtime</button>
+            </div>
+        </div>
     </div>
 
     <div id="spoof" class="content" role="tabpanel" aria-labelledby="tab_spoof">

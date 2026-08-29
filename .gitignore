@@ -36,3 +36,7 @@ module/build/
 service/build/
 stub/build/
 node_modules/
+
+# Agent local configs and skills
+.agents/
+

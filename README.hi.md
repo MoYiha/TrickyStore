@@ -3,6 +3,7 @@
 **भाषा:** [English](README.md) | [Türkçe](README.tr.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [Bahasa Indonesia](README.id.md) | **हिन्दी** | [العربية](README.ar.md)
 
 [![Release](https://img.shields.io/github/v/release/tryigit/CleveresTricky?display_name=tag&sort=semver&label=Release)](https://github.com/tryigit/CleveresTricky/releases/latest)
+[![डाउनलोड](https://img.shields.io/github/downloads/tryigit/CleveresTricky/total?color=0A84FF&label=%E0%A4%A1%E0%A4%BE%E0%A4%89%E0%A4%A8%E0%A4%B2%E0%A4%9B%E0%A4%A1)](https://github.com/tryigit/CleveresTricky/releases)
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
 ![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
 
