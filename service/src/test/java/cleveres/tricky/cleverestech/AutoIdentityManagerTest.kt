@@ -147,6 +147,17 @@ class AutoIdentityManagerTest {
     }
 
     @Test
+    fun `findLatestVersionPath prioritizes preview and highest version`() {
+        val html =
+            """
+            <a href="/about/versions/15">Android 15</a>
+            <div data-icon="preview"><a href="/about/versions/16">Android 16 Developer Preview</a></div>
+            """.trimIndent()
+
+        assertEquals("/about/versions/16", AutoIdentityManager.findLatestVersionPath(html))
+    }
+
+    @Test
     fun `unsafe or malformed beta rows are ignored`() {
         val candidates =
             AutoIdentityManager.parseDeviceCandidates(
