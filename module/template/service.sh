@@ -2,6 +2,16 @@
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
+SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
+
+if [ -f "$SUPERVISOR_PID_FILE" ]; then
+  old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
+  if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
+    log -t CleveresTricky "Killing previous supervisor (PID $old_pid) to prevent port conflicts"
+    kill -9 "$old_pid" 2>/dev/null
+    sleep 1
+  fi
+fi
 
 (
 retry_delay=2
@@ -235,16 +245,6 @@ find "$MODDIR" -maxdepth 1 -type f \( -name '*.apk' -o -name '*.so' \) \
 module_stopping() {
   [ -e "$MODDIR/disable" ] || [ -e "$MODDIR/remove" ]
 }
-
-SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
-if [ -f "$SUPERVISOR_PID_FILE" ]; then
-  old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
-  if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
-    log -t CleveresTricky "Killing previous supervisor (PID $old_pid) to prevent port conflicts"
-    kill -9 "$old_pid" 2>/dev/null
-    sleep 1
-  fi
-fi
 
 while true; do
   if module_stopping; then
