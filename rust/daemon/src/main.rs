@@ -4,8 +4,8 @@ mod keybox_file_broker;
 
 use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
-    read_header_bounded, relay_exact, write_frame, write_header, FrameHeader, FLAG_ERROR,
-    HEADER_BYTES, MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
+    read_header, read_header_bounded, relay_exact, write_frame, write_header, FrameHeader,
+    FLAG_ERROR, MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_PING, OP_WEB_REQUEST,
     STREAM_COPY_BYTES,
 };
 use cleverestricky_service_core::secure_fs::TrustedDir;
@@ -130,8 +130,7 @@ fn run() -> io::Result<()> {
             if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
                 if let Ok(creds) = peer_credentials(&stream) {
                     if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
-                        let mut header_buf = [0u8; HEADER_BYTES];
-                        if let Ok(header) = read_header_bounded(&mut stream, &mut header_buf) {
+                        if let Ok(header) = read_header(&mut stream) {
                             if header.opcode == OP_PING && header.flags == 0 {
                                 eprintln!(
                                     "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
@@ -153,8 +152,7 @@ fn run() -> io::Result<()> {
             if let Ok(mut stream) = connect_abstract(DAEMON_SOCKET_NAME) {
                 if let Ok(creds) = peer_credentials(&stream) {
                     if write_frame(&mut stream, OP_PING, 0, &[]).is_ok() {
-                        let mut header_buf = [0u8; HEADER_BYTES];
-                        if let Ok(header) = read_header_bounded(&mut stream, &mut header_buf) {
+                        if let Ok(header) = read_header(&mut stream) {
                             if header.opcode == OP_PING && header.flags == 0 {
                                 eprintln!(
                                     "cleverestrickyd: another active daemon is already serving requests (PID {}); exiting cleanly",
