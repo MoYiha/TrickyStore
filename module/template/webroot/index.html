@@ -50,7 +50,6 @@
             width: 100%;
             max-width: var(--content-width);
             overflow-x: hidden;
-            overscroll-behavior-y: contain;
             -webkit-tap-highlight-color: transparent;
             display: grid;
             grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
@@ -143,9 +142,14 @@
             color: var(--accent) !important;
             justify-content: center;
             text-align: center;
+            box-shadow: none !important;
+            background: transparent !important;
         }
-        #tab_donate:hover {
-            color: #ffffff !important;
+        #tab_donate:hover, #tab_donate.active {
+            color: var(--accent) !important;
+            background: transparent !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
         }
         .content {
             grid-column: 2;

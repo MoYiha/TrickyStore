@@ -236,11 +236,15 @@ module_stopping() {
   [ -e "$MODDIR/disable" ] || [ -e "$MODDIR/remove" ]
 }
 
-kill_stale_daemons() {
-  pkill -9 -f "$MODDIR/daemon" 2>/dev/null
-  pkill -9 -f "$MODDIR/cleverestrickyd" 2>/dev/null
-  pkill -9 -f "$MODDIR/cleverestricky_backend" 2>/dev/null
-}
+SUPERVISOR_PID_FILE="$MODDIR/supervisor.pid"
+if [ -f "$SUPERVISOR_PID_FILE" ]; then
+  old_pid=$(cat "$SUPERVISOR_PID_FILE" 2>/dev/null)
+  if [ -n "$old_pid" ] && [ -d "/proc/$old_pid" ]; then
+    log -t CleveresTricky "Killing previous supervisor (PID $old_pid) to prevent port conflicts"
+    kill -9 "$old_pid" 2>/dev/null
+    sleep 1
+  fi
+fi
 
 while true; do
   if module_stopping; then
@@ -262,7 +266,6 @@ while true; do
   fi
 
   started_at=$(date +%s)
-  kill_stale_daemons
   run_daemon_with_bounded_log
   exit_code=$?
   unset CLEVERES_TRICKY_BACKEND_AUTH
@@ -288,3 +291,4 @@ while true; do
   fi
 done
 ) &
+echo $! > "$SUPERVISOR_PID_FILE"
