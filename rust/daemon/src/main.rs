@@ -148,10 +148,7 @@ fn run() -> io::Result<()> {
         }
         Err(error) => return Err(error),
     };
-    let file_listener = match bind_abstract(FILE_SOCKET_NAME) {
-        Ok(listener) => listener,
-        Err(error) => return Err(error),
-    };
+    let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
     let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
     let adapter_identity = Arc::new(AdapterIdentity::default());
 
