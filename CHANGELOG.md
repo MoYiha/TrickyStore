@@ -1,6 +1,6 @@
 # Changelog
 
-## V2.6.6
+## V2.6.7
 
 - **Key Attestation & Keybox Support:** Resolved key attestation and keybox upload failures by synchronizing backend lifecycle with adapter state and eliminating orphan backend socket holding.
 - **WebUI Stability:** Resolved "policy controls unavailable" and "runtime starting; retry shortly" freezes caused by supervisor disconnects and orphaned processes.

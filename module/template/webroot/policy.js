@@ -1633,19 +1633,24 @@ async function initialize() {
   } catch (error) {
     notify(`Policy controls unavailable: ${error.message}`, 'error');
     if (typeof global.setTimeout === 'function') {
-      global.setTimeout(async () => {
+      const retryDelays = [1000, 2500, 5000];
+      const attemptRetry = async (index) => {
+        if (policyState || index >= retryDelays.length) return;
         try {
-          if (!policyState) {
-            policyState = normalizePolicyState(await request('/api/policy_state'));
-            await loadReferenceData();
-            installIdentityManagerState();
-            renderAll();
-            sanitizeErrors();
-            installResourceOwner();
-            installPackagePickers();
+          policyState = normalizePolicyState(await request('/api/policy_state'));
+          await loadReferenceData();
+          installIdentityManagerState();
+          renderAll();
+          sanitizeErrors();
+          installResourceOwner();
+          installPackagePickers();
+        } catch (_) {
+          if (!policyState && index + 1 < retryDelays.length) {
+            global.setTimeout(() => attemptRetry(index + 1), retryDelays[index + 1]);
           }
-        } catch (_) {}
-      }, 2000);
+        }
+      };
+      global.setTimeout(() => attemptRetry(0), retryDelays[0]);
     }
     return;
   }
