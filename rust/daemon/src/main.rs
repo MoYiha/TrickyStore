@@ -239,6 +239,11 @@ fn backend_auth_env() -> io::Result<OsString> {
 }
 
 fn harden_process() -> io::Result<()> {
+    // SAFETY: `prctl(PR_SET_PDEATHSIG, SIGTERM)` has no pointer arguments. If the shell supervisor
+    // dies, the daemon must also terminate to avoid orphaning and socket port conflicts.
+    if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM, 0, 0, 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
     // SAFETY: `umask` takes a value argument only, has process-global semantics intended for this
     // single-purpose daemon, and retains no pointers or references.
     unsafe { libc::umask(0o077) };
