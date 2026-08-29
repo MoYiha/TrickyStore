@@ -230,7 +230,7 @@ run_daemon_with_bounded_log() {
           capture_ok=false
         else
           line_count=$((line_count + 1))
-          if [ "$line_count" -ge 32 ]; then
+          if [ "$line_count" -ge 128 ]; then
             rotate_native_log || capture_ok=false
             line_count=0
           fi

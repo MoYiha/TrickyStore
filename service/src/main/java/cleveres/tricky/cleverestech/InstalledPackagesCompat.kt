@@ -66,14 +66,14 @@ internal object InstalledPackagesCompat {
 
         val reader =
             FutureTask {
-                val output = readBoundedProcessOutput(process)
+                val packages = parsePackageListStream(process.inputStream)
                 if (!process.waitFor(PROCESS_EXIT_GRACE_MS, TimeUnit.MILLISECONDS)) {
                     throw IOException("Package-list command did not terminate after closing its output")
                 }
                 if (process.exitValue() != 0) {
                     throw IOException("Package-list command failed with exit code ${process.exitValue()}")
                 }
-                parsePackageListOutput(output)
+                packages
             }
         Thread(reader, "ct-package-list").apply {
             isDaemon = true
@@ -97,38 +97,31 @@ internal object InstalledPackagesCompat {
         }
     }
 
-    private fun readBoundedProcessOutput(process: Process): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(8192)
-        process.inputStream.use { input ->
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) continue
-                if (total > MAX_COMMAND_OUTPUT_BYTES - count) {
+    @androidx.annotation.VisibleForTesting
+    internal fun parsePackageListStream(input: java.io.InputStream): List<String> {
+        val packages = ArrayList<String>()
+        var totalBytes = 0
+        input.bufferedReader(Charsets.UTF_8).useLines { lines ->
+            for (rawLine in lines) {
+                totalBytes += rawLine.length + 1
+                if (totalBytes > MAX_COMMAND_OUTPUT_BYTES) {
                     throw IOException("Package-list command output exceeds its size limit")
                 }
-                output.write(buffer, 0, count)
-                total += count
+                val line = rawLine.trim()
+                if (!line.startsWith(PACKAGE_PREFIX)) continue
+                val packageName = line.substring(PACKAGE_PREFIX.length)
+                if (!packageNamePattern.matches(packageName)) continue
+                require(packages.size < MAX_COMMAND_PACKAGES) { "Package-list output contains too many packages" }
+                packages += packageName
             }
         }
-        return output.toByteArray()
+        return packages
     }
 
     @androidx.annotation.VisibleForTesting
     internal fun parsePackageListOutput(output: ByteArray): List<String> {
         require(output.size <= MAX_COMMAND_OUTPUT_BYTES) { "Package-list output exceeds its size limit" }
-        val packages = ArrayList<String>()
-        output.toString(Charsets.UTF_8).lineSequence().forEach { rawLine ->
-            val line = rawLine.trim()
-            if (!line.startsWith(PACKAGE_PREFIX)) return@forEach
-            val packageName = line.substring(PACKAGE_PREFIX.length)
-            if (!packageNamePattern.matches(packageName)) return@forEach
-            require(packages.size < MAX_COMMAND_PACKAGES) { "Package-list output contains too many packages" }
-            packages += packageName
-        }
-        return packages
+        return parsePackageListStream(output.inputStream())
     }
 
     @androidx.annotation.VisibleForTesting

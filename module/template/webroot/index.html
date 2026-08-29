@@ -1286,26 +1286,36 @@ try {
     if (!viewer) return;
     function collapseConsecutiveLogLines(rawLogs) {
         if (typeof rawLogs !== 'string' || !rawLogs) return '';
-        const lines = rawLogs.split(/\r?\n/);
-        const collapsed = [];
+        let result = '';
         let currentLine = null;
         let count = 0;
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
+        let start = 0;
+        const len = rawLogs.length;
+        while (start < len) {
+            let end = rawLogs.indexOf('\n', start);
+            if (end === -1) end = len;
+            let lineEnd = end;
+            if (lineEnd > start && rawLogs.charCodeAt(lineEnd - 1) === 13) {
+                lineEnd--;
+            }
+            const line = rawLogs.slice(start, lineEnd);
+            start = end + 1;
             if (line === currentLine && line.trim() !== '') {
                 count++;
             } else {
                 if (currentLine !== null) {
-                    collapsed.push(count > 1 ? `${currentLine} (x${count})` : currentLine);
+                    if (result.length > 0) result += '\n';
+                    result += count > 1 ? `${currentLine} (x${count})` : currentLine;
                 }
                 currentLine = line;
                 count = 1;
             }
         }
         if (currentLine !== null) {
-            collapsed.push(count > 1 ? `${currentLine} (x${count})` : currentLine);
+            if (result.length > 0) result += '\n';
+            result += count > 1 ? `${currentLine} (x${count})` : currentLine;
         }
-        return collapsed.join('\n');
+        return result;
     }
     viewer.value = collapseConsecutiveLogLines(data);
     viewer.scrollTop = viewer.scrollHeight;

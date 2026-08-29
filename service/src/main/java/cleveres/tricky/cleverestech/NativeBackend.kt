@@ -229,10 +229,21 @@ object NativeBackend {
                             !BackendStateRecovery.isRecovering() &&
                             identityBeforeAttempt != null
                         ) {
-                            runCatching {
-                                connectedSocket()
-                                backendIdentity?.takeIf { it != identityBeforeAttempt }
-                            }.getOrNull()
+                            var candidate: BackendIdentity? = null
+                            for (attempt in 0..2) {
+                                candidate = runCatching {
+                                    connectedSocket()
+                                    backendIdentity?.takeIf { it != identityBeforeAttempt }
+                                }.getOrNull()
+                                if (candidate != null || attempt == 2) break
+                                try {
+                                    Thread.sleep(50)
+                                } catch (_: InterruptedException) {
+                                    Thread.currentThread().interrupt()
+                                    break
+                                }
+                            }
+                            candidate
                         } else {
                             null
                         }
