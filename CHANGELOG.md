@@ -2,11 +2,10 @@
 
 ## V2.6.7
 
-- **Key Attestation & Keybox Support:** Resolved key attestation and keybox upload failures by synchronizing backend lifecycle with adapter state and eliminating orphan backend socket holding.
-- **WebUI Stability:** Resolved "policy controls unavailable" and "runtime starting; retry shortly" freezes caused by supervisor disconnects and orphaned processes.
-- **Daemon & Backend Lifecycle:** Fixed port conflicts (`os error 98`) and abstract socket collisions by tracking `daemon.pid`, `adapter.pid`, and `backend.pid`, ensuring strict singleton cleanup across reloads.
-- **Process Orphan Elimination:** Added descriptor-level supervisor broker polling to the unprivileged Rust backend so it cleanly terminates the moment the daemon terminates.
-- **Crash Loop Circuit Breaker:** After 10 rapid adapter failures, the daemon enters a 120-second cooldown instead of spinning indefinitely, protecting battery and system resources.
-- **Missing File Errors:** Eliminated KernelSU/APatch `SuFilePathHandler` 404 errors for `favicon.ico` by embedding a blank data URI favicon in the WebUI HTML.
-- **Documentation:** Updated design references from platform-specific terminology to "Modern" across all translations.
-- **Development Process:** Strengthened AGENTS.md and SKILL.md rules against log-silencing, lazy workarounds, and covering up defects instead of fixing root causes.
+- **Memory & Resource Optimization:** Streamlined package enumeration directly from process output streams without buffering large byte arrays in memory, significantly eliminating ART GC pressure and reducing service RAM usage.
+- **IPC Resilience & Keybox Updates:** Added automatic reconnect and retry tolerance for native backend socket communication, preventing transient `Broken pipe` errors and keybox update failures during daemon restarts.
+- **Daemon Lifecycle & Supervisor Cleanup:** Fixed supervisor retry handling to immediately exit cleanly on code 0, eliminating redundant retry loops and log spam when an active daemon is running. Port conflicts and abstract socket collisions are prevented via strict singleton process tracking.
+- **WebUI Performance & Stability:** Optimized log viewer rendering and line collapsing with single-pass string processing, reducing WebView memory consumption and resolving "policy controls unavailable" freezes.
+- **Auto Identity Preview Tracking:** Enhanced Android developer portal crawling to prioritize developer preview releases and newer Android preview tracks for automatic Pixel identity generation.
+- **WebUI Asset Fix:** Eliminated KernelSU/APatch 404 errors for `favicon.ico` by embedding a data URI favicon directly in the WebUI.
+- **Crash Loop Circuit Breaker:** After 10 rapid adapter failures, the daemon enters a cooldown period instead of spinning indefinitely, saving battery and system resources.
