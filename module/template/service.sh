@@ -236,12 +236,6 @@ module_stopping() {
   [ -e "$MODDIR/disable" ] || [ -e "$MODDIR/remove" ]
 }
 
-kill_stale_daemons() {
-  pkill -9 -f "$MODDIR/daemon" 2>/dev/null
-  pkill -9 -f "$MODDIR/cleverestrickyd" 2>/dev/null
-  pkill -9 -f "$MODDIR/cleverestricky_backend" 2>/dev/null
-}
-
 while true; do
   if module_stopping; then
     log -t CleveresTricky "Module disabled or pending removal; daemon supervisor stopped"
@@ -262,7 +256,6 @@ while true; do
   fi
 
   started_at=$(date +%s)
-  kill_stale_daemons
   run_daemon_with_bounded_log
   exit_code=$?
   unset CLEVERES_TRICKY_BACKEND_AUTH
