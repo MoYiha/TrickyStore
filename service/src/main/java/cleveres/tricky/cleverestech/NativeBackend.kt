@@ -253,7 +253,7 @@ object NativeBackend {
                     continue
                 }
                 synchronized(this) { closeSocket() }
-                Logger.w("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
+                Logger.i("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
                 if (propagateTransportFailure) throw RustBackendUnavailableException(error)
                 return null
             }

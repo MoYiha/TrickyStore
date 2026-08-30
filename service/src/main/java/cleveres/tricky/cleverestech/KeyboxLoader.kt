@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Transient transport or protocol failure at the unprivileged Rust backend boundary. */
 internal class RustBackendUnavailableException(
     cause: Throwable? = null,
-) : IOException("Rust backend is unavailable", cause)
+) : IOException("Rust backend is unavailable. (transient)", cause)
 
 /**
  * One managed boundary for keybox material. XML is parsed and private keys are normalized and
