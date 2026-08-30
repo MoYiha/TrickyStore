@@ -1173,7 +1173,7 @@
     }
 
     const cleveresLogsCommand =
-        `{ logcat -d -t 2000 2>/dev/null | grep -E 'CleveresTricky|cleverestricky|cleverestrickyd|cleverestricky_backend' || true; ` +
+        `{ logcat -d -t 2000 2>/dev/null | grep -E ' (CleveresTricky|cleverestricky|cleverestrickyd|cleverestricky_backend) *:' || true; ` +
         `if [ -f '${nativeRuntimeLog}' ] && [ ! -L '${nativeRuntimeLog}' ]; then printf '\n--- native runtime ---\n'; tail -n 1000 '${nativeRuntimeLog}' 2>/dev/null; fi; } | tail -n 2500 | tail -c 1048576`;
 
     async function loadCleveresLogs() {

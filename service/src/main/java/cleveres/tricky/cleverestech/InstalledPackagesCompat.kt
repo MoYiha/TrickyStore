@@ -32,10 +32,10 @@ internal object InstalledPackagesCompat {
         try {
             getInstalledPackageNamesViaBinder(packageManager, userId)
         } catch (error: LinkageError) {
-            Logger.w("Hidden PackageManager package enumeration is unavailable; using bounded cmd fallback")
+            Logger.i("Hidden PackageManager package enumeration is unavailable; using bounded cmd fallback")
             getInstalledPackageNamesViaCommand(userId)
         } catch (error: SecurityException) {
-            Logger.w("Hidden PackageManager package enumeration was denied; using bounded cmd fallback")
+            Logger.i("Hidden PackageManager package enumeration was denied; using bounded cmd fallback")
             getInstalledPackageNamesViaCommand(userId)
         }
 

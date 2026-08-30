@@ -642,7 +642,7 @@ object Config {
                     storedKeyboxCache.clear()
                     KeyboxActivation.commitAndPublish(emptyList())
                 }
-                Logger.e("failed to update keyboxes", error)
+                Logger.i("failed to update keyboxes: ${error.message}")
                 if (allowRecovery &&
                     (error is RustBackendUnavailableException || error is RustBackendStateException || NativeBackend.consumeBackendStateReset())
                 ) {
