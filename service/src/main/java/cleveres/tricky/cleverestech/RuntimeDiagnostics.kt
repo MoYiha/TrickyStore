@@ -12,13 +12,7 @@ internal object RuntimeDiagnostics {
     private const val MAX_LOG_BYTES = 1024 * 1024
     private const val MAX_LOG_LINES = 2500
     private const val MAX_NATIVE_LOG_BYTES = 512L * 1024L
-    private val cleveresMarkers =
-        listOf(
-            "CleveresTricky",
-            "cleverestricky",
-            "cleverestrickyd",
-            "cleverestricky_backend",
-        )
+    private val cleveresMarkerRegex = Regex(" (CleveresTricky|cleverestricky|cleverestrickyd|cleverestricky_backend) *:")
 
     fun healthJson(root: File): JSONObject {
         val policy = PolicyState.stateJson()
@@ -43,7 +37,7 @@ internal object RuntimeDiagnostics {
         val filtered =
             logcat
                 .lineSequence()
-                .filter { line -> cleveresMarkers.any(line::contains) }
+                .filter { line -> cleveresMarkerRegex.containsMatchIn(line) }
                 .takeLastBounded(MAX_LOG_LINES)
                 .joinToString("\n")
         val native =
