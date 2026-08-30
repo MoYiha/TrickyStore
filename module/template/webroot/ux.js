@@ -1614,11 +1614,16 @@
             html[dir="rtl"] input, html[dir="rtl"] select, html[dir="rtl"] textarea, html[dir="rtl"] pre, html[dir="rtl"] code, html[dir="rtl"] .mono { direction: ltr; text-align: left; }
             html[dir="rtl"] input[type="checkbox"].toggle { direction: ltr; }
             @media (max-width: 520px) {
+                .ct-verify-header, .ct-diagnostics-header { flex-direction: column; align-items: stretch; gap: 12px; }
+                .ct-verify-header button, .ct-diagnostics-header button { width: 100%; margin-top: 8px; margin-left: 0; }
                 .row { gap: 12px; align-items: flex-start; }
                 .row > input[type="checkbox"].toggle { margin-top: 2px !important; }
-                #ct_language_panel .row, #ct_debug_panel .row, #ct_diagnostics_panel .row, #ct_drm_dashboard_panel .row { align-items:center; }
+                #ct_language_panel .row, #ct_debug_panel .row, #ct_diagnostics_panel .row, #ct_drm_dashboard_panel .row { flex-direction: column; align-items: stretch; gap: 12px; }
+                #ct_language_panel .row > *, #ct_debug_panel .row > *, #ct_diagnostics_panel .row > *, #ct_drm_dashboard_panel .row > *, #ct_diagnostics_hint { width: 100%; padding-right: 0 !important; margin: 0 !important; }
                 #ct_config_management .ct-config-actions { grid-template-columns:1fr; }
                 #ct_config_management .ct-config-actions #runtimeSyncBtn { grid-column:auto; }
+                .ct-verify-controls { flex-direction: column; align-items: stretch !important; }
+                .ct-verify-controls > * { width: 100%; margin: 0 !important; }
             }
             @media (max-width: 390px) {
                 #ct_keyboxhub_hint { grid-template-columns:1fr; }
@@ -2089,7 +2094,7 @@
         const panel = document.createElement('div');
         panel.id = 'ct_diagnostics_panel';
         panel.className = 'panel';
-        panel.innerHTML = '<h3>Support Diagnostics</h3><div class="row"><div id="ct_diagnostics_hint" class="res-desc" style="flex:1;padding-right:14px">Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material.</div><button id="ct_diagnostics_copy" type="button" aria-label="Copy Diagnostics">Copy Diagnostics</button></div>';
+        panel.innerHTML = '<h3>Support Diagnostics</h3><div class="row ct-diagnostics-header"><div id="ct_diagnostics_hint" class="res-desc" style="flex:1;padding-right:14px">Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material.</div><button id="ct_diagnostics_copy" type="button" aria-label="Copy Diagnostics">Copy Diagnostics</button></div>';
         info.appendChild(panel);
         panel.querySelector('button').addEventListener('click', event => copyDiagnosticsSnapshot(event.currentTarget));
     }
@@ -3255,6 +3260,7 @@
         const controls = document.createElement('div');
         controls.id = 'ct_verify_controls';
         controls.style.cssText = 'display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap;';
+        controls.className = 'ct-verify-controls';
         const input = document.createElement('input');
         input.id = 'ct_verify_filter';
         input.type = 'search';
