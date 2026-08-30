@@ -1,44 +1,112 @@
-# 功能历史与先前工作
+# 功能历史
 
-本文档记录 CleveresTricky 部分主要功能的公开开发历史，用于提供清晰的时间线和归属信息。本文档本身不主张其他项目复制了源代码。
+> **语言:** [English](../../FEATURE_HISTORY.md) · [Türkçe](../tr/FEATURE_HISTORY.md) · [العربية](../ar/FEATURE_HISTORY.md) · [Deutsch](../de/FEATURE_HISTORY.md) · [Español](../es/FEATURE_HISTORY.md) · [Русский](../ru/FEATURE_HISTORY.md) · [Bahasa Indonesia](../id/FEATURE_HISTORY.md) · [हिन्दी](../hi/FEATURE_HISTORY.md) · **中文**
+
+本页面记录 CleveresTricky 主要功能的公开开发历史，并提供直接的 GitHub 记录链接。
 
 ## 设备身份与 Attestation
 
-- **#79 — 应用级配置与 `ATTESTATION_ID_*` 处理（2026-02-01）**
-  https://github.com/tryigit/CleveresTricky/pull/79
-- **#139 — 随机设备身份（2026-02-05）**
-  https://github.com/tryigit/CleveresTricky/pull/139
-- **#871 — 应用级 Dual-SIM/设备身份控制（2026-08-09）**
-  https://github.com/tryigit/CleveresTricky/pull/871
-  包括 IMEI、IMEI2、MEID、IMSI、ICCID、电话号码和 Serial，以及应用/配置文件范围和运行时生命周期处理。
+**#79, 2026-02-01**
 
-## Keybox / Attestation
+应用级配置与 `ATTESTATION_ID_*` 处理，包括 IMEI 和 Serial。
 
-- **#77 — 多 Keybox 管理与轮换（2026-02-01）**
-  https://github.com/tryigit/CleveresTricky/pull/77
-- **#79 — Keybox 验证与 Attestation 身份工作**
-  https://github.com/tryigit/CleveresTricky/pull/79
+https://github.com/tryigit/CleveresTricky/pull/79
 
-## Native / Rust 架构
+**#139, 2026-02-05**
 
-- **#876 — Rust/Native interceptor 架构与生命周期（2026-08-09）**
-  https://github.com/tryigit/CleveresTricky/pull/876
+随机设备身份生成，包括 IMEI 和 Serial，以及 WebUI 触发的生成流程。
 
-## 其他模块功能
+https://github.com/tryigit/CleveresTricky/pull/139
 
-项目还逐步加入了 profile/template 管理、应用范围控制、runtime hook 生命周期、身份隔离/隐藏、RKP/DRM 相关处理、WebUI 管理以及 StrongBox/Attestation 集成。
+**#871, 2026-08-09**
 
-- #376 — https://github.com/tryigit/CleveresTricky/pull/376
-- #476 — https://github.com/tryigit/CleveresTricky/pull/476
-- #618 — https://github.com/tryigit/CleveresTricky/pull/618
-- #908 — https://github.com/tryigit/CleveresTricky/pull/908
-- #909 — https://github.com/tryigit/CleveresTricky/pull/909
-- #910 — https://github.com/tryigit/CleveresTricky/pull/910
-- #952 — https://github.com/tryigit/CleveresTricky/pull/952
-- **#1132 — StrongBox → TEE 重定向与 Attestation 安全级别统一**
-  https://github.com/tryigit/CleveresTricky/pull/1132
-  此更改后来被 revert，因此当前 `master` 不包含它。
+应用级 Dual-SIM 设备身份控制，包括 IMEI、IMEI2、MEID、IMSI、ICCID、电话号码和 Serial，以及应用/配置文件范围和运行时生命周期。
 
-## 历史说明
+https://github.com/tryigit/CleveresTricky/pull/871
 
-以上链接均直接指向 GitHub 的公开开发记录。不同项目具有相似功能本身并不能证明源代码复制或许可证违规。
+## Keybox 与 Attestation
+
+**#77, 2026-02-01**
+
+多 Keybox 加载、轮换和 WebUI 管理。
+
+https://github.com/tryigit/CleveresTricky/pull/77
+
+**#79, 2026-02-01**
+
+Keybox 验证和应用级 Attestation 身份处理。
+
+https://github.com/tryigit/CleveresTricky/pull/79
+
+## Profile、应用范围与 Runtime
+
+**#376**
+
+通过 WebUI 管理 Profile 和配置。
+
+https://github.com/tryigit/CleveresTricky/pull/376
+
+**#908**
+
+细粒度 Policy State、独立 Security Patch 控制、Profiles 和 Effective State。
+
+https://github.com/tryigit/CleveresTricky/pull/908
+
+**#909**
+
+Identity Policy、应用自定义、Profile 分配、Runtime Identity 和 WebUI 工作。
+
+https://github.com/tryigit/CleveresTricky/pull/909
+
+## Native 与 Rust 架构
+
+**#876, 2026-08-09**
+
+Rust/Native injector 和 Binder interception 迁移、Runtime lifecycle 以及 native hardening。
+
+https://github.com/tryigit/CleveresTricky/pull/876
+
+## Identity、Privacy 与平台集成
+
+**#476**
+
+Early boot properties、与 Play Integrity 相关的 Build Identity、Profiles 和 Randomization。
+
+https://github.com/tryigit/CleveresTricky/pull/476
+
+**#618**
+
+Telephony interceptor 性能和 Identity 优化。
+
+https://github.com/tryigit/CleveresTricky/pull/618
+
+**#910**
+
+Auto Identity、Runtime Diagnostics、WebUI 和 TEE 性能优化。
+
+https://github.com/tryigit/CleveresTricky/pull/910
+
+**#952**
+
+按字段和分组的 Identity Randomization、Visible SIM、Camera Visibility 和 Identity Runtime 工作。
+
+https://github.com/tryigit/CleveresTricky/pull/952
+
+## StrongBox
+
+**#1132, 2026-08-30**
+
+StrongBox 到 TEE 的重定向以及 Attestation 安全级别统一。此更改后来被 revert，因此当前 `master` 不包含它。
+
+https://github.com/tryigit/CleveresTricky/pull/1132
+
+## 时间线
+
+| 日期 | PR | 领域 |
+|---|---:|---|
+| 2026-02-01 | #77 | Multi-keybox |
+| 2026-02-01 | #79 | App-specific attestation identity |
+| 2026-02-05 | #139 | Randomized device identity |
+| 2026-08-09 | #871 | Dual-SIM 与 app-facing identity |
+| 2026-08-09 | #876 | Rust/native runtime architecture |
+| 2026-08-30 | #1132 | StrongBox 与 TEE redirection |
