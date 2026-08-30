@@ -1,58 +1,112 @@
-# Özellik Geçmişi ve Önceki Çalışmalar
+# Özellik Geçmişi
 
-Bu belge CleveresTricky'deki önemli özelliklerin ne zaman herkese açık olarak geliştirildiğini belgelemek için tutulur. Amaç tarihsel kayıt ve atıf sağlamaktır; başka bir projenin kaynak kodunu kopyaladığı iddiası değildir.
+> **Diller:** [English](../../FEATURE_HISTORY.md) · **Türkçe** · [العربية](../ar/FEATURE_HISTORY.md) · [Deutsch](../de/FEATURE_HISTORY.md) · [Español](../es/FEATURE_HISTORY.md) · [Русский](../ru/FEATURE_HISTORY.md) · [Bahasa Indonesia](../id/FEATURE_HISTORY.md) · [हिन्दी](../hi/FEATURE_HISTORY.md) · [中文](../zh/FEATURE_HISTORY.md)
+
+Bu sayfa CleveresTricky'nin önemli özelliklerinin herkese açık geliştirme geçmişini ve doğrudan GitHub kayıtlarını içerir.
 
 ## Cihaz kimliği ve attestation
 
-- **#79 — Uygulamaya özel yapılandırma ve `ATTESTATION_ID_*` işlemleri (2026-02-01)**
-  https://github.com/tryigit/CleveresTricky/pull/79
-  IMEI ve Serial gibi alanlar dahil uygulama kapsamlı attestation kimliği işlemleri.
+**#79, 2026-02-01**
 
-- **#139 — Rastgele cihaz kimliği (2026-02-05)**
-  https://github.com/tryigit/CleveresTricky/pull/139
-  IMEI ve Serial dahil rastgele kimlik üretimi ve WebUI üzerinden üretim.
+Uygulamaya özel yapılandırma ve `ATTESTATION_ID_*` işlemleri. IMEI ve Serial dahil attestation kimliği alanları.
 
-- **#871 — Uygulama kapsamlı dual-SIM/cihaz kimliği kontrolleri (2026-08-09)**
-  https://github.com/tryigit/CleveresTricky/pull/871
-  IMEI, IMEI2, MEID, IMSI, ICCID, telefon numarası ve Serial kapsamını; uygulama/profil kapsamını ve runtime lifecycle kontrollerini genişletti.
+https://github.com/tryigit/CleveresTricky/pull/79
 
-## Keybox / attestation altyapısı
+**#139, 2026-02-05**
 
-- **#77 — Çoklu keybox yönetimi ve rotasyonu (2026-02-01)**
-  https://github.com/tryigit/CleveresTricky/pull/77
-  Çoklu keybox yükleme, rotasyon ve WebUI yönetimi.
+IMEI ve Serial dahil rastgele cihaz kimliği üretimi ve WebUI üzerinden üretim.
 
-- **#79 — Keybox doğrulama ve attestation kimliği çalışmaları (2026-02-01)**
-  https://github.com/tryigit/CleveresTricky/pull/79
+https://github.com/tryigit/CleveresTricky/pull/139
 
-## Native / Rust mimarisi
+**#871, 2026-08-09**
 
-- **#876 — Rust/native interceptor mimarisi ve lifecycle çalışmaları (2026-08-09)**
-  https://github.com/tryigit/CleveresTricky/pull/876
-  Injector/interception altyapısının ve runtime lifecycle mekanizmalarının büyük Rust/native dönüşümü.
+IMEI, IMEI2, MEID, IMSI, ICCID, telefon numarası ve Serial için uygulama kapsamlı dual-SIM cihaz kimliği kontrolleri. Profil ve runtime lifecycle desteği.
 
-## Diğer modül özellikleri
+https://github.com/tryigit/CleveresTricky/pull/871
 
-Proje ayrıca profil/template yönetimi, uygulama kapsamlandırması, runtime hook lifecycle kontrolleri, identity isolation/redaction, RKP/DRM ile ilgili işlemler, WebUI yönetimi ve StrongBox/attestation entegrasyonu gibi yetenekleri de zaman içinde geliştirdi.
+## Keybox ve attestation
 
-- **#376** — profil/yapılandırma ve modül gelişimi
-  https://github.com/tryigit/CleveresTricky/pull/376
-- **#476** — identity/modül gelişimi
-  https://github.com/tryigit/CleveresTricky/pull/476
-- **#618** — modül/profil gelişimi
-  https://github.com/tryigit/CleveresTricky/pull/618
-- **#908** — sonraki identity/modül çalışmaları
-  https://github.com/tryigit/CleveresTricky/pull/908
-- **#909** — sonraki modül çalışmaları
-  https://github.com/tryigit/CleveresTricky/pull/909
-- **#910** — sonraki modül çalışmaları
-  https://github.com/tryigit/CleveresTricky/pull/910
-- **#952** — sonraki modül/profil çalışmaları
-  https://github.com/tryigit/CleveresTricky/pull/952
-- **#1132 — StrongBox → TEE yönlendirmesi ve attestation security-level uyumlulaştırması**
-  https://github.com/tryigit/CleveresTricky/pull/1132
-  Bu değişiklik daha sonra geri alındı; mevcut `master` bu değişikliği içermemektedir.
+**#77, 2026-02-01**
 
-## Tarihsel not
+Çoklu keybox yükleme, rotasyon ve WebUI yönetimi.
 
-Yukarıdaki bağlantılar projenin kendi GitHub geliştirme geçmişine doğrudan bağlantılardır. Tarihler ve ayrıntılar ilgili PR ve commit kayıtlarından doğrulanabilir. Projeler arasında benzer işlevlerin bulunması tek başına kaynak kodu kopyalandığını veya lisans ihlali olduğunu göstermez.
+https://github.com/tryigit/CleveresTricky/pull/77
+
+**#79, 2026-02-01**
+
+Keybox doğrulama ve uygulama özelinde attestation kimliği işlemleri.
+
+https://github.com/tryigit/CleveresTricky/pull/79
+
+## Profil, uygulama kapsamı ve runtime
+
+**#376**
+
+Profil ve yapılandırma yönetimi, WebUI üzerinden profil uygulama akışı.
+
+https://github.com/tryigit/CleveresTricky/pull/376
+
+**#908**
+
+Ayrıntılı policy state, bağımsız security patch kontrolleri, profiller ve Effective State.
+
+https://github.com/tryigit/CleveresTricky/pull/908
+
+**#909**
+
+Identity policy, uygulama özelleştirme, profil atama, runtime identity ve WebUI çalışmaları.
+
+https://github.com/tryigit/CleveresTricky/pull/909
+
+## Native ve Rust mimarisi
+
+**#876, 2026-08-09**
+
+Rust/native injector ve Binder interception dönüşümü, runtime lifecycle ve native hardening.
+
+https://github.com/tryigit/CleveresTricky/pull/876
+
+## Identity, privacy ve platform entegrasyonu
+
+**#476**
+
+Early boot property işlemleri, Play Integrity ile ilişkili Build Identity, profiller ve randomization.
+
+https://github.com/tryigit/CleveresTricky/pull/476
+
+**#618**
+
+Telephony interceptor performans ve identity düzenlemeleri.
+
+https://github.com/tryigit/CleveresTricky/pull/618
+
+**#910**
+
+Auto Identity, runtime diagnostics, WebUI ve TEE performans düzenlemeleri.
+
+https://github.com/tryigit/CleveresTricky/pull/910
+
+**#952**
+
+Tekil ve gruplu identity randomization, visible SIM, camera visibility ve Identity runtime çalışmaları.
+
+https://github.com/tryigit/CleveresTricky/pull/952
+
+## StrongBox
+
+**#1132, 2026-08-30**
+
+StrongBox to TEE redirection ve attestation security-level harmonization. Bu çalışma daha sonra revert edildi ve mevcut `master` içinde bulunmuyor.
+
+https://github.com/tryigit/CleveresTricky/pull/1132
+
+## Zaman çizelgesi
+
+| Tarih | PR | Alan |
+|---|---:|---|
+| 2026-02-01 | #77 | Multi-keybox |
+| 2026-02-01 | #79 | App-specific attestation identity |
+| 2026-02-05 | #139 | Randomized device identity |
+| 2026-08-09 | #871 | Dual-SIM ve app-facing identity |
+| 2026-08-09 | #876 | Rust/native runtime architecture |
+| 2026-08-30 | #1132 | StrongBox ve TEE redirection |
