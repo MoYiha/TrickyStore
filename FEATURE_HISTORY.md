@@ -58,4 +58,4 @@ The project has also accumulated related module capabilities through subsequent 
 
 ## Historical note
 
-The links above are direct GitHub records of the project's own development history. Dates and implementation details should be verified against the linked pull requests and commits. Similar functionality across projects does not by itself establish source-code copying or a license violation.
+The links above are direct GitHub records of the project's own development history. Dates and implementation details should be verified against the linked pull requests and commits.
