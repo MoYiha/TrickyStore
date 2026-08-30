@@ -1,44 +1,112 @@
-# फीचर इतिहास और पूर्व कार्य
+# फीचर इतिहास
 
-यह दस्तावेज़ CleveresTricky की प्रमुख सुविधाओं के सार्वजनिक विकास इतिहास को दर्ज करता है, ताकि समय और attribution को स्पष्ट रूप से देखा जा सके। यह अपने आप में किसी अन्य परियोजना द्वारा source code copy किए जाने का दावा नहीं है।
+> **भाषाएँ:** [English](../../FEATURE_HISTORY.md) · [Türkçe](../tr/FEATURE_HISTORY.md) · [العربية](../ar/FEATURE_HISTORY.md) · [Deutsch](../de/FEATURE_HISTORY.md) · [Español](../es/FEATURE_HISTORY.md) · [Русский](../ru/FEATURE_HISTORY.md) · [Bahasa Indonesia](../id/FEATURE_HISTORY.md) · **हिन्दी** · [中文](../zh/FEATURE_HISTORY.md)
+
+यह पेज CleveresTricky की प्रमुख सुविधाओं के सार्वजनिक विकास इतिहास और सीधे GitHub रिकॉर्ड दर्ज करता है।
 
 ## Device identity और attestation
 
-- **#79 — App-specific configuration और `ATTESTATION_ID_*` handling (2026-02-01)**
-  https://github.com/tryigit/CleveresTricky/pull/79
-- **#139 — Randomized device identity (2026-02-05)**
-  https://github.com/tryigit/CleveresTricky/pull/139
-- **#871 — App-facing dual-SIM/device identity controls (2026-08-09)**
-  https://github.com/tryigit/CleveresTricky/pull/871
-  इसमें IMEI, IMEI2, MEID, IMSI, ICCID, phone number और Serial के साथ application/profile scope और runtime lifecycle handling शामिल है।
+**#79, 2026-02-01**
 
-## Keybox / attestation
+App-specific configuration और `ATTESTATION_ID_*` handling, जिसमें IMEI और Serial शामिल हैं।
 
-- **#77 — Multi-keybox management और rotation (2026-02-01)**
-  https://github.com/tryigit/CleveresTricky/pull/77
-- **#79 — Keybox verification और attestation identity work**
-  https://github.com/tryigit/CleveresTricky/pull/79
+https://github.com/tryigit/CleveresTricky/pull/79
 
-## Native / Rust architecture
+**#139, 2026-02-05**
 
-- **#876 — Rust/Native interceptor architecture और lifecycle (2026-08-09)**
-  https://github.com/tryigit/CleveresTricky/pull/876
+Randomized device identity, जिसमें IMEI और Serial तथा WebUI generation शामिल है।
 
-## अन्य module features
+https://github.com/tryigit/CleveresTricky/pull/139
 
-प्रोजेक्ट ने profile/template handling, application scoping, runtime hook lifecycle controls, identity isolation/redaction, RKP/DRM-related handling, WebUI management और StrongBox/attestation integration भी विकसित किए हैं।
+**#871, 2026-08-09**
 
-- #376 — https://github.com/tryigit/CleveresTricky/pull/376
-- #476 — https://github.com/tryigit/CleveresTricky/pull/476
-- #618 — https://github.com/tryigit/CleveresTricky/pull/618
-- #908 — https://github.com/tryigit/CleveresTricky/pull/908
-- #909 — https://github.com/tryigit/CleveresTricky/pull/909
-- #910 — https://github.com/tryigit/CleveresTricky/pull/910
-- #952 — https://github.com/tryigit/CleveresTricky/pull/952
-- **#1132 — StrongBox to TEE redirection और attestation security-level harmonization**
-  https://github.com/tryigit/CleveresTricky/pull/1132
-  यह बदलाव बाद में revert किया गया था और वर्तमान `master` में शामिल नहीं है।
+App-facing dual-SIM/device identity controls for IMEI, IMEI2, MEID, IMSI, ICCID, phone number और Serial, साथ में application/profile scope और runtime lifecycle।
 
-## ऐतिहासिक नोट
+https://github.com/tryigit/CleveresTricky/pull/871
 
-ऊपर दिए गए लिंक GitHub के सार्वजनिक development records हैं। अलग-अलग projects में समान functionality होना अपने आप में source-code copying या license violation सिद्ध नहीं करता।
+## Keybox और attestation
+
+**#77, 2026-02-01**
+
+Multi-keybox loading, rotation और WebUI management।
+
+https://github.com/tryigit/CleveresTricky/pull/77
+
+**#79, 2026-02-01**
+
+Keybox verification और application-specific attestation identity handling।
+
+https://github.com/tryigit/CleveresTricky/pull/79
+
+## Profiles, application scope और runtime
+
+**#376**
+
+WebUI के माध्यम से profile और configuration management।
+
+https://github.com/tryigit/CleveresTricky/pull/376
+
+**#908**
+
+Granular policy state, independent Security Patch controls, profiles और Effective State।
+
+https://github.com/tryigit/CleveresTricky/pull/908
+
+**#909**
+
+Identity policy, application customization, profile assignment, runtime identity और WebUI work।
+
+https://github.com/tryigit/CleveresTricky/pull/909
+
+## Native और Rust architecture
+
+**#876, 2026-08-09**
+
+Rust/native injector और Binder interception migration, runtime lifecycle और native hardening।
+
+https://github.com/tryigit/CleveresTricky/pull/876
+
+## Identity, privacy और platform integration
+
+**#476**
+
+Early boot properties, Play Integrity related Build Identity, profiles और randomization।
+
+https://github.com/tryigit/CleveresTricky/pull/476
+
+**#618**
+
+Telephony interceptor performance और identity refinements।
+
+https://github.com/tryigit/CleveresTricky/pull/618
+
+**#910**
+
+Auto Identity, runtime diagnostics, WebUI और TEE performance refinements।
+
+https://github.com/tryigit/CleveresTricky/pull/910
+
+**#952**
+
+Per-value और grouped identity randomization, Visible SIM controls, Camera Visibility और Identity runtime work।
+
+https://github.com/tryigit/CleveresTricky/pull/952
+
+## StrongBox
+
+**#1132, 2026-08-30**
+
+StrongBox to TEE redirection और attestation security-level harmonization। यह बदलाव बाद में revert किया गया और वर्तमान `master` में शामिल नहीं है।
+
+https://github.com/tryigit/CleveresTricky/pull/1132
+
+## समयरेखा
+
+| तारीख | PR | क्षेत्र |
+|---|---:|---|
+| 2026-02-01 | #77 | Multi-keybox |
+| 2026-02-01 | #79 | App-specific attestation identity |
+| 2026-02-05 | #139 | Randomized device identity |
+| 2026-08-09 | #871 | Dual-SIM और app-facing identity |
+| 2026-08-09 | #876 | Rust/native runtime architecture |
+| 2026-08-30 | #1132 | StrongBox और TEE redirection |
