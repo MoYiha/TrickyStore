@@ -1,6 +1,8 @@
 # Feature History & Prior Art
 
-This document records selected feature history for CleveresTricky so that users can trace when major capabilities were publicly implemented. It is intended as historical documentation and attribution context, not as a claim that another project copied source code.
+This document records selected feature history for CleveresTricky so users can trace when major capabilities were publicly implemented. It is historical documentation and attribution context, not a claim that another project copied source code.
+
+> **Languages:** [English](FEATURE_HISTORY.md) · [Türkçe](docs/i18n/tr/FEATURE_HISTORY.md) · [العربية](docs/i18n/ar/FEATURE_HISTORY.md) · [Deutsch](docs/i18n/de/FEATURE_HISTORY.md) · [Español](docs/i18n/es/FEATURE_HISTORY.md) · [Русский](docs/i18n/ru/FEATURE_HISTORY.md) · [Bahasa Indonesia](docs/i18n/id/FEATURE_HISTORY.md) · [हिन्दी](docs/i18n/hi/FEATURE_HISTORY.md) · [中文](docs/i18n/zh/FEATURE_HISTORY.md)
 
 ## Device identity & attestation
 
