@@ -359,7 +359,7 @@ object Config {
         uid: Int,
         packages: Array<String>,
     ) {
-        putBoundedUidCache(packageCache, uid, CachedPackage(packages.clone(), System.currentTimeMillis()))
+        putBoundedUidCache(packageCache, uid, CachedPackage(packages, System.currentTimeMillis()))
         PolicyState.invalidateUid(uid)
     }
 
@@ -458,25 +458,39 @@ object Config {
     @Volatile
     private var lastKeyboxInventoryFingerprint: Long = 0L
 
+    @Volatile
+    private var cachedKeyboxInventoryFingerprint: Long? = null
+    @Volatile
+    internal var keyboxInventoryFingerprintDirty = true
+
     internal fun computeKeyboxInventoryFingerprint(): Long {
-        return try {
-            if (!root.exists() || !root.isDirectory) return 0L
-            var fp = root.lastModified() xor (File(root, KEYBOX_FILE).lastModified() shl 1) xor (File(root, "keybox.cbox").lastModified() shl 2)
-            val dir = keyboxDir
-            if (dir.exists() && dir.isDirectory) {
-                fp = fp xor (dir.lastModified() shl 3)
-                val files = dir.listFiles()
-                if (files != null) {
-                    fp = fp xor (files.size.toLong() shl 4)
-                    for (f in files) {
-                        fp = fp xor (f.lastModified() shl 5) xor f.name.hashCode().toLong() xor (f.length() shl 6)
+        if (!keyboxInventoryFingerprintDirty && cachedKeyboxInventoryFingerprint != null) {
+            return cachedKeyboxInventoryFingerprint!!
+        }
+        keyboxInventoryFingerprintDirty = false
+        val result = try {
+            if (!root.exists() || !root.isDirectory) {
+                0L
+            } else {
+                var fp = root.lastModified() xor (File(root, KEYBOX_FILE).lastModified() shl 1) xor (File(root, "keybox.cbox").lastModified() shl 2)
+                val dir = keyboxDir
+                if (dir.exists() && dir.isDirectory) {
+                    fp = fp xor (dir.lastModified() shl 3)
+                    val files = dir.listFiles()
+                    if (files != null) {
+                        fp = fp xor (files.size.toLong() shl 4)
+                        for (f in files) {
+                            fp = fp xor (f.lastModified() shl 5) xor f.name.hashCode().toLong() xor (f.length() shl 6)
+                        }
                     }
                 }
+                fp
             }
-            fp
         } catch (_: Exception) {
             0L
         }
+        cachedKeyboxInventoryFingerprint = result
+        return result
     }
 
     fun ensureFreshKeyboxes(): Boolean =
@@ -1987,6 +2001,7 @@ object Config {
 
     object KeyboxDirObserver : FileObserver(keyboxDir, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB) {
         override fun onEvent(event: Int, path: String?) {
+            keyboxInventoryFingerprintDirty = true
             Logger.i("Keybox directory event: $path")
             updateKeyBoxes()
         }
