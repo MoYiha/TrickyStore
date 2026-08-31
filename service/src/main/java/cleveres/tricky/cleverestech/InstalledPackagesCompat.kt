@@ -24,6 +24,17 @@ internal object InstalledPackagesCompat {
     private const val MAX_COMMAND_PACKAGES = 100_000
     private const val PACKAGE_PREFIX = "package:"
     private val packageNamePattern = Regex("[A-Za-z0-9_.]{1,255}")
+    private val workerExecutor =
+        java.util.concurrent.ThreadPoolExecutor(
+            0,
+            4,
+            30L,
+            TimeUnit.SECONDS,
+            java.util.concurrent.LinkedBlockingQueue(),
+            { runnable -> Thread(runnable, "ct-package-list").apply { isDaemon = true } }
+        ).apply {
+            allowCoreThreadTimeOut(true)
+        }
 
     fun getInstalledPackageNames(
         packageManager: IPackageManager,
@@ -48,9 +59,9 @@ internal object InstalledPackagesCompat {
     ): List<String> {
         val packages =
             when {
-                Build.VERSION.SDK_INT >= 37 -> packageManager.getInstalledPackagesV17(0L, userId)?.list
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getInstalledPackages(0L, userId)?.list
-                else -> packageManager.getInstalledPackages(0, userId)?.list
+                Build.VERSION.SDK_INT >= 37 -> packageManager.getInstalledPackagesV17(0L, userId).list
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getInstalledPackages(0L, userId).list
+                else -> packageManager.getInstalledPackages(0, userId).list
             }
         return packages?.mapNotNull { it.packageName } ?: emptyList()
     }
@@ -83,10 +94,7 @@ internal object InstalledPackagesCompat {
                 }
                 packages
             }
-        Thread(reader, "ct-package-list").apply {
-            isDaemon = true
-            start()
-        }
+        workerExecutor.execute(reader)
 
         try {
             return reader.get(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)

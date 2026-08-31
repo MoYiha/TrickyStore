@@ -146,7 +146,7 @@ object SubscriptionVisibilityInterceptor : BinderInterceptor() {
             control = controlEndpoint
         }
         
-        if (target == null || control == null || !target!!.isBinderAlive) {
+        if (target == null || control == null || !target.isBinderAlive) {
             synchronized(this) {
                 registered = false
                 subscriptionService = null
@@ -155,7 +155,7 @@ object SubscriptionVisibilityInterceptor : BinderInterceptor() {
             return true
         }
         
-        if (!unregisterBinderInterceptor(control!!, target!!, this)) return false
+        if (!unregisterBinderInterceptor(control, target, this)) return false
         
         synchronized(this) {
             registered = false

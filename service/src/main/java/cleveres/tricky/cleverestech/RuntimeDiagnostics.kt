@@ -7,8 +7,15 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.LinkedBlockingQueue
 
 internal object RuntimeDiagnostics {
+    private val workerExecutor = ThreadPoolExecutor(
+        0, 2, 30L, TimeUnit.SECONDS, LinkedBlockingQueue(),
+        { runnable -> Thread(runnable, "CleveresTricky-LogReader").apply { isDaemon = true } }
+    ).apply { allowCoreThreadTimeOut(true) }
     private const val MAX_LOG_BYTES = 1024 * 1024
     private const val MAX_LOG_LINES = 2500
     private const val MAX_NATIVE_LOG_BYTES = 512L * 1024L
@@ -83,10 +90,7 @@ internal object RuntimeDiagnostics {
                     }
                 }
             }
-        Thread(reader, "CleveresTricky-LogReader").apply {
-            isDaemon = true
-            start()
-        }
+        workerExecutor.execute(reader)
         return try {
             if (!process.waitFor(10, TimeUnit.SECONDS)) {
                 process.destroyForcibly()

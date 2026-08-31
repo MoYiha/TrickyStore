@@ -1928,7 +1928,12 @@ class WebServer(
                         try {
                             val f = File(configDir, "app_config")
                             SecureFile.writeText(f, sb.toString())
-                            f.setLastModified(System.currentTimeMillis())
+                            java.nio.file.Files.setAttribute(
+                                f.toPath(),
+                                "basic:lastModifiedTime",
+                                java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                                LinkOption.NOFOLLOW_LINKS
+                            )
                             Config.updateAppConfigs(f).getOrThrow()
                             return secureResponse(Response.Status.OK, "text/plain", "Saved")
                         } catch (e: Exception) {
@@ -2051,7 +2056,12 @@ class WebServer(
                     Config.updateBuildVars(spoofFile)
                     val target = File(configDir, "target.txt")
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        target.setLastModified(System.currentTimeMillis())
+                        java.nio.file.Files.setAttribute(
+                            target.toPath(),
+                            "basic:lastModifiedTime",
+                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                            LinkOption.NOFOLLOW_LINKS
+                        )
                     }
                     if (!updateKeyboxesFromConfiguredRevocationSource()) {
                         return keyboxActivationFailureResponse()
@@ -2072,7 +2082,12 @@ class WebServer(
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid target file")
                     }
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        target.setLastModified(System.currentTimeMillis())
+                        java.nio.file.Files.setAttribute(
+                            target.toPath(),
+                            "basic:lastModifiedTime",
+                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                            LinkOption.NOFOLLOW_LINKS
+                        )
                     }
                     val legacyFetcher = crlFetcher
                     val revocationAvailable =
@@ -2230,7 +2245,12 @@ class WebServer(
                             )
                             val target = File(configDir, "target.txt")
                             if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                                target.setLastModified(System.currentTimeMillis())
+                                java.nio.file.Files.setAttribute(
+                                    target.toPath(),
+                                    "basic:lastModifiedTime",
+                                    java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                                    LinkOption.NOFOLLOW_LINKS
+                                )
                             }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }

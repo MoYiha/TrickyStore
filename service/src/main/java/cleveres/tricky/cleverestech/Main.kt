@@ -195,18 +195,22 @@ fun main(args: Array<String>) {
                     "${result.task.name} is unavailable; core Keystore/TEE interception will continue while the startup task retries",
                 )
                 launch(Dispatchers.IO) {
-                    val recovered =
-                        RuntimeStartupPolicy.retryBounded(result.task) { retryResult ->
-                            retryResult.failure?.let { failure ->
-                                Logger.e("${retryResult.task.name} retry attempt failed", failure)
+                    try {
+                        val recovered =
+                            RuntimeStartupPolicy.retryBounded(result.task) { retryResult ->
+                                retryResult.failure?.let { failure ->
+                                    Logger.e("${retryResult.task.name} retry attempt failed", failure)
+                                }
                             }
+                        if (recovered.ready) {
+                            Logger.i("${recovered.task.name} recovered without restarting the native runtime")
+                        } else {
+                            Logger.w(
+                                "${recovered.task.name} remains unavailable; core Keystore/TEE interception remains active",
+                            )
                         }
-                    if (recovered.ready) {
-                        Logger.i("${recovered.task.name} recovered without restarting the native runtime")
-                    } else {
-                        Logger.w(
-                            "${recovered.task.name} remains unavailable; core Keystore/TEE interception remains active",
-                        )
+                    } catch (e: Exception) {
+                        Logger.e("Unexpected failure during ${result.task.name} retry", e)
                     }
                 }
             }
@@ -223,17 +227,21 @@ fun main(args: Array<String>) {
         // of requiring a destructive environment reset from WebUI.
         if (activeKeyboxCountOrZero() == 0 && hasConfiguredKeyboxSource(configDir)) {
             launch(Dispatchers.IO) {
-                val recovered =
-                    retryDeferredKeyboxRefresh(
-                        isActive = { activeKeyboxCountOrZero() > 0 },
-                        refresh = { Config.updateKeyBoxesSync() },
-                        wait = { retryDelay -> delay(retryDelay) },
-                        shouldRetry = { hasConfiguredKeyboxSource(configDir) },
-                    )
-                if (recovered) {
-                    Logger.i("Deferred keybox refresh activated ${activeKeyboxCountOrZero()} verified keybox(es)")
-                } else {
-                    Logger.d("Deferred keybox refresh exhausted without an active verified keybox")
+                try {
+                    val recovered =
+                        retryDeferredKeyboxRefresh(
+                            isActive = { activeKeyboxCountOrZero() > 0 },
+                            refresh = { Config.updateKeyBoxesSync() },
+                            wait = { retryDelay -> delay(retryDelay) },
+                            shouldRetry = { hasConfiguredKeyboxSource(configDir) },
+                        )
+                    if (recovered) {
+                        Logger.i("Deferred keybox refresh activated ${activeKeyboxCountOrZero()} verified keybox(es)")
+                    } else {
+                        Logger.d("Deferred keybox refresh exhausted without an active verified keybox")
+                    }
+                } catch (e: Exception) {
+                    Logger.e("Unexpected failure during deferred keybox refresh", e)
                 }
             }
         }
