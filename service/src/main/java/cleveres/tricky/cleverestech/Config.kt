@@ -2137,20 +2137,48 @@ object Config {
         }
     }
 
-    private const val MATCH_ANY_USER = 0x00400000L
-    private const val MATCH_ALL = 0x00020000L
+    private fun getActiveUserIds(): IntArray {
+        val binder = ServiceManager.getService("user") ?: return intArrayOf(0)
+        return try {
+            val stub = Class.forName("android.os.IUserManager\$Stub")
+            val asInterface = stub.getMethod("asInterface", IBinder::class.java)
+            val manager = asInterface.invoke(null, binder) ?: return intArrayOf(0)
+            val method = manager.javaClass.methods.firstOrNull { it.name == "getUserIds" }
+                ?: manager.javaClass.methods.firstOrNull { it.name == "getProfileIds" }
+            (method?.invoke(manager) as? IntArray)?.takeIf { it.isNotEmpty() } ?: intArrayOf(0)
+        } catch (_: Exception) {
+            intArrayOf(0)
+        }
+    }
 
-    fun getPackageUid(packageName: String, userId: Int = 0): Int? {
+    fun getPackageUid(packageName: String, userId: Int? = null): Int? {
         val pm = getPm() ?: return null
         return try {
-            val info = pm.getPackageInfoCompat(packageName, 0L, userId)
-            val uid = info?.applicationInfo?.uid
-            if (uid != null && uid >= 10_000) return uid
+            if (userId != null) {
+                val info = pm.getPackageInfoCompat(packageName, 0L, userId)
+                val uid = info?.applicationInfo?.uid
+                if (uid != null && uid >= 10_000) return uid
+            }
 
-            val anyUserInfo = pm.getPackageInfoCompat(packageName, MATCH_ANY_USER, userId)
-                ?: pm.getPackageInfoCompat(packageName, MATCH_ALL, userId)
-            val anyUserUid = anyUserInfo?.applicationInfo?.uid
-            if (anyUserUid != null && anyUserUid >= 10_000) return anyUserUid
+            val user0Info = pm.getPackageInfoCompat(packageName, 0L, 0)
+            val user0Uid = user0Info?.applicationInfo?.uid
+            if (user0Uid != null && user0Uid >= 10_000) return user0Uid
+
+            val userIds = getActiveUserIds()
+            for (u in userIds) {
+                if (u == 0) continue
+                val info = pm.getPackageInfoCompat(packageName, 0L, u)
+                val uid = info?.applicationInfo?.uid
+                if (uid != null && uid >= 10_000) return uid
+            }
+
+            val fallbackProfiles = intArrayOf(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 100, 101, 102, 103, 104, 105, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+            for (u in fallbackProfiles) {
+                if (u in userIds) continue
+                val info = pm.getPackageInfoCompat(packageName, 0L, u)
+                val uid = info?.applicationInfo?.uid
+                if (uid != null && uid >= 10_000) return uid
+            }
 
             null
         } catch (_: Exception) {

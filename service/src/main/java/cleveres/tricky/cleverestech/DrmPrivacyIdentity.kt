@@ -47,7 +47,7 @@ internal object DrmPrivacyIdentity {
     ): ByteArray? {
         if (length !in MIN_IDENTIFIER_BYTES..MAX_IDENTIFIER_BYTES) return null
         if (!Config.isSpoofEnabled) return null
-        val targetUid = if (uid >= FIRST_APPLICATION_UID) uid else (Config.getPackageUid(packageName) ?: FIRST_APPLICATION_UID)
+        val targetUid = if (uid >= FIRST_APPLICATION_UID) uid else Config.getPackageUid(packageName) ?: return null
         if (Config.getAppPrivacyMode(targetUid) != Config.AppPrivacyMode.ISOLATE &&
             Config.getAppPrivacyMode(packageName) != Config.AppPrivacyMode.ISOLATE
         ) {
