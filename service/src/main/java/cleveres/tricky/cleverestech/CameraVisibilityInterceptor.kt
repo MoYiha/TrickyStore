@@ -1000,40 +1000,44 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     private var injectionInFlight = false
     private var injectionGeneration = 0
 
-    @Synchronized
     fun tryRun(): Boolean {
         if (!Config.shouldInterceptCameraVisibility) return stop()
-        if (registered && ::cameraService.isInitialized && cameraService.isBinderAlive) {
-            return refreshProxyVisibility()
+        
+        val needsRefresh = synchronized(this) {
+            registered && ::cameraService.isInitialized && cameraService.isBinderAlive
         }
-        registered = false
+        if (needsRefresh) return refreshProxyVisibility()
+        
+        synchronized(this) { registered = false }
 
         val service = ServiceManager.getService(CAMERA_SERVICE_NAME) ?: return false
         val control = getBinderControlEndpoint(service)
         if (control == null) {
             val pid = findCameraServerPid() ?: return false
             val now = SystemClock.elapsedRealtime()
-            if (lastInjectionAttemptMs != 0L && now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS) {
+            synchronized(this) {
+                if (lastInjectionAttemptMs != 0L && now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS) {
+                    return false
+                }
+                if (injectionInFlight) return false
+                val currentGeneration = ++injectionGeneration
+                injectionInFlight = true
+                lastInjectionAttemptMs = now
+                Thread {
+                    val success = activateNativeHook(pid)
+                    synchronized(this@CameraVisibilityInterceptor) {
+                        if (currentGeneration == injectionGeneration && Config.shouldInterceptCameraVisibility) {
+                            if (success) {
+                                injected = true
+                                injectedPid = pid
+                            }
+                        }
+                        injectionInFlight = false
+                    }
+                }.apply { isDaemon = true }.start()
+                triedCount.incrementAndGet()
                 return false
             }
-            if (injectionInFlight) return false
-            val currentGeneration = ++injectionGeneration
-            injectionInFlight = true
-            lastInjectionAttemptMs = now
-            Thread {
-                val success = activateNativeHook(pid)
-                synchronized(this@CameraVisibilityInterceptor) {
-                    if (currentGeneration == injectionGeneration && Config.shouldInterceptCameraVisibility) {
-                        if (success) {
-                            injected = true
-                            injectedPid = pid
-                        }
-                    }
-                    injectionInFlight = false
-                }
-            }.start()
-            triedCount.incrementAndGet()
-            return false
         }
 
         if (!Config.shouldInterceptCameraVisibility) {
@@ -1041,21 +1045,36 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             return true
         }
 
-        cameraService = service
-        binderBackdoor = control
         if (!registerBinderInterceptor(control, service, this, interceptedCodes)) {
             parkBinderHook(control)
             triedCount.incrementAndGet()
             return false
         }
-        registered = true
+        
+        var linkSuccess = false
         try {
-            cameraService.linkToDeath(cameraDeathRecipient, 0)
-            deathRecipientLinked = true
+            service.linkToDeath(cameraDeathRecipient, 0)
+            linkSuccess = true
         } catch (_: RemoteException) {
+            // Handled below
+        }
+
+        synchronized(this) {
+            if (!linkSuccess) {
+                return false // We failed to link, stop processing and retry later
+            }
+            cameraService = service
+            binderBackdoor = control
+            registered = true
+            deathRecipientLinked = true
+        }
+        
+        val isRegistered = synchronized(this) { registered }
+        if (!isRegistered) {
             stop()
             return false
         }
+        
         if (!Config.shouldInterceptCameraVisibility) return stop()
         triedCount.set(0)
         Logger.i("Camera visibility interceptor registered")
@@ -1072,10 +1091,19 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     fun isDraining(): Boolean =
         synchronized(listenerLock) { listenerProxies.isNotEmpty() }
 
-    @Synchronized
     fun stop(): Boolean {
-        injectionGeneration++
-        val targetAlive = ::cameraService.isInitialized && cameraService.isBinderAlive
+        var targetAlive = false
+        var control: IBinder? = null
+        synchronized(this) {
+            injectionGeneration++
+            targetAlive = ::cameraService.isInitialized && cameraService.isBinderAlive
+            control = binderBackdoor
+        }
+        
+        if (control == null && targetAlive) {
+            control = getBinderControlEndpoint(cameraService)
+        }
+        
         if (!targetAlive) {
             synchronized(listenerLock) {
                 listenerProxies.values.forEach(CameraListenerProxy::dispose)
@@ -1092,27 +1120,35 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             }
         }
 
-        val control = binderBackdoor ?: if (targetAlive) getBinderControlEndpoint(cameraService) else null
         var stopped = control?.let(::clearAndParkBinderHook) == true
         if (!stopped && control != null) {
             if (registered) unregisterBinderInterceptor(control, cameraService, this)
             stopped = parkBinderHook(control)
         }
-        if (!targetAlive || (!registered && control == null)) stopped = true
-        if (!stopped) {
-            binderBackdoor = control
-            return false
+        
+        val shouldUnlink = synchronized(this) {
+            val hasKnownRegistration = registered
+            if (!targetAlive || (!hasKnownRegistration && control == null)) stopped = true
+            if (!stopped) {
+                binderBackdoor = control
+                Logger.d("Camera visibility Binder hook cleanup remains pending")
+                return false
+            }
+            deathRecipientLinked && ::cameraService.isInitialized
         }
 
-        if (deathRecipientLinked && ::cameraService.isInitialized) {
+        if (shouldUnlink) {
             try {
                 cameraService.unlinkToDeath(cameraDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
             }
-            deathRecipientLinked = false
         }
-        registered = false
-        binderBackdoor = null
+
+        synchronized(this) {
+            deathRecipientLinked = false
+            registered = false
+            binderBackdoor = null
+        }
         return true
     }
 

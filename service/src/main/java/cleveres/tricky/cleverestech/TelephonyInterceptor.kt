@@ -303,14 +303,17 @@ object TelephonyInterceptor : BinderInterceptor() {
         return null
     }
 
-    @Synchronized
     fun tryRunTelephonyInterceptor(): Boolean {
         if (!Config.shouldInterceptTelephony) {
             stopTelephonyInterceptor()
             return true
         }
-        if (registered && ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive) return true
-        registered = false
+        
+        synchronized(this) {
+            if (registered && ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive) return true
+            registered = false
+        }
+        
         Logger.d("trying to register telephony interceptor (${triedCount.get()}) ...")
 
         val b = ServiceManager.getService("iphonesubinfo")
@@ -321,6 +324,7 @@ object TelephonyInterceptor : BinderInterceptor() {
         }
 
         val bd = getBinderControlEndpoint(b)
+        
         if (bd == null) {
             val pid = findPhoneProcessPid()
             if (pid == null) {
@@ -328,15 +332,16 @@ object TelephonyInterceptor : BinderInterceptor() {
                 triedCount.incrementAndGet()
                 return false
             }
+            
             val now = SystemClock.elapsedRealtime()
-            if (
-                lastInjectionAttemptMs != 0L &&
-                now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS
-            ) {
-                return false
+            val symbol = synchronized(this) {
+                if (lastInjectionAttemptMs != 0L && now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS) {
+                    return false
+                }
+                lastInjectionAttemptMs = now
+                if (injected && injectedPid == pid) "resume" else "entry"
             }
-            lastInjectionAttemptMs = now
-            val symbol = if (injected && injectedPid == pid) "resume" else "entry"
+            
             Logger.i("Telephony: trying to activate the Binder hook ...")
             val modulePath = getModuleDir()
             val p =
@@ -363,8 +368,10 @@ object TelephonyInterceptor : BinderInterceptor() {
                     Logger.e("Telephony: failed to activate Binder hook (exit=${p.exitValue()})")
                 } else {
                     Logger.i("Telephony: Binder hook activated successfully")
-                    injected = true
-                    injectedPid = pid
+                    synchronized(this) {
+                        injected = true
+                        injectedPid = pid
+                    }
                 }
             } catch (error: Exception) {
                 Logger.e("Telephony: injector failed", error)
@@ -385,24 +392,41 @@ object TelephonyInterceptor : BinderInterceptor() {
             return true
         }
 
-        iphonesubinfo = b
-        binderBackdoor = bd
         if (!registerBinderInterceptor(bd, b, this, interceptedCodes)) {
             Logger.e("Telephony: native Binder registration failed")
             parkBinderHook(bd)
             triedCount.incrementAndGet()
             return false
         }
-        registered = true
+        
+        synchronized(this) {
+            iphonesubinfo = b
+            binderBackdoor = bd
+            registered = true
+        }
+        
         Logger.i("Telephony Binder interceptor registered")
+        
+        var linkSuccess = false
         try {
-            iphonesubinfo.linkToDeath(phoneDeathRecipient, 0)
-            deathRecipientLinked = true
+            b.linkToDeath(phoneDeathRecipient, 0)
+            linkSuccess = true
         } catch (_: android.os.RemoteException) {
             Logger.w("Phone subscription service exited before lifecycle monitoring was attached")
+        }
+        
+        synchronized(this) {
+            if (linkSuccess) {
+                deathRecipientLinked = true
+            }
+        }
+        
+        val linked = synchronized(this) { deathRecipientLinked }
+        if (!linked) {
             stopTelephonyInterceptor()
             return false
         }
+        
         if (!Config.shouldInterceptTelephony) {
             stopTelephonyInterceptor()
             return true
@@ -414,33 +438,46 @@ object TelephonyInterceptor : BinderInterceptor() {
 
     fun isRunning(): Boolean = registered && ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive
 
-    @Synchronized
     fun stopTelephonyInterceptor(): Boolean {
-        val targetAlive = ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive
-        val control =
-            binderBackdoor
-                ?: if (targetAlive) getBinderControlEndpoint(iphonesubinfo) else null
+        var targetAlive = false
+        var control: IBinder? = null
+        synchronized(this) {
+            targetAlive = ::iphonesubinfo.isInitialized && iphonesubinfo.isBinderAlive
+            control = binderBackdoor
+        }
+        
+        if (control == null && targetAlive) {
+            control = getBinderControlEndpoint(iphonesubinfo)
+        }
+        
         var stopped = control?.let(::clearAndParkBinderHook) == true
         if (!stopped && control != null) {
             if (registered) unregisterBinderInterceptor(control, iphonesubinfo, this)
             stopped = parkBinderHook(control)
         }
-        if (!targetAlive || (!registered && control == null)) stopped = true
-        if (!stopped) {
-            binderBackdoor = control
-            Logger.d("Telephony Binder hook cleanup remains pending")
-            return false
+        
+        val shouldUnlink = synchronized(this) {
+            if (!targetAlive || (!registered && control == null)) stopped = true
+            if (!stopped) {
+                binderBackdoor = control
+                Logger.d("Telephony Binder hook cleanup remains pending")
+                return false
+            }
+            deathRecipientLinked && ::iphonesubinfo.isInitialized
         }
 
-        if (deathRecipientLinked && ::iphonesubinfo.isInitialized) {
+        if (shouldUnlink) {
             try {
                 iphonesubinfo.unlinkToDeath(phoneDeathRecipient, 0)
             } catch (_: java.util.NoSuchElementException) {
             }
-            deathRecipientLinked = false
         }
-        registered = false
-        binderBackdoor = null
+
+        synchronized(this) {
+            deathRecipientLinked = false
+            registered = false
+            binderBackdoor = null
+        }
         return true
     }
 

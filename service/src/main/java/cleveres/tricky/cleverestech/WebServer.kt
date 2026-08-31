@@ -884,27 +884,33 @@ class WebServer(
     private var lastCpuUsage: Double = 0.0
     private val availableProcessorCount = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
-    @Synchronized
     private fun getCpuUsagePercent(): Double {
         val now = System.nanoTime()
-        if (now - lastCpuSampleNanos in 0 until CPU_SAMPLE_MIN_INTERVAL_NANOS) return lastCpuUsage
-
-        val current = readCpuSample() ?: return lastCpuUsage
-        val previous = lastCpuSample
-        if (
-            previous != null &&
-            current.totalTicks > previous.totalTicks &&
-            current.processTicks >= previous.processTicks
-        ) {
-            val deltaProcess = current.processTicks - previous.processTicks
-            val deltaSystem = current.totalTicks - previous.totalTicks
-            lastCpuUsage =
-                ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * availableProcessorCount)
-                    .coerceIn(0.0, availableProcessorCount * 100.0)
+        val cached = synchronized(this) {
+            if (now - lastCpuSampleNanos in 0 until CPU_SAMPLE_MIN_INTERVAL_NANOS) lastCpuUsage else null
         }
-        lastCpuSample = current
-        lastCpuSampleNanos = now
-        return lastCpuUsage
+        if (cached != null) return cached
+
+        val current = readCpuSample()
+        
+        return synchronized(this) {
+            val previous = lastCpuSample
+            if (current != null && previous != null &&
+                current.totalTicks > previous.totalTicks &&
+                current.processTicks >= previous.processTicks
+            ) {
+                val deltaProcess = current.processTicks - previous.processTicks
+                val deltaSystem = current.totalTicks - previous.totalTicks
+                lastCpuUsage =
+                    ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * availableProcessorCount)
+                        .coerceIn(0.0, availableProcessorCount * 100.0)
+            }
+            if (current != null) {
+                lastCpuSample = current
+                lastCpuSampleNanos = now
+            }
+            lastCpuUsage
+        }
     }
 
     private fun getRamUsageKb(): Long {
