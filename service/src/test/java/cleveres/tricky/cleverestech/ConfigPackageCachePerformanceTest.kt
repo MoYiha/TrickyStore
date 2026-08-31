@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech
 
 import android.content.pm.IPackageManager
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -75,5 +76,19 @@ class ConfigPackageCachePerformanceTest {
         assertTrue("Test timed out", completed)
 
         println("PERF_RESULT: $durationMs")
+    }
+
+    @Test
+    fun testPackageCacheDefensiveClonePreventsMutation() {
+        val uid = 10042
+        val packages1 = Config.getPackages(uid)
+        assertEquals(1, packages1.size)
+        assertEquals("com.example.app10042", packages1[0])
+
+        packages1[0] = "com.attacker.fake"
+
+        val packages2 = Config.getPackages(uid)
+        assertEquals(1, packages2.size)
+        assertEquals("com.example.app10042", packages2[0])
     }
 }
