@@ -1,7 +1,9 @@
 # Changelog
 
-## V2.7.0
+## V2.7.1
 
-- **StrongBox to TEE Redirection & Security Level Harmonization:** Added automatic redirection of `IKeystoreService.getSecurityLevel(SecurityLevel.STRONGBOX)` to the hardware TEE KeyMint security level for targeted applications, ensuring all key generation, attestation, and signing operations seamlessly pass with valid Keybox credentials and locked bootloader status. Attestation ASN.1 extensions are harmonized with the TrustedEnvironment security level.
-- **WebUI Navigation Menu Icons:** Added modern, clean SVG navigation icons to all desktop and mobile menu items with robust alignment and responsive layout support.
-- **Service & Stub Hardening:** Added explicit Binder transaction constants and expanded regression coverage for KeyMint security level interception.
+- **Process Lifecycle & Orphan Process Prevention:** Guarded all native hook and property command processes across camera, DRM, keystore, telephony, identity applier, and keybox cleaner with strict `try / finally` termination guarantees to eliminate zombie or orphan process risks.
+- **Serial Number Parity & Live Identity Rollback:** Extended build properties to include all OEM, ODM, Vendor, RIL, and GSM serial properties (`ro.vendor.serialno`, `ro.odm.serialno`, `vendor.serialno`, `vendor.boot.serialno`, `persist.sys.serialno`, `ro.ril.oem.sno`, `ro.ril.oem.psno`, `sys.serialno`, `gsm.serial`) in both boot spoofing and live runtime rollback snapshots.
+- **Identity Override Robustness:** Added direct fallback support for unprefixed `SERIAL`, `IMEI`, and `MEID` configurations in `spoof_build_vars` alongside `ATTESTATION_ID_*` tags.
+- **Memory & Resource Hardening:** Optimized network response handling with bounded, zeroized buffers (`FastByteArrayOutputStream`), zero-allocation UTF-8 byte counting, and timed thread retirement for idle WebUI server threads.
+- **Procfs PID Discovery Hardening:** Hardened `/proc` process scanning loops against unexpected directory entries to prevent unhandled number formatting exceptions.
