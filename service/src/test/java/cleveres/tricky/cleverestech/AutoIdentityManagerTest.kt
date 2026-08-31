@@ -108,6 +108,21 @@ class AutoIdentityManagerTest {
     }
 
     @Test
+    fun `security patch lookup prioritizes SPL dates over release dates in the same row`() {
+        val bulletin =
+            """
+            <table>
+              <tr><td>canary-2608</td><td>2026-08-18</td><td>2026-08-05</td></tr>
+            </table>
+            """.trimIndent()
+
+        assertEquals(
+            "2026-08-05",
+            AutoIdentityManager.findSecurityPatchInBulletin(bulletin, "canary-2608"),
+        )
+    }
+
+    @Test
     fun `security patch lookup does not bridge across bulletin rows`() {
         val bulletin =
             """

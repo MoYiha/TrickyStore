@@ -421,12 +421,15 @@ object AutoIdentityManager {
             ?.let(::normalizePatch)
     }
 
-    private fun normalizePatch(value: String): String? =
-        Regex("""20\d{2}-\d{2}-\d{2}""")
-            .findAll(value)
-            .mapNotNull { match -> runCatching { LocalDate.parse(match.value) }.getOrNull() }
-            .firstOrNull()
-            ?.toString()
+    private fun normalizePatch(value: String): String? {
+        val dates =
+            Regex("""20\d{2}-\d{2}-\d{2}""")
+                .findAll(value)
+                .mapNotNull { match -> runCatching { LocalDate.parse(match.value) }.getOrNull() }
+                .toList()
+        if (dates.isEmpty()) return null
+        return (dates.filter { it.dayOfMonth == 1 || it.dayOfMonth == 5 }.maxOrNull() ?: dates.firstOrNull())?.toString()
+    }
 
     internal fun estimateSecurityPatch(canaryId: String): String {
         val digits = canaryId.removePrefix("canary-").filter(Char::isDigit)
