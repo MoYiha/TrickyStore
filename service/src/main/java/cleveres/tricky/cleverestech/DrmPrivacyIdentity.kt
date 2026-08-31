@@ -40,6 +40,41 @@ internal object DrmPrivacyIdentity {
         return derive(uid, length, components)
     }
 
+    fun idForPackage(
+        packageName: String,
+        uid: Int,
+        length: Int,
+    ): ByteArray? {
+        if (length !in MIN_IDENTIFIER_BYTES..MAX_IDENTIFIER_BYTES) return null
+        if (!Config.isSpoofEnabled) return null
+        val targetUid = if (uid >= FIRST_APPLICATION_UID) uid else (Config.getPackageUid(packageName) ?: FIRST_APPLICATION_UID)
+        if (Config.getAppPrivacyMode(targetUid) != Config.AppPrivacyMode.ISOLATE &&
+            Config.getAppPrivacyMode(packageName) != Config.AppPrivacyMode.ISOLATE
+        ) {
+            return null
+        }
+
+        val identity = Config.getTelephonyIdentityOverrides(targetUid)
+        val components =
+            listOfNotNull(
+                identity.template,
+                identity.imei,
+                identity.imei2,
+                identity.imsi,
+                identity.imsi2,
+                identity.iccid,
+                identity.iccid2,
+                identity.meid,
+                identity.meid2,
+                identity.phoneNumber,
+                identity.phoneNumber2,
+                identity.serial,
+                packageName,
+            )
+        if (components.isEmpty()) return null
+        return derive(targetUid, length, components)
+    }
+
     @androidx.annotation.VisibleForTesting
     internal fun derive(
         uid: Int,

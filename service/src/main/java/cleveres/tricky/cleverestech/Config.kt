@@ -252,6 +252,11 @@ object Config {
         return selected
     }
 
+    fun getAppPrivacyMode(packageName: String): AppPrivacyMode {
+        val state = appConfigState
+        return state.configs.get(packageName)?.privacyMode ?: AppPrivacyMode.INHERIT
+    }
+
     val shouldInterceptTelephony: Boolean
         get() =
             PolicyState.isFeatureEnabled(PolicyState.Feature.TELEPHONY_IDENTITY) ||
@@ -2137,7 +2142,18 @@ object Config {
         return try {
             val info = pm.getPackageInfoCompat(packageName, 0L, userId)
             val uid = info?.applicationInfo?.uid
-            if (uid != null && uid >= 10_000) uid else null
+            if (uid != null && uid >= 10_000) return uid
+            if (userId == 0) {
+                for (u in 10..20) {
+                    val userUid = pm.getPackageInfoCompat(packageName, 0L, u)?.applicationInfo?.uid
+                    if (userUid != null && userUid >= 10_000) return userUid
+                }
+                for (u in 1..9) {
+                    val userUid = pm.getPackageInfoCompat(packageName, 0L, u)?.applicationInfo?.uid
+                    if (userUid != null && userUid >= 10_000) return userUid
+                }
+            }
+            null
         } catch (_: Exception) {
             null
         }

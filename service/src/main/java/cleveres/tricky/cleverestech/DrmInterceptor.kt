@@ -538,8 +538,10 @@ object DrmInterceptor {
             callingPid: Int,
             data: Parcel,
         ): Result {
-            val targetUid = resolveTargetUid(target, callingUid)
-            if (code != getPropertyByteArrayTransaction || !shouldProtectUid(targetUid)) return Skip
+            val registration = synchronized(this@DrmInterceptor) { plugins[target] }
+            val targetUid = registration?.ownerUid?.takeIf { it >= FIRST_APPLICATION_UID } ?: callingUid
+            val pkg = registration?.packageName
+            if (code != getPropertyByteArrayTransaction || !shouldProtect(targetUid, pkg)) return Skip
             return if (readPropertyName(data) == DEVICE_UNIQUE_ID) Continue else Skip
         }
 
@@ -553,12 +555,14 @@ object DrmInterceptor {
             reply: Parcel?,
             resultCode: Int,
         ): Result {
-            val targetUid = resolveTargetUid(target, callingUid)
+            val registration = synchronized(this@DrmInterceptor) { plugins[target] }
+            val targetUid = registration?.ownerUid?.takeIf { it >= FIRST_APPLICATION_UID } ?: callingUid
+            val pkg = registration?.packageName
             if (
                 code != getPropertyByteArrayTransaction ||
                 reply == null ||
                 resultCode != 0 ||
-                !shouldProtectUid(targetUid) ||
+                !shouldProtect(targetUid, pkg) ||
                 readPropertyName(data) != DEVICE_UNIQUE_ID
             ) {
                 return Skip
@@ -574,7 +578,12 @@ object DrmInterceptor {
                 if (length !in DrmPrivacyIdentity.MIN_IDENTIFIER_BYTES..DrmPrivacyIdentity.MAX_IDENTIFIER_BYTES) {
                     return Skip
                 }
-                pseudonym = DrmPrivacyIdentity.idForUid(targetUid, length) ?: return Skip
+                pseudonym =
+                    if (pkg != null) {
+                        DrmPrivacyIdentity.idForPackage(pkg, targetUid, length)
+                    } else {
+                        DrmPrivacyIdentity.idForUid(targetUid, length)
+                    } ?: return Skip
 
                 Parcel.obtain().let { replacement ->
                     replacement.writeNoException()
@@ -590,11 +599,6 @@ object DrmInterceptor {
             }
         }
 
-        private fun resolveTargetUid(target: IBinder, callingUid: Int): Int {
-            val registration = synchronized(this@DrmInterceptor) { plugins[target] }
-            return registration?.ownerUid?.takeIf { it >= FIRST_APPLICATION_UID } ?: callingUid
-        }
-
         private fun readPropertyName(data: Parcel): String? {
             val originalPosition = data.dataPosition()
             return try {
@@ -607,10 +611,14 @@ object DrmInterceptor {
             }
         }
 
-        private fun shouldProtectUid(uid: Int): Boolean =
-            Config.getAppPrivacyMode(uid) == Config.AppPrivacyMode.ISOLATE &&
+        private fun shouldProtect(uid: Int, packageName: String?): Boolean {
+            val isIsolated =
+                Config.getAppPrivacyMode(uid) == Config.AppPrivacyMode.ISOLATE ||
+                    (!packageName.isNullOrEmpty() && Config.getAppPrivacyMode(packageName) == Config.AppPrivacyMode.ISOLATE)
+            return isIsolated &&
                 (PolicyState.usesV2() || Config.isSpoofEnabled) &&
                 !PolicyState.drmPassthrough(uid)
+        }
     }
 
     private fun resolveTransactionCode(
