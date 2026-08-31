@@ -427,7 +427,9 @@ object DrmInterceptor {
             null
         } finally {
             output.fill(0)
-            process.destroy()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 

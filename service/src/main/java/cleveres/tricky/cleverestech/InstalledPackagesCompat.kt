@@ -93,7 +93,9 @@ internal object InstalledPackagesCompat {
             throw IOException("Package-list command failed", cause)
         } finally {
             reader.cancel(true)
-            process.destroyForcibly()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 
