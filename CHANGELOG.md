@@ -1,6 +1,6 @@
 # Changelog
 
-## V2.7.2
+## V2.7.1
 
 - **Process Lifecycle & Orphan Process Prevention:** Guarded all native hook and property command processes across camera, DRM, keystore, telephony, identity applier, and keybox cleaner with strict `try / finally` termination guarantees to eliminate zombie or orphan process risks.
 - **Serial Number Parity & Live Identity Rollback:** Extended build properties to include all OEM, ODM, Vendor, RIL, and GSM serial properties (`ro.vendor.serialno`, `ro.odm.serialno`, `vendor.serialno`, `vendor.boot.serialno`, `persist.sys.serialno`, `ro.ril.oem.sno`, `ro.ril.oem.psno`, `sys.serialno`, `gsm.serial`) in both boot spoofing and live runtime rollback snapshots.
