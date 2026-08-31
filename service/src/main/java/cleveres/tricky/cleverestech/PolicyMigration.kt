@@ -94,7 +94,7 @@ object PolicyMigration {
                     Logger.w("Could not read persisted policy state during migration: ${stateFile.name}")
                     return Outcome(Status.MALFORMED)
                 }
-        if (originalText.toByteArray(Charsets.UTF_8).size !in 1..MAX_STATE_BYTES) {
+        if (originalText.utf8ByteLength() !in 1..MAX_STATE_BYTES) {
             return Outcome(Status.MALFORMED)
         }
 
@@ -171,7 +171,7 @@ object PolicyMigration {
         configRoot: File,
         content: String,
     ) {
-        if (content.toByteArray(Charsets.UTF_8).size !in 1..MAX_STATE_BYTES) return
+        if (content.utf8ByteLength() !in 1..MAX_STATE_BYTES) return
         val invalidFile = File(configRoot, INVALID_FILE)
         if (safeWriteState(invalidFile, content)) {
             Logger.w("Preserved malformed configured policy state as $INVALID_FILE")
@@ -182,7 +182,7 @@ object PolicyMigration {
         file: File,
         content: String,
     ): Boolean {
-        if (content.toByteArray(Charsets.UTF_8).size !in 1..MAX_STATE_BYTES) return false
+        if (content.utf8ByteLength() !in 1..MAX_STATE_BYTES) return false
         val path = file.toPath()
         if (
             Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&

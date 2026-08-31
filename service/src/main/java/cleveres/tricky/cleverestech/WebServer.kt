@@ -214,8 +214,8 @@ internal class BoundedHttpAsyncRunner(
         ThreadPoolExecutor(
             workerCount,
             workerCount,
-            0L,
-            TimeUnit.MILLISECONDS,
+            30L,
+            TimeUnit.SECONDS,
             ArrayBlockingQueue(queueCapacity),
             { runnable ->
                 Thread(runnable, "CleveresTricky-HTTP-${nextThreadId.incrementAndGet()}").apply {
@@ -223,7 +223,9 @@ internal class BoundedHttpAsyncRunner(
                 }
             },
             ThreadPoolExecutor.AbortPolicy(),
-        )
+        ).apply {
+            allowCoreThreadTimeOut(true)
+        }
 
     init {
         require(workerCount > 0) { "HTTP worker count must be positive" }
@@ -391,7 +393,7 @@ class WebServer(
                     Logger.e("Refusing symbolic-link config destination: $filename")
                     return false
                 }
-                if (content.toByteArray(Charsets.UTF_8).size > MAX_CONFIG_FILE_SIZE) return false
+                if (content.utf8ByteLength() > MAX_CONFIG_FILE_SIZE) return false
                 SecureFile.writeText(f, content)
                 true
             } catch (e: Exception) {
@@ -512,7 +514,7 @@ class WebServer(
     }
 
     private fun parseIdentityUpdates(json: String): Map<String, String?> {
-        require(json.toByteArray(Charsets.UTF_8).size <= MAX_IDENTITY_REQUEST_BYTES) {
+        require(json.utf8ByteLength() <= MAX_IDENTITY_REQUEST_BYTES) {
             "Identity request is too large"
         }
         val obj = JSONObject(json)
@@ -882,27 +884,33 @@ class WebServer(
     private var lastCpuUsage: Double = 0.0
     private val availableProcessorCount = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
-    @Synchronized
     private fun getCpuUsagePercent(): Double {
         val now = System.nanoTime()
-        if (now - lastCpuSampleNanos in 0 until CPU_SAMPLE_MIN_INTERVAL_NANOS) return lastCpuUsage
-
-        val current = readCpuSample() ?: return lastCpuUsage
-        val previous = lastCpuSample
-        if (
-            previous != null &&
-            current.totalTicks > previous.totalTicks &&
-            current.processTicks >= previous.processTicks
-        ) {
-            val deltaProcess = current.processTicks - previous.processTicks
-            val deltaSystem = current.totalTicks - previous.totalTicks
-            lastCpuUsage =
-                ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * availableProcessorCount)
-                    .coerceIn(0.0, availableProcessorCount * 100.0)
+        val cached = synchronized(this) {
+            if (now - lastCpuSampleNanos in 0 until CPU_SAMPLE_MIN_INTERVAL_NANOS) lastCpuUsage else null
         }
-        lastCpuSample = current
-        lastCpuSampleNanos = now
-        return lastCpuUsage
+        if (cached != null) return cached
+
+        val current = readCpuSample()
+        
+        return synchronized(this) {
+            val previous = lastCpuSample
+            if (current != null && previous != null &&
+                current.totalTicks > previous.totalTicks &&
+                current.processTicks >= previous.processTicks
+            ) {
+                val deltaProcess = current.processTicks - previous.processTicks
+                val deltaSystem = current.totalTicks - previous.totalTicks
+                lastCpuUsage =
+                    ((deltaProcess.toDouble() / deltaSystem.toDouble()) * 100.0 * availableProcessorCount)
+                        .coerceIn(0.0, availableProcessorCount * 100.0)
+            }
+            if (current != null) {
+                lastCpuSample = current
+                lastCpuSampleNanos = now
+            }
+            lastCpuUsage
+        }
     }
 
     private fun getRamUsageKb(): Long {
@@ -1615,7 +1623,7 @@ class WebServer(
             return try {
                 session.parseBody(body)
                 val data = getParam(session, "data") ?: throw IllegalArgumentException("Missing kernel identity data")
-                require(data.toByteArray(Charsets.UTF_8).size <= 4096) { "Kernel identity request is too large" }
+                require(data.utf8ByteLength() <= 4096) { "Kernel identity request is too large" }
                 KernelIdentityManager.save(data)
                 val applied = KeystoreInterceptor.refreshKernelIdentity()
                 secureResponse(Response.Status.OK, "application/json", KernelIdentityManager.json().put("applied", applied).toString())
@@ -1920,7 +1928,12 @@ class WebServer(
                         try {
                             val f = File(configDir, "app_config")
                             SecureFile.writeText(f, sb.toString())
-                            f.setLastModified(System.currentTimeMillis())
+                            java.nio.file.Files.setAttribute(
+                                f.toPath(),
+                                "basic:lastModifiedTime",
+                                java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                                LinkOption.NOFOLLOW_LINKS
+                            )
                             Config.updateAppConfigs(f).getOrThrow()
                             return secureResponse(Response.Status.OK, "text/plain", "Saved")
                         } catch (e: Exception) {
@@ -2043,7 +2056,12 @@ class WebServer(
                     Config.updateBuildVars(spoofFile)
                     val target = File(configDir, "target.txt")
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        target.setLastModified(System.currentTimeMillis())
+                        java.nio.file.Files.setAttribute(
+                            target.toPath(),
+                            "basic:lastModifiedTime",
+                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                            LinkOption.NOFOLLOW_LINKS
+                        )
                     }
                     if (!updateKeyboxesFromConfiguredRevocationSource()) {
                         return keyboxActivationFailureResponse()
@@ -2064,7 +2082,12 @@ class WebServer(
                         return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid target file")
                     }
                     if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        target.setLastModified(System.currentTimeMillis())
+                        java.nio.file.Files.setAttribute(
+                            target.toPath(),
+                            "basic:lastModifiedTime",
+                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                            LinkOption.NOFOLLOW_LINKS
+                        )
                     }
                     val legacyFetcher = crlFetcher
                     val revocationAvailable =
@@ -2222,7 +2245,12 @@ class WebServer(
                             )
                             val target = File(configDir, "target.txt")
                             if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                                target.setLastModified(System.currentTimeMillis())
+                                java.nio.file.Files.setAttribute(
+                                    target.toPath(),
+                                    "basic:lastModifiedTime",
+                                    java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
+                                    LinkOption.NOFOLLOW_LINKS
+                                )
                             }
                             secureResponse(Response.Status.OK, "text/plain", "Restore Successful")
                         }
@@ -2560,7 +2588,7 @@ class WebServer(
                 }
             }
             if (filename == "drm_packages.txt") {
-                if (content.toByteArray(Charsets.UTF_8).size > MAX_DRM_PACKAGES_BYTES) return false
+                if (content.utf8ByteLength() > MAX_DRM_PACKAGES_BYTES) return false
                 var ruleCount = 0
                 val lines = content.lineSequence()
                 return lines.all { line ->

@@ -55,6 +55,7 @@ object ServerManager {
     private val serversMap = ConcurrentHashMap<String, ServerConfig>()
     private val serverKeyboxes = ConcurrentHashMap<String, List<CertHack.KeyBox>>()
     private var stateGeneration = 0L
+    private val ioLock = Any()
     private val fetchLocks = Array(FETCH_LOCK_STRIPES) { Any() }
     private val serverFile get() = File(Config.keyboxDirectory.parentFile, "servers.json")
     private val validServerId = Regex("[A-Za-z0-9_-]{1,64}")
@@ -125,11 +126,12 @@ object ServerManager {
         }
     }
 
-    @Synchronized
     fun saveServers() {
         val json = JSONArray()
-        serversList.forEach { server ->
-            json.put(serializeServer(server))
+        synchronized(this) {
+            serversList.forEach { server ->
+                json.put(serializeServer(server))
+            }
         }
         val plaintext = json.toString().toByteArray(StandardCharsets.UTF_8)
         val encrypted =
@@ -140,10 +142,12 @@ object ServerManager {
             } finally {
                 plaintext.fill(0)
             }
-        try {
-            SecureFile.writeBytes(serverFile, encrypted)
-        } finally {
-            encrypted.fill(0)
+        synchronized(ioLock) {
+            try {
+                SecureFile.writeBytes(serverFile, encrypted)
+            } finally {
+                encrypted.fill(0)
+            }
         }
     }
 

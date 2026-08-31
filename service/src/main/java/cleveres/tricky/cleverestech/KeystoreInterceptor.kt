@@ -220,7 +220,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                             end++
                         }
                         if (String(buf, start, end - start) == "keystore2") {
-                            val parsedPid = pidStr.toInt()
+                            val parsedPid = pidStr.toIntOrNull() ?: continue
                             cachedKeystorePid = parsedPid
                             return parsedPid
                         }
@@ -234,10 +234,10 @@ object KeystoreInterceptor : BinderInterceptor() {
     }
 
     private fun runNativeActivation(pid: Int, symbol: String): Boolean {
-        return try {
-            val modulePath = getModuleDir()
-            val injectPath = "$modulePath/inject"
-            val process =
+        val modulePath = getModuleDir()
+        val injectPath = "$modulePath/inject"
+        val process =
+            try {
                 ProcessBuilder(
                     injectPath,
                     pid.toString(),
@@ -247,6 +247,11 @@ object KeystoreInterceptor : BinderInterceptor() {
                 ).redirectOutput(java.io.File("/dev/null"))
                     .redirectError(java.io.File("/dev/null"))
                     .start()
+            } catch (error: Exception) {
+                Logger.e("failed to start native activation", error)
+                return false
+            }
+        return try {
             if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
                 Logger.e("native activation timed out after 30s, killing it")
                 process.destroyForcibly()
@@ -259,20 +264,32 @@ object KeystoreInterceptor : BinderInterceptor() {
         } catch (error: Exception) {
             Logger.e("failed to run native activation", error)
             false
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 
-    @Synchronized
     fun refreshKernelIdentity(): Boolean {
         val pid = findKeystore2Pid() ?: return false
-        if (!injected || injectedPid != pid) return true
+        
+        val needsActivation = synchronized(this) {
+            injected && injectedPid == pid
+        }
+        if (!needsActivation) return true
+        
         return runNativeActivation(pid, "resume")
     }
 
-    @Synchronized
     fun tryRunKeystoreInterceptor(): Boolean {
-        if (registered && ::keystore.isInitialized && keystore.isBinderAlive) return true
-        registered = false
+        synchronized(this) {
+            if (registered && ::keystore.isInitialized && keystore.isBinderAlive) return true
+            registered = false
+        }
         Logger.d("trying to register keystore interceptor (attempt=${triedCount.get()}) ...")
         val b =
             ServiceManager.getService("android.system.keystore2.IKeystoreService/default") ?: run {
@@ -280,6 +297,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                 return false
             }
         val bd = getBinderControlEndpoint(b)
+        
         binderBackdoor = bd
         if (bd == null) {
             val pid = findKeystore2Pid()
@@ -288,26 +306,31 @@ object KeystoreInterceptor : BinderInterceptor() {
                 triedCount.incrementAndGet()
                 return false
             }
+            
             val now = SystemClock.elapsedRealtime()
-            if (
-                lastInjectionAttemptMs != 0L &&
-                now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS
-            ) {
-                return false
+            val symbol = synchronized(this) {
+                if (lastInjectionAttemptMs != 0L && now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS) {
+                    return false
+                }
+                lastInjectionAttemptMs = now
+                if (injected && injectedPid == pid) "resume" else "entry"
             }
-            lastInjectionAttemptMs = now
-            val symbol = if (injected && injectedPid == pid) "resume" else "entry"
+            
             Logger.i("trying to activate the keystore Binder hook ...")
             if (!runNativeActivation(pid, symbol)) {
                 triedCount.incrementAndGet()
                 return false
             }
+            
             Logger.i("keystore Binder hook activated successfully")
-            injected = true
-            injectedPid = pid
+            synchronized(this) {
+                injected = true
+                injectedPid = pid
+            }
             triedCount.incrementAndGet()
             return false
         }
+        
         val ks = IKeystoreService.Stub.asInterface(b)
         val tee =
             try {
@@ -323,14 +346,19 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
         val interceptedCodes =
             validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)
-        keystore = b
-        binderBackdoor = bd
-        if (!registerBinderInterceptor(bd, b, this, interceptedCodes)) {
+            
+        val registeredHook = registerBinderInterceptor(bd, b, this, interceptedCodes)
+        if (!registeredHook) {
             Logger.e("Failed to register the Keystore Binder interceptor")
             parkBinderHook(bd)
             return false
         }
-        keystoreRegistered = true
+        
+        synchronized(this) {
+            keystore = b
+            binderBackdoor = bd
+            keystoreRegistered = true
+        }
 
         Logger.i("Keystore Binder interceptor registered")
         if (tee != null) {
@@ -346,8 +374,10 @@ object KeystoreInterceptor : BinderInterceptor() {
                 stopKeystoreInterceptor()
                 return false
             }
-            teeInterceptor = interceptor
-            teeTarget = tee.asBinder()
+            synchronized(this) {
+                teeInterceptor = interceptor
+                teeTarget = tee.asBinder()
+            }
             Logger.i("TEE SecurityLevel interceptor registered")
         } else {
             Logger.i("TEE SecurityLevel is unavailable")
@@ -365,34 +395,56 @@ object KeystoreInterceptor : BinderInterceptor() {
                 stopKeystoreInterceptor()
                 return false
             }
-            strongBoxInterceptor = interceptor
-            strongBoxTarget = strongBox.asBinder()
+            synchronized(this) {
+                strongBoxInterceptor = interceptor
+                strongBoxTarget = strongBox.asBinder()
+            }
             Logger.i("StrongBox SecurityLevel interceptor registered")
         } else {
             Logger.i("StrongBox SecurityLevel is unavailable")
         }
 
+        var linkSuccess = false
         try {
-            keystore.linkToDeath(Killer, 0)
-            deathRecipientLinked = true
+            b.linkToDeath(Killer, 0)
+            linkSuccess = true
         } catch (error: android.os.RemoteException) {
             Logger.w("Keystore exited before its interceptor lifecycle could be monitored")
+        }
+        
+        synchronized(this) {
+            if (linkSuccess) {
+                deathRecipientLinked = true
+            }
+        }
+        
+        val linked = synchronized(this) { deathRecipientLinked }
+        if (!linked) {
             stopKeystoreInterceptor()
             return false
         }
-        registered = true
+        
+        synchronized(this) {
+            registered = true
+        }
         triedCount.set(0)
         return true
     }
 
     fun isRunning(): Boolean = registered && ::keystore.isInitialized && keystore.isBinderAlive
 
-    @Synchronized
     fun stopKeystoreInterceptor(): Boolean {
-        val targetAlive = ::keystore.isInitialized && keystore.isBinderAlive
-        val control =
-            binderBackdoor
-                ?: if (targetAlive) getBinderControlEndpoint(keystore) else null
+        var targetAlive = false
+        var control: IBinder? = null
+        synchronized(this) {
+            targetAlive = ::keystore.isInitialized && keystore.isBinderAlive
+            control = binderBackdoor
+        }
+        
+        if (control == null && targetAlive) {
+            control = getBinderControlEndpoint(keystore)
+        }
+        
         var stopped = control?.let(::clearAndParkBinderHook) == true
         if (!stopped && control != null) {
             strongBoxInterceptor?.let { interceptor ->
@@ -410,31 +462,37 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
             stopped = parkBinderHook(control)
         }
-        val hasKnownRegistration =
-            registered || keystoreRegistered || teeInterceptor != null || strongBoxInterceptor != null
-        if (!targetAlive || (!hasKnownRegistration && control == null)) stopped = true
-        if (!stopped) {
-            binderBackdoor = control
-            Logger.d("Keystore Binder hook cleanup remains pending")
-            return false
+        
+        val shouldUnlink = synchronized(this) {
+            val hasKnownRegistration =
+                registered || keystoreRegistered || teeInterceptor != null || strongBoxInterceptor != null
+            if (!targetAlive || (!hasKnownRegistration && control == null)) stopped = true
+            if (!stopped) {
+                binderBackdoor = control
+                Logger.d("Keystore Binder hook cleanup remains pending")
+                return false
+            }
+            deathRecipientLinked && ::keystore.isInitialized
         }
 
-        if (deathRecipientLinked && ::keystore.isInitialized) {
+        if (shouldUnlink) {
             try {
                 keystore.unlinkToDeath(Killer, 0)
             } catch (_: java.util.NoSuchElementException) {
                 // The Binder driver already removed the recipient after death.
             }
-            deathRecipientLinked = false
         }
 
-        strongBoxInterceptor = null
-        strongBoxTarget = null
-        teeInterceptor = null
-        teeTarget = null
-        keystoreRegistered = false
-        registered = false
-        binderBackdoor = null
+        synchronized(this) {
+            deathRecipientLinked = false
+            strongBoxInterceptor = null
+            strongBoxTarget = null
+            teeInterceptor = null
+            teeTarget = null
+            keystoreRegistered = false
+            registered = false
+            binderBackdoor = null
+        }
         return true
     }
 

@@ -134,4 +134,29 @@ class UtilTest {
         assertTrue(bootKey.isUsableBootDigest())
         assertFalse(root.resolve("boot_key").readText().trim().all { it == '0' })
     }
+
+    @Test
+    fun testUtf8ByteLength_matchesByteArraySize() {
+        val samples =
+            listOf(
+                "",
+                "Hello, World!",
+                "1234567890",
+                "Türkçe karakterler: ğüşıöç ĞÜŞİÖÇ",
+                "简体中文测试: 华为小米一加",
+                "Русский текст для проверки",
+                "العربية: اختبار النص العربي",
+                "Emoji test: 🎉🔥🚀📱💻🛡️✨",
+                "Mixed content: com.google.android.gms_12345!@#$%^&*()_+~|}{[]:;?><,./",
+                "Surrogate edge cases: \uD83D\uDE00 \uD83C\uDF89 \uD83D\uDE80",
+                "A".repeat(1000),
+                "Ç".repeat(1000),
+                "中".repeat(1000),
+            )
+        for (sample in samples) {
+            val expected = sample.toByteArray(Charsets.UTF_8).size
+            val actual = sample.utf8ByteLength()
+            org.junit.Assert.assertEquals("Length mismatch for: $sample", expected, actual)
+        }
+    }
 }

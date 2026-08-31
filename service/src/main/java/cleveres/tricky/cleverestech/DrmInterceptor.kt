@@ -129,21 +129,22 @@ object DrmInterceptor {
      * is not an error: devices may expose only a legacy HIDL implementation, and
      * a lazy AIDL HAL is discovered on the next scan after Android starts it.
      */
-    @Synchronized
     fun tryRunDrmInterceptor(): Boolean {
-        pruneDeadPluginsLocked()
-        pruneDeadFactoriesLocked()
+        synchronized(this) {
+            pruneDeadPluginsLocked()
+            pruneDeadFactoriesLocked()
+        }
 
         val serviceNames = discoverFactoryServices()
         if (serviceNames.isEmpty()) {
-            markHealthy()
+            synchronized(this) { markHealthy() }
             return true
         }
 
         var needsFastRetry = false
         for (name in serviceNames) {
-            val existing = factories[name]
-            if (existing != null && existing.binder.isBinderAlive) continue
+            val isAlive = synchronized(this) { factories[name]?.binder?.isBinderAlive == true }
+            if (isAlive) continue
 
             val service = ServiceManager.checkService(name) ?: ServiceManager.getService(name) ?: continue
             var control = BinderInterceptor.getBinderControlEndpoint(service)
@@ -169,14 +170,15 @@ object DrmInterceptor {
 
             val interceptor = FactoryInterceptor(name)
             val resolvedControl = requireNotNull(control)
-            if (
-                !BinderInterceptor.registerBinderInterceptor(
-                    resolvedControl,
-                    service,
-                    interceptor,
-                    intArrayOf(createDrmPluginTransaction),
-                )
-            ) {
+            
+            val registeredHook = BinderInterceptor.registerBinderInterceptor(
+                resolvedControl,
+                service,
+                interceptor,
+                intArrayOf(createDrmPluginTransaction),
+            )
+            
+            if (!registeredHook) {
                 Logger.w("DRM privacy: failed to register factory interceptor for $name")
                 continue
             }
@@ -190,28 +192,32 @@ object DrmInterceptor {
                 continue
             }
 
-            factories[name] =
-                FactoryRegistration(
-                    name = name,
-                    binder = service,
-                    pid = pid,
-                    control = resolvedControl,
-                    interceptor = interceptor,
-                    deathRecipient = deathRecipient,
-                )
+            synchronized(this) {
+                factories[name] =
+                    FactoryRegistration(
+                        name = name,
+                        binder = service,
+                        pid = pid,
+                        control = resolvedControl,
+                        interceptor = interceptor,
+                        deathRecipient = deathRecipient,
+                    )
+            }
             Logger.i("DRM privacy: stable-AIDL factory hook registered for $name")
         }
 
-        markHealthy()
+        synchronized(this) { markHealthy() }
         return !needsFastRetry
     }
 
-    @Synchronized
     fun stopDrmInterceptor(): Boolean {
         var success = true
 
-        val pluginSnapshot = plugins.values.toList()
-        plugins.clear()
+        val pluginSnapshot = synchronized(this) {
+            val list = plugins.values.toList()
+            plugins.clear()
+            list
+        }
         for (registration in pluginSnapshot) {
             if (registration.binder.isBinderAlive) {
                 success =
@@ -223,8 +229,11 @@ object DrmInterceptor {
             }
         }
 
-        val factorySnapshot = factories.values.toList()
-        factories.clear()
+        val factorySnapshot = synchronized(this) {
+            val list = factories.values.toList()
+            factories.clear()
+            list
+        }
         for (registration in factorySnapshot) {
             if (registration.binder.isBinderAlive) {
                 success =
@@ -241,26 +250,29 @@ object DrmInterceptor {
             success = BinderInterceptor.parkBinderHook(control) && success
         }
 
-        injectedPids.clear()
-        lastInjectionAttempt.clear()
-        lastReconcileHealthy = false
-        lastReconcileMs = 0L
+        synchronized(this) {
+            injectedPids.clear()
+            lastInjectionAttempt.clear()
+            lastReconcileHealthy = false
+            lastReconcileMs = 0L
+        }
         return success
     }
 
-    @Synchronized
     private fun registerPlugin(
         owner: String,
         plugin: IBinder,
     ) {
-        if (plugins.containsKey(plugin)) return
-        pruneDeadPluginsLocked()
-        if (plugins.size >= MAX_PLUGIN_BINDERS) {
-            Logger.w("DRM privacy: plugin registration limit reached")
-            return
+        synchronized(this) {
+            if (plugins.containsKey(plugin)) return
+            pruneDeadPluginsLocked()
+            if (plugins.size >= MAX_PLUGIN_BINDERS) {
+                Logger.w("DRM privacy: plugin registration limit reached")
+                return
+            }
         }
 
-        val factory = factories[owner] ?: return
+        val factory = synchronized(this) { factories[owner] } ?: return
         if (
             BinderInterceptor.registerBinderInterceptor(
                 factory.control,
@@ -269,25 +281,28 @@ object DrmInterceptor {
                 intArrayOf(getPropertyByteArrayTransaction),
             )
         ) {
-            plugins[plugin] = PluginRegistration(owner, plugin, factory.control)
+            synchronized(this) {
+                plugins[plugin] = PluginRegistration(owner, plugin, factory.control)
+            }
             Logger.d("DRM privacy: plugin hook registered")
         } else {
             Logger.w("DRM privacy: failed to register plugin interceptor")
         }
     }
 
-    @Synchronized
     private fun onFactoryDied(
         name: String,
         expectedBinder: IBinder,
     ) {
-        val registration = factories[name]
-        if (registration == null || registration.binder !== expectedBinder) return
-        factories.remove(name)
-        if (registration.pid > 0) injectedPids.remove(registration.pid)
-        removePluginsForOwnerLocked(name)
-        lastReconcileHealthy = false
-        lastReconcileMs = 0L
+        synchronized(this) {
+            val registration = factories[name]
+            if (registration == null || registration.binder !== expectedBinder) return
+            factories.remove(name)
+            if (registration.pid > 0) injectedPids.remove(registration.pid)
+            removePluginsForOwnerLocked(name)
+            lastReconcileHealthy = false
+            lastReconcileMs = 0L
+        }
         Config.signalRuntimeController()
         Logger.i("DRM privacy: factory restarted; hook reconciliation requested")
     }
@@ -332,11 +347,10 @@ object DrmInterceptor {
             return InjectionResult.DEFERRED
         }
         lastInjectionAttempt.put(pid, now)
-
         val symbol = if (injectedPids.containsKey(pid)) "resume" else "entry"
         val modulePath = getModuleDir()
-        return try {
-            val process =
+        val process =
+            try {
                 ProcessBuilder(
                     "$modulePath/inject",
                     pid.toString(),
@@ -345,6 +359,11 @@ object DrmInterceptor {
                 ).redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
                     .start()
+            } catch (error: Exception) {
+                Logger.e("DRM privacy: failed to start injector for pid=$pid", error)
+                return InjectionResult.FAILED
+            }
+        return try {
             val completed = process.waitFor(INJECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (!completed) {
                 process.destroyForcibly()
@@ -361,6 +380,13 @@ object DrmInterceptor {
         } catch (error: Exception) {
             Logger.e("DRM privacy: failed to run injector for pid=$pid", error)
             InjectionResult.FAILED
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 
@@ -419,7 +445,12 @@ object DrmInterceptor {
             null
         } finally {
             output.fill(0)
-            process.destroy()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 

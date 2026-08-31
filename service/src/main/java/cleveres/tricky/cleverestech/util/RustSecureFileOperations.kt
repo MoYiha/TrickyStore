@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech.util
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.system.Os
+import cleveres.tricky.cleverestech.utf8ByteLength
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -280,7 +281,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
 
     private fun requireComponent(component: String) {
         if (component.isEmpty() || component == "." || component == ".." ||
-            component.toByteArray(Charsets.UTF_8).size > MAX_COMPONENT_BYTES || '\u0000' in component
+            component.utf8ByteLength() > MAX_COMPONENT_BYTES || '\u0000' in component
         ) {
             throw IOException("Invalid config path component")
         }

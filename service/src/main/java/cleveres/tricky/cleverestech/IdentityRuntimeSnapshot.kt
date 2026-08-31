@@ -26,6 +26,17 @@ internal object IdentityRuntimeSnapshot {
             "ro.build.type",
             "ro.build.tags",
             "ro.build.version.security_patch",
+            "ro.serialno",
+            "ro.boot.serialno",
+            "ro.vendor.serialno",
+            "ro.odm.serialno",
+            "vendor.serialno",
+            "vendor.boot.serialno",
+            "persist.sys.serialno",
+            "ro.ril.oem.sno",
+            "ro.ril.oem.psno",
+            "sys.serialno",
+            "gsm.serial",
         )
     val regionProperties =
         listOf(

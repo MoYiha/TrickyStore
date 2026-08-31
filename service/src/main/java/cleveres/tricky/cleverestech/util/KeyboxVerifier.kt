@@ -673,7 +673,7 @@ object KeyboxVerifier {
     }
 
     private fun readAllBytesBounded(input: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
+        val output = FastByteArrayOutputStream()
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         try {
             while (true) {
@@ -685,7 +685,7 @@ object KeyboxVerifier {
             return output.toByteArray()
         } finally {
             buffer.fill(0)
-            output.reset()
+            output.wipe()
         }
     }
 

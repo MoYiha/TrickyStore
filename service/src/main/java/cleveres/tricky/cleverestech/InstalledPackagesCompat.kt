@@ -24,6 +24,17 @@ internal object InstalledPackagesCompat {
     private const val MAX_COMMAND_PACKAGES = 100_000
     private const val PACKAGE_PREFIX = "package:"
     private val packageNamePattern = Regex("[A-Za-z0-9_.]{1,255}")
+    private val workerExecutor =
+        java.util.concurrent.ThreadPoolExecutor(
+            0,
+            4,
+            30L,
+            TimeUnit.SECONDS,
+            java.util.concurrent.LinkedBlockingQueue(),
+            { runnable -> Thread(runnable, "ct-package-list").apply { isDaemon = true } }
+        ).apply {
+            allowCoreThreadTimeOut(true)
+        }
 
     fun getInstalledPackageNames(
         packageManager: IPackageManager,
@@ -33,10 +44,13 @@ internal object InstalledPackagesCompat {
             getInstalledPackageNamesViaBinder(packageManager, userId)
         } catch (error: LinkageError) {
             Logger.i("Hidden PackageManager package enumeration is unavailable; using bounded cmd fallback")
-            getInstalledPackageNamesViaCommand(userId)
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
         } catch (error: SecurityException) {
             Logger.i("Hidden PackageManager package enumeration was denied; using bounded cmd fallback")
-            getInstalledPackageNamesViaCommand(userId)
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
+        } catch (error: Exception) {
+            Logger.i("Hidden PackageManager package enumeration failed; using bounded cmd fallback")
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
         }
 
     private fun getInstalledPackageNamesViaBinder(
@@ -49,20 +63,25 @@ internal object InstalledPackagesCompat {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getInstalledPackages(0L, userId).list
                 else -> packageManager.getInstalledPackages(0, userId).list
             }
-        return packages.mapNotNull { it.packageName }
+        return packages?.mapNotNull { it.packageName } ?: emptyList()
     }
 
     private fun getInstalledPackageNamesViaCommand(userId: Int): List<String> {
         require(userId >= 0) { "Package-list user id must be non-negative" }
         val process =
-            ProcessBuilder(
-                "/system/bin/cmd",
-                "package",
-                "list",
-                "packages",
-                "--user",
-                userId.toString(),
-            ).redirectErrorStream(true).start()
+            try {
+                ProcessBuilder(
+                    "/system/bin/cmd",
+                    "package",
+                    "list",
+                    "packages",
+                    "--user",
+                    userId.toString(),
+                ).redirectErrorStream(true).start()
+            } catch (error: Exception) {
+                Logger.e("Package-list command could not be started", error)
+                return emptyList()
+            }
 
         val reader =
             FutureTask {
@@ -75,10 +94,7 @@ internal object InstalledPackagesCompat {
                 }
                 packages
             }
-        Thread(reader, "ct-package-list").apply {
-            isDaemon = true
-            start()
-        }
+        workerExecutor.execute(reader)
 
         try {
             return reader.get(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -93,7 +109,12 @@ internal object InstalledPackagesCompat {
             throw IOException("Package-list command failed", cause)
         } finally {
             reader.cancel(true)
-            process.destroyForcibly()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 

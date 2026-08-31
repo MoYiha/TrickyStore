@@ -88,7 +88,7 @@ internal object FusedCboxBackend {
         // Every UTF-16 code unit produces at least one UTF-8 byte. Reject oversized strings
         // before encoding so callers cannot turn validation into an unbounded allocation.
         if (publicKey.length > MAX_PUBLIC_KEY_BYTES) return false
-        return publicKey.toByteArray(Charsets.UTF_8).size <= MAX_PUBLIC_KEY_BYTES
+        return publicKey.utf8ByteLength() <= MAX_PUBLIC_KEY_BYTES
     }
 
     private fun passwordRequest(

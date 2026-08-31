@@ -493,19 +493,27 @@ object AutoIdentityManager {
                     }
                     if (code !in 200..299) throw IOException("Identity source returned HTTP $code")
                     return connection.inputStream.use { input ->
-                        val output = ByteArrayOutputStream()
+                        val output =
+                            cleveres.tricky.cleverestech.util.FastByteArrayOutputStream(
+                                minOf(MAX_DOWNLOAD_BYTES, 64 * 1024),
+                            )
                         val buffer = ByteArray(16 * 1024)
                         var total = 0
-                        while (true) {
-                            ensureBudget()
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            if (count == 0) continue
-                            if (count > MAX_DOWNLOAD_BYTES - total) throw IOException("Identity source response is too large")
-                            output.write(buffer, 0, count)
-                            total += count
+                        try {
+                            while (true) {
+                                ensureBudget()
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                if (count == 0) continue
+                                if (count > MAX_DOWNLOAD_BYTES - total) throw IOException("Identity source response is too large")
+                                output.write(buffer, 0, count)
+                                total += count
+                            }
+                            output.toString(StandardCharsets.UTF_8.name())
+                        } finally {
+                            buffer.fill(0)
+                            output.wipe()
                         }
-                        output.toString(StandardCharsets.UTF_8.name())
                     }
                 } finally {
                     connection.disconnect()

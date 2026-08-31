@@ -183,25 +183,30 @@ object KeyboxAutoCleaner {
     }
 
     private fun notifyUser(count: Int) {
-        try {
-            val cmd =
-                arrayOf(
-                    "cmd",
-                    "notification",
-                    "post",
-                    "-S",
-                    "bigtext",
-                    "-t",
-                    "CleveresTricky",
-                    "Keybox Revoked Alert",
-                    "$count keybox(es) were revoked or invalid and have been disabled. Check WebUI.",
-                )
-            val nullDevice = File("/dev/null")
-            val process =
+        val cmd =
+            arrayOf(
+                "cmd",
+                "notification",
+                "post",
+                "-S",
+                "bigtext",
+                "-t",
+                "CleveresTricky",
+                "Keybox Revoked Alert",
+                "$count keybox(es) were revoked or invalid and have been disabled. Check WebUI.",
+            )
+        val nullDevice = File("/dev/null")
+        val process =
+            try {
                 ProcessBuilder(*cmd)
                     .redirectOutput(nullDevice)
                     .redirectError(nullDevice)
                     .start()
+            } catch (e: Exception) {
+                Logger.e("AutoCleaner: Failed to start notification process", e)
+                return
+            }
+        try {
             if (!process.waitFor(5, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 Logger.e("AutoCleaner: Notification command timed out")
@@ -213,6 +218,13 @@ object KeyboxAutoCleaner {
             }
         } catch (e: Exception) {
             Logger.e("AutoCleaner: Failed to send notification", e)
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 

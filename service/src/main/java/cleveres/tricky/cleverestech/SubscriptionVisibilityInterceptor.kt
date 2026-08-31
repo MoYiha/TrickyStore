@@ -99,23 +99,29 @@ object SubscriptionVisibilityInterceptor : BinderInterceptor() {
         }
     }
 
-    @Synchronized
     fun tryRun(): Boolean {
         if (!Config.shouldInterceptSubscriptionVisibility) {
             stop()
             return true
         }
-        val current = subscriptionService
-        if (registered && current != null && current.isBinderAlive) return true
-        registered = false
+        
+        synchronized(this) {
+            val current = subscriptionService
+            if (registered && current != null && current.isBinderAlive) return true
+            registered = false
+        }
 
         val service = ServiceManager.getService("isub") ?: return false
         val control = getBinderControlEndpoint(service) ?: return false
+        
         if (!registerBinderInterceptor(control, service, this, interceptedCodes)) return false
-
-        subscriptionService = service
-        controlEndpoint = control
-        registered = true
+        
+        synchronized(this) {
+            subscriptionService = service
+            controlEndpoint = control
+            registered = true
+        }
+        
         if (!Config.shouldInterceptSubscriptionVisibility) {
             stop()
             return true
@@ -125,34 +131,46 @@ object SubscriptionVisibilityInterceptor : BinderInterceptor() {
     }
 
     fun isRunning(): Boolean =
-        registered && subscriptionService?.isBinderAlive == true
+        synchronized(this) { registered && subscriptionService?.isBinderAlive == true }
 
-    @Synchronized
     fun stop(): Boolean {
-        if (!registered) {
-            subscriptionService = null
-            controlEndpoint = null
+        var target: IBinder? = null
+        var control: IBinder? = null
+        synchronized(this) {
+            if (!registered) {
+                subscriptionService = null
+                controlEndpoint = null
+                return true
+            }
+            target = subscriptionService
+            control = controlEndpoint
+        }
+        
+        if (target == null || control == null || !target.isBinderAlive) {
+            synchronized(this) {
+                registered = false
+                subscriptionService = null
+                controlEndpoint = null
+            }
             return true
         }
-        val target = subscriptionService
-        val control = controlEndpoint
-        if (target == null || control == null || !target.isBinderAlive) {
+        
+        if (!unregisterBinderInterceptor(control, target, this)) return false
+        
+        synchronized(this) {
             registered = false
             subscriptionService = null
             controlEndpoint = null
-            return true
         }
-        if (!unregisterBinderInterceptor(control, target, this)) return false
-        registered = false
-        subscriptionService = null
-        controlEndpoint = null
         return true
     }
 
     override fun onInterceptorReplaced() {
-        registered = false
-        subscriptionService = null
-        controlEndpoint = null
+        synchronized(this) {
+            registered = false
+            subscriptionService = null
+            controlEndpoint = null
+        }
         Config.signalRuntimeController()
     }
 }

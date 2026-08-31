@@ -869,59 +869,74 @@ if (input.type === 'password') {
         }
 
         function requireConfirm(btn, action, confirmText = 'Click again to confirm', onCancel = null) {
-if (btn.dataset.confirming === "true") {
-    btn.dataset.confirming = "false";
-    btn.innerText = btn.dataset.origText;
-    btn.classList.remove('confirm-active');
-    if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
-    if (btn._abortHandler) {
-        document.removeEventListener('click', btn._abortHandler);
-        document.removeEventListener('input', btn._abortHandler);
-        delete btn._abortHandler;
-    }
-    if (btn._onCancel) delete btn._onCancel;
-    action();
-} else {
-    btn.dataset.origText = btn.innerText;
-    btn.dataset.confirming = "true";
-    btn.innerText = confirmText;
-    btn.classList.add('confirm-active');
-    if (onCancel) btn._onCancel = onCancel;
+            if (btn.dataset.confirming === "true") {
+                if (btn._abortTimeout) {
+                    clearTimeout(btn._abortTimeout);
+                    delete btn._abortTimeout;
+                }
+                if (btn.dataset.confirmTimeout) {
+                    clearTimeout(parseInt(btn.dataset.confirmTimeout, 10));
+                    delete btn.dataset.confirmTimeout;
+                }
+                if (btn._abortHandler) {
+                    document.removeEventListener('click', btn._abortHandler);
+                    document.removeEventListener('input', btn._abortHandler);
+                    delete btn._abortHandler;
+                }
+                btn.dataset.confirming = "false";
+                btn.innerText = btn.dataset.origText || btn.innerText;
+                btn.classList.remove('confirm-active');
+                if (btn._onCancel) delete btn._onCancel;
+                action();
+            } else {
+                btn.dataset.origText = btn.innerText;
+                btn.dataset.confirming = "true";
+                btn.innerText = confirmText;
+                btn.classList.add('confirm-active');
+                if (onCancel) btn._onCancel = onCancel;
 
-    const timeoutId = setTimeout(() => resetConfirm(btn), 3000);
-    btn.dataset.confirmTimeout = timeoutId;
+                const timeoutId = setTimeout(() => resetConfirm(btn), 3000);
+                btn.dataset.confirmTimeout = String(timeoutId);
 
-    const abortHandler = (e) => {
-        if (e.target !== btn) {
-            resetConfirm(btn);
-        }
-    };
-    btn._abortHandler = abortHandler;
-    setTimeout(() => {
-        if (btn.dataset.confirming === "true") {
-            document.addEventListener('click', abortHandler);
-            document.addEventListener('input', abortHandler);
-        }
-    }, 50);
-}
+                const abortHandler = (e) => {
+                    if (e.target !== btn) {
+                        resetConfirm(btn);
+                    }
+                };
+                btn._abortHandler = abortHandler;
+                btn._abortTimeout = setTimeout(() => {
+                    if (btn.dataset.confirming === "true" && btn._abortHandler === abortHandler) {
+                        document.addEventListener('click', abortHandler);
+                        document.addEventListener('input', abortHandler);
+                    }
+                    delete btn._abortTimeout;
+                }, 50);
+            }
         }
 
         function resetConfirm(btn) {
-if (btn.dataset.confirming === "true") {
-    btn.dataset.confirming = "false";
-    btn.innerText = btn.dataset.origText;
-    btn.classList.remove('confirm-active');
-    if (btn.dataset.confirmTimeout) clearTimeout(parseInt(btn.dataset.confirmTimeout));
-    if (btn._abortHandler) {
-        document.removeEventListener('click', btn._abortHandler);
-        document.removeEventListener('input', btn._abortHandler);
-        delete btn._abortHandler;
-    }
-    if (btn._onCancel) {
-        btn._onCancel();
-        delete btn._onCancel;
-    }
-}
+            if (btn.dataset.confirming === "true") {
+                btn.dataset.confirming = "false";
+                btn.innerText = btn.dataset.origText || btn.innerText;
+                btn.classList.remove('confirm-active');
+                if (btn.dataset.confirmTimeout) {
+                    clearTimeout(parseInt(btn.dataset.confirmTimeout, 10));
+                    delete btn.dataset.confirmTimeout;
+                }
+                if (btn._abortTimeout) {
+                    clearTimeout(btn._abortTimeout);
+                    delete btn._abortTimeout;
+                }
+                if (btn._abortHandler) {
+                    document.removeEventListener('click', btn._abortHandler);
+                    document.removeEventListener('input', btn._abortHandler);
+                    delete btn._abortHandler;
+                }
+                if (btn._onCancel) {
+                    btn._onCancel();
+                    delete btn._onCancel;
+                }
+            }
         }
 
 

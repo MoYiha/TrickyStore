@@ -43,9 +43,12 @@ class WebUiBridge(
     private var socket: LocalSocket? = null
     private var worker: Thread? = null
 
-    @Synchronized
+    private val lifecycleLock = Any()
+
     fun start() {
-        if (started) return
+        synchronized(lifecycleLock) {
+            if (started) return
+        }
         ensureLayout()
         withStagingLock { cleanupStale() }
 
@@ -77,26 +80,37 @@ class WebUiBridge(
             throw error
         }
 
-        socket = connected
-        started = true
-        worker =
-            Thread({ serveLoop(connected) }, "CleveresTricky-WebUI").apply {
-                isDaemon = true
-                priority = Thread.NORM_PRIORITY
-                start()
+        synchronized(lifecycleLock) {
+            if (started) {
+                // Another thread started it concurrently
+                runCatching { connected.close() }
+                return
             }
+            socket = connected
+            started = true
+            worker =
+                Thread({ serveLoop(connected) }, "CleveresTricky-WebUI").apply {
+                    isDaemon = true
+                    priority = Thread.NORM_PRIORITY
+                    start()
+                }
+        }
         Logger.i("Native WebUI bridge is ready over bounded UDS IPC")
     }
 
-    @Synchronized
     fun stop() {
-        if (!started) return
-        started = false
-        val activeSocket = socket
-        socket = null
+        var activeSocket: LocalSocket? = null
+        var activeWorker: Thread? = null
+        synchronized(lifecycleLock) {
+            if (!started) return
+            started = false
+            activeSocket = socket
+            activeWorker = worker
+            socket = null
+            worker = null
+        }
         runCatching { activeSocket?.close() }
-        worker?.interrupt()
-        worker = null
+        activeWorker?.interrupt()
     }
 
     private fun serveLoop(connected: LocalSocket) {
@@ -105,7 +119,7 @@ class WebUiBridge(
         try {
             val input = connected.inputStream
             val output = connected.outputStream
-            while (started) {
+            while (started && socket === connected) {
                 val header = readHeader(input, readHeaderBuffer)
                 if (header.opcode != OP_WEB_REQUEST || header.flags != 0) {
                     throw IOException("Unexpected native WebUI IPC operation")
@@ -126,7 +140,7 @@ class WebUiBridge(
                 }
             }
         } catch (error: Throwable) {
-            if (started) {
+            if (started && socket === connected) {
                 Logger.e("Native WebUI UDS transport failed; terminating adapter for supervisor recovery", error)
                 exitProcess(1)
             }
@@ -219,10 +233,10 @@ class WebUiBridge(
             val array = parameterObject.get(key) as? JSONArray ?: throw IllegalArgumentException("Invalid parameter values")
             require(array.length() in 1..MAX_PARAMETER_VALUES)
             val values = ArrayList<String>(array.length())
-            val keyBytes = key.toByteArray(Charsets.UTF_8).size
+            val keyBytes = key.utf8ByteLength()
             for (index in 0 until array.length()) {
                 val value = array.get(index) as? String ?: throw IllegalArgumentException("Invalid parameter value")
-                parameterBytes += keyBytes + value.toByteArray(Charsets.UTF_8).size + 2L
+                parameterBytes += keyBytes + value.utf8ByteLength() + 2L
                 require(parameterBytes <= MAX_REQUEST_BYTES)
                 values += value
             }

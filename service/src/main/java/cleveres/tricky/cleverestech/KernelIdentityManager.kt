@@ -67,7 +67,7 @@ object KernelIdentityManager {
         val next = Config(enabled, preset, release, version)
         val target = requireNotNull(file) { "Kernel identity manager is not initialized" }
         val stored = JSONObject().put("enabled", enabled).put("preset", preset).put("release", release).put("version", version).toString(2)
-        require(stored.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Kernel identity configuration is too large" }
+        require(stored.utf8ByteLength() <= MAX_BYTES) { "Kernel identity configuration is too large" }
         SecureFile.writeText(target, stored)
         state = next
         return next
