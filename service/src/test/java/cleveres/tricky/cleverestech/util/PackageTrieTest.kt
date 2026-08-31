@@ -89,4 +89,30 @@ class PackageTrieTest {
         assertEquals("second", trie.get("com.example.app"))
         assertEquals("wildcard-second", trie.get("com.example.other"))
     }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testMidStringWildcardRejected() {
+        val trie = PackageTrie<String>()
+        trie.add("com.*.example", "invalid")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testMultipleWildcardsRejected() {
+        val trie = PackageTrie<String>()
+        trie.add("com.example.**", "invalid")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testLeadingWildcardRejected() {
+        val trie = PackageTrie<String>()
+        trie.add("*.example.app", "invalid")
+    }
+
+    @Test
+    fun testRootWildcard() {
+        val trie = PackageTrie<String>()
+        trie.add("*", "all")
+        assertEquals("all", trie.get("com.example.app"))
+        assertEquals("all", trie.get("org.sample"))
+    }
 }
