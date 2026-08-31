@@ -96,6 +96,9 @@ internal object RuntimeDiagnostics {
             reader.get(2, TimeUnit.SECONDS)
         } finally {
             if (process.isAlive) process.destroyForcibly()
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
             if (!reader.isDone) reader.cancel(true)
         }
     }

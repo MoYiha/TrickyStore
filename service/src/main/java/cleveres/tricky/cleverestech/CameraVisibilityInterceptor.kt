@@ -990,6 +990,9 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
             if (process.isAlive) {
                 process.destroyForcibly()
             }
+            runCatching { process.inputStream.close() }
+            runCatching { process.errorStream.close() }
+            runCatching { process.outputStream.close() }
         }
     }
 

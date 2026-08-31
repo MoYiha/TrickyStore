@@ -372,6 +372,9 @@ object TelephonyInterceptor : BinderInterceptor() {
                 if (p.isAlive) {
                     p.destroyForcibly()
                 }
+                runCatching { p.inputStream.close() }
+                runCatching { p.errorStream.close() }
+                runCatching { p.outputStream.close() }
             }
             triedCount.incrementAndGet()
             return false
