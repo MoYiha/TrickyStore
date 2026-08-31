@@ -55,6 +55,7 @@ For every non-trivial bug fix or behavior change:
 - Do not overload unrelated metadata or wrapper behavior with hidden control-state semantics. Timestamps, lengths, hashes, versions, enum placeholders, filenames, subclass overrides, and protocol fields should mean what their type/name says. When control flow depends on a second meaning, represent that state explicitly so invalid states cannot accidentally enter normal success paths.
 - For caches, registries, deduplication maps, and memoized state, test admission, invalidation, and negative behavior in addition to returned values. Prove that rejected, unstable, or unverified inputs do not create reusable entries; that old entries are evicted when inputs become ineligible; and that independent failure paths cannot collide into stale reuse.
 - When a fix adds any fallback or converts an exception/failure into data, trace that value through every consumer: equality checks, map/set keys, hashes, persistence, retries, serialization, security decisions, cleanup, and recovery. A fallback is not local once another layer can observe it.
+- Shared caches, singletons, state holders, and public getters must never leak raw mutable data structures (such as `Array<T>`, `ByteArray`, `MutableList`, `MutableMap`, `MutableSet`) across architectural boundaries. When storing caller-supplied collections into a cache or returning cached collections to callers, always perform defensive copying (`.clone()`, `copyOf()`, `toList()`, `toTypedArray()`) or use immutable types. An external caller mutating returned data must never be able to corrupt internal cache state.
 - Use adversarial event sequences when reviewing stateful code: fail-fail, fail-success-fail, retry after partial work, cancel-restart, concurrent replacement, same-length/same-timestamp replacement, and A-to-B-to-A transitions. Check both the immediate result and the state left behind for the next operation.
 - Treat a review finding as evidence of an invariant class, not as a one-line specification. Generalize the failure mode, search neighboring producers/consumers and equivalent representations, then encode the general invariant in tests and design rules. Do not add narrow instructions that merely name the line or bug that was just fixed.
 
@@ -370,6 +371,28 @@ When fixing a bug, consider adding tests for:
 - corrupted state,
 - boundary values,
 - cleanup behavior.
+
+### Parser, grammar, and execution-engine semantic alignment
+
+Parsers and validators must never accept a syntax, character set, or pattern that the downstream execution engine or data structure does not natively support as intended.
+
+Agents must verify:
+- If a data structure (e.g. `PackageTrie`, radix tree, prefix index) only supports suffix wildcards or prefix matches, the input parser/validator must strictly reject mid-string, multiple, or leading wildcards during initial parsing with an explicit error.
+- Accepting an input in a parser that the backend data structure treats as a literal string or a silent no-op creates invisible dead configuration bugs.
+- Input validation patterns (`Regex`, tokenizers, character filters) must be an exact match for the data structure's execution capability—never a permissive superset.
+- When adding or modifying a data structure, audit every parser feeding into it to ensure full semantic alignment.
+
+### Zero-Trust audit depth and anti-superficiality standard
+
+A zero-trust audit is an adversarial examination of invariants, not a checklist of running tests or checking that code doesn't throw exceptions. Passing test suites and clean builds are prerequisites, not proof of perfection.
+
+During every audit or perfection pass, agents must actively search for:
+1. **Reference aliasing and mutability leaks:** Shared caches, registries, singletons, and public getters returning or holding raw mutable arrays (`Array<T>`, `ByteArray`) or mutable collections without defensive copying (`.clone()`, `toList()`).
+2. **Parser-execution mismatches:** Validated configuration formats that produce silent no-ops or unmatchable rules in downstream lookup tables.
+3. **Lock granularity and I/O coupling:** Disk I/O, heavy computation, or blocking Binder calls performed inside shared monitor locks (`@Synchronized`) that stall concurrent readers.
+4. **Cryptographic buffer retention:** Sensitive key streams or XML buffers in memory that are only counter-reset rather than explicitly wiped/zeroed.
+5. **TOCTOU and path validation:** File timestamp or permission modifications following symlinks instead of asserting `LinkOption.NOFOLLOW_LINKS`.
+6. **Thread and process bounds:** Unbounded thread creation (`Thread.start()`) or unmanaged child processes lacking strict `try/finally` termination guarantees.
 
 ### Final review before completion
 
