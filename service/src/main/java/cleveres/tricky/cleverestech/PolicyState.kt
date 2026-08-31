@@ -319,7 +319,7 @@ object PolicyState {
         recovery: String = "configured",
         validateReferences: Boolean = true,
     ): Snapshot {
-        require(text.toByteArray(Charsets.UTF_8).size in 1..MAX_STATE_BYTES) { "Policy state has an invalid size" }
+        require(text.utf8ByteLength() in 1..MAX_STATE_BYTES) { "Policy state has an invalid size" }
         val rootObject = JSONObject(text)
         requireOnlyKeys(rootObject, setOf("version", "features", "securityPatch", "profiles", "activeProfile"))
         require(rootObject.getInt("version") == SCHEMA_VERSION) { "Unsupported policy schema version" }
@@ -1272,7 +1272,7 @@ object PolicyState {
 
     private fun persistAndPublish(parsed: Snapshot) {
         val serialized = parsed.toJson().toString(2)
-        require(serialized.toByteArray(Charsets.UTF_8).size <= MAX_STATE_BYTES) { "Policy state exceeds its size limit" }
+        require(serialized.utf8ByteLength() <= MAX_STATE_BYTES) { "Policy state exceeds its size limit" }
         val previous = snapshot
         if (previous.explicit) {
             val previousText = previous.toJson().toString(2)

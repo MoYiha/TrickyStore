@@ -109,7 +109,7 @@ internal object RuntimeDiagnostics {
         var totalBytes = 0
         for (index in lines.indices.reversed()) {
             val line = lines[index]
-            val lineBytes = line.toByteArray(Charsets.UTF_8).size
+            val lineBytes = line.utf8ByteLength()
             val separatorBytes = if (selected.isEmpty()) 0 else 1
             if (lineBytes > maxBytes - totalBytes - separatorBytes) break
             selected.addFirst(line)

@@ -79,7 +79,7 @@ internal object AutoIdentityPersistence {
                 }
                 while (rewritten.isNotEmpty() && rewritten.last().isBlank()) rewritten.removeAt(rewritten.lastIndex)
                 val content = rewritten.joinToString("\n", postfix = if (rewritten.isEmpty()) "" else "\n")
-                require(content.toByteArray(Charsets.UTF_8).size <= MAX_BUILD_VARS_BYTES) {
+                require(content.utf8ByteLength() <= MAX_BUILD_VARS_BYTES) {
                     "Identity configuration is too large"
                 }
 

@@ -269,3 +269,35 @@ fun String.trimLine(): String {
     }
     return sb.toString()
 }
+
+/**
+ * Returns the exact byte length of this character sequence when encoded as UTF-8
+ * without allocating an intermediate ByteArray.
+ */
+fun CharSequence.utf8ByteLength(): Int {
+    var count = 0
+    var i = 0
+    val len = length
+    while (i < len) {
+        val c = this[i].code
+        if (c < 0x80) {
+            count++
+            i++
+        } else if (c < 0x800) {
+            count += 2
+            i++
+        } else if (c in 0xD800..0xDBFF) {
+            if (i + 1 < len && this[i + 1].code in 0xDC00..0xDFFF) {
+                count += 4
+                i += 2
+            } else {
+                count += 3
+                i++
+            }
+        } else {
+            count += 3
+            i++
+        }
+    }
+    return count
+}

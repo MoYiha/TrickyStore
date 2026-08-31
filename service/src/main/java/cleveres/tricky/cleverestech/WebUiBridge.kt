@@ -219,10 +219,10 @@ class WebUiBridge(
             val array = parameterObject.get(key) as? JSONArray ?: throw IllegalArgumentException("Invalid parameter values")
             require(array.length() in 1..MAX_PARAMETER_VALUES)
             val values = ArrayList<String>(array.length())
-            val keyBytes = key.toByteArray(Charsets.UTF_8).size
+            val keyBytes = key.utf8ByteLength()
             for (index in 0 until array.length()) {
                 val value = array.get(index) as? String ?: throw IllegalArgumentException("Invalid parameter value")
-                parameterBytes += keyBytes + value.toByteArray(Charsets.UTF_8).size + 2L
+                parameterBytes += keyBytes + value.utf8ByteLength() + 2L
                 require(parameterBytes <= MAX_REQUEST_BYTES)
                 values += value
             }

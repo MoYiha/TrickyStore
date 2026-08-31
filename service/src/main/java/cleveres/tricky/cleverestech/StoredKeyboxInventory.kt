@@ -96,7 +96,7 @@ internal object StoredKeyboxInventory {
         allowCbox: Boolean,
     ): Boolean {
         if (filename.isEmpty() || filename.startsWith('.') || filename.contains('/') || filename.contains('\\') || filename.contains('\u0000')) return false
-        if (filename.toByteArray(Charsets.UTF_8).size > MAX_FILENAME_BYTES) return false
+        if (filename.utf8ByteLength() > MAX_FILENAME_BYTES) return false
         if (filename.any { it.code < 0x20 || it.code == 0x7f }) return false
         return filename.endsWith(".xml", ignoreCase = true) ||
             (allowCbox && filename.endsWith(".cbox", ignoreCase = true))
