@@ -87,6 +87,7 @@ object DrmInterceptor {
     private const val PID_LOOKUP_TIMEOUT_SECONDS = 2L
     private const val MAX_PID_OUTPUT_BYTES = 32
     private const val MAX_FACTORY_SERVICES = 16
+    private const val FIRST_APPLICATION_UID = 10_000
     private const val MAX_PLUGIN_BINDERS = 256
     private const val MAX_TRACKED_INJECTION_PIDS = 64
 
@@ -103,6 +104,8 @@ object DrmInterceptor {
         val owner: String,
         val binder: IBinder,
         val control: IBinder,
+        val ownerUid: Int,
+        val packageName: String?,
     )
 
     private val factories = LinkedHashMap<String, FactoryRegistration>()
@@ -262,6 +265,8 @@ object DrmInterceptor {
     private fun registerPlugin(
         owner: String,
         plugin: IBinder,
+        ownerUid: Int,
+        packageName: String?,
     ) {
         synchronized(this) {
             if (plugins.containsKey(plugin)) return
@@ -282,9 +287,9 @@ object DrmInterceptor {
             )
         ) {
             synchronized(this) {
-                plugins[plugin] = PluginRegistration(owner, plugin, factory.control)
+                plugins[plugin] = PluginRegistration(owner, plugin, factory.control, ownerUid, packageName)
             }
-            Logger.d("DRM privacy: plugin hook registered")
+            Logger.d("DRM privacy: plugin hook registered (ownerUid=$ownerUid, pkg=$packageName)")
         } else {
             Logger.w("DRM privacy: failed to register plugin interceptor")
         }
@@ -486,7 +491,9 @@ object DrmInterceptor {
             try {
                 reply.readException()
                 val plugin = reply.readStrongBinder() ?: return Skip
-                registerPlugin(owner, plugin)
+                val appPackageName = readAppPackageName(data)
+                val ownerUid = resolveOwnerUid(appPackageName, callingUid)
+                registerPlugin(owner, plugin, ownerUid, appPackageName)
             } catch (_: RuntimeException) {
                 // A vendor that is not wire-compatible with the frozen AIDL
                 // shape is left completely untouched.
@@ -494,6 +501,31 @@ object DrmInterceptor {
                 reply.setDataPosition(originalPosition)
             }
             return Skip
+        }
+
+        private fun readAppPackageName(data: Parcel): String? {
+            val originalPosition = data.dataPosition()
+            return try {
+                data.enforceInterface(DRM_FACTORY_DESCRIPTOR)
+                val uuid = data.createByteArray()
+                if (uuid == null || uuid.size != 16) return null
+                data.readString()?.trim()?.takeIf { it.isNotEmpty() }
+            } catch (_: RuntimeException) {
+                null
+            } finally {
+                data.setDataPosition(originalPosition)
+            }
+        }
+
+        private fun resolveOwnerUid(packageName: String?, callingUid: Int): Int {
+            if (callingUid >= FIRST_APPLICATION_UID) return callingUid
+            if (!packageName.isNullOrEmpty()) {
+                val resolvedUid = Config.getPackageUid(packageName)
+                if (resolvedUid != null && resolvedUid >= FIRST_APPLICATION_UID) {
+                    return resolvedUid
+                }
+            }
+            return callingUid
         }
     }
 
@@ -506,7 +538,8 @@ object DrmInterceptor {
             callingPid: Int,
             data: Parcel,
         ): Result {
-            if (code != getPropertyByteArrayTransaction || !shouldProtectUid(callingUid)) return Skip
+            val targetUid = resolveTargetUid(target, callingUid)
+            if (code != getPropertyByteArrayTransaction || !shouldProtectUid(targetUid)) return Skip
             return if (readPropertyName(data) == DEVICE_UNIQUE_ID) Continue else Skip
         }
 
@@ -520,11 +553,12 @@ object DrmInterceptor {
             reply: Parcel?,
             resultCode: Int,
         ): Result {
+            val targetUid = resolveTargetUid(target, callingUid)
             if (
                 code != getPropertyByteArrayTransaction ||
                 reply == null ||
                 resultCode != 0 ||
-                !shouldProtectUid(callingUid) ||
+                !shouldProtectUid(targetUid) ||
                 readPropertyName(data) != DEVICE_UNIQUE_ID
             ) {
                 return Skip
@@ -540,7 +574,7 @@ object DrmInterceptor {
                 if (length !in DrmPrivacyIdentity.MIN_IDENTIFIER_BYTES..DrmPrivacyIdentity.MAX_IDENTIFIER_BYTES) {
                     return Skip
                 }
-                pseudonym = DrmPrivacyIdentity.idForUid(callingUid, length) ?: return Skip
+                pseudonym = DrmPrivacyIdentity.idForUid(targetUid, length) ?: return Skip
 
                 Parcel.obtain().let { replacement ->
                     replacement.writeNoException()
@@ -554,6 +588,11 @@ object DrmInterceptor {
                 pseudonym?.fill(0)
                 reply.setDataPosition(originalPosition)
             }
+        }
+
+        private fun resolveTargetUid(target: IBinder, callingUid: Int): Int {
+            val registration = synchronized(this@DrmInterceptor) { plugins[target] }
+            return registration?.ownerUid?.takeIf { it >= FIRST_APPLICATION_UID } ?: callingUid
         }
 
         private fun readPropertyName(data: Parcel): String? {

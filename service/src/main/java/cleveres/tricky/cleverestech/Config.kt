@@ -2132,6 +2132,17 @@ object Config {
         }
     }
 
+    fun getPackageUid(packageName: String, userId: Int = 0): Int? {
+        val pm = getPm() ?: return null
+        return try {
+            val info = pm.getPackageInfoCompat(packageName, 0L, userId)
+            val uid = info?.applicationInfo?.uid
+            if (uid != null && uid >= 10_000) uid else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun getCallerPackageDigest(uid: Int): ByteArray {
         val digest = requireNotNull(callerPackageDigest.get())
         digest.reset()
