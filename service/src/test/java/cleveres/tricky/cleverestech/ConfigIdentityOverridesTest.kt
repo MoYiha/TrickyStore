@@ -78,4 +78,32 @@ class ConfigIdentityOverridesTest {
         Config.updateBuildVars(file)
         assertEquals(identity, Config.getIdentityOverrides())
     }
+
+    @Test
+    fun `non-prefixed SERIAL IMEI and MEID are correctly mapped to identityOverrides and attestationIds`() {
+        val root = Files.createTempDirectory("identity_engine_unprefixed_").toFile().apply { deleteOnExit() }
+        Config.setRootForTesting(root)
+        val imei = RandomUtils.generateLuhn(15, "35")
+        val vars = File(root, "spoof_build_vars").apply {
+            writeText(
+                """
+                SERIAL=DEVICE_SERIAL_99
+                IMEI=$imei
+                MEID=A100000927F4E3
+                """.trimIndent() + "\n",
+            )
+        }
+        Config.updateBuildVars(vars)
+
+        val identity = Config.getIdentityOverrides()
+        assertEquals("DEVICE_SERIAL_99", identity.serial)
+        assertEquals(imei, identity.imeiForSlot(0))
+        assertEquals("A100000927F4E3", identity.meidForSlot(0))
+
+        File(root, "spoof_enabled").createNewFile()
+        Config.refreshRuntimeSetting("spoof_enabled")
+        assertEquals("DEVICE_SERIAL_99", String(requireNotNull(Config.getAttestationId("SERIAL", 10_001))))
+        assertEquals(imei, String(requireNotNull(Config.getAttestationId("IMEI", 10_001))))
+        assertEquals("A100000927F4E3", String(requireNotNull(Config.getAttestationId("MEID", 10_001))))
+    }
 }

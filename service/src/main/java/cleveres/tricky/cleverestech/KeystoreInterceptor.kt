@@ -220,7 +220,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                             end++
                         }
                         if (String(buf, start, end - start) == "keystore2") {
-                            val parsedPid = pidStr.toInt()
+                            val parsedPid = pidStr.toIntOrNull() ?: continue
                             cachedKeystorePid = parsedPid
                             return parsedPid
                         }

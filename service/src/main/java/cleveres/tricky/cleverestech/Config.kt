@@ -1354,6 +1354,10 @@ object Config {
                             if (key.startsWith("ATTESTATION_ID_")) {
                                 val tag = key.removePrefix("ATTESTATION_ID_")
                                 newIds[tag] = value.toByteArray(Charsets.UTF_8)
+                            } else if (key in setOf("SERIAL", "IMEI", "MEID")) {
+                                if (!newVars.containsKey("ATTESTATION_ID_$key")) {
+                                    newIds[key] = value.toByteArray(Charsets.UTF_8)
+                                }
                             }
                         }
                     }
@@ -1368,12 +1372,18 @@ object Config {
             val previousVisibleCameraCount = identityOverrides.visibleCameraCount
             val newIdentityOverrides =
                 IdentityOverrides(
-                    template = newVars["TEMPLATE"], imei = newVars["ATTESTATION_ID_IMEI"],
-                    imei2 = newVars["ATTESTATION_ID_IMEI2"], imsi = newVars["ATTESTATION_ID_IMSI"],
-                    imsi2 = newVars["ATTESTATION_ID_IMSI2"], iccid = newVars["ATTESTATION_ID_ICCID"],
-                    iccid2 = newVars["ATTESTATION_ID_ICCID2"], meid = newVars["ATTESTATION_ID_MEID"],
-                    meid2 = newVars["ATTESTATION_ID_MEID2"], phoneNumber = newVars["ATTESTATION_ID_PHONE_NUMBER"],
-                    phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"], serial = newVars["ATTESTATION_ID_SERIAL"],
+                    template = newVars["TEMPLATE"],
+                    imei = newVars["ATTESTATION_ID_IMEI"] ?: newVars["IMEI"],
+                    imei2 = newVars["ATTESTATION_ID_IMEI2"],
+                    imsi = newVars["ATTESTATION_ID_IMSI"],
+                    imsi2 = newVars["ATTESTATION_ID_IMSI2"],
+                    iccid = newVars["ATTESTATION_ID_ICCID"],
+                    iccid2 = newVars["ATTESTATION_ID_ICCID2"],
+                    meid = newVars["ATTESTATION_ID_MEID"] ?: newVars["MEID"],
+                    meid2 = newVars["ATTESTATION_ID_MEID2"],
+                    phoneNumber = newVars["ATTESTATION_ID_PHONE_NUMBER"],
+                    phoneNumber2 = newVars["ATTESTATION_ID_PHONE_NUMBER2"],
+                    serial = newVars["ATTESTATION_ID_SERIAL"] ?: newVars["SERIAL"],
                     visibleSimCount = newVars["VISIBLE_SIM_COUNT"]?.toInt(),
                     visibleCameraCount = newVars["VISIBLE_CAMERA_COUNT"]?.toInt(),
                 )

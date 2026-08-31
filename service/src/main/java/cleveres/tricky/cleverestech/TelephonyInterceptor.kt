@@ -290,7 +290,7 @@ object TelephonyInterceptor : BinderInterceptor() {
                             end++
                         }
                         if (String(buf, start, end - start) == "com.android.phone") {
-                            val pid = pidStr.toInt()
+                            val pid = pidStr.toIntOrNull() ?: continue
                             cachedPhonePid = pid
                             return pid
                         }
