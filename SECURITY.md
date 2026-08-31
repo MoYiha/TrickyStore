@@ -4,11 +4,11 @@ CleveresTricky handles Android system integration, Binder-facing code, attestati
 
 ## Supported versions
 
-Security fixes are targeted at the current `V2.6.x` release and development line. Users should upgrade to the newest release available from the official repository before reporting an issue that may already be fixed. Older release lines are not guaranteed to receive security fixes.
+Security fixes are targeted at the current `V2.x.x` release and development line. Users should upgrade to the newest release available from the official repository before reporting an issue that may already be fixed. Older release lines are not guaranteed to receive security fixes.
 
 | Version line | Security support |
 |---|---|
-| `V2.6.x` | Supported; security fixes are evaluated against the current release and `master`. |
+| `V2.x.x` | Supported; security fixes are evaluated against the current release and `master`. |
 | `master` | Supported as the active development branch, subject to change before release. |
 | Older versions | Best effort only; upgrade first whenever possible. |
 
