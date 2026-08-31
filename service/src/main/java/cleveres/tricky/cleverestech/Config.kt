@@ -2141,8 +2141,8 @@ object Config {
         val binder = ServiceManager.getService("user") ?: return intArrayOf(0)
         return try {
             val stub = Class.forName("android.os.IUserManager\$Stub")
-            val asInterface = stub.getMethod("asInterface", IBinder::class.java)
-            val manager = asInterface.invoke(null, binder) ?: return intArrayOf(0)
+            val asInterface = stub.methods.firstOrNull { it.name == "asInterface" }
+            val manager = asInterface?.invoke(null, binder) ?: return intArrayOf(0)
             val method = manager.javaClass.methods.firstOrNull { it.name == "getUserIds" }
                 ?: manager.javaClass.methods.firstOrNull { it.name == "getProfileIds" }
             (method?.invoke(manager) as? IntArray)?.takeIf { it.isNotEmpty() } ?: intArrayOf(0)
