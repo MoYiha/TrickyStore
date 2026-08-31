@@ -2137,22 +2137,21 @@ object Config {
         }
     }
 
+    private const val MATCH_ANY_USER = 0x00400000L
+    private const val MATCH_ALL = 0x00020000L
+
     fun getPackageUid(packageName: String, userId: Int = 0): Int? {
         val pm = getPm() ?: return null
         return try {
             val info = pm.getPackageInfoCompat(packageName, 0L, userId)
             val uid = info?.applicationInfo?.uid
             if (uid != null && uid >= 10_000) return uid
-            if (userId == 0) {
-                for (u in 10..20) {
-                    val userUid = pm.getPackageInfoCompat(packageName, 0L, u)?.applicationInfo?.uid
-                    if (userUid != null && userUid >= 10_000) return userUid
-                }
-                for (u in 1..9) {
-                    val userUid = pm.getPackageInfoCompat(packageName, 0L, u)?.applicationInfo?.uid
-                    if (userUid != null && userUid >= 10_000) return userUid
-                }
-            }
+
+            val anyUserInfo = pm.getPackageInfoCompat(packageName, MATCH_ANY_USER, userId)
+                ?: pm.getPackageInfoCompat(packageName, MATCH_ALL, userId)
+            val anyUserUid = anyUserInfo?.applicationInfo?.uid
+            if (anyUserUid != null && anyUserUid >= 10_000) return anyUserUid
+
             null
         } catch (_: Exception) {
             null
