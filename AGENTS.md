@@ -374,7 +374,7 @@ When fixing a bug, consider adding tests for:
 
 ### Semantic congruence across processing pipelines
 
-Every layer in a processing pipeline—ingestion, validation, normalization, indexing, caching, lookup, execution, and presentation—must share an identical semantic contract.
+Every layer in a processing pipeline (ingestion, validation, normalization, indexing, caching, lookup, execution, and presentation) must share an identical semantic contract.
 
 Agents must enforce:
 - **Contract isomorphism:** An ingestion parser or input validator must never accept an input format, pattern, character set, or syntax that downstream execution or storage layers interpret differently, handle as literals, or discard as no-ops.
@@ -392,7 +392,7 @@ Agents must enforce:
 
 ### Zero-Trust adversarial reasoning standard
 
-A zero-trust audit is an adversarial examination of system invariants across space and time—not a passive check that existing tests pass or that code compiles without errors. Tests only verify scenarios their authors anticipated; agents must actively probe what the code failed to prevent.
+A zero-trust audit is an adversarial examination of system invariants across space and time, not a passive check that existing tests pass or that code compiles without errors. Tests only verify scenarios their authors anticipated; agents must actively probe what the code failed to prevent.
 
 During any discovery, audit, or verification pass, agents must systematically question:
 1. **Contract Incongruence:** Where do producer assumptions differ from consumer guarantees? Where does an accepted input fail to execute its intended runtime effect?
