@@ -2186,6 +2186,52 @@ object Config {
         }
     }
 
+    fun findRunningAppUid(packageName: String): Int? {
+        val proc = File("/proc")
+        if (!proc.exists() || !proc.isDirectory) return null
+
+        val buf = ByteArray(512)
+        return try {
+            java.nio.file.Files.newDirectoryStream(proc.toPath()).use { entries ->
+                var scanned = 0
+                for (entry in entries) {
+                    if (++scanned > 4096) break
+                    val pidStr = entry.fileName.toString()
+                    if (pidStr.isEmpty() || pidStr[0] !in '1'..'9') continue
+                    try {
+                        val cmdlinePath = entry.resolve("cmdline")
+                        val length =
+                            java.nio.file.Files.newInputStream(cmdlinePath).use { stream ->
+                                stream.read(buf)
+                            }
+                        if (length <= 0) continue
+                        var end = 0
+                        while (end < length && buf[end] != 0.toByte()) end++
+                        val cmd = String(buf, 0, end)
+                        if (cmd == packageName || cmd.startsWith("$packageName:")) {
+                            val statusPath = entry.resolve("status")
+                            val statusText =
+                                java.nio.file.Files.newInputStream(statusPath).bufferedReader().use { reader ->
+                                    reader.lineSequence().firstOrNull { it.startsWith("Uid:") }
+                                }
+                            if (statusText != null) {
+                                val parts = statusText.split(Regex("""\s+"""))
+                                if (parts.size >= 2) {
+                                    val uid = parts[1].toIntOrNull()
+                                    if (uid != null && uid >= 10_000) return uid
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun getCallerPackageDigest(uid: Int): ByteArray {
         val digest = requireNotNull(callerPackageDigest.get())
         digest.reset()

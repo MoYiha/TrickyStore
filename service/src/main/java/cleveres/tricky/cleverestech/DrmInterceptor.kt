@@ -520,6 +520,10 @@ object DrmInterceptor {
         private fun resolveOwnerUid(packageName: String?, callingUid: Int): Int {
             if (callingUid >= FIRST_APPLICATION_UID) return callingUid
             if (!packageName.isNullOrEmpty()) {
+                val liveUid = Config.findRunningAppUid(packageName)
+                if (liveUid != null && liveUid >= FIRST_APPLICATION_UID) {
+                    return liveUid
+                }
                 val resolvedUid = Config.getPackageUid(packageName)
                 if (resolvedUid != null && resolvedUid >= FIRST_APPLICATION_UID) {
                     return resolvedUid
