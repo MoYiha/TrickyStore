@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech
 
 import android.content.pm.IPackageManager
 import android.os.FileObserver
+import android.os.IUserManager
 import android.os.ServiceManager
 import cleveres.tricky.cleverestech.keystore.CertHack
 import cleveres.tricky.cleverestech.util.DeviceKeyManager
@@ -2137,15 +2138,23 @@ object Config {
         }
     }
 
+    @Volatile
+    private var iUm: IUserManager? = null
+
+    private fun getUm(): IUserManager? {
+        val cached = iUm
+        if (cached != null) return cached
+        val service = ServiceManager.getService("user") ?: return null
+        val resolved = IUserManager.Stub.asInterface(service)
+        if (resolved != null) iUm = resolved
+        return resolved
+    }
+
     private fun getActiveUserIds(): IntArray {
-        val binder = ServiceManager.getService("user") ?: return intArrayOf(0)
+        val um = getUm() ?: return intArrayOf(0)
         return try {
-            val stub = Class.forName("android.os.IUserManager\$Stub")
-            val asInterface = stub.methods.firstOrNull { it.name == "asInterface" }
-            val manager = asInterface?.invoke(null, binder) ?: return intArrayOf(0)
-            val method = manager.javaClass.methods.firstOrNull { it.name == "getUserIds" }
-                ?: manager.javaClass.methods.firstOrNull { it.name == "getProfileIds" }
-            (method?.invoke(manager) as? IntArray)?.takeIf { it.isNotEmpty() } ?: intArrayOf(0)
+            val userIds = um.userIds
+            if (userIds != null && userIds.isNotEmpty()) userIds else intArrayOf(0)
         } catch (_: Exception) {
             intArrayOf(0)
         }
