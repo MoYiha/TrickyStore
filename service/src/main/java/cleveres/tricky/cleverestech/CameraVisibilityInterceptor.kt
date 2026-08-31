@@ -423,11 +423,17 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         }
 
     private fun refreshProxyVisibility(): Boolean {
-        val proxies = synchronized(listenerLock) { listenerProxies.values.toList() }
+        val (proxies, isActive) =
+            synchronized(this) {
+                val active = registered && Config.shouldInterceptCameraVisibility
+                val list = synchronized(listenerLock) { listenerProxies.values.toList() }
+                list to active
+            }
         val uids = mutableSetOf<Int>()
         proxies.forEach { proxy ->
             if (!proxy.isDead()) {
-                proxy.refreshVisibility(Config.getVisibleCameraCount(proxy.ownerUid))
+                val limit = if (isActive) Config.getVisibleCameraCount(proxy.ownerUid) else null
+                proxy.refreshVisibility(limit)
                 uids.add(proxy.ownerUid)
             }
         }
@@ -1006,7 +1012,13 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         val needsRefresh = synchronized(this) {
             registered && ::cameraService.isInitialized && cameraService.isBinderAlive
         }
-        if (needsRefresh) return refreshProxyVisibility()
+        if (needsRefresh) {
+            return if (Config.shouldInterceptCameraVisibility) {
+                refreshProxyVisibility()
+            } else {
+                stop()
+            }
+        }
         
         synchronized(this) { registered = false }
 
