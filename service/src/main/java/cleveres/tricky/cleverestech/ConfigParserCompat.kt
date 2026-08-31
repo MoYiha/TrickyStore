@@ -15,6 +15,7 @@ internal fun parseDrmPackages(
         if (packageName.isEmpty() || packageName.startsWith("#")) return@forEach
         require(
             packageName.length <= 255 &&
+                (!packageName.contains('*') || (packageName.endsWith("*") && packageName.indexOf('*') == packageName.length - 1)) &&
                 packageName.all { character ->
                     character.isLetterOrDigit() || character == '_' || character == '.' || character == '*'
                 },

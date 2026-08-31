@@ -378,6 +378,8 @@ object Config {
             val packageName = trimmed.removeSuffix("!").trim()
             val valid =
                 packageName.isNotEmpty() &&
+                    packageName.length <= 255 &&
+                    (!packageName.contains('*') || (packageName.endsWith("*") && packageName.indexOf('*') == packageName.length - 1)) &&
                     packageName.all { character ->
                         character.isLetterOrDigit() || character == '_' || character == '.' || character == '*'
                     }
@@ -811,6 +813,7 @@ object Config {
             if (packageName.isEmpty() || packageName.startsWith("#")) return@forEach
             require(
                 packageName.length <= 255 &&
+                    (!packageName.contains('*') || (packageName.endsWith("*") && packageName.indexOf('*') == packageName.length - 1)) &&
                     packageName.all { character ->
                         character.isLetterOrDigit() || character == '_' || character == '.' || character == '*'
                     },
@@ -1448,7 +1451,7 @@ object Config {
     private const val DYNAMIC_PATCH_TTL = 3600 * 1000L
     private const val MAX_SECURITY_PATCH_BYTES = 1024 * 1024L
     private const val MAX_SECURITY_PATCH_RULES = 512
-    private val validSecurityPatchTarget = Regex("[A-Za-z0-9_.*]{1,255}")
+    private val validSecurityPatchTarget = Regex("(?:[A-Za-z0-9_.]{1,255})|(?:[A-Za-z0-9_.]{0,254}\\*)")
     private val patchComponentNames = setOf("all", "system", "vendor", "boot")
 
     private fun parsePatchSetting(value: String): Any? {
@@ -1711,7 +1714,7 @@ object Config {
     private const val MAX_APP_CONFIG_RULES = 1024
     private const val PRIVACY_SEED_BYTES = 32
     private const val PRIVACY_DERIVATION_DOMAIN = "CleveresTricky/AppPrivacy/v1"
-    private val APP_PACKAGE_PATTERN = Regex("[A-Za-z0-9_.*]{1,255}")
+    private val APP_PACKAGE_PATTERN = Regex("(?:[A-Za-z0-9_.]{1,255})|(?:[A-Za-z0-9_.]{0,254}\\*)")
     private val APP_KEYBOX_PATTERN = Regex("[A-Za-z0-9_.-]{1,128}")
 
     private fun isValidAppKeybox(value: String): Boolean {

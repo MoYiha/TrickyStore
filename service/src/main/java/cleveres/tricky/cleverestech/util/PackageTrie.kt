@@ -64,6 +64,9 @@ class PackageTrie<T> {
         rule: String,
         value: T,
     ) {
+        require(!rule.contains('*') || (rule.endsWith('*') && rule.indexOf('*') == rule.length - 1)) {
+            "Wildcard '*' is only permitted as a suffix in package rules"
+        }
         var current = root
         val isWildcardRule = rule.endsWith("*")
         val effectiveRule = if (isWildcardRule) rule.dropLast(1) else rule
