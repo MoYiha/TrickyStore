@@ -70,6 +70,8 @@ class ConfigIdentityOverridesTest {
         assertEquals(iccid2, identity.iccidForSlot(1))
         assertEquals("A100000927F4E2", identity.meidForSlot(1))
         assertEquals("+12025550124", identity.phoneNumberForSlot(1))
+        assertEquals("DEVICE_01", identity.serial)
+        assertEquals("DEVICE_01", Config.getBuildIdentity()["SERIAL"])
         assertNull(identity.imeiForSlot(2))
 
         file.writeText("ATTESTATION_ID_IMEI=not-valid")

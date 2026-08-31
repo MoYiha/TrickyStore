@@ -987,7 +987,13 @@ object Config {
 
     internal fun getBuildIdentity(): Map<String, String> {
         val snapshot = buildVars
-        return supportedTemplateProperties.mapNotNull { key -> snapshot[key]?.let { value -> key to value } }.toMap()
+        val base = supportedTemplateProperties.mapNotNull { key -> snapshot[key]?.let { value -> key to value } }.toMap()
+        val serial = snapshot["SERIAL"] ?: snapshot["ATTESTATION_ID_SERIAL"]
+        return if (!serial.isNullOrBlank()) {
+            base + ("SERIAL" to serial)
+        } else {
+            base
+        }
     }
 
     internal fun getIdentityOverrides(): IdentityOverrides = identityOverrides

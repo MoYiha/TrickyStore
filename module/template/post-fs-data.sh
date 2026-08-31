@@ -257,6 +257,7 @@ apply_optional_identity_properties() {
   CT_TYPE=
   CT_TAGS=
   CT_SECURITY_PATCH=
+  CT_SERIAL=
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in ''|'#'*) continue ;; esac
     key=${line%%=*}
@@ -277,6 +278,7 @@ apply_optional_identity_properties() {
       TYPE) CT_TYPE=$value ;;
       TAGS) CT_TAGS=$value ;;
       SECURITY_PATCH) CT_SECURITY_PATCH=$value ;;
+      SERIAL|ATTESTATION_ID_SERIAL) CT_SERIAL=$value ;;
     esac
   done < "$vars_file"
 
@@ -304,6 +306,19 @@ apply_optional_identity_properties() {
     case "$CT_SECURITY_PATCH" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) apply_prop ro.build.version.security_patch "$CT_SECURITY_PATCH" || true ;;
     esac
+  fi
+  if [ -n "$CT_SERIAL" ]; then
+    apply_prop ro.serialno "$CT_SERIAL" || true
+    apply_prop ro.boot.serialno "$CT_SERIAL" || true
+    apply_prop ro.vendor.serialno "$CT_SERIAL" || true
+    apply_prop ro.odm.serialno "$CT_SERIAL" || true
+    apply_prop vendor.serialno "$CT_SERIAL" || true
+    apply_prop vendor.boot.serialno "$CT_SERIAL" || true
+    apply_prop persist.sys.serialno "$CT_SERIAL" || true
+    apply_prop ro.ril.oem.sno "$CT_SERIAL" || true
+    apply_prop ro.ril.oem.psno "$CT_SERIAL" || true
+    apply_prop sys.serialno "$CT_SERIAL" || true
+    apply_prop gsm.serial "$CT_SERIAL" || true
   fi
 }
 

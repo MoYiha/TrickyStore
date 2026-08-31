@@ -50,6 +50,8 @@ for (const mapping of [
   ['TYPE', 'ro.build.type'],
   ['TAGS', 'ro.build.tags'],
   ['SECURITY_PATCH', 'ro.build.version.security_patch'],
+  ['SERIAL', 'ro.serialno'],
+  ['SERIAL', 'ro.boot.serialno'],
 ]) {
   const [field, property] = mapping;
   requireToken(`apply_prop ${property} "$CT_${field}"`, `${field} must be applied to ${property}`);

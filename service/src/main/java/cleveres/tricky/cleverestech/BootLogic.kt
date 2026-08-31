@@ -196,6 +196,8 @@ object BootLogic {
                 copy("INCREMENTAL", "ro.build.version.incremental")
                 copy("TYPE", "ro.build.type")
                 copy("TAGS", "ro.build.tags")
+                copy("SERIAL", "ro.serialno")
+                copy("SERIAL", "ro.boot.serialno")
             }
         }
 

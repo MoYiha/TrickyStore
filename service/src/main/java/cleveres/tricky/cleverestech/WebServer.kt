@@ -2388,6 +2388,7 @@ class WebServer(
                 "TYPE",
                 "TAGS",
                 "SECURITY_PATCH",
+                "SERIAL",
             )
         private const val BUILD_IDENTITY_BLOCK_START = "# BEGIN CLEVERESTRICKY BUILD IDENTITY"
         private const val BUILD_IDENTITY_BLOCK_END = "# END CLEVERESTRICKY BUILD IDENTITY"
