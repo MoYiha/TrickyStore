@@ -332,11 +332,10 @@ object DrmInterceptor {
             return InjectionResult.DEFERRED
         }
         lastInjectionAttempt.put(pid, now)
-
         val symbol = if (injectedPids.containsKey(pid)) "resume" else "entry"
         val modulePath = getModuleDir()
-        return try {
-            val process =
+        val process =
+            try {
                 ProcessBuilder(
                     "$modulePath/inject",
                     pid.toString(),
@@ -345,6 +344,11 @@ object DrmInterceptor {
                 ).redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
                     .start()
+            } catch (error: Exception) {
+                Logger.e("DRM privacy: failed to start injector for pid=$pid", error)
+                return InjectionResult.FAILED
+            }
+        return try {
             val completed = process.waitFor(INJECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (!completed) {
                 process.destroyForcibly()
@@ -361,6 +365,10 @@ object DrmInterceptor {
         } catch (error: Exception) {
             Logger.e("DRM privacy: failed to run injector for pid=$pid", error)
             InjectionResult.FAILED
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 

@@ -198,6 +198,15 @@ object BootLogic {
                 copy("TAGS", "ro.build.tags")
                 copy("SERIAL", "ro.serialno")
                 copy("SERIAL", "ro.boot.serialno")
+                copy("SERIAL", "ro.vendor.serialno")
+                copy("SERIAL", "ro.odm.serialno")
+                copy("SERIAL", "vendor.serialno")
+                copy("SERIAL", "vendor.boot.serialno")
+                copy("SERIAL", "persist.sys.serialno")
+                copy("SERIAL", "ro.ril.oem.sno")
+                copy("SERIAL", "ro.ril.oem.psno")
+                copy("SERIAL", "sys.serialno")
+                copy("SERIAL", "gsm.serial")
             }
         }
 

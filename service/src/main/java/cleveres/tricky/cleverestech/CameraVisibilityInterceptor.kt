@@ -957,10 +957,10 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
     }
 
     private fun activateNativeHook(pid: Int): Boolean {
-        return try {
-            val modulePath = getModuleDir()
-            val symbol = if (injected && injectedPid == pid) "resume" else "entry"
-            val process =
+        val modulePath = getModuleDir()
+        val symbol = if (injected && injectedPid == pid) "resume" else "entry"
+        val process =
+            try {
                 ProcessBuilder(
                     "$modulePath/inject",
                     pid.toString(),
@@ -969,6 +969,11 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
                 ).redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
                     .start()
+            } catch (error: Exception) {
+                Logger.e("Camera visibility injector failed to start", error)
+                return false
+            }
+        return try {
             if (!process.waitFor(INJECTION_TIMEOUT_SECONDS, java.util.concurrent.TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 Logger.e("Camera visibility injector timed out")
@@ -981,6 +986,10 @@ object CameraVisibilityInterceptor : BinderInterceptor() {
         } catch (error: Exception) {
             Logger.e("Camera visibility injector failed", error)
             false
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 

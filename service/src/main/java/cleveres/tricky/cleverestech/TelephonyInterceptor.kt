@@ -338,9 +338,9 @@ object TelephonyInterceptor : BinderInterceptor() {
             lastInjectionAttemptMs = now
             val symbol = if (injected && injectedPid == pid) "resume" else "entry"
             Logger.i("Telephony: trying to activate the Binder hook ...")
-            try {
-                val modulePath = getModuleDir()
-                val p =
+            val modulePath = getModuleDir()
+            val p =
+                try {
                     ProcessBuilder(
                         "$modulePath/inject",
                         pid.toString(),
@@ -349,7 +349,12 @@ object TelephonyInterceptor : BinderInterceptor() {
                     ).redirectOutput(java.io.File("/dev/null"))
                         .redirectError(java.io.File("/dev/null"))
                         .start()
-
+                } catch (error: Exception) {
+                    Logger.e("Telephony: injector failed to start", error)
+                    triedCount.incrementAndGet()
+                    return false
+                }
+            try {
                 val completed = p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)
                 if (!completed) {
                     Logger.e("Telephony: inject timed out after 30s, killing process")
@@ -363,6 +368,10 @@ object TelephonyInterceptor : BinderInterceptor() {
                 }
             } catch (error: Exception) {
                 Logger.e("Telephony: injector failed", error)
+            } finally {
+                if (p.isAlive) {
+                    p.destroyForcibly()
+                }
             }
             triedCount.incrementAndGet()
             return false

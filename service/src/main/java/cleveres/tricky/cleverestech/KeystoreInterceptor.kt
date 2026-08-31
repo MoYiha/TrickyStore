@@ -234,10 +234,10 @@ object KeystoreInterceptor : BinderInterceptor() {
     }
 
     private fun runNativeActivation(pid: Int, symbol: String): Boolean {
-        return try {
-            val modulePath = getModuleDir()
-            val injectPath = "$modulePath/inject"
-            val process =
+        val modulePath = getModuleDir()
+        val injectPath = "$modulePath/inject"
+        val process =
+            try {
                 ProcessBuilder(
                     injectPath,
                     pid.toString(),
@@ -247,6 +247,11 @@ object KeystoreInterceptor : BinderInterceptor() {
                 ).redirectOutput(java.io.File("/dev/null"))
                     .redirectError(java.io.File("/dev/null"))
                     .start()
+            } catch (error: Exception) {
+                Logger.e("failed to start native activation", error)
+                return false
+            }
+        return try {
             if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
                 Logger.e("native activation timed out after 30s, killing it")
                 process.destroyForcibly()
@@ -259,6 +264,10 @@ object KeystoreInterceptor : BinderInterceptor() {
         } catch (error: Exception) {
             Logger.e("failed to run native activation", error)
             false
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
     }
 

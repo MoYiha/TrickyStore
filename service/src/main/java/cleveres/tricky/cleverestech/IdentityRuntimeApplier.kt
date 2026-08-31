@@ -63,16 +63,22 @@ internal object IdentityRuntimeApplier {
                 Logger.w("Live Identity shell is unavailable: ${error.javaClass.simpleName}")
                 return Result(false, true, false, "shell_unavailable")
             }
-        val finished = process.waitFor(10, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            process.waitFor(1, TimeUnit.SECONDS)
-            Logger.e("Live Identity apply timed out")
-            return Result(false, true, false, "timeout")
-        }
-        if (process.exitValue() != 0) {
-            Logger.e("Live Identity apply failed with exit=${process.exitValue()}")
-            return Result(false, true, false, "apply_failed")
+        try {
+            val finished = process.waitFor(10, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                process.waitFor(1, TimeUnit.SECONDS)
+                Logger.e("Live Identity apply timed out")
+                return Result(false, true, false, "timeout")
+            }
+            if (process.exitValue() != 0) {
+                Logger.e("Live Identity apply failed with exit=${process.exitValue()}")
+                return Result(false, true, false, "apply_failed")
+            }
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
 
         val buildApplied =
@@ -167,13 +173,17 @@ internal object IdentityRuntimeApplier {
     private fun setProperty(
         property: String,
         value: String,
-    ): Boolean =
-        try {
-            val process =
+    ): Boolean {
+        val process =
+            try {
                 ProcessBuilder("resetprop", "-n", property, value)
                     .redirectOutput(File("/dev/null"))
                     .redirectError(File("/dev/null"))
                     .start()
+            } catch (_: Exception) {
+                return false
+            }
+        return try {
             val finished = process.waitFor(2, TimeUnit.SECONDS)
             if (!finished) {
                 process.destroyForcibly()
@@ -184,5 +194,10 @@ internal object IdentityRuntimeApplier {
             }
         } catch (_: Exception) {
             false
+        } finally {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
+    }
 }
