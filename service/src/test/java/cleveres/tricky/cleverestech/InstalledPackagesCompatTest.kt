@@ -36,4 +36,17 @@ class InstalledPackagesCompatTest {
             InstalledPackagesCompat.parsePackageListOutput(oversized)
         }
     }
+
+    @Test
+    fun `installed packages handles null slice gracefully`() {
+        val mockPm =
+            java.lang.reflect.Proxy.newProxyInstance(
+                android.content.pm.IPackageManager::class.java.classLoader,
+                arrayOf(android.content.pm.IPackageManager::class.java),
+            ) { _, _, _ -> null } as android.content.pm.IPackageManager
+
+        val result = InstalledPackagesCompat.getInstalledPackageNames(mockPm, 0)
+        assertEquals(emptyList<String>(), result)
+    }
 }
+

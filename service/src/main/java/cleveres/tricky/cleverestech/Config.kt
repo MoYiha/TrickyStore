@@ -1793,11 +1793,7 @@ object Config {
                 val packages =
                     if (pm != null) {
                         try {
-                            try {
-                                pm.getInstalledPackages(0L, 0).list.map { it.packageName }
-                            } catch (e: NoSuchMethodError) {
-                                InstalledPackagesCompat.getInstalledPackageNames(pm, 0)
-                            }
+                            InstalledPackagesCompat.getInstalledPackageNames(pm, 0)
                         } catch (t: Throwable) {
                             Logger.e("Failed to list packages via IPC", t)
                             emptyList()

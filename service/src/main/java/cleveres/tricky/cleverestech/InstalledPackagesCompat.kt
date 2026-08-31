@@ -33,10 +33,13 @@ internal object InstalledPackagesCompat {
             getInstalledPackageNamesViaBinder(packageManager, userId)
         } catch (error: LinkageError) {
             Logger.i("Hidden PackageManager package enumeration is unavailable; using bounded cmd fallback")
-            getInstalledPackageNamesViaCommand(userId)
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
         } catch (error: SecurityException) {
             Logger.i("Hidden PackageManager package enumeration was denied; using bounded cmd fallback")
-            getInstalledPackageNamesViaCommand(userId)
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
+        } catch (error: Exception) {
+            Logger.i("Hidden PackageManager package enumeration failed; using bounded cmd fallback")
+            runCatching { getInstalledPackageNamesViaCommand(userId) }.getOrDefault(emptyList())
         }
 
     private fun getInstalledPackageNamesViaBinder(
@@ -45,24 +48,29 @@ internal object InstalledPackagesCompat {
     ): List<String> {
         val packages =
             when {
-                Build.VERSION.SDK_INT >= 37 -> packageManager.getInstalledPackagesV17(0L, userId).list
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getInstalledPackages(0L, userId).list
-                else -> packageManager.getInstalledPackages(0, userId).list
+                Build.VERSION.SDK_INT >= 37 -> packageManager.getInstalledPackagesV17(0L, userId)?.list
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> packageManager.getInstalledPackages(0L, userId)?.list
+                else -> packageManager.getInstalledPackages(0, userId)?.list
             }
-        return packages.mapNotNull { it.packageName }
+        return packages?.mapNotNull { it.packageName } ?: emptyList()
     }
 
     private fun getInstalledPackageNamesViaCommand(userId: Int): List<String> {
         require(userId >= 0) { "Package-list user id must be non-negative" }
         val process =
-            ProcessBuilder(
-                "/system/bin/cmd",
-                "package",
-                "list",
-                "packages",
-                "--user",
-                userId.toString(),
-            ).redirectErrorStream(true).start()
+            try {
+                ProcessBuilder(
+                    "/system/bin/cmd",
+                    "package",
+                    "list",
+                    "packages",
+                    "--user",
+                    userId.toString(),
+                ).redirectErrorStream(true).start()
+            } catch (error: Exception) {
+                Logger.e("Package-list command could not be started", error)
+                return emptyList()
+            }
 
         val reader =
             FutureTask {
