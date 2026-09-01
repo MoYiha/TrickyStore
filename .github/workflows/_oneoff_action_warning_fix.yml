@@ -79,13 +79,7 @@ jobs:
             .github/action-warning-fix-trigger-4
 
           git add module/template/action.sh
-          git add -u \
-            .github/workflows/_oneoff_action_warning_fix.yml \
-            .github/oneoff-action-warning-trigger \
-            .github/action-warning-trigger-2 \
-            .github/_action_warning_fix_trigger \
-            .github/_action_warning_fix_trigger_3 \
-            .github/action-warning-fix-trigger-4
+          git add -A .github
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix(action): improve warning readability and delay'
