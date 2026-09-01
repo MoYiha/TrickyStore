@@ -5,6 +5,7 @@
     if (!bridge || typeof document === 'undefined') return;
 
     const STORAGE_KEY = 'cleverestricky.language.v1';
+    const SYSTEM_LOCALE_KEY = 'cleverestricky.system_locale.v1';
     // To add a locale: append [locale, displayName] here, add TRANSLATIONS[locale],
     // add GUIDE[locale] when a localized guide is available, then run module/webui-tests.
     const SUPPORTED = [
@@ -20,6 +21,11 @@
     ];
 
     const TRANSLATIONS = {
+        en: {
+            'noServers': 'No servers configured. Add one below to fetch keyboxes automatically.',
+            'refresh': 'Refresh',
+            'remove': 'Remove',
+        },
         tr: {
             'Identity Controls': 'Kimlik Denetimleri', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin. Devre dışı yollar isteğe bağlı yakalayıcıları başlatmaz.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Kimlik şu anda devre dışı. Aşağıdan yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin.', 'Random': 'Rastgele', 'Identity value randomized': 'Kimlik değeri rastgeleleştirildi',
             'Visible SIM count': 'Görünür SIM sayısı', 'Limits the active subscription list returned to selected apps. It never creates SIMs that are not present.': 'Seçili uygulamalara döndürülen etkin abonelik listesini sınırlar. Var olmayan SIM oluşturmaz.', 'Randomize Telephony': 'Telefon kimliğini rastgeleleştir',
@@ -98,7 +104,10 @@
             'Security Patch: Disabled': '安全补丁：已禁用',
             'Security patch levels are actively managed according to the component modes below.': '安全补丁级别将根据以下组件模式进行积极管理。',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': '安全补丁伪装当前已禁用。从仪表盘将其开启以应用自定义补丁级别。',
-            'All major features and runtime paths in one place.': '所有主要功能和运行路径集中说明。'
+            'All major features and runtime paths in one place.': '所有主要功能和运行路径集中说明。',
+            'noServers': '未配置服务器。在下方添加一个以自动获取 keybox。',
+            'refresh': '刷新',
+            'remove': '移除'
         },
         es: {
             'Identity Controls': 'Controles de identidad', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Activa solo las rutas de identidad que necesites. Las rutas desactivadas no inician interceptores opcionales.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'La identidad está desactivada. Activa abajo solo las rutas que necesites.', 'Random': 'Aleatorio', 'Identity value randomized': 'Valor de identidad aleatorizado',
@@ -140,7 +149,10 @@
             'Security Patch: Disabled': 'Parche de seguridad: Desactivado',
             'Security patch levels are actively managed according to the component modes below.': 'Los niveles de parches de seguridad se gestionan activamente según los modos de componentes siguientes.',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'La suplantación de parches de seguridad está desactivada. Actívala desde el Panel para aplicar niveles de parche personalizados.',
-            'All major features and runtime paths in one place.': 'Todas las funciones principales y rutas de ejecución en un solo lugar.'
+            'All major features and runtime paths in one place.': 'Todas las funciones principales y rutas de ejecución en un solo lugar.',
+            'noServers': 'No hay servidores configurados. Añada uno abajo para obtener keyboxes automáticamente.',
+            'refresh': 'Actualizar',
+            'remove': 'Eliminar'
         },
         de: {
             'Identity Controls': 'Identitätssteuerung', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktiviere nur die benötigten Identitätspfade. Deaktivierte Pfade starten keine optionalen Interzeptoren.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identität ist derzeit deaktiviert. Aktiviere unten nur die benötigten Identitätspfade.', 'Random': 'Zufällig', 'Identity value randomized': 'Identitätswert randomisiert',
@@ -181,7 +193,10 @@
             'Security Patch: Disabled': 'Sicherheitspatch: Deaktiviert',
             'Security patch levels are actively managed according to the component modes below.': 'Sicherheitspatch-Ebenen werden entsprechend den folgenden Komponentenmodi aktiv verwaltet.',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'Das Spoofing von Sicherheitspatches ist derzeit deaktiviert. Schalten Sie es im Dashboard EIN, um benutzerdefinierte Patch-Ebenen anzuwenden.',
-            'All major features and runtime paths in one place.': 'Alle wichtigen Funktionen und Laufzeitpfade an einem Ort.'
+            'All major features and runtime paths in one place.': 'Alle wichtigen Funktionen und Laufzeitpfade an einem Ort.',
+            'noServers': 'Keine Server konfiguriert. Fügen Sie unten einen hinzu, um Keyboxen automatisch abzurufen.',
+            'refresh': 'Aktualisieren',
+            'remove': 'Entfernen'
         },
         ru: {
             'Identity Controls': 'Управление идентичностью', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Включайте только нужные пути идентичности. Отключённые пути не запускают необязательные перехватчики.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Идентичность сейчас отключена. Ниже включите только нужные пути.', 'Random': 'Случайно', 'Identity value randomized': 'Значение идентичности рандомизировано',
@@ -221,7 +236,10 @@
             'Security Patch: Disabled': 'Патч безопасности: Отключен',
             'Security patch levels are actively managed according to the component modes below.': 'Уровни патчей безопасности активно управляются в соответствии с приведенными ниже режимами компонентов.',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'Подмена патча безопасности в настоящее время отключена. Включите ее на панели управления, чтобы применить пользовательские уровни патчей.',
-            'All major features and runtime paths in one place.': 'Все основные функции и пути выполнения в одном месте.'
+            'All major features and runtime paths in one place.': 'Все основные функции и пути выполнения в одном месте.',
+            'noServers': 'Серверы не настроены. Добавьте один ниже, чтобы получать keybox автоматически.',
+            'refresh': 'Обновить',
+            'remove': 'Удалить'
         },
         id: {
             'Identity Controls': 'Kontrol Identitas', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktifkan hanya jalur identitas yang diperlukan. Jalur yang dinonaktifkan tidak menjalankan interceptor opsional.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identitas saat ini dinonaktifkan. Aktifkan hanya jalur yang diperlukan di bawah.', 'Random': 'Acak', 'Identity value randomized': 'Nilai identitas diacak',
@@ -262,7 +280,10 @@
             'Security Patch: Disabled': 'Patch Keamanan: Dinonaktifkan',
             'Security patch levels are actively managed according to the component modes below.': 'Tingkat patch keamanan dikelola secara aktif sesuai dengan mode komponen di bawah ini.',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'Spoofing patch keamanan saat ini dinonaktifkan. Aktifkan dari Dasbor untuk menerapkan tingkat patch khusus.',
-            'All major features and runtime paths in one place.': 'Semua fitur utama dan jalur runtime dijelaskan di satu tempat.'
+            'All major features and runtime paths in one place.': 'Semua fitur utama dan jalur runtime dijelaskan di satu tempat.',
+            'noServers': 'Tidak ada server yang dikonfigurasi. Tambahkan satu di bawah untuk mengambil keybox secara otomatis.',
+            'refresh': 'Segarkan',
+            'remove': 'Hapus'
         },
         hi: {
             'Identity Controls': 'पहचान नियंत्रण', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'केवल आवश्यक पहचान पथ सक्षम करें। अक्षम पथ वैकल्पिक इंटरसेप्टर शुरू नहीं करते।', 'Identity is currently disabled. Enable only the identity paths you need below.': 'पहचान अभी अक्षम है। नीचे केवल आवश्यक पहचान पथ सक्षम करें।', 'Random': 'रैंडम', 'Identity value randomized': 'पहचान मान रैंडम किया गया',
@@ -303,7 +324,10 @@
             'Security Patch: Disabled': 'सुरक्षा पैच: अक्षम',
             'Security patch levels are actively managed according to the component modes below.': 'सुरक्षा पैच स्तर नीचे दिए गए घटक मोड के अनुसार सक्रिय रूप से प्रबंधित किए जाते हैं।',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'सुरक्षा पैच स्पूफिंग वर्तमान में अक्षम है। कस्टम पैच स्तर लागू करने के लिए इसे डैशबोर्ड से चालू करें।',
-            'All major features and runtime paths in one place.': 'सभी मुख्य फीचर और रनटाइम पथ एक ही जगह समझाए गए हैं।'
+            'All major features and runtime paths in one place.': 'सभी मुख्य फीचर और रनटाइम पथ एक ही जगह समझाए गए हैं।',
+            'noServers': 'कोई सर्वर कॉन्फ़िगर नहीं किया गया है। स्वचालित रूप से कीबॉक्स प्राप्त करने के लिए नीचे एक जोड़ें।',
+            'refresh': 'रीफ़्रेश करें',
+            'remove': 'हटाएं'
         },
         ar: {
             'Identity Controls': 'عناصر التحكم بالهوية', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'فعّل فقط مسارات الهوية التي تحتاجها. المسارات المعطلة لا تشغّل المعترضات الاختيارية.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'الهوية معطلة حاليًا. فعّل أدناه فقط مسارات الهوية التي تحتاجها.', 'Random': 'عشوائي', 'Identity value randomized': 'تم توليد قيمة هوية عشوائية',
@@ -344,7 +368,10 @@
             'Security Patch: Disabled': 'تصحيح الأمان: معطل',
             'Security patch levels are actively managed according to the component modes below.': 'تتم إدارة مستويات تصحيح الأمان بشكل نشط وفقًا لأوضاع المكونات أدناه.',
             'Security patch spoofing is currently disabled. Toggle it ON from the Dashboard to apply custom patch levels.': 'محاكاة تصحيح الأمان معطلة حاليًا. قم بتفعيلها من لوحة التحكم لتطبيق مستويات تصحيح مخصصة.',
-            'All major features and runtime paths in one place.': 'شرح جميع الميزات الأساسية ومسارات التشغيل في مكان واحد.'
+            'All major features and runtime paths in one place.': 'شرح جميع الميزات الأساسية ومسارات التشغيل في مكان واحد.',
+            'noServers': 'لم يتم تكوين أي خوادم. أضف واحداً أدناه لجلب keyboxes تلقائياً.',
+            'refresh': 'تحديث',
+            'remove': 'إزالة'
         }
     };
 
@@ -352,6 +379,9 @@
     // aligned catalog rows below provide the same static and runtime-generated
     // coverage for every other built-in locale.
     Object.assign(TRANSLATIONS.tr, {
+        'noServers': 'Yapılandırılmış sunucu yok. Keybox\'ları otomatik olarak almak için aşağıdan bir tane ekleyin.',
+        'refresh': 'Yenile',
+        'remove': 'Kaldır',
         'Notification': 'Bildirim',
         'Close notification': 'Bildirimi kapat',
         'Always active.': 'Her zaman etkin.',
@@ -1153,6 +1183,7 @@
         ["Disabled by default. Core Binder protection is independent from this option.", "默认关闭。核心 Binder 保护独立于此选项。", "Desactivado de forma predeterminada. La protección Binder principal es independiente de esta opción.", "Standardmäßig deaktiviert. Der Binder-Kernschutz ist von dieser Option unabhängig.", "По умолчанию отключено. Основная защита Binder не зависит от этой опции.", "Dinonaktifkan secara default. Perlindungan inti Binder tidak bergantung pada opsi ini.", "डिफ़ॉल्ट रूप से बंद। मुख्य Binder सुरक्षा इस विकल्प से स्वतंत्र है।", "معطل افتراضيا. حماية Binder الأساسية مستقلة عن هذا الخيار."],
         ["Optionally overrides uname release/version inside the injected Keystore runtime. Official GKI presets use published base kernel versions and remain editable.", "可选地覆盖注入 Keystore 运行时中的 uname release/version。官方 GKI 预设使用已发布的基础内核版本并可编辑。", "Sustituye opcionalmente release/version de uname dentro del entorno Keystore inyectado. Los preajustes GKI oficiales usan versiones base publicadas y siguen siendo editables.", "Überschreibt optional uname release/version in der injizierten Keystore-Laufzeit. Offizielle GKI-Voreinstellungen verwenden veröffentlichte Basis-Kernelversionen und bleiben editierbar.", "При необходимости заменяет uname release/version во внедрённой среде Keystore. Официальные профили GKI используют опубликованные базовые версии ядра и остаются редактируемыми.", "Secara opsional mengganti uname release/version di runtime Keystore yang diinjeksi. Preset GKI resmi memakai versi kernel dasar yang dipublikasikan dan tetap dapat diedit.", "इंजेक्ट किए गए Keystore रनटाइम में uname release/version को वैकल्पिक रूप से बदलता है। आधिकारिक GKI प्रीसेट प्रकाशित बेस कर्नेल संस्करणों का उपयोग करते हैं और संपादन योग्य रहते हैं।", "يستبدل اختياريا uname release/version داخل بيئة Keystore المحقونة. تستخدم إعدادات GKI الرسمية إصدارات النواة الأساسية المنشورة وتظل قابلة للتحرير."],
         ["Custom", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],
+        ["No servers configured. Add one below to fetch keyboxes automatically.", "未配置服务器。在下方添加一个以自动获取 keybox。", "No hay servidores configurados. Añada uno abajo para obtener keyboxes automáticamente.", "Keine Server konfiguriert. Fügen Sie unten einen hinzu, um Keyboxen automatisch abzurufen.", "Серверы не настроены. Добавьте один ниже, чтобы получать keybox автоматически.", "Tidak ada server yang dikonfigurasi. Tambahkan satu di bawah untuk mengambil keybox secara otomatis.", "कोई सर्वर कॉन्फ़िगर नहीं किया गया है। स्वचालित रूप से कीबॉक्स प्राप्त करने के लिए नीचे एक जोड़ें।", "لم يتم تكوين أي خوادم. أضف واحداً أدناه لجلب keyboxes تلقائياً."],
     ];
 
     for (const row of COMPLETE_CATALOG_ROWS) {
@@ -1453,19 +1484,61 @@
         }
     };
 
+    let compatibilityConfig = null;
+    let compatibilityConfigController = null;
     let locale = readLocale();
     const originalText = new WeakMap();
     const originalAttrs = new WeakMap();
-    let compatibilityConfig = null;
-    let compatibilityConfigController = null;
     let translationObserver = null;
 
-    function readLocale() {
+    function normalizeSupportedLocale(value) {
+        if (typeof value !== 'string' || !value) return null;
+        if (SUPPORTED.some(([id]) => id === value)) return value;
+        const baseLang = value.split('-')[0];
+        if (SUPPORTED.some(([id]) => id === baseLang)) return baseLang;
+        return null;
+    }
+
+    function readSavedLocale() {
         try {
-            const saved = global.localStorage && global.localStorage.getItem(STORAGE_KEY);
-            if (SUPPORTED.some(([id]) => id === saved)) return saved;
+            return normalizeSupportedLocale(global.localStorage && global.localStorage.getItem(STORAGE_KEY));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function readSystemLocaleHint() {
+        const runtimeLocale = normalizeSupportedLocale(global.CleveresSystemLocale);
+        if (runtimeLocale) return runtimeLocale;
+        const configLocale = normalizeSupportedLocale(compatibilityConfig && compatibilityConfig.system_locale);
+        if (configLocale) return configLocale;
+        try {
+            return normalizeSupportedLocale(global.localStorage && global.localStorage.getItem(SYSTEM_LOCALE_KEY));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function persistSystemLocaleHint(value) {
+        const normalized = normalizeSupportedLocale(value);
+        if (!normalized) return null;
+        global.CleveresSystemLocale = normalized;
+        try {
+            if (global.localStorage) global.localStorage.setItem(SYSTEM_LOCALE_KEY, normalized);
         } catch (_) {}
-        return 'en';
+        return normalized;
+    }
+
+    function readBrowserLocale() {
+        try {
+            return normalizeSupportedLocale(global.navigator && global.navigator.language);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function readLocale() {
+        return readSavedLocale() || readSystemLocaleHint() || readBrowserLocale() || 'en';
     }
 
     function saveLocale(value) {
@@ -1949,6 +2022,7 @@
             const data = await response.json();
             if (controller.signal.aborted) return compatibilityConfig;
             compatibilityConfig = data;
+            if (typeof persistSystemLocaleHint === 'function') persistSystemLocaleHint(data && data.system_locale);
             return compatibilityConfig;
         } catch (error) {
             if (controller.signal.aborted || (error && error.name === 'AbortError')) return compatibilityConfig;
@@ -2168,7 +2242,11 @@
         applyTranslations();
     }
 
-    function start() {
+    async function start() {
+        if (!readSavedLocale()) {
+            try { await requestConfig(); } catch (_) {}
+            locale = readLocale();
+        }
         injectStyles();
         installOwnedSurfaceInteractions();
         installTranslationObserver();
@@ -2329,13 +2407,33 @@
         throw new ZipImportError(code);
     }
 
+    function normalizeSupportedLocale(value) {
+        if (typeof value !== 'string' || !value) return null;
+        if (SUPPORTED_LOCALES.has(value)) return value;
+        const baseLang = value.split('-')[0];
+        if (SUPPORTED_LOCALES.has(baseLang)) return baseLang;
+        return null;
+    }
+
     function readLocale() {
         try {
-            const value = global.localStorage && global.localStorage.getItem(STORAGE_KEY);
-            return SUPPORTED_LOCALES.has(value) ? value : 'en';
-        } catch (_) {
-            return 'en';
-        }
+            const value = normalizeSupportedLocale(global.localStorage && global.localStorage.getItem(STORAGE_KEY));
+            if (value) return value;
+        } catch (_) {}
+
+        const runtimeLocale = normalizeSupportedLocale(global.CleveresSystemLocale);
+        if (runtimeLocale) return runtimeLocale;
+        try {
+            const cachedSystem = normalizeSupportedLocale(global.localStorage && global.localStorage.getItem(SYSTEM_LOCALE_KEY));
+            if (cachedSystem) return cachedSystem;
+        } catch (_) {}
+
+        try {
+            const navLang = normalizeSupportedLocale(global.navigator && global.navigator.language);
+            if (navLang) return navLang;
+        } catch (_) {}
+
+        return 'en';
     }
 
     function text(key, values) {
