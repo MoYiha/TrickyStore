@@ -703,6 +703,11 @@ object PolicyState {
     internal fun isTopLevelFeatureEnabled(feature: Feature): Boolean = snapshot.features.enabled(feature)
 
     internal fun isProfileAutoIdentityEnabled(uid: Int): Boolean {
+        val legacy = Config.getAppConfig(uid)
+        if (legacy?.autoIdentity == false) return false
+        if (legacy?.autoIdentity == true) {
+            return isFeatureEnabled(Feature.BUILD_IDENTITY, uid)
+        }
         if (!snapshot.explicit) return false
         val resolved = resolveUid(uid)
         return resolved.profileAutoIdentity && resolved.features.buildIdentity
@@ -730,6 +735,13 @@ object PolicyState {
     private fun hasRuntimeScope(profile: Profile, current: Snapshot): Boolean =
         profile.enabled &&
             (profile.applications.isNotEmpty() || current.activeProfile?.equals(profile.name, ignoreCase = true) == true)
+
+    private fun hasIsolateRules(): Boolean {
+        val current = snapshot
+        return current.profiles.values.any { profile ->
+            hasRuntimeScope(profile, current) && profile.privacy == Config.AppPrivacyMode.ISOLATE
+        }
+    }
 
     fun hasTelephonyProfileWork(): Boolean {
         val current = snapshot
@@ -763,11 +775,13 @@ object PolicyState {
                 if (useAutoIdentitySource) null else profile.template ?: legacy?.template,
                 profile.keybox ?: legacy?.keyboxFilename,
                 privacy,
+                legacy?.autoIdentity,
             )
         return merged.takeUnless {
             it.template == null &&
                 it.keyboxFilename == null &&
-                it.privacyMode == Config.AppPrivacyMode.INHERIT
+                it.privacyMode == Config.AppPrivacyMode.INHERIT &&
+                it.autoIdentity == null
         }
     }
 
@@ -776,8 +790,13 @@ object PolicyState {
         legacy: Config.AppSpoofConfig?,
     ): Config.AppSpoofConfig? {
         val resolved = resolveUid(uid)
-        val useAutoIdentitySource = resolved.profileAutoIdentity && resolved.features.buildIdentity
-        return mergeAppConfig(resolved.selection.profile, legacy, useAutoIdentitySource)
+        val useAutoIdentitySource = when {
+            legacy?.autoIdentity == true -> true
+            legacy?.autoIdentity == false -> false
+            else -> resolved.profileAutoIdentity
+        }
+        val actuallyUseAutoIdentity = useAutoIdentitySource && resolved.features.buildIdentity
+        return mergeAppConfig(resolved.selection.profile, legacy, actuallyUseAutoIdentity)
     }
 
     fun profilePrivacyMode(uid: Int): Config.AppPrivacyMode? =
@@ -959,8 +978,13 @@ object PolicyState {
         val vendorPolicy = profile?.vendorPatch ?: patch.vendor
         val bootPolicy = profile?.bootPatch ?: patch.boot
         val legacyRule = readLegacyAppRule(packageName)
-        val profileAutoIdentity = profileAutoIdentityEnabled(profile, current) && features.buildIdentity
-        val appConfig = mergeAppConfig(profile, legacyRule, profileAutoIdentity)
+        val autoIdentitySource = when {
+            legacyRule?.autoIdentity == true -> true
+            legacyRule?.autoIdentity == false -> false
+            else -> profileAutoIdentityEnabled(profile, current)
+        }
+        val appAutoIdentity = autoIdentitySource && features.buildIdentity
+        val appConfig = mergeAppConfig(profile, legacyRule, appAutoIdentity)
         val rkpPassthrough = profile?.rkpPassthrough ?: Config.isRkpPassthroughEnabled
         val drmPassthrough = profile?.drmPassthrough ?: Config.isDrmPassthroughEnabled
         val patchJson = JSONObject()
@@ -975,14 +999,13 @@ object PolicyState {
             .put("profileConflict", selected.conflict)
             .put("scope", if (selected.matchedRule != null || legacyRule != null) "targeted" else if (Config.isGlobalMode) "global" else "unmatched")
             .put("identityTemplate", appConfig?.template ?: JSONObject.NULL)
-            .put("identitySource", if (profileAutoIdentity) "auto_identity" else if (appConfig?.template != null) "template" else "global")
+            .put("identitySource", if (appAutoIdentity) "auto_identity" else if (appConfig?.template != null) "template" else "global")
             .put("keyboxReference", appConfig?.keyboxFilename ?: JSONObject.NULL)
             .put("privacy", appConfig?.privacyMode?.configValue ?: Config.AppPrivacyMode.INHERIT.configValue)
             .put("buildIdentity", features.buildIdentity)
             .put("attestationIdentity", features.attestationIdentity)
             .put("telephonyIdentity", features.telephonyIdentity)
             .put("regionIdentity", features.regionIdentity)
-            .put("identityRefresh", features.identityRefresh)
             .put("securityPatchOverride", features.securityPatch)
             .put("securityPatch", patchJson)
             .put("rkp", if (rkpPassthrough) "genuine_passthrough" else "certificate_compatibility")
@@ -1045,7 +1068,8 @@ object PolicyState {
                 val template = columns.getOrNull(1)?.takeUnless { it == "null" }
                 val keybox = columns.getOrNull(2)?.takeUnless { it == "null" }
                 val privacy = columns.getOrNull(3)?.let(Config.AppPrivacyMode::parse) ?: Config.AppPrivacyMode.INHERIT
-                matched = Config.AppSpoofConfig(template, keybox, privacy)
+                val autoIdentity = columns.getOrNull(4)?.takeUnless { it == "null" || it == "inherit" }?.toBooleanStrictOrNull()
+                matched = Config.AppSpoofConfig(template, keybox, privacy, autoIdentity)
             }
             matched
         }.getOrNull()
