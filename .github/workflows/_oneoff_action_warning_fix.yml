@@ -1,7 +1,8 @@
 name: One-off action warning fix
 
 on:
-  push:
+  pull_request:
+    types: [opened, synchronize]
     branches: [ master ]
 
 permissions:
@@ -15,6 +16,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          ref: ${{ github.head_ref }}
 
       - name: Patch warning readability and delay
         shell: bash
@@ -28,9 +30,6 @@ jobs:
           text = path.read_text(encoding='utf-8')
           original = text
 
-          # Patch every localized WARNING case. The shell warning uses one
-          # printf format plus several quoted arguments; changing the format
-          # from one newline to two creates a blank line between each message.
           pattern = re.compile(r'(?ms)^(\s*(?:tr|zh|es|de|ru|id|hi|ar|en):WARNING\)\n)(.*?)(^\s*;;\s*$)')
           matches = list(pattern.finditer(text))
           if len(matches) != 9:
@@ -38,9 +37,9 @@ jobs:
 
           def patch_block(match: re.Match[str]) -> str:
               header, body, terminator = match.group(1), match.group(2), match.group(3)
-              patched = body.replace("printf '%s\\n'", "printf '%s\\n\\n'")
-              patched = patched.replace("printf '%s\n'", "printf '%s\n\n'")
-              return header + patched + terminator
+              body = body.replace("printf '%s\\n'", "printf '%s\\n\\n'")
+              body = body.replace("printf '%s\n'", "printf '%s\n\n'")
+              return header + body + terminator
 
           text = pattern.sub(patch_block, text)
 
@@ -90,4 +89,4 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix(action): improve warning readability and delay'
-          git push origin HEAD:refs/heads/master
+          git push origin HEAD:refs/heads/${GITHUB_HEAD_REF}
