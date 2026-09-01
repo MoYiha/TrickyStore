@@ -30,7 +30,7 @@ jobs:
           text = path.read_text(encoding='utf-8')
           original = text
 
-          pattern = re.compile(r'(?ms)^(\s*(?:tr|zh|es|de|ru|id|hi|ar|en):WARNING\)\n)(.*?)(^\s*;;\s*$)')
+          pattern = re.compile(r'(?ms)^(\s*(?:tr|zh|es|de|ru|id|hi|ar):WARNING\)|\s*en:WARNING\|\*:WARNING\))\n(.*?)(^\s*;;\s*$)')
           matches = list(pattern.finditer(text))
           if len(matches) != 9:
               raise SystemExit(f'expected 9 warning blocks, found {len(matches)}')
@@ -39,7 +39,7 @@ jobs:
               header, body, terminator = match.group(1), match.group(2), match.group(3)
               body = body.replace("printf '%s\\n'", "printf '%s\\n\\n'")
               body = body.replace("printf '%s\n'", "printf '%s\n\n'")
-              return header + body + terminator
+              return header + '\n' + body + terminator
 
           text = pattern.sub(patch_block, text)
 
