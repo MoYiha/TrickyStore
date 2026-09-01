@@ -1,10 +1,11 @@
 # Changelog
 
-## V2.7.1
+## V2.7.2
 
-- **Security & Buffer Hardening:** Reinforced cryptographic buffer zeroization in memory, eliminated TOCTOU symlink traversal risks during configuration updates, and strictly aligned package rule syntax with prefix wildcard semantics.
-- **Process & Thread Lifecycle:** Guarded native hook and background command processes against orphan leaks, and replaced unbounded manual thread creation with bounded, idle-timeout thread pools.
-- **Performance & Concurrency:** Decoupled file I/O operations from WebUI request-handling monitor locks and optimized network stream buffers for reduced memory allocation.
-- **Serial Number & Identity Parity:** Extended property spoofing across OEM, ODM, Vendor, RIL, and GSM serial properties for full boot and live runtime rollback parity.
-- **Identity Override Robustness:** Added direct fallback support for unprefixed `SERIAL`, `IMEI`, and `MEID` configurations in `spoof_build_vars` alongside `ATTESTATION_ID_*` tags.
-- **Procfs PID Discovery Hardening:** Hardened `/proc` process scanning loops against unexpected non-numeric directory entries.
+- **DRM & Multi-User Support:** Improved DRM privacy handling across secondary Android users, associated DRM plugin registrations with the originating application UID, and resolved live application UIDs reliably from kernel process state.
+- **Security & Reliability:** Fixed large decimal serial parsing in `KeyboxVerifier`, hardened backup/restore filesystem handling, improved security-patch date parsing, added safer manual `action.sh` execution warnings, and strengthened runtime/process handling.
+- **Performance:** Optimized identity override lookups with sorted binary search and reduced intermediate allocations in file filtering paths.
+- **WebUI & Localization:** Added complete server-list translations across supported languages, including Turkish, automatic Android system-locale detection with browser fallback, dynamic retranslation of generated controls, improved table header layout, and a more readable 16px base font.
+- **Build & Compatibility:** Updated Kotlin and remap dependencies, improved BouncyCastle/CodeQL build configuration, added the `IUserManager` AIDL stub integration, and corrected service remapping configuration.
+- **Testing & Code Quality:** Expanded coverage for keybox/hash property access, patch-level conversion, transaction filtering, UTF-8 handling, line trimming, Turkish localization, system-locale fallback behavior, and WebUI bridge configuration; added benchmark coverage and cleaned up deprecated NanoHTTPD API annotations.
+- **Native Core Maintenance:** Refined Rust attestation/CRL components and related service/native code paths while preserving the existing runtime payload contracts.
