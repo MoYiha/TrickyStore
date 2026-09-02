@@ -1,0 +1,26 @@
+name: Refresh 3609 release checksums
+
+on:
+  push:
+    branches: [ "master" ]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release checksum file
+        shell: bash
+        run: |
+          cat > SHA256SUMS <<'EOF'
+          629bbc5e33c579483b49369af8a717b66b39425addffb5eb3a08eb6f9e6b9260  CleveresTricky-V2.7.2-3609-93c5b86b-release.zip
+          ba3989eb2c454f37a999473b37745d64800906c4b8dafa2403a82bb644cb344b  encryptor-app-release.apk
+          EOF
+
+      - name: Publish refreshed checksums
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: V2.7.2
+          files: SHA256SUMS
