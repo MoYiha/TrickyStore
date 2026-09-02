@@ -62,4 +62,4 @@ Common problems और troubleshooting steps के लिए [Diagnostics](docs
 
 ## Project
 
-[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Languages](LANGUAGES.md) · [Licensing](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Languages](LANGUAGES.md) · [Licensing](LICENSING.md) · [Donate](DONATE.md) · [Telegram](https://t.me/cleverestech)
