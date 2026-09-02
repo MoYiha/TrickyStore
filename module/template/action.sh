@@ -409,6 +409,7 @@ fi
 if [ "$FROM_WEBUI" != "1" ]; then
     print_log "$(message WARNING)"
     sleep 13
+    printf '\n'
 fi
 
 print_log "$(message GENERATING)"
