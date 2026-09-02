@@ -62,4 +62,4 @@ CleveresTricky улучшает локальный путь совместимо
 
 ## Проект
 
-[История изменений](CHANGELOG.md) · [Участие](CONTRIBUTING.md) · [Языки](LANGUAGES.md) · [Лицензия](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[История изменений](CHANGELOG.md) · [Участие](CONTRIBUTING.md) · [Языки](LANGUAGES.md) · [Лицензия](LICENSING.md) · [Пожертвовать](DONATE.md) · [Telegram](https://t.me/cleverestech)
