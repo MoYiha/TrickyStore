@@ -62,4 +62,4 @@ Consulta [Diagnostics](docs/Diagnostics.md) para problemas comunes y pasos de so
 
 ## Proyecto
 
-[Changelog](CHANGELOG.md) · [Contribuir](CONTRIBUTING.md) · [Idiomas](LANGUAGES.md) · [Licencia](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Contribuir](CONTRIBUTING.md) · [Idiomas](LANGUAGES.md) · [Licencia](LICENSING.md) · [Donar](DONATE.md) · [Telegram](https://t.me/cleverestech)
