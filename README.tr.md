@@ -62,4 +62,4 @@ Yaygın sorunlar ve çözüm adımları için [Diagnostics](docs/Diagnostics.md)
 
 ## Proje
 
-[Değişiklikler](CHANGELOG.md) · [Katkıda bulunma](CONTRIBUTING.md) · [Diller](LANGUAGES.md) · [Lisans](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[Değişiklikler](CHANGELOG.md) · [Katkıda bulunma](CONTRIBUTING.md) · [Diller](LANGUAGES.md) · [Lisans](LICENSING.md) · [Bağış](DONATE.md) · [Telegram](https://t.me/cleverestech)
