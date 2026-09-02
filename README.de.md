@@ -62,4 +62,4 @@ Unter [Diagnostics](docs/Diagnostics.md) findest du häufige Probleme und Schrit
 
 ## Projekt
 
-[Changelog](CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md) · [Sprachen](LANGUAGES.md) · [Lizenz](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md) · [Sprachen](LANGUAGES.md) · [Lizenz](LICENSING.md) · [Spenden](DONATE.md) · [Telegram](https://t.me/cleverestech)
