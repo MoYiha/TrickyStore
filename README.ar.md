@@ -62,4 +62,4 @@ Magisk والتثبيت من recovery غير مدعومين.
 
 ## المشروع
 
-[سجل التغييرات](CHANGELOG.md) · [المساهمة](CONTRIBUTING.md) · [اللغات](LANGUAGES.md) · [الترخيص](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[سجل التغييرات](CHANGELOG.md) · [المساهمة](CONTRIBUTING.md) · [اللغات](LANGUAGES.md) · [الترخيص](LICENSING.md) · [التبرع](DONATE.md) · [Telegram](https://t.me/cleverestech)
