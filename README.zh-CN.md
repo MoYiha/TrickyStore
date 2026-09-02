@@ -62,4 +62,4 @@ CleveresTricky 改善的是本地兼容路径。最终远程结果仍取决于�
 
 ## 项目
 
-[更新记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md) · [语言](LANGUAGES.md) · [许可证](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[更新记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md) · [语言](LANGUAGES.md) · [许可证](LICENSING.md) · [捐赠](DONATE.md) · [Telegram](https://t.me/cleverestech)
