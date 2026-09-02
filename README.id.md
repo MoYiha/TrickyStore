@@ -62,4 +62,4 @@ Lihat [Diagnostics](docs/Diagnostics.md) untuk masalah umum dan langkah pemecaha
 
 ## Proyek
 
-[Changelog](CHANGELOG.md) · [Kontribusi](CONTRIBUTING.md) · [Bahasa](LANGUAGES.md) · [Lisensi](LICENSING.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Kontribusi](CONTRIBUTING.md) · [Bahasa](LANGUAGES.md) · [Lisensi](LICENSING.md) · [Donasi](DONATE.md) · [Telegram](https://t.me/cleverestech)
