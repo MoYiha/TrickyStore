@@ -14,7 +14,7 @@ File observers react to normal keybox updates. A low frequency fallback poll cov
 
 ## Validation behavior
 
-Every refresh repeats private key correspondence, certificate chain, algorithm, validity, ambiguity, and revocation checks. New material is not activated when revocation data is unavailable. A broken entry prevents the mixed pool from becoming active.
+Every refresh repeats private key correspondence, certificate chain, algorithm, validity, ambiguity, and revocation checks. Valid key material is admitted immediately at boot and in offline environments without blocking on network availability. Revocation enforcement against Google's CRL is strictly conditioned on Automatic Keybox Check: when enabled, revocation status is verified asynchronously once network connectivity is available, safely retiring revoked keys; when disabled, custom or revoked keyboxes remain usable without service rejection. A broken or malformed entry prevents the mixed pool from becoming active.
 
 Cached parsed material is bounded by file count and file size. Unchanged files reuse their verified parse result. Removed files are removed from the cache.
 

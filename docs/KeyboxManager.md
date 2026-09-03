@@ -16,11 +16,11 @@ Files obtained from an explicitly configured secure source are treated as untrus
 
 The verifier confirms that every private key matches its leaf certificate. It checks supported algorithms, certificate chain relationships, certificate dates, duplicate or ambiguous material, and revocation information.
 
-New material does not become active when revocation state cannot be established. A pool containing a broken entry is rejected as a whole so request behavior does not depend on file ordering.
+Valid key material is activated immediately upon boot without waiting for network connectivity. When Automatic Keybox Check is enabled, revocation verification is performed asynchronously once online, and revoked keys are deactivated. When Automatic Keybox Check is disabled, custom or revoked key material is admitted without revocation enforcement. A pool containing a malformed entry is rejected as a whole so request behavior does not depend on file ordering.
 
 ## Automatic checks
 
-Auto Keybox Check runs only while Spoof Engine and the dedicated control are enabled. The worker uses a bounded schedule and stops when the engine is paused. File observers and a low frequency fallback poll detect updates without continuous directory scanning.
+Automatic Keybox Check runs independently of Spoof Engine as part of core Keystore protection. The worker uses a bounded schedule and stops when the service shuts down. File observers and a low frequency fallback poll detect updates without continuous directory scanning.
 
 ## Operational guidance
 

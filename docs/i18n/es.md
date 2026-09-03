@@ -40,7 +40,7 @@ La operación de clave privada sigue realizándose en Android KeyMint o StrongBo
 
 Mantiene keyboxes y estado de revocación actualizados sin escanear continuamente. File observers manejan cambmodern normales y se usa un fallback de baja frecuencia cuando el filesystem lo requiere; errores repetidos no crean workers superpuestos.
 
-Cada refresh repite la validación de clave, cadena, algoritmo, validez, ambigüedad y revocación. Material nuevo no se activa si no puede establecerse la revocación. Las cachés están limitadas por número y tamaño de archivos.
+Cada refresh repite la validación de clave, cadena, algoritmo, validez, ambigüedad y revocación. El material válido se admite inmediatamente en el arranque y en entornos sin conexión sin esperar a la red. La comprobación de revocación depende de Automatic Keybox Check: al activarse, se verifica en segundo plano en cuanto hay conexión y se retiran claves revocadas; al desactivarse, se pueden usar keyboxes personalizados o revocados sin rechazo. Las cachés están limitadas por número y tamaño de archivos.
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ Cada payload tiene SHA 256 y la verificación runtime rechaza symlinks, entradas
 
 Carga, verifica, selecciona y monitoriza material autorizado de attestation en formato legacy, XML múltiple y CBOX. Application Rules puede seleccionar un archivo específico; los remote sources siguen siendo untrusted hasta pasar la misma verificación local.
 
-Cada private key debe corresponder al leaf certificate. Se comprueban algoritmo, chain, fechas, duplicados/ambigüedad y revocation. Si la revocación no puede establecerse, material nuevo no se activa; un pool con una entrada rota se rechaza completo.
+Cada private key debe corresponder al leaf certificate. Se comprueban algoritmo, chain, fechas, duplicados/ambigüedad y revocation. El material de clave válido se activa de inmediato en el arranque sin esperar a la red. Con Automatic Keybox Check habilitado, las comprobaciones de revocación se ejecutan en segundo plano; si está deshabilitado, se admite material personalizado o revocado. Un pool con una entrada corrupta se rechaza por completo.
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Binder parser usa arrays fijos y descriptor cache de 64 slots. DRM controller y 
 
 Los perfiles aplican grupos de ajustes opcionales en una transacción validada; la protección central de boot, Keystore e infraestructura RKP permanece activa de forma independiente.
 
-Daily Compatibility usa alcance dirigido y monitorización de keybox; Default es una configuración conservadora; Maximum Compatibility activa Global Mode, build identity, identity refresh y telephony y desactiva DRM passthrough; Minimal desactiva identity opcional y comprobaciones programadas de keybox. Ninguno de estos presets cambia la protección de infraestructura RKP.
+Daily Compatibility usa alcance dirigido y monitorización de keybox; Default es una configuración conservadora (aplicar el perfil Default o restablecer el entorno en la WebUI restaura `target.txt`, `identity_target.txt`, `drm_packages.txt`, `boot_props_mode` y `security_patch.txt` a los valores limpios por defecto); Maximum Compatibility activa Global Mode, build identity, identity refresh y telephony y desactiva DRM passthrough; Minimal desactiva identity opcional y comprobaciones programadas de keybox. Ninguno de estos presets cambia la protección de infraestructura RKP.
 
 Las configuraciones antiguas pueden conservar el marcador retirado `rkp_passthrough`, pero el runtime ya no basa en él el comportamiento generated-key. Los perfiles version two pueden guardar aplicaciones, template, keybox validado, privacy, patch y opciones identity/DRM; el campo RKP heredado se conserva solo para migración y no es una opción activa del WebUI.
 

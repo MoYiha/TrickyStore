@@ -40,7 +40,7 @@ Private-key operation Android KeyMint या StrongBox ही करता ह�
 
 Continuous storage scan के बिना keybox/revocation update रखता है। File observer normal changes संभालता है और जरूरत पर low-frequency fallback चलता है।
 
-हर refresh key, chain, algorithm, validity, ambiguity, revocation verify करता है। Revocation unknown हो तो नया material activate नहीं होता। Cache file count/size bounded है।
+हर refresh key, chain, algorithm, validity, ambiguity, revocation verify करता है। मान्य keybox boot पर और offline environment में बिना network wait के तुरंत activate हो जाता है। Revocation check पूरी तरह Automatic Keybox Check पर निर्भर है: सक्षम होने पर network मिलने पर background में जाँच होती है और revoked keys हटा दी जाती हैं; अक्षम होने पर custom या revoked keybox बिना रुकावट इस्तेमाल किए जा सकते हैं। Cache file count/size bounded है।
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ Android 12-17 ARM64/x86-64 पर full KernelSU/APatch module install करत�
 
 Authorized attestation material को legacy/XML/CBOX रूप में load, verify, select, monitor करता है। Application Rule specific file चुन सकता है; remote data local verification तक untrusted है।
 
-Private key leaf certificate से match होना चाहिए; algorithm, chain, date, duplicate/ambiguity, revocation check होती है। Unknown revocation नया material activate नहीं करती, broken pool पूरा reject होता है।
+Private key leaf certificate से match होना चाहिए; algorithm, chain, date, duplicate/ambiguity, revocation check होती है। मान्य key material boot के समय तुरंत सक्रिय हो जाता है। Automatic Keybox Check चालू होने पर revocation background में verify होता है; बंद होने पर custom/revoked material स्वीकार किया जाता है। Broken pool पूरा reject होता है।
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Binder parser fixed arrays और 64-slot descriptor cache उपयोग क�
 
 Profiles optional settings के समूह को एक validated transaction में लागू करते हैं; core boot, Keystore और RKP infrastructure protection स्वतंत्र रूप से active रहती है।
 
-Daily Compatibility targeted scope और keybox monitoring उपयोग करता है; Default conservative setup है; Maximum Compatibility Global Mode, build identity, identity refresh और telephony चालू करके DRM passthrough बंद करता है; Minimal optional identity और scheduled keybox checks बंद करता है। इनमें से कोई preset RKP infrastructure protection नहीं बदलता।
+Daily Compatibility targeted scope और keybox monitoring उपयोग करता है; Default conservative setup है (Default profile लागू करने या WebUI में environment reset करने से `target.txt`, `identity_target.txt`, `drm_packages.txt`, `boot_props_mode`, और `security_patch.txt` साफ़ डिफ़ॉल्ट पर रीसेट हो जाते हैं); Maximum Compatibility Global Mode, build identity, identity refresh और telephony चालू करके DRM passthrough बंद करता है; Minimal optional identity और scheduled keybox checks बंद करता है। इनमें से कोई preset RKP infrastructure protection नहीं बदलता।
 
 पुरानी configuration में retired `rkp_passthrough` marker रह सकता है, लेकिन generated-key behavior अब उस पर निर्भर नहीं है। Version two profiles app assignment, template, validated keybox, privacy, patch और optional identity/DRM choices रख सकते हैं; legacy RKP field केवल migration compatibility के लिए है और live WebUI option नहीं है।
 

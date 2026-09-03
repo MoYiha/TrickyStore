@@ -40,7 +40,7 @@ Private-Key-Operationen werden weiterhin von Android KeyMint oder StrongBox ausg
 
 Hält Keybox- und Revocation-Zustand aktuell, ohne Storage dauerhaft zu scannen. File Observer übernimmt normale Änderungen; ein niedriger Fallback-Takt deckt ungeeignete Dateisysteme ab.
 
-Jeder Refresh validiert Key, Chain, Algorithmus, Datum, Ambiguität und Revocation neu. Wenn Revocation nicht feststellbar ist, wird neues Material nicht aktiviert. Caches sind nach Dateianzahl und Größe begrenzt.
+Jeder Refresh validiert Key, Chain, Algorithmus, Datum, Ambiguität und Revocation neu. Gültiges Keybox-Material wird beim Booten und in Offline-Umgebungen sofort ohne Netzwerkverzögerung aktiviert. Die Revocation-Prüfung ist an Automatic Keybox Check gebunden: Ist dieser aktiv, wird der Status im Hintergrund bei verfügbarer Verbindung geprüft und widerrufene Schlüssel werden entfernt; ist er deaktiviert, bleiben benutzerdefinierte oder widerrufene Keyboxen nutzbar. Caches sind nach Dateianzahl und Größe begrenzt.
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ Jeder Payload hat SHA 256; Runtime lehnt Symlinks, nicht reguläre und unerwarte
 
 Lädt, verifiziert, wählt und überwacht autorisiertes Attestation-Key-Material in Legacy-, XML- und CBOX-Form. App-Regeln können spezifische Dateien referenzieren; Remote-Daten bleiben bis zur lokalen Prüfung untrusted.
 
-Private Key muss Leaf Certificate entsprechen; Algorithmus, Chain, Datum, Duplikate/Ambiguität und Revocation werden geprüft. Unklare Revocation aktiviert kein neues Material und ein fehlerhafter Pool wird komplett verworfen.
+Private Key muss Leaf Certificate entsprechen; Algorithmus, Chain, Datum, Duplikate/Ambiguität und Revocation werden geprüft. Gültiges Schlüsselmaterial wird beim Systemstart ohne Warten auf das Netzwerk sofort aktiviert. Bei aktiviertem Automatic Keybox Check wird die Revocation-Prüfung im Hintergrund durchgeführt; bei deaktivierter Prüfung wird auch benutzerdefiniertes oder widerrufenes Material zugelassen. Ein fehlerhafter Pool wird komplett verworfen.
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Binder Parser nutzt fixe Arrays und einen 64-Slot Descriptor Cache. Controller u
 
 Profiles wenden optionale Einstellungen in einer validierten Transaktion an; Core-Boot-, Keystore- und RKP-Infrastrukturschutz bleiben unabhängig aktiv.
 
-Daily Compatibility nutzt gezielten Scope und Keybox-Monitoring; Default ist konservativ; Maximum Compatibility aktiviert Global Mode, Build Identity, Identity Refresh und Telephony und deaktiviert DRM Passthrough; Minimal deaktiviert optionale Identity- und geplante Keybox-Arbeit. Keines dieser Presets ändert den RKP-Infrastrukturschutz.
+Daily Compatibility nutzt gezielten Scope und Keybox-Monitoring; Default ist konservativ (das Anwenden des Default-Profils oder Zurücksetzen über das WebUI stellt `target.txt`, `identity_target.txt`, `drm_packages.txt`, `boot_props_mode` und `security_patch.txt` auf die sauberen Paket-Standardwerte zurück); Maximum Compatibility aktiviert Global Mode, Build Identity, Identity Refresh und Telephony und deaktiviert DRM Passthrough; Minimal deaktiviert optionale Identity- und geplante Keybox-Arbeit. Keines dieser Presets ändert den RKP-Infrastrukturschutz.
 
 Alte Konfigurationen können den stillgelegten Marker `rkp_passthrough` enthalten, aber Generated-Key-Verhalten hängt nicht mehr davon ab. Version-two-Profile können App-Zuordnung, Template, validierte Keybox, Privacy, Patch und optionale Identity/DRM-Wahlen speichern; das alte RKP-Feld bleibt nur für Migration kompatibel und ist keine Live-WebUI-Option.
 

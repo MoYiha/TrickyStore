@@ -40,7 +40,7 @@ Shared UID означает общую Binder identity. Некорректные
 
 Обновляет keybox/revocation без постоянного сканирования. File observer обрабатывает обычные изменения, низкочастотный fallback покрывает несовместимые filesystem. Повторные ошибки не создают overlapping workers.
 
-Refresh повторяет проверку key, chain, algorithm, validity, ambiguity, revocation. При недоступной revocation новый material не активируется. Cache ограничен числом и размером файлов.
+Refresh повторяет проверку key, chain, algorithm, validity, ambiguity, revocation. Допустимый keybox активируется сразу при загрузке и в офлайн-среде без ожидания сети. Проверка отзыва строго привязана к Automatic Keybox Check: при включении статус проверяется асинхронно при появлении сети с безопасным удалением отозванных ключей; при отключении допускаются пользовательские или отозванные ключи. Cache ограничен числом и размером файлов.
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ IMEI/ICCID checksum и длины ограничены. Manual edit удаляе
 
 Загружает, проверяет, выбирает и мониторит authorized attestation material в legacy/XML/CBOX. Application Rules могут ссылаться на конкретный verified file; remote material untrusted до такой же локальной проверки.
 
-Private key должен совпадать с leaf certificate; проверяются algorithm, chain, date, duplicate/ambiguity и revocation. Неопределенная revocation не активирует новый material, broken pool отклоняется полностью.
+Private key должен совпадать с leaf certificate; проверяются algorithm, chain, date, duplicate/ambiguity и revocation. Действительный материал ключей активируется при загрузке немедленно без ожидания сети. При включенном Automatic Keybox Check отзыв проверяется в фоне; при выключенном допускаются пользовательские или отозванные ключи. Broken pool отклоняется полностью.
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Binder parser использует fixed arrays и 64-slot descriptor cache. Con
 
 Профили применяют наборы необязательных настроек одной проверенной транзакцией; базовая защита boot, Keystore и инфраструктуры RKP остаётся активной независимо.
 
-Daily Compatibility использует targeted scope и мониторинг keybox; Default: консервативный режим; Maximum Compatibility включает Global Mode, build identity, identity refresh и telephony и выключает DRM passthrough; Minimal отключает необязательную identity-логику и плановые проверки keybox. Ни один preset не меняет защиту инфраструктуры RKP.
+Daily Compatibility использует targeted scope и мониторинг keybox; Default: консервативный режим (применение профиля Default или сброс окружения в WebUI восстанавливает `target.txt`, `identity_target.txt`, `drm_packages.txt`, `boot_props_mode` и `security_patch.txt` к чистым исходным значениям по умолчанию); Maximum Compatibility включает Global Mode, build identity, identity refresh и telephony и выключает DRM passthrough; Minimal отключает необязательную identity-логику и плановые проверки keybox. Ни один preset не меняет защиту инфраструктуры RKP.
 
 Старые конфигурации могут содержать выведенный из эксплуатации маркер `rkp_passthrough`, но generated-key поведение больше от него не зависит. Профили version two могут хранить назначения приложений, template, проверенный keybox, privacy, patch и параметры identity/DRM; старое поле RKP сохраняется только для миграционной совместимости и не является активной настройкой WebUI.
 

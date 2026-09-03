@@ -40,7 +40,7 @@ RKP 基础设施调用者始终保持在 Android 原生的配置路径上。对�
 
 Automatic Keybox Check 在不持续扫描存储的情况下维护 keybox 与 revocation 状态。正常文件变化由 observer 处理，在某些文件系统上使用低频 fallback。重复错误不会产生重叠 worker。
 
-每次刷新都会重新验证 key/certificate、chain、算法、有效期、歧义和吊销状态。无法确定 revocation 时新材料不会启用。缓存按文件数量和大小限制，未变化的已验证文件可复用解析结果。
+每次刷新都会重新验证 key/certificate、chain、算法、有效期、歧义和吊销状态。有效的 keybox 在开机和离线环境下立即可用，无需等待网络。吊销检查严格取决于 Automatic Keybox Check：启用时，将在网络可用后异步验证并在发现吊销时安全停用；禁用时，用户可自由使用自定义或被吊销的 keybox。损坏的条目会使整个池被拒绝。缓存按文件数量和大小限制，未变化的已验证文件可复用解析结果。
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ Installer 安装完整 KernelSU/APatch 模块，包括 service、native payload�
 
 Keybox Manager 加载、验证、选择和监控授权 attestation key material，支持 legacy 单文件、多 XML 和 encrypted CBOX。Application Rule 可引用指定已验证文件，remote source 在同样的本地验证完成前仍视为不可信。
 
-每个 private key 必须匹配 leaf certificate，并检查算法、chain、日期、重复/歧义、revocation。无法确定 revocation 的新材料不启用，包含坏条目的 pool 整体拒绝。真实 keybox 不应提交到源码仓库。
+每个 private key 必须匹配 leaf certificate，并检查算法、chain、日期、重复/歧义、revocation。有效的密钥材料在开机时无需等待网络即可立即生效。启用 Automatic Keybox Check 时将在联网后在后台执行吊销检查；禁用时则允许自定义或被吊销的材料。包含损坏条目的 pool 整体拒绝。真实 keybox 不应提交到源码仓库。
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Rust Binder parser 使用固定数组，descriptor cache 为 64 个固定槽。D
 
 Profiles 以一次经过验证的事务应用一组可选设置；核心 boot、Keystore 与 RKP 基础设施保护始终独立保持启用。
 
-Daily Compatibility 使用定向范围和 keybox 监控；Default 是保守的可选身份配置；Maximum Compatibility 启用 Global Mode、build identity、identity refresh 与 telephony，并关闭 DRM passthrough；Minimal 关闭可选身份和计划 keybox 检查。这些预设都不会改变 RKP 基础设施保护。
+Daily Compatibility 使用定向范围和 keybox 监控；Default 是保守的可选身份配置（应用 Default 预设或在 WebUI 中重置环境会将 `target.txt`、`identity_target.txt`、`drm_packages.txt`、`boot_props_mode` 与 `security_patch.txt` 恢复为初始模板默认值）；Maximum Compatibility 启用 Global Mode、build identity、identity refresh 与 telephony，并关闭 DRM passthrough；Minimal 关闭可选身份和计划 keybox 检查。这些预设都不会改变 RKP 基础设施保护。
 
 旧配置可能仍包含已退役的 `rkp_passthrough` 标记，但运行时的 generated-key 行为不再依赖它。Version two profile 可保存应用分配、template、已验证 keybox、privacy、patch 以及可选 identity/DRM 设置；旧 RKP 字段仅用于迁移兼容，不再作为 WebUI 的实时选项。
 

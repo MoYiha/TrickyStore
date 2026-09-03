@@ -42,7 +42,7 @@ Attestation Identity يحتاج keybox فعالة ومتحققا منها. DRM i
 
 يحافظ على keybox/revocation محدثة دون continuous storage scan. File observer يتعامل مع التغييرات الطبيعية ويستخدم low-frequency fallback عند الحاجة.
 
-كل refresh يعيد فحص key وchain وalgorithm وvalidity وambiguity وrevocation. إذا تعذر تحديد revocation فلا تفعل المواد الجديدة. الكاش محدود بعدد وحجم الملفات.
+كل refresh يعيد فحص key وchain وalgorithm وvalidity وambiguity وrevocation. يتم قبول keybox الصالح فوراً عند الإقلاع وفي وضع عدم الاتصال دون انتظار الشبكة. يرتبط فحص revocation تماماً بإعداد Automatic Keybox Check: عند التفعيل يتم التحقق في الخلفية عند توفر الشبكة وتُستبعد المفاتيح الملغاة؛ وعند التعطيل يُسمح باستخدام keybox مخصص أو ملغى دون رفض. الكاش محدود بعدد وحجم الملفات.
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -121,7 +121,7 @@ IMEI/ICCID checksum والأطوال محدودة. Manual edit يحذف stage ا
 
 يحمل ويتحقق ويختار ويراقب authorized attestation material بصيغ legacy/XML/CBOX. يمكن لـ Application Rule اختيار file محدد، وremote material يبقى untrusted حتى التحقق المحلي.
 
-يجب أن يطابق private key الـ leaf certificate ويتم فحص algorithm وchain وdate وduplicate/ambiguity وrevocation. Unknown revocation لا يفعل المواد الجديدة، وbroken pool يرفض بالكامل.
+يجب أن يطابق private key الـ leaf certificate ويتم فحص algorithm وchain وdate وduplicate/ambiguity وrevocation. يتم تفعيل المفاتيح الصالحة فور الإقلاع دون انتظار الشبكة. عند تفعيل Automatic Keybox Check يتم فحص الإلغاء في الخلفية؛ وعند تعطيله يُسمح بالمواد المخصصة أو الملغاة. ويرفض broken pool بالكامل.
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -149,7 +149,7 @@ Binder parser يستخدم fixed arrays وdescriptor cache من 64 slot. Control
 
 تطبق Profiles مجموعة من الإعدادات الاختيارية في معاملة واحدة متحقق منها؛ وتظل حماية boot وKeystore وبنية RKP الأساسية فعالة بشكل مستقل.
 
-يستخدم Daily Compatibility نطاقاً مستهدفاً ومراقبة keybox؛ وDefault إعداد محافظ؛ ويشغل Maximum Compatibility ‏Global Mode وbuild identity وidentity refresh وtelephony مع تعطيل DRM passthrough؛ بينما يعطل Minimal الهوية الاختيارية وفحوص keybox المجدولة. لا يغير أي preset حماية بنية RKP.
+يستخدم Daily Compatibility نطاقاً مستهدفاً ومراقبة keybox؛ وDefault إعداد محافظ (تطبيق Default أو إعادة ضبط البيئة في WebUI يعيد `target.txt` و`identity_target.txt` و`drm_packages.txt` و`boot_props_mode` و`security_patch.txt` إلى إعداداتها الافتراضية النظيفة)؛ ويشغل Maximum Compatibility ‏Global Mode وbuild identity وidentity refresh وtelephony مع تعطيل DRM passthrough؛ بينما يعطل Minimal الهوية الاختيارية وفحوص keybox المجدولة. لا يغير أي preset حماية بنية RKP.
 
 قد تبقى علامة `rkp_passthrough` المتقاعدة في الإعدادات القديمة، لكن سلوك generated-key لم يعد يعتمد عليها. تستطيع Profiles version two حفظ تعيينات التطبيقات وtemplate وkeybox متحقق منه وprivacy وpatch وخيارات identity/DRM؛ أما حقل RKP القديم فيبقى فقط لتوافق الترحيل وليس خياراً حياً في WebUI.
 

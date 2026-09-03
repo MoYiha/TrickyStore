@@ -40,7 +40,7 @@ Operasi private key tetap dilakukan Android KeyMint atau StrongBox. Sebelum mate
 
 Menjaga keybox/revocation tetap terbaru tanpa continuous storage scan. File observer menangani perubahan normal dan low-frequency fallback digunakan pada filesystem tertentu.
 
-Setiap refresh mengulang verifikasi key, chain, algorithm, validity, ambiguity dan revocation. Material baru tidak aktif bila revocation tidak dapat ditentukan. Cache dibatasi jumlah dan ukuran file.
+Setiap refresh mengulang verifikasi key, chain, algorithm, validity, ambiguity dan revocation. Keybox yang valid langsung aktif saat booting dan offline tanpa menunggu koneksi internet. Pemeriksaan revocation terikat langsung pada Automatic Keybox Check: saat aktif, revocation diverifikasi secara asinkron di latar belakang saat online dan kunci yang dicabut dihapus; saat nonaktif, keybox kustom atau yang dicabut tetap dapat digunakan. Cache dibatasi jumlah dan ukuran file.
 
 <a id="backup-restore"></a>
 ## Backup and Restore
@@ -119,7 +119,7 @@ Setiap payload memiliki SHA 256 dan runtime menolak symlink/non-regular/unexpect
 
 Memuat, memverifikasi, memilih dan memonitor authorized attestation material dalam legacy/XML/CBOX. Application Rule dapat memilih file; remote material untrusted sampai lulus verifikasi lokal.
 
-Private key harus cocok dengan leaf certificate; algorithm, chain, date, duplicate/ambiguity, revocation diperiksa. Revocation tidak jelas berarti material baru tidak aktif; broken pool ditolak penuh.
+Private key harus cocok dengan leaf certificate; algorithm, chain, date, duplicate/ambiguity, revocation diperiksa. Key material yang valid diaktifkan langsung saat boot tanpa menunggu jaringan. Saat Automatic Keybox Check aktif, verifikasi pencabutan dilakukan di latar belakang; saat nonaktif, key material kustom atau yang dicabut tetap diterima. Broken pool ditolak penuh.
 
 <a id="native-architecture"></a>
 ## Native Architecture
@@ -147,7 +147,7 @@ Binder parser memakai fixed arrays dan descriptor cache 64 slot. Controller/cach
 
 Profiles menerapkan kelompok pengaturan opsional dalam satu transaksi tervalidasi; perlindungan inti boot, Keystore, dan infrastruktur RKP tetap aktif secara independen.
 
-Daily Compatibility memakai targeted scope dan keybox monitoring; Default adalah konfigurasi konservatif; Maximum Compatibility mengaktifkan Global Mode, build identity, identity refresh, dan telephony lalu mematikan DRM passthrough; Minimal mematikan identity opsional dan pemeriksaan keybox terjadwal. Tidak satu pun preset mengubah perlindungan infrastruktur RKP.
+Daily Compatibility memakai targeted scope dan keybox monitoring; Default adalah konfigurasi konservatif (menerapkan profil Default atau mereset environment di WebUI mengembalikan `target.txt`, `identity_target.txt`, `drm_packages.txt`, `boot_props_mode`, dan `security_patch.txt` ke nilai default paket yang bersih); Maximum Compatibility mengaktifkan Global Mode, build identity, identity refresh, dan telephony lalu mematikan DRM passthrough; Minimal mematikan identity opsional dan pemeriksaan keybox terjadwal. Tidak satu pun preset mengubah perlindungan infrastruktur RKP.
 
 Konfigurasi lama dapat tetap memiliki marker `rkp_passthrough` yang sudah retired, tetapi perilaku generated-key tidak lagi bergantung padanya. Profile version two dapat menyimpan assignment aplikasi, template, keybox tervalidasi, privacy, patch, serta pilihan identity/DRM; field RKP lama hanya dipertahankan untuk kompatibilitas migrasi dan bukan opsi WebUI aktif.
 
