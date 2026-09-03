@@ -189,7 +189,9 @@ class ConfigKeyboxActivationTest {
                 ids.all(ManagedOpaqueKeyOracle::contains)
             }
 
-            Config.updateKeyBoxesSync()
+            Config.updateKeyBoxesSyncWithoutExternalSourcesForTesting(null) { _, _ ->
+                KeyboxVerifier.Status.REVOKED
+            }
             assertEquals(0, CertHack.getKeyboxCount())
         }
     }

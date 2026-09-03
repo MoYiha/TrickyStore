@@ -635,7 +635,7 @@ object Config {
                     if (!currentFiles.contains(cacheIterator.next())) cacheIterator.remove()
                 }
 
-                if (refreshExternalSources) CboxManager.refresh()
+                if (refreshExternalSources) CboxManager.refresh(enforceRevocationCheck = enforceRevocationCheck)
                 appendBounded(CboxManager.getUnlockedKeyboxes(), "CBOX sources")
                 appendBounded(ServerManager.getLoadedKeyboxes(), "server sources")
 
