@@ -2,6 +2,7 @@ package cleveres.tricky.cleverestech.util
 
 import cleveres.tricky.cleverestech.CrlBackend
 import cleveres.tricky.cleverestech.CrlWire
+import java.io.File
 import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
@@ -70,6 +71,32 @@ class KeyboxVerifierPersistentCacheTest {
             thread.interrupt()
             KeyboxVerifier.resetCrlUrlForTesting()
             KeyboxVerifier.resetCacheRootForTesting()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun offlineFallbackLoadsExistingCacheWhenNetworkFails() {
+        val root = Files.createTempDirectory("ct-crl-offline").toFile()
+        try {
+            val cacheFile = File(root, "attestation_status_cache.json")
+            cacheFile.writeBytes("""{"entries":{"99999":"REVOKED"}}""".toByteArray())
+
+            KeyboxVerifier.setCacheRootForTesting(root)
+            KeyboxVerifier.clearMemoryCacheForTesting()
+            // Set URL to an unused loopback port so network fetch fails immediately
+            val deadSocket = ServerSocket(0)
+            val port = deadSocket.localPort
+            deadSocket.close()
+            KeyboxVerifier.setCrlUrlForTesting("http://localhost:$port")
+
+            val handle = KeyboxVerifier.fetchCrl()
+            assertNotNull("Offline fallback should load persisted cache when network fails", handle)
+            assertEquals(TEST_GENERATION, handle?.generation)
+        } finally {
+            KeyboxVerifier.resetCrlUrlForTesting()
+            KeyboxVerifier.resetCacheRootForTesting()
+            KeyboxVerifier.clearMemoryCacheForTesting()
             root.deleteRecursively()
         }
     }

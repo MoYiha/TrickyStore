@@ -8,6 +8,7 @@ import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.NativeBackend
 import cleveres.tricky.cleverestech.RustBackendUnavailableException
 import cleveres.tricky.cleverestech.StoredKeyboxInventory
+import cleveres.tricky.cleverestech.getModuleDir
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -305,7 +306,30 @@ object KeyboxVerifier {
                 cacheLock.unlock()
             }
         }
-        return result
+
+        if (result != null) return result
+
+        cacheLock.lock()
+        try {
+            cachedCrl?.let { return it }
+            loadBaselineOrStaleCrlLocked()?.let { (raw, modified) ->
+                try {
+                    val handle = CrlBackend.refresh(raw)
+                    if (handle != null) {
+                        cachedCrl = handle
+                        lastFetchTime = modified
+                        Logger.w("Loaded offline baseline attestation revocation cache into Rust generation ${handle.generation}")
+                        return handle
+                    }
+                } finally {
+                    raw.fill(0)
+                }
+            }
+        } finally {
+            cacheLock.unlock()
+        }
+
+        return null
     }
 
     private fun fetchNetworkCrl(
@@ -449,10 +473,16 @@ object KeyboxVerifier {
 
     private fun loadPersistedCrlLocked(now: Long): Pair<ByteArray, Long>? {
         val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
-        val path = cacheFile.toPath()
-        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
-        val size = cacheFile.length()
-        val modified = cacheFile.lastModified()
+        val fileToLoad =
+            if (Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+                cacheFile
+            } else {
+                val fallback = File(getModuleDir(), PERSISTED_CRL_FILE)
+                if (Files.isRegularFile(fallback.toPath(), LinkOption.NOFOLLOW_LINKS)) fallback else return null
+            }
+        val path = fileToLoad.toPath()
+        val size = fileToLoad.length()
+        val modified = fileToLoad.lastModified()
         val age = now - modified
         if (size !in 1..MAX_CRL_BYTES || modified <= 0L || age < 0L || age >= CACHE_TTL) return null
         return runCatching {
@@ -461,6 +491,28 @@ object KeyboxVerifier {
         }.onFailure {
             Logger.w("Ignoring invalid persisted attestation revocation cache")
         }.getOrNull()
+    }
+
+    private fun loadBaselineOrStaleCrlLocked(): Pair<ByteArray, Long>? {
+        val candidates = listOf(
+            File(cacheRoot, PERSISTED_CRL_FILE),
+            File(getModuleDir(), PERSISTED_CRL_FILE),
+        )
+        for (candidate in candidates) {
+            val path = candidate.toPath()
+            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue
+            val size = candidate.length()
+            val modified = candidate.lastModified()
+            if (size !in 1..MAX_CRL_BYTES) continue
+            val result = runCatching {
+                BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
+                    .use(::readAllBytesBounded) to (if (modified > 0L) modified else System.currentTimeMillis())
+            }.onFailure {
+                Logger.w("Ignoring invalid baseline attestation revocation cache")
+            }.getOrNull()
+            if (result != null) return result
+        }
+        return null
     }
 
     private fun persistCrlLocked(rawCrl: ByteArray) {

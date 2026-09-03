@@ -2148,15 +2148,7 @@ class WebServer(
                     replacements.filterKeys { it !in processed }.forEach { (key, value) -> lines += "$key=$value" }
                     SecureFile.writeText(spoofFile, lines.joinToString("\n", postfix = "\n"))
                     Config.updateBuildVars(spoofFile)
-                    val target = File(configDir, "target.txt")
-                    if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        java.nio.file.Files.setAttribute(
-                            target.toPath(),
-                            "basic:lastModifiedTime",
-                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
-                            LinkOption.NOFOLLOW_LINKS
-                        )
-                    }
+                    Config.resetTargetFilesToDefaults()
                     if (!updateKeyboxesFromConfiguredRevocationSource()) {
                         return keyboxActivationFailureResponse()
                     }

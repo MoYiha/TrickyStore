@@ -1733,6 +1733,43 @@ object Config {
     private const val PRIVACY_SEED_BYTES = 32
     private const val PRIVACY_DERIVATION_DOMAIN = "CleveresTricky/AppPrivacy/v1"
     private val APP_PACKAGE_PATTERN = Regex("(?:[A-Za-z0-9_.]{1,255})|(?:[A-Za-z0-9_.]{0,254}\\*)")
+
+    const val DEFAULT_TARGET_CONTENT = "# Google apps\n" +
+        "com.android.vending\n" +
+        "com.google.android.gms\n\n" +
+        "# Key Attestation apps\n" +
+        "io.github.vvb2060.keyattestation\n" +
+        "io.github.qwq233.keyattestation\n\n" +
+        "# Environment Test apps\n" +
+        "io.github.vvb2060.mahoshojo\n" +
+        "icu.nullptr.nativetest\n" +
+        "com.android.nativetest\n" +
+        "com.reveny.nativecheck\n" +
+        "com.zhenxi.hunter\n" +
+        "luna.safe.luna\n" +
+        "io.liankong.riskdetector\n" +
+        "com.studio.duckdetector\n" +
+        "com.eltavine.duckdetector\n"
+
+    const val DEFAULT_DRM_PACKAGES_CONTENT = "# Packages in this list stay on Android's genuine keystore certificate path\n" +
+        "# while DRM App Passthrough is enabled. Wildcards are supported.\n" +
+        "com.netflix.mediaclient\n" +
+        "com.amazon.avod.thirdpartyclient\n" +
+        "com.disney.disneyplus\n" +
+        "com.wbd.stream\n" +
+        "com.google.android.youtube\n"
+
+    @Synchronized
+    fun resetTargetFilesToDefaults() {
+        SecureFile.writeText(File(root, TARGET_FILE), DEFAULT_TARGET_CONTENT)
+        SecureFile.writeText(File(root, IDENTITY_TARGET_FILE), DEFAULT_TARGET_CONTENT)
+        SecureFile.writeText(File(root, SECURITY_PATCH_FILE), "")
+        SecureFile.writeText(File(root, "boot_props_mode"), "auto\n")
+        SecureFile.writeText(File(root, DRM_PACKAGES_FILE), DEFAULT_DRM_PACKAGES_CONTENT)
+        updateTargetPackages(File(root, TARGET_FILE))
+        updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
+        updateDrmPackages(File(root, DRM_PACKAGES_FILE))
+    }
     private val APP_KEYBOX_PATTERN = Regex("[A-Za-z0-9_.-]{1,128}")
 
     private fun isValidAppKeybox(value: String): Boolean {
@@ -1905,6 +1942,7 @@ object Config {
                 SecureFile.touch(File(root, AUTO_KEYBOX_CHECK_FILE), 384)
                 removeConfigFiles(SPOOF_ENABLED_FILE, BUILD_IDENTITY_FILE, GLOBAL_IDENTITY_MODE_FILE, TEE_BROKEN_MODE_FILE, RANDOM_ON_BOOT_FILE,
                     BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, TELEPHONY_FILE, RKP_PASSTHROUGH_FILE, DRM_PASSTHROUGH_FILE)
+                resetTargetFilesToDefaults()
             }
         }
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))

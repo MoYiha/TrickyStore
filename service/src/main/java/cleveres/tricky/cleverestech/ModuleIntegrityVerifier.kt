@@ -636,7 +636,7 @@ object ModuleIntegrityVerifier {
     private val CONFIG_TEMPLATE_FILES = setOf(
         "boot_props_mode", "drm_packages.txt", "identity_target.txt",
         "target.txt", "security_patch.txt", "policy_state_v2.json",
-        "spoof_build_vars",
+        "spoof_build_vars", "attestation_status_cache.json",
     )
 
     private val CRITICAL_EXECUTABLE_NAMES = setOf(

@@ -311,4 +311,22 @@ assert.strictEqual(fallbackLeafElement.textContent, 'Fallback Leaf Text', 'leaf 
 testTranslateLeaf(mappedLeafElement, 'en');
 assert.strictEqual(mappedLeafElement.textContent, 'Refresh', 'leaf element must restore mapped English translation');
 
+const resMonitorElementTr = {
+    hasAttribute(name) { return name === 'data-i18n'; },
+    getAttribute(name) { return name === 'data-i18n' ? 'resource_monitor_title' : null; },
+    children: [],
+    textContent: 'Resource Monitor'
+};
+testTranslateLeaf(resMonitorElementTr, 'tr');
+assert.strictEqual(resMonitorElementTr.textContent, 'Kaynak İzleyici', 'resource_monitor_title must translate to Kaynak İzleyici in Turkish');
+
+const resMonitorElementEn = {
+    hasAttribute(name) { return name === 'data-i18n'; },
+    getAttribute(name) { return name === 'data-i18n' ? 'resource_monitor_title' : null; },
+    children: [],
+    textContent: 'resource_monitor_title'
+};
+testTranslateLeaf(resMonitorElementEn, 'en');
+assert.strictEqual(resMonitorElementEn.textContent, 'Resource Monitor', 'resource_monitor_title must translate to Resource Monitor in English');
+
 console.log('WebUI localization coverage tests passed');

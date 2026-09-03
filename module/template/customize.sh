@@ -175,7 +175,7 @@ for config_file in spoof_build_vars security_patch.txt target.txt identity_targe
   auto_keybox_check random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
-  policy_state_v2.last_good.json debug_logging settings_schema_v3; do
+  policy_state_v2.last_good.json debug_logging settings_schema_v3 attestation_status_cache.json; do
   config_path="$CONFIG_DIR/$config_file"
   if [ -e "$config_path" ] || [ -L "$config_path" ]; then
     if [ -L "$config_path" ] || [ ! -f "$config_path" ]; then
@@ -301,6 +301,14 @@ if [ ! -f "$CONFIG_DIR/boot_props_mode" ]; then
 fi
 chmod 600 "$CONFIG_DIR/boot_props_mode" || abort "! Could not secure boot_props_mode"
 
+if [ ! -f "$CONFIG_DIR/attestation_status_cache.json" ]; then
+  ui_print "- Adding baseline attestation status cache"
+  extract "$ZIPFILE" 'attestation_status_cache.json' "$TMPDIR"
+  mv "$TMPDIR/attestation_status_cache.json" "$CONFIG_DIR/attestation_status_cache.json" \
+    || abort "! Could not install attestation_status_cache.json"
+fi
+chmod 600 "$CONFIG_DIR/attestation_status_cache.json" || abort "! Could not secure attestation_status_cache.json"
+
 for optional_flag in auto_keybox_check drm_passthrough hide_sensitive_props debug_logging; do
   [ ! -e "$CONFIG_DIR/$optional_flag" ] || chmod 600 "$CONFIG_DIR/$optional_flag" \
     || abort "! Could not secure $optional_flag"
@@ -308,7 +316,7 @@ done
 
 chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   "$CONFIG_DIR/target.txt" "$CONFIG_DIR/identity_target.txt" "$CONFIG_DIR/drm_packages.txt" \
-  "$CONFIG_DIR/boot_props_mode" "$CONFIG_DIR/spoof_switch_initialized" \
+  "$CONFIG_DIR/boot_props_mode" "$CONFIG_DIR/attestation_status_cache.json" "$CONFIG_DIR/spoof_switch_initialized" \
   || abort "! Could not set configuration file ownership"
 [ ! -e "$CONFIG_DIR/global_mode" ] || chown 0:0 "$CONFIG_DIR/global_mode" \
   || abort "! Could not set Global Mode switch ownership"

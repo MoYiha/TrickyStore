@@ -37,6 +37,7 @@ const IGNORED_FILES: &[&str] = &[
     "security_patch.txt",
     "policy_state_v2.json",
     "spoof_build_vars",
+    "attestation_status_cache.json",
 ];
 
 /// Checks if a file name should be ignored during verification.
