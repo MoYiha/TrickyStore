@@ -765,7 +765,10 @@ fn serve_web(
                 }
             }
             OP_INTEGRITY_VERIFY_FULL
-                if header.flags == 0 && (header.payload_len == 0 || header.payload_len == 32 || header.payload_len == 33) =>
+                if header.flags == 0
+                    && (header.payload_len == 0
+                        || header.payload_len == 32
+                        || header.payload_len == 33) =>
             {
                 let mut public_key = cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY;
                 let mut allow_unsigned = false;
@@ -867,21 +870,22 @@ fn handle_integrity_verify_full(
         }
     };
 
-    let manifest = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
-        &manifest_str,
-        public_key,
-        allow_unsigned,
-    ) {
-        Ok(m) => m,
-        Err(e) => {
-            let _ = write_integrity_violation(
-                client,
-                OP_INTEGRITY_VERIFY_FULL,
-                &format!("signature invalid: {e}"),
-            );
-            return;
-        }
-    };
+    let manifest =
+        match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
+            &manifest_str,
+            public_key,
+            allow_unsigned,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                let _ = write_integrity_violation(
+                    client,
+                    OP_INTEGRITY_VERIFY_FULL,
+                    &format!("signature invalid: {e}"),
+                );
+                return;
+            }
+        };
 
     let result = cleverestricky_integrity_core::verify_full(raw_dir_fd, &manifest);
     if result.is_pass() {
@@ -950,7 +954,11 @@ fn handle_integrity_verify_file(
                 return;
             }
         };
-        (&cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY, false, path)
+        (
+            &cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY,
+            false,
+            path,
+        )
     };
 
     let manifest = match cached_manifest_for_key(cached_manifest, public_key) {
@@ -1006,21 +1014,22 @@ fn handle_integrity_verify_file(
                 }
             };
 
-            let m = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
-                &manifest_str,
-                public_key,
-                allow_unsigned,
-            ) {
-                Ok(m) => m,
-                Err(e) => {
-                    let _ = write_integrity_violation(
-                        client,
-                        OP_INTEGRITY_VERIFY_FILE,
-                        &format!("signature invalid: {e}"),
-                    );
-                    return;
-                }
-            };
+            let m =
+                match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
+                    &manifest_str,
+                    public_key,
+                    allow_unsigned,
+                ) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        let _ = write_integrity_violation(
+                            client,
+                            OP_INTEGRITY_VERIFY_FILE,
+                            &format!("signature invalid: {e}"),
+                        );
+                        return;
+                    }
+                };
             if let Ok(mut lock) = cached_manifest.write() {
                 *lock = Some(CachedManifest {
                     manifest: m.clone(),
