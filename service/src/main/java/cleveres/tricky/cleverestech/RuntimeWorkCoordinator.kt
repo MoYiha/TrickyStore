@@ -122,33 +122,129 @@ internal object KeyboxDirectoryRefreshWatcher {
             Logger.d("Refreshing keyboxes after filesystem changes")
             Config.updateKeyBoxesSync()
         }
-    private var observer: FileObserver? = null
+
+    private var childObserver: FileObserver? = null
+    private var parentObserver: FileObserver? = null
+
+    @Volatile
+    private var isRunning = false
+    private val lock = Any()
 
     @Synchronized
     fun start(directory: File) {
-        if (observer != null) return
+        synchronized(lock) {
+            if (isRunning) return
+            isRunning = true
+            // Config.initialize() already started the legacy observer. Retire it first.
+            Config.KeyboxDirObserver.stopWatching()
 
-        // Config.initialize() already started the legacy observer. Start the replacement first so
-        // a failure leaves the original observer intact, then retire the old one after hand-off.
-        val replacement =
-            object : FileObserver(directory, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB) {
-                override fun onEvent(
-                    event: Int,
-                    path: String?,
-                ) {
-                    Config.keyboxInventoryFingerprintDirty = true
-                    scheduler.submit()
+            val parent = directory.parentFile
+            if (parent != null) {
+                try {
+                    val pObserver = object : FileObserver(parent, CREATE or MOVED_TO or DELETE or MOVED_FROM) {
+                        override fun onEvent(event: Int, path: String?) {
+                            if (path == directory.name) {
+                                synchronized(lock) {
+                                    if (!isRunning) return
+                                    if ((event and (CREATE or MOVED_TO)) != 0) {
+                                        Logger.i("Parent watcher detected keybox directory created/moved into place")
+                                        if (directory.exists()) {
+                                            tryArmChildLocked(directory)
+                                            triggerRefresh()
+                                        }
+                                    } else if ((event and (DELETE or MOVED_FROM)) != 0) {
+                                        Logger.w("Parent watcher detected keybox directory removed")
+                                        disarmChildLocked()
+                                        triggerRefresh()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    pObserver.startWatching()
+                    parentObserver = pObserver
+                    Logger.i("Keybox parent directory watcher armed on ${parent.absolutePath}")
+                } catch (e: Throwable) {
+                    Logger.e("Failed to arm keybox parent directory watcher", e)
                 }
             }
-        replacement.startWatching()
-        Config.KeyboxDirObserver.stopWatching()
-        observer = replacement
+
+            if (directory.exists()) {
+                tryArmChildLocked(directory)
+            } else {
+                Logger.w("Keybox directory not present at startup, waiting for parent watcher event")
+            }
+        }
+    }
+
+    private fun tryArmChildLocked(directory: File) {
+        if (childObserver != null) return
+        if (!directory.exists()) return
+
+        try {
+            val replacement =
+                object : FileObserver(directory, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB or DELETE_SELF or MOVE_SELF) {
+                    override fun onEvent(
+                        event: Int,
+                        path: String?,
+                    ) {
+                        if ((event and DELETE_SELF) != 0 || (event and MOVE_SELF) != 0) {
+                            Logger.w("Keybox directory lost via MOVE_SELF or DELETE_SELF")
+                            synchronized(lock) {
+                                disarmChildLocked()
+                            }
+                            triggerRefresh()
+                        } else {
+                            triggerRefresh()
+                        }
+                    }
+                }
+            replacement.startWatching()
+            childObserver = replacement
+            Logger.i("Keybox directory watcher armed on ${directory.absolutePath}")
+        } catch (e: Throwable) {
+            Logger.e("Failed to arm keybox directory watcher", e)
+        }
+    }
+
+    private fun disarmChildLocked() {
+        childObserver?.stopWatching()
+        childObserver = null
+    }
+
+    private fun triggerRefresh() {
+        Config.keyboxInventoryFingerprintDirty = true
+        scheduler.submit()
     }
 
     @Synchronized
     fun stop() {
-        observer?.stopWatching()
-        observer = null
-        scheduler.cancel()
+        synchronized(lock) {
+            isRunning = false
+            disarmChildLocked()
+            parentObserver?.stopWatching()
+            parentObserver = null
+            scheduler.cancel()
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun isChildObserverActiveForTesting(): Boolean = synchronized(lock) { childObserver != null }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun isParentObserverActiveForTesting(): Boolean = synchronized(lock) { parentObserver != null }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun injectChildEventForTesting(event: Int) {
+        synchronized(lock) {
+            childObserver?.onEvent(event, null)
+        }
+    }
+
+    @androidx.annotation.VisibleForTesting
+    internal fun injectParentEventForTesting(event: Int, path: String?) {
+        synchronized(lock) {
+            parentObserver?.onEvent(event, path)
+        }
     }
 }
