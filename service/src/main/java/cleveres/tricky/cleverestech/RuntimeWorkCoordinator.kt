@@ -131,11 +131,12 @@ internal object KeyboxDirectoryRefreshWatcher {
         // Config.initialize() already started the legacy observer. Start the replacement first so
         // a failure leaves the original observer intact, then retire the old one after hand-off.
         val replacement =
-            object : FileObserver(directory, CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
+            object : FileObserver(directory, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO or MODIFY or ATTRIB) {
                 override fun onEvent(
                     event: Int,
                     path: String?,
                 ) {
+                    Config.keyboxInventoryFingerprintDirty = true
                     scheduler.submit()
                 }
             }
