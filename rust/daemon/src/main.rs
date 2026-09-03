@@ -913,7 +913,9 @@ fn handle_integrity_verify_file(
     cached_manifest: &std::sync::RwLock<Option<CachedManifest>>,
     payload: &[u8],
 ) {
-    let (public_key, allow_unsigned, relative_path) = if payload.len() >= 33 {
+    let (public_key, allow_unsigned, relative_path) = if payload.len() >= 34
+        && (payload[32] == 0 || payload[32] == 1)
+    {
         let key: &[u8; 32] = match payload[..32].try_into() {
             Ok(k) => k,
             Err(_) => {
@@ -921,7 +923,7 @@ fn handle_integrity_verify_file(
                 return;
             }
         };
-        let allow = payload[32] != 0;
+        let allow = payload[32] == 1;
         let path = match std::str::from_utf8(&payload[33..]) {
             Ok(p) => p,
             Err(_) => {
@@ -930,7 +932,7 @@ fn handle_integrity_verify_file(
             }
         };
         (key, allow, path)
-    } else if payload.len() >= 32 {
+    } else if payload.len() > 32 {
         let key: &[u8; 32] = match payload[..32].try_into() {
             Ok(k) => k,
             Err(_) => {
