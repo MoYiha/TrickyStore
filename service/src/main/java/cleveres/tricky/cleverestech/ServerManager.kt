@@ -394,11 +394,8 @@ object ServerManager {
 
     private fun loadCachedKeyboxes() {
         if (serversList.none { it.enabled }) return
-        val revoked = KeyboxVerifier.fetchCrl()
-        if (revoked == null) {
-            Logger.w("Server keybox cache remains inactive because the revocation list is unavailable")
-            return
-        }
+        val checkEnabled = Config.isAutoKeyboxCheckEnabled
+        val revoked = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
         serversList.forEach { server ->
             if (server.enabled) {
                 val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
@@ -413,8 +410,12 @@ object ServerManager {
                             cachePayload = decodeServerCache(server, decrypted)
                                 ?: throw SecurityException("Server cache trust binding does not match current configuration")
                             val parsed = parseCachedKeyboxes(cachePayload, server)
-                            val statuses = parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) }
-                            if (parsed.isNotEmpty() && statuses.all { it == KeyboxVerifier.Status.VALID }) {
+                            val statuses = if (checkEnabled && revoked != null) {
+                                parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) }
+                            } else {
+                                emptyList()
+                            }
+                            if (parsed.isNotEmpty() && (statuses.isEmpty() || statuses.all { it == KeyboxVerifier.Status.VALID })) {
                                 serverKeyboxes[server.id] = parsed
                                 Logger.i("Loaded cached keyboxes for server: ${server.name}")
                             } else {
@@ -624,8 +625,9 @@ object ServerManager {
             val keyboxes = result.first
             val cacheBytes = result.second
             try {
-                val crl = KeyboxVerifier.fetchCrl()
-                if (crl == null) {
+                val checkEnabled = Config.isAutoKeyboxCheckEnabled
+                val crl = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
+                if (checkEnabled && crl == null) {
                     return@coordinateRefresh commitFetchFailure(
                         context,
                         "CRL_UNAVAILABLE",
@@ -633,8 +635,12 @@ object ServerManager {
                         deleteCache = false,
                     )
                 }
-                val statuses = keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
-                if (keyboxes.isEmpty() || statuses.any { it != KeyboxVerifier.Status.VALID }) {
+                val statuses = if (checkEnabled && crl != null) {
+                    keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
+                } else {
+                    emptyList()
+                }
+                if (keyboxes.isEmpty() || (checkEnabled && statuses.any { it != KeyboxVerifier.Status.VALID })) {
                     return@coordinateRefresh commitFetchFailure(
                         context,
                         "INVALID_CONTENT",

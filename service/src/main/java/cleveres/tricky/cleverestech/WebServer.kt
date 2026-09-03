@@ -733,6 +733,9 @@ class WebServer(
         return try {
             val keyboxes = KeyboxLoader.parse(bytes.copyOf(), filename)
             if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
+            if (!Config.isAutoKeyboxCheckEnabled) {
+                return KeyboxUploadValidation.VALID
+            }
             val allValid =
                 crlFetcher?.let { legacyFetcher ->
                     val revoked = legacyFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
@@ -2148,15 +2151,7 @@ class WebServer(
                     replacements.filterKeys { it !in processed }.forEach { (key, value) -> lines += "$key=$value" }
                     SecureFile.writeText(spoofFile, lines.joinToString("\n", postfix = "\n"))
                     Config.updateBuildVars(spoofFile)
-                    val target = File(configDir, "target.txt")
-                    if (Files.isRegularFile(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                        java.nio.file.Files.setAttribute(
-                            target.toPath(),
-                            "basic:lastModifiedTime",
-                            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()),
-                            LinkOption.NOFOLLOW_LINKS
-                        )
-                    }
+                    Config.resetTargetFilesToDefaults()
                     if (!updateKeyboxesFromConfiguredRevocationSource()) {
                         return keyboxActivationFailureResponse()
                     }
@@ -2185,7 +2180,10 @@ class WebServer(
                     }
                     val legacyFetcher = crlFetcher
                     val revocationAvailable =
-                        if (legacyFetcher != null) {
+                        if (!Config.isAutoKeyboxCheckEnabled) {
+                            Config.updateKeyBoxesSync()
+                            true
+                        } else if (legacyFetcher != null) {
                             val revoked = legacyFetcher()
                             if (revoked != null) Config.updateKeyBoxesSync(revoked)
                             revoked != null

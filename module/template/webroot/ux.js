@@ -28,6 +28,11 @@
             'Refresh': 'Refresh',
             'Remove': 'Remove',
             'Failed to load servers.': 'Failed to load servers.',
+            'resource_monitor_title': 'Resource Monitor',
+            'col_feature': 'Feature',
+            'col_status': 'Status',
+            'col_runtime': 'Runtime path',
+            'col_scope': 'Scope',
         },
         tr: {
             'Identity Controls': 'Kimlik Denetimleri', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin. Devre dışı yollar isteğe bağlı yakalayıcıları başlatmaz.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Kimlik şu anda devre dışı. Aşağıdan yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin.', 'Random': 'Rastgele', 'Identity value randomized': 'Kimlik değeri rastgeleleştirildi',
@@ -110,7 +115,12 @@
             'All major features and runtime paths in one place.': '所有主要功能和运行路径集中说明。',
             'noServers': '未配置服务器。在下方添加一个以自动获取 keybox。',
             'refresh': '刷新',
-            'remove': '移除'
+            'remove': '移除',
+            'resource_monitor_title': '资源监视器',
+            'col_feature': '功能',
+            'col_status': '状态',
+            'col_runtime': '运行时路径',
+            'col_scope': '范围'
         },
         es: {
             'Identity Controls': 'Controles de identidad', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Activa solo las rutas de identidad que necesites. Las rutas desactivadas no inician interceptores opcionales.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'La identidad está desactivada. Activa abajo solo las rutas que necesites.', 'Random': 'Aleatorio', 'Identity value randomized': 'Valor de identidad aleatorizado',
@@ -155,7 +165,12 @@
             'All major features and runtime paths in one place.': 'Todas las funciones principales y rutas de ejecución en un solo lugar.',
             'noServers': 'No hay servidores configurados. Añada uno abajo para obtener keyboxes automáticamente.',
             'refresh': 'Actualizar',
-            'remove': 'Eliminar'
+            'remove': 'Eliminar',
+            'resource_monitor_title': 'Monitor de recursos',
+            'col_feature': 'Función',
+            'col_status': 'Estado',
+            'col_runtime': 'Ruta de ejecución',
+            'col_scope': 'Alcance'
         },
         de: {
             'Identity Controls': 'Identitätssteuerung', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktiviere nur die benötigten Identitätspfade. Deaktivierte Pfade starten keine optionalen Interzeptoren.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identität ist derzeit deaktiviert. Aktiviere unten nur die benötigten Identitätspfade.', 'Random': 'Zufällig', 'Identity value randomized': 'Identitätswert randomisiert',
@@ -199,7 +214,12 @@
             'All major features and runtime paths in one place.': 'Alle wichtigen Funktionen und Laufzeitpfade an einem Ort.',
             'noServers': 'Keine Server konfiguriert. Fügen Sie unten einen hinzu, um Keyboxen automatisch abzurufen.',
             'refresh': 'Aktualisieren',
-            'remove': 'Entfernen'
+            'remove': 'Entfernen',
+            'resource_monitor_title': 'Ressourcen-Monitor',
+            'col_feature': 'Funktion',
+            'col_status': 'Status',
+            'col_runtime': 'Laufzeitpfad',
+            'col_scope': 'Bereich'
         },
         ru: {
             'Identity Controls': 'Управление идентичностью', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Включайте только нужные пути идентичности. Отключённые пути не запускают необязательные перехватчики.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Идентичность сейчас отключена. Ниже включите только нужные пути.', 'Random': 'Случайно', 'Identity value randomized': 'Значение идентичности рандомизировано',
@@ -242,7 +262,12 @@
             'All major features and runtime paths in one place.': 'Все основные функции и пути выполнения в одном месте.',
             'noServers': 'Серверы не настроены. Добавьте один ниже, чтобы получать keybox автоматически.',
             'refresh': 'Обновить',
-            'remove': 'Удалить'
+            'remove': 'Удалить',
+            'resource_monitor_title': 'Монитор ресурсов',
+            'col_feature': 'Функция',
+            'col_status': 'Статус',
+            'col_runtime': 'Путь среды выполнения',
+            'col_scope': 'Область'
         },
         id: {
             'Identity Controls': 'Kontrol Identitas', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Aktifkan hanya jalur identitas yang diperlukan. Jalur yang dinonaktifkan tidak menjalankan interceptor opsional.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Identitas saat ini dinonaktifkan. Aktifkan hanya jalur yang diperlukan di bawah.', 'Random': 'Acak', 'Identity value randomized': 'Nilai identitas diacak',
@@ -286,7 +311,12 @@
             'All major features and runtime paths in one place.': 'Semua fitur utama dan jalur runtime dijelaskan di satu tempat.',
             'noServers': 'Tidak ada server yang dikonfigurasi. Tambahkan satu di bawah untuk mengambil keybox secara otomatis.',
             'refresh': 'Segarkan',
-            'remove': 'Hapus'
+            'remove': 'Hapus',
+            'resource_monitor_title': 'Pemantau Sumber Daya',
+            'col_feature': 'Fitur',
+            'col_status': 'Status',
+            'col_runtime': 'Jalur runtime',
+            'col_scope': 'Cakupan'
         },
         hi: {
             'Identity Controls': 'पहचान नियंत्रण', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'केवल आवश्यक पहचान पथ सक्षम करें। अक्षम पथ वैकल्पिक इंटरसेप्टर शुरू नहीं करते।', 'Identity is currently disabled. Enable only the identity paths you need below.': 'पहचान अभी अक्षम है। नीचे केवल आवश्यक पहचान पथ सक्षम करें।', 'Random': 'रैंडम', 'Identity value randomized': 'पहचान मान रैंडम किया गया',
@@ -330,7 +360,12 @@
             'All major features and runtime paths in one place.': 'सभी मुख्य फीचर और रनटाइम पथ एक ही जगह समझाए गए हैं।',
             'noServers': 'कोई सर्वर कॉन्फ़िगर नहीं किया गया है। स्वचालित रूप से कीबॉक्स प्राप्त करने के लिए नीचे एक जोड़ें।',
             'refresh': 'रीफ़्रेश करें',
-            'remove': 'हटाएं'
+            'remove': 'हटाएं',
+            'resource_monitor_title': 'संसाधन मॉनिटर',
+            'col_feature': 'सुविधा',
+            'col_status': 'स्थिति',
+            'col_runtime': 'रनटाइम पाथ',
+            'col_scope': 'दायरा'
         },
         ar: {
             'Identity Controls': 'عناصر التحكم بالهوية', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'فعّل فقط مسارات الهوية التي تحتاجها. المسارات المعطلة لا تشغّل المعترضات الاختيارية.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'الهوية معطلة حاليًا. فعّل أدناه فقط مسارات الهوية التي تحتاجها.', 'Random': 'عشوائي', 'Identity value randomized': 'تم توليد قيمة هوية عشوائية',
@@ -374,7 +409,12 @@
             'All major features and runtime paths in one place.': 'شرح جميع الميزات الأساسية ومسارات التشغيل في مكان واحد.',
             'noServers': 'لم يتم تكوين أي خوادم. أضف واحداً أدناه لجلب keyboxes تلقائياً.',
             'refresh': 'تحديث',
-            'remove': 'إزالة'
+            'remove': 'إزالة',
+            'resource_monitor_title': 'مراقب الموارد',
+            'col_feature': 'الميزة',
+            'col_status': 'الحالة',
+            'col_runtime': 'مسار التشغيل',
+            'col_scope': 'النطاق'
         }
     };
 
@@ -388,6 +428,11 @@
         'Refresh': 'Yenile',
         'Remove': 'Kaldır',
         'Failed to load servers.': 'Sunucular yüklenemedi.',
+        'resource_monitor_title': 'Kaynak İzleyici',
+        'col_feature': 'Özellik',
+        'col_status': 'Durum',
+        'col_runtime': 'Çalışma zamanı yolu',
+        'col_scope': 'Kapsam',
         'Notification': 'Bildirim',
         'Close notification': 'Bildirimi kapat',
         'Always active.': 'Her zaman etkin.',
@@ -1791,8 +1836,15 @@
         });
         if (element.hasAttribute && element.hasAttribute('data-i18n')) {
             const key = element.getAttribute('data-i18n');
-            const rendered = tr(key);
-            if (typeof rendered === 'string' && (!element.children || element.children.length === 0)) {
+            let source = element.getAttribute('data-i18n-source');
+            if (!source) {
+                source = element.textContent || '';
+                if (source) element.setAttribute('data-i18n-source', source);
+            }
+            const rendered = (TRANSLATIONS[locale] && (TRANSLATIONS[locale][key] || TRANSLATIONS[locale][source])) ||
+                             (TRANSLATIONS.en && (TRANSLATIONS.en[key] || TRANSLATIONS.en[source])) ||
+                             (locale === 'en' ? (source || key) : tr(source || key));
+            if (typeof rendered === 'string' && rendered !== key && (!element.children || element.children.length === 0)) {
                 if (element.textContent !== rendered) element.textContent = rendered;
             }
         }
@@ -1811,8 +1863,15 @@
             });
             if (child.hasAttribute('data-i18n')) {
                 const key = child.getAttribute('data-i18n');
-                const rendered = tr(key);
-                if (typeof rendered === 'string' && (!child.children || child.children.length === 0)) {
+                let source = child.getAttribute('data-i18n-source');
+                if (!source) {
+                    source = child.textContent || '';
+                    if (source) child.setAttribute('data-i18n-source', source);
+                }
+                const rendered = (TRANSLATIONS[locale] && (TRANSLATIONS[locale][key] || TRANSLATIONS[locale][source])) ||
+                                 (TRANSLATIONS.en && (TRANSLATIONS.en[key] || TRANSLATIONS.en[source])) ||
+                                 (locale === 'en' ? (source || key) : tr(source || key));
+                if (typeof rendered === 'string' && rendered !== key && (!child.children || child.children.length === 0)) {
                     if (child.textContent !== rendered) child.textContent = rendered;
                 }
             }

@@ -8,6 +8,7 @@ import cleveres.tricky.cleverestech.Logger
 import cleveres.tricky.cleverestech.NativeBackend
 import cleveres.tricky.cleverestech.RustBackendUnavailableException
 import cleveres.tricky.cleverestech.StoredKeyboxInventory
+import cleveres.tricky.cleverestech.getModuleDir
 import cleveres.tricky.cleverestech.keystore.CertHack
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -281,20 +282,24 @@ object KeyboxVerifier {
         }
 
         if (!isLeader) {
-            return try {
+            val joined = try {
                 future.join()
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 null
             }
+            if (joined != null) return joined
+            return loadOfflineBaselineCrl()
         }
 
         val result = try {
             val fetched = fetchNetworkCrl(requestedUrl, now)
-            future.complete(fetched)
-            fetched
-        } catch (e: Throwable) {
-            future.completeExceptionally(e)
-            null
+            val finalResult = fetched ?: loadOfflineBaselineCrl()
+            future.complete(finalResult)
+            finalResult
+        } catch (_: Throwable) {
+            val fallback = loadOfflineBaselineCrl()
+            future.complete(fallback)
+            fallback
         } finally {
             cacheLock.lock()
             try {
@@ -305,7 +310,31 @@ object KeyboxVerifier {
                 cacheLock.unlock()
             }
         }
+
         return result
+    }
+
+    private fun loadOfflineBaselineCrl(): CrlWire.Handle? {
+        cacheLock.lock()
+        try {
+            cachedCrl?.let { return it }
+            loadBaselineOrStaleCrlLocked()?.let { (raw, modified) ->
+                try {
+                    val handle = CrlBackend.refresh(raw)
+                    if (handle != null) {
+                        cachedCrl = handle
+                        lastFetchTime = modified
+                        Logger.w("Loaded offline baseline attestation revocation cache into Rust generation ${handle.generation}")
+                        return handle
+                    }
+                } finally {
+                    raw.fill(0)
+                }
+            }
+            return null
+        } finally {
+            cacheLock.unlock()
+        }
     }
 
     private fun fetchNetworkCrl(
@@ -449,8 +478,8 @@ object KeyboxVerifier {
 
     private fun loadPersistedCrlLocked(now: Long): Pair<ByteArray, Long>? {
         val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
+        if (!Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
         val path = cacheFile.toPath()
-        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
         val size = cacheFile.length()
         val modified = cacheFile.lastModified()
         val age = now - modified
@@ -458,6 +487,21 @@ object KeyboxVerifier {
         return runCatching {
             BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
                 .use(::readAllBytesBounded) to modified
+        }.onFailure {
+            Logger.w("Ignoring invalid persisted attestation revocation cache")
+        }.getOrNull()
+    }
+
+    private fun loadBaselineOrStaleCrlLocked(): Pair<ByteArray, Long>? {
+        val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
+        val path = cacheFile.toPath()
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
+        val size = cacheFile.length()
+        val modified = cacheFile.lastModified()
+        if (size !in 1..MAX_CRL_BYTES) return null
+        return runCatching {
+            BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
+                .use(::readAllBytesBounded) to (if (modified > 0L) modified else System.currentTimeMillis())
         }.onFailure {
             Logger.w("Ignoring invalid persisted attestation revocation cache")
         }.getOrNull()

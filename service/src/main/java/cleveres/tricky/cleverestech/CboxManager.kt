@@ -42,12 +42,14 @@ object CboxManager {
         refresh()
     }
 
-    fun refresh() =
-        KeyboxActivation.coordinateRefresh {
-            refreshLocked()
+    fun refresh(enforceRevocationCheck: Boolean = Config.isAutoKeyboxCheckEnabled) =
+        synchronized(ManagedFileCoordinator.monitor) {
+            KeyboxActivation.coordinateRefresh {
+                refreshLocked(enforceRevocationCheck)
+            }
         }
 
-    private fun refreshLocked() {
+    private fun refreshLocked(enforceRevocationCheck: Boolean = Config.isAutoKeyboxCheckEnabled) {
         if (KeyboxLoader.consumeBackendOutage()) {
             invalidateBackendHandles()
         }
@@ -69,7 +71,8 @@ object CboxManager {
                 return
             }
         val currentFiles = files.mapTo(HashSet()) { it.file.name }
-        val crl = if (files.isEmpty()) null else KeyboxVerifier.fetchCrl()
+        val checkEnabled = enforceRevocationCheck
+        val crl = if (!checkEnabled || files.isEmpty()) null else KeyboxVerifier.fetchCrl()
         var retainedKeyboxCount = 0
 
         for (cbox in files) {
@@ -91,12 +94,16 @@ object CboxManager {
                 } else {
                     false
                 }
-            if (crl != null &&
-                current != null &&
-                digestMatches &&
-                current.keyboxes.all {
+            val keysValid = if (checkEnabled && crl != null) {
+                current != null && current.keyboxes.all {
                     KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID
                 }
+            } else {
+                true
+            }
+            if (current != null &&
+                digestMatches &&
+                keysValid
             ) {
                 if (retainedKeyboxCount > KeyboxLoader.MAX_ACTIVE_KEYS - current.keyboxes.size) {
                     unlockedCache.remove(name)
@@ -110,19 +117,17 @@ object CboxManager {
             }
 
             unlockedCache.remove(name)
-            if (crl != null) {
-                val loaded = loadCached(file, crl)
-                if (loaded != null) {
-                    if (retainedKeyboxCount > KeyboxLoader.MAX_ACTIVE_KEYS - loaded.keyboxes.size) {
-                        lockedFiles.add(name)
-                        Logger.w("CBOX keybox cache exceeds the active keybox limit; keeping $name locked")
-                        continue
-                    }
-                    unlockedCache[name] = loaded
-                    retainedKeyboxCount += loaded.keyboxes.size
-                    lockedFiles.remove(name)
+            val loaded = loadCached(file, crl, enforceRevocationCheck = checkEnabled)
+            if (loaded != null) {
+                if (retainedKeyboxCount > KeyboxLoader.MAX_ACTIVE_KEYS - loaded.keyboxes.size) {
+                    lockedFiles.add(name)
+                    Logger.w("CBOX keybox cache exceeds the active keybox limit; keeping $name locked")
                     continue
                 }
+                unlockedCache[name] = loaded
+                retainedKeyboxCount += loaded.keyboxes.size
+                lockedFiles.remove(name)
+                continue
             }
             lockedFiles.add(name)
         }
@@ -130,9 +135,6 @@ object CboxManager {
         unlockedCache.keys.removeIf { it !in currentFiles }
         lockedFiles.retainAll(currentFiles)
         cleanupOrphanedCaches(directory, currentFiles)
-        if (crl == null && files.isNotEmpty()) {
-            Logger.w("CBOX keyboxes remain locked because the revocation list is unavailable")
-        }
     }
 
     /** Drops only managed opaque-handle views. Encrypted recovery caches remain for re-registration. */
@@ -184,12 +186,19 @@ object CboxManager {
             }
 
             val parsed = KeyboxJcaAdapter.materialize(payload.document, filename)
-            val crl = KeyboxVerifier.fetchCrl() ?: return false
-            val verified = parsed.filter { KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID }
-            if (verified.isEmpty() || verified.size != parsed.size) {
-                Logger.e("CBOX contains an invalid or revoked keybox: $filename")
-                return false
-            }
+            val verified =
+                if (Config.isAutoKeyboxCheckEnabled) {
+                    val crl = KeyboxVerifier.fetchCrl() ?: return false
+                    val validOnly = parsed.filter { KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID }
+                    if (validOnly.isEmpty() || validOnly.size != parsed.size) {
+                        Logger.e("CBOX contains an invalid or revoked keybox: $filename")
+                        return false
+                    }
+                    validOnly
+                } else {
+                    if (parsed.isEmpty()) return false
+                    parsed
+                }
 
             val beforeModified = file.lastModified()
             val beforeSize = file.length()
@@ -270,7 +279,8 @@ object CboxManager {
 
     private fun loadCached(
         file: File,
-        crl: CrlWire.Handle,
+        crl: CrlWire.Handle?,
+        enforceRevocationCheck: Boolean = Config.isAutoKeyboxCheckEnabled,
     ): UnlockedEntry? {
         val cacheFile = cacheFileFor(file)
         if (!Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
@@ -298,8 +308,15 @@ object CboxManager {
                 ?: return null
             if (credentials.publicKey == null && payload.hasSignature) return null
             val parsed = KeyboxJcaAdapter.materialize(payload.document, file.name)
-            val verified = parsed.filter { KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID }
-            if (verified.isEmpty() || verified.size != parsed.size) return null
+            val verified =
+                if (enforceRevocationCheck && crl != null) {
+                    val validOnly = parsed.filter { KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID }
+                    if (validOnly.isEmpty() || validOnly.size != parsed.size) return null
+                    validOnly
+                } else {
+                    if (parsed.isEmpty()) return null
+                    parsed
+                }
 
             val beforeModified = file.lastModified()
             val beforeSize = file.length()
