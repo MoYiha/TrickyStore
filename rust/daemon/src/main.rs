@@ -765,10 +765,18 @@ fn serve_web(
                 }
             }
             OP_INTEGRITY_VERIFY_FULL
-                if header.flags == 0 && (header.payload_len == 0 || header.payload_len == 32) =>
+                if header.flags == 0 && (header.payload_len == 0 || header.payload_len == 32 || header.payload_len == 33) =>
             {
                 let mut public_key = cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY;
-                if header.payload_len == 32 && client.read_exact(&mut public_key).is_err() {
+                let mut allow_unsigned = false;
+                if header.payload_len >= 33 {
+                    let mut buf = vec![0u8; header.payload_len as usize];
+                    if client.read_exact(&mut buf).is_err() {
+                        continue;
+                    }
+                    public_key.copy_from_slice(&buf[..32]);
+                    allow_unsigned = buf[32] != 0;
+                } else if header.payload_len == 32 && client.read_exact(&mut public_key).is_err() {
                     continue;
                 }
                 handle_integrity_verify_full(
@@ -776,6 +784,7 @@ fn serve_web(
                     &module_dir,
                     &cached_manifest,
                     &public_key,
+                    allow_unsigned,
                 );
             }
             OP_INTEGRITY_VERIFY_FILE
@@ -811,6 +820,7 @@ fn handle_integrity_verify_full(
     module_dir: &Path,
     cached_manifest: &std::sync::RwLock<Option<CachedManifest>>,
     public_key: &[u8; 32],
+    allow_unsigned: bool,
 ) {
     let module_dir_str = match module_dir.to_str() {
         Some(s) => s,
@@ -857,9 +867,10 @@ fn handle_integrity_verify_full(
         }
     };
 
-    let manifest = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify(
+    let manifest = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
         &manifest_str,
         public_key,
+        allow_unsigned,
     ) {
         Ok(m) => m,
         Err(e) => {
@@ -898,7 +909,24 @@ fn handle_integrity_verify_file(
     cached_manifest: &std::sync::RwLock<Option<CachedManifest>>,
     payload: &[u8],
 ) {
-    let (public_key, relative_path) = if payload.len() >= 32 {
+    let (public_key, allow_unsigned, relative_path) = if payload.len() >= 33 {
+        let key: &[u8; 32] = match payload[..32].try_into() {
+            Ok(k) => k,
+            Err(_) => {
+                let _ = reply_text_error(client, OP_INTEGRITY_VERIFY_FILE, "invalid key length");
+                return;
+            }
+        };
+        let allow = payload[32] != 0;
+        let path = match std::str::from_utf8(&payload[33..]) {
+            Ok(p) => p,
+            Err(_) => {
+                let _ = reply_text_error(client, OP_INTEGRITY_VERIFY_FILE, "invalid utf-8 path");
+                return;
+            }
+        };
+        (key, allow, path)
+    } else if payload.len() >= 32 {
         let key: &[u8; 32] = match payload[..32].try_into() {
             Ok(k) => k,
             Err(_) => {
@@ -913,7 +941,7 @@ fn handle_integrity_verify_file(
                 return;
             }
         };
-        (key, path)
+        (key, false, path)
     } else {
         let path = match std::str::from_utf8(payload) {
             Ok(p) => p,
@@ -922,7 +950,7 @@ fn handle_integrity_verify_file(
                 return;
             }
         };
-        (&cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY, path)
+        (&cleverestricky_integrity_core::TRUSTED_PUBLIC_KEY, false, path)
     };
 
     let manifest = match cached_manifest_for_key(cached_manifest, public_key) {
@@ -978,9 +1006,10 @@ fn handle_integrity_verify_file(
                 }
             };
 
-            let m = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify(
+            let m = match cleverestricky_integrity_core::IntegrityManifest::parse_and_verify_with_policy(
                 &manifest_str,
                 public_key,
+                allow_unsigned,
             ) {
                 Ok(m) => m,
                 Err(e) => {
