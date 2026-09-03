@@ -183,6 +183,9 @@ object Config {
     var isDrmPassthroughEnabled = false
         private set
 
+    val isAutoKeyboxCheckEnabled: Boolean
+        get() = isRegularFlagFile(File(root, AUTO_KEYBOX_CHECK_FILE))
+
     private class DrmState(
         val packages: PackageTrie<Boolean>,
     ) {
@@ -532,19 +535,21 @@ object Config {
         updateKeyBoxesSyncWith(
             revocationProvider = { KeyboxVerifier.fetchCrl() },
             verifier = { keybox, crl -> KeyboxVerifier.verifyKeybox(keybox, crl) },
+            enforceRevocationCheck = isAutoKeyboxCheckEnabled,
         )
 
     fun updateKeyBoxesSync(revokedSerials: Set<String>?): Boolean =
         updateKeyBoxesSyncWith(
             revocationProvider = { revokedSerials },
             verifier = { keybox, revoked -> KeyboxVerifier.verifyKeyboxLegacy(keybox, revoked) },
+            enforceRevocationCheck = isAutoKeyboxCheckEnabled,
         )
 
     @androidx.annotation.VisibleForTesting
     internal fun updateKeyBoxesSync(
         revokedSerials: Set<String>?,
         verifier: (CertHack.KeyBox, Set<String>) -> KeyboxVerifier.Status,
-    ): Boolean = updateKeyBoxesSyncWith({ revokedSerials }, verifier)
+    ): Boolean = updateKeyBoxesSyncWith({ revokedSerials }, verifier, enforceRevocationCheck = true)
 
     @androidx.annotation.VisibleForTesting
     internal fun updateKeyBoxesSyncWithoutExternalSourcesForTesting(
@@ -556,6 +561,7 @@ object Config {
             verifier = verifier,
             allowRecovery = false,
             refreshExternalSources = false,
+            enforceRevocationCheck = true,
         )
 
     internal fun rebuildBackendKeyboxesAfterRestart(crl: CrlWire.Handle): Boolean {
@@ -565,6 +571,7 @@ object Config {
             verifier = { keybox, handle -> KeyboxVerifier.verifyKeybox(keybox, handle) },
             allowRecovery = false,
             refreshExternalSources = false,
+            enforceRevocationCheck = isAutoKeyboxCheckEnabled,
         )
     }
 
@@ -573,6 +580,7 @@ object Config {
         verifier: (CertHack.KeyBox, R) -> KeyboxVerifier.Status,
         allowRecovery: Boolean = true,
         refreshExternalSources: Boolean = true,
+        enforceRevocationCheck: Boolean = isAutoKeyboxCheckEnabled,
     ): Boolean =
         KeyboxActivation.coordinateRefresh {
             val refreshTicket = KeyboxActivation.beginRefresh()
@@ -634,6 +642,11 @@ object Config {
                 val verifiedKeyboxes: List<CertHack.KeyBox> =
                     if (allKeyboxes.isEmpty()) {
                         emptyList()
+                    } else if (!enforceRevocationCheck) {
+                        Logger.i(
+                            "Auto keybox check is disabled; admitting ${allKeyboxes.size} keybox(es) without revocation check",
+                        )
+                        allKeyboxes.toList()
                     } else {
                         val revocation = revocationProvider()
                         if (revocation == null) {
@@ -790,7 +803,10 @@ object Config {
                 PolicyState.reload().getOrThrow()
                 updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE))
             }
-            AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(file != null)
+            AUTO_KEYBOX_CHECK_FILE -> {
+                KeyboxAutoCleaner.setEnabled(file != null)
+                updateKeyBoxes()
+            }
         }
     }
 
@@ -2064,7 +2080,10 @@ object Config {
                 BootLogic.FILE_SPOOF_CN -> PolicyState.onLegacySettingsChanged()
                 DRM_PACKAGES_FILE -> updateDrmPackages(f)
                 MODULE_HASH_FILE -> updateModuleHash(f)
-                AUTO_KEYBOX_CHECK_FILE -> KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
+                AUTO_KEYBOX_CHECK_FILE -> {
+                    KeyboxAutoCleaner.setEnabled(isRegularFlagFile(f))
+                    updateKeyBoxes()
+                }
                 APPLY_PROFILE_FILE -> applyProfileFromFile(f)
             }
         }

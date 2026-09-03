@@ -155,6 +155,45 @@ class ConfigKeyboxActivationTest {
         }
     }
 
+    @Test
+    fun `keyboxes are admitted when auto_keybox_check is disabled even without crl`() {
+        withKeyboxRoot { root ->
+            val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }
+            File(keyboxDir, "candidate.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+            ManagedKeyboxParserOracle.install()
+
+            val toggle = File(root, "auto_keybox_check")
+            toggle.delete()
+
+            KeyboxLoader.activeSetOverride = { ids ->
+                ids.all(ManagedOpaqueKeyOracle::contains)
+            }
+
+            val updated = Config.updateKeyBoxesSync()
+            assertTrue(updated)
+            assertEquals(1, CertHack.getKeyboxCount())
+        }
+    }
+
+    @Test
+    fun `keyboxes are rejected when auto_keybox_check is enabled and crl is unavailable`() {
+        withKeyboxRoot { root ->
+            val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }
+            File(keyboxDir, "candidate.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+            ManagedKeyboxParserOracle.install()
+
+            val toggle = File(root, "auto_keybox_check")
+            toggle.writeText("")
+
+            KeyboxLoader.activeSetOverride = { ids ->
+                ids.all(ManagedOpaqueKeyOracle::contains)
+            }
+
+            Config.updateKeyBoxesSync()
+            assertEquals(0, CertHack.getKeyboxCount())
+        }
+    }
+
     private fun withKeyboxRoot(block: (File) -> Unit) {
         val originalRoot = Config.getConfigRoot()
         val root = File.createTempFile("keybox-activation", ".tmp").also { it.delete() }

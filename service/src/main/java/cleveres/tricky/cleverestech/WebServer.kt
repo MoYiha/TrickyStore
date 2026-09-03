@@ -733,6 +733,9 @@ class WebServer(
         return try {
             val keyboxes = KeyboxLoader.parse(bytes.copyOf(), filename)
             if (keyboxes.isEmpty()) return KeyboxUploadValidation.INVALID
+            if (!Config.isAutoKeyboxCheckEnabled) {
+                return KeyboxUploadValidation.VALID
+            }
             val allValid =
                 crlFetcher?.let { legacyFetcher ->
                     val revoked = legacyFetcher() ?: return KeyboxUploadValidation.REVOCATION_UNAVAILABLE
@@ -2177,7 +2180,10 @@ class WebServer(
                     }
                     val legacyFetcher = crlFetcher
                     val revocationAvailable =
-                        if (legacyFetcher != null) {
+                        if (!Config.isAutoKeyboxCheckEnabled) {
+                            Config.updateKeyBoxesSync()
+                            true
+                        } else if (legacyFetcher != null) {
                             val revoked = legacyFetcher()
                             if (revoked != null) Config.updateKeyBoxesSync(revoked)
                             revoked != null
