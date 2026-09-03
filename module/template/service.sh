@@ -275,11 +275,6 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
   bootstrap_default_policy
   mirror_root_keyboxes
-  if [ ! -f "$CONFIG_DIR/attestation_status_cache.json" ] && [ -f "$MODDIR/attestation_status_cache.json" ]; then
-    cp "$MODDIR/attestation_status_cache.json" "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
-    chmod 600 "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
-    chown 0:0 "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
-  fi
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type d -exec chmod 700 {} + 2>/dev/null
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type f -exec chmod 600 {} + 2>/dev/null
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type f -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null

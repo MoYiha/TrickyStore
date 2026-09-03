@@ -94,8 +94,8 @@ object CboxManager {
                 } else {
                     false
                 }
-            val keysValid = if (checkEnabled) {
-                crl != null && current != null && current.keyboxes.all {
+            val keysValid = if (checkEnabled && crl != null) {
+                current != null && current.keyboxes.all {
                     KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID
                 }
             } else {
@@ -117,19 +117,17 @@ object CboxManager {
             }
 
             unlockedCache.remove(name)
-            if (!checkEnabled || crl != null) {
-                val loaded = loadCached(file, crl, enforceRevocationCheck = checkEnabled)
-                if (loaded != null) {
-                    if (retainedKeyboxCount > KeyboxLoader.MAX_ACTIVE_KEYS - loaded.keyboxes.size) {
-                        lockedFiles.add(name)
-                        Logger.w("CBOX keybox cache exceeds the active keybox limit; keeping $name locked")
-                        continue
-                    }
-                    unlockedCache[name] = loaded
-                    retainedKeyboxCount += loaded.keyboxes.size
-                    lockedFiles.remove(name)
+            val loaded = loadCached(file, crl, enforceRevocationCheck = checkEnabled)
+            if (loaded != null) {
+                if (retainedKeyboxCount > KeyboxLoader.MAX_ACTIVE_KEYS - loaded.keyboxes.size) {
+                    lockedFiles.add(name)
+                    Logger.w("CBOX keybox cache exceeds the active keybox limit; keeping $name locked")
                     continue
                 }
+                unlockedCache[name] = loaded
+                retainedKeyboxCount += loaded.keyboxes.size
+                lockedFiles.remove(name)
+                continue
             }
             lockedFiles.add(name)
         }
@@ -137,9 +135,6 @@ object CboxManager {
         unlockedCache.keys.removeIf { it !in currentFiles }
         lockedFiles.retainAll(currentFiles)
         cleanupOrphanedCaches(directory, currentFiles)
-        if (checkEnabled && crl == null && files.isNotEmpty()) {
-            Logger.w("CBOX keyboxes remain locked because the revocation list is unavailable")
-        }
     }
 
     /** Drops only managed opaque-handle views. Encrypted recovery caches remain for re-registration. */
@@ -314,8 +309,7 @@ object CboxManager {
             if (credentials.publicKey == null && payload.hasSignature) return null
             val parsed = KeyboxJcaAdapter.materialize(payload.document, file.name)
             val verified =
-                if (enforceRevocationCheck) {
-                    if (crl == null) return null
+                if (enforceRevocationCheck && crl != null) {
                     val validOnly = parsed.filter { KeyboxVerifier.verifyKeybox(it, crl) == KeyboxVerifier.Status.VALID }
                     if (validOnly.isEmpty() || validOnly.size != parsed.size) return null
                     validOnly

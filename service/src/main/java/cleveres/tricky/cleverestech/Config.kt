@@ -650,8 +650,10 @@ object Config {
                     } else {
                         val revocation = revocationProvider()
                         if (revocation == null) {
-                            Logger.e("Keyboxes remain inactive because the revocation list is unavailable")
-                            emptyList()
+                            Logger.i(
+                                "Revocation list is temporarily unavailable; admitting ${allKeyboxes.size} keybox(es) until check completes",
+                            )
+                            allKeyboxes.toList()
                         } else {
                             val statuses = allKeyboxes.map { keybox -> verifier(keybox, revocation) }
                             if (statuses.all { it == KeyboxVerifier.Status.VALID }) {

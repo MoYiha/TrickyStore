@@ -478,16 +478,10 @@ object KeyboxVerifier {
 
     private fun loadPersistedCrlLocked(now: Long): Pair<ByteArray, Long>? {
         val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
-        val fileToLoad =
-            if (Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                cacheFile
-            } else {
-                val fallback = File(getModuleDir(), PERSISTED_CRL_FILE)
-                if (Files.isRegularFile(fallback.toPath(), LinkOption.NOFOLLOW_LINKS)) fallback else return null
-            }
-        val path = fileToLoad.toPath()
-        val size = fileToLoad.length()
-        val modified = fileToLoad.lastModified()
+        if (!Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) return null
+        val path = cacheFile.toPath()
+        val size = cacheFile.length()
+        val modified = cacheFile.lastModified()
         val age = now - modified
         if (size !in 1..MAX_CRL_BYTES || modified <= 0L || age < 0L || age >= CACHE_TTL) return null
         return runCatching {
@@ -499,25 +493,18 @@ object KeyboxVerifier {
     }
 
     private fun loadBaselineOrStaleCrlLocked(): Pair<ByteArray, Long>? {
-        val candidates = listOf(
-            File(cacheRoot, PERSISTED_CRL_FILE),
-            File(getModuleDir(), PERSISTED_CRL_FILE),
-        )
-        for (candidate in candidates) {
-            val path = candidate.toPath()
-            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue
-            val size = candidate.length()
-            val modified = candidate.lastModified()
-            if (size !in 1..MAX_CRL_BYTES) continue
-            val result = runCatching {
-                BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
-                    .use(::readAllBytesBounded) to (if (modified > 0L) modified else System.currentTimeMillis())
-            }.onFailure {
-                Logger.w("Ignoring invalid baseline attestation revocation cache")
-            }.getOrNull()
-            if (result != null) return result
-        }
-        return null
+        val cacheFile = File(cacheRoot, PERSISTED_CRL_FILE)
+        val path = cacheFile.toPath()
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return null
+        val size = cacheFile.length()
+        val modified = cacheFile.lastModified()
+        if (size !in 1..MAX_CRL_BYTES) return null
+        return runCatching {
+            BoundedInputStream(Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS), MAX_CRL_BYTES)
+                .use(::readAllBytesBounded) to (if (modified > 0L) modified else System.currentTimeMillis())
+        }.onFailure {
+            Logger.w("Ignoring invalid persisted attestation revocation cache")
+        }.getOrNull()
     }
 
     private fun persistCrlLocked(rawCrl: ByteArray) {

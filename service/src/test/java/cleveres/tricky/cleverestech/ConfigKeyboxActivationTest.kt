@@ -176,7 +176,7 @@ class ConfigKeyboxActivationTest {
     }
 
     @Test
-    fun `keyboxes are rejected when auto_keybox_check is enabled and crl is unavailable`() {
+    fun `keyboxes are admitted when auto_keybox_check is enabled and crl is unavailable`() {
         withKeyboxRoot { root ->
             val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }
             File(keyboxDir, "candidate.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
@@ -189,7 +189,29 @@ class ConfigKeyboxActivationTest {
                 ids.all(ManagedOpaqueKeyOracle::contains)
             }
 
-            Config.updateKeyBoxesSyncWithoutExternalSourcesForTesting(null) { _, _ ->
+            val updated = Config.updateKeyBoxesSyncWithoutExternalSourcesForTesting(null) { _, _ ->
+                KeyboxVerifier.Status.REVOKED
+            }
+            assertTrue(updated)
+            assertEquals(1, CertHack.getKeyboxCount())
+        }
+    }
+
+    @Test
+    fun `keyboxes are rejected when auto_keybox_check is enabled and crl marks keybox revoked`() {
+        withKeyboxRoot { root ->
+            val keyboxDir = File(root, "keyboxes").also { check(it.mkdirs()) }
+            File(keyboxDir, "candidate.xml").writeText(TestKeyboxFixtures.validEcKeyboxXml)
+            ManagedKeyboxParserOracle.install()
+
+            val toggle = File(root, "auto_keybox_check")
+            toggle.writeText("")
+
+            KeyboxLoader.activeSetOverride = { ids ->
+                ids.all(ManagedOpaqueKeyOracle::contains)
+            }
+
+            Config.updateKeyBoxesSyncWithoutExternalSourcesForTesting(emptySet()) { _, _ ->
                 KeyboxVerifier.Status.REVOKED
             }
             assertEquals(0, CertHack.getKeyboxCount())

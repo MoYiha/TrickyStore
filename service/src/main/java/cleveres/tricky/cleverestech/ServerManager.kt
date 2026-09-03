@@ -396,10 +396,6 @@ object ServerManager {
         if (serversList.none { it.enabled }) return
         val checkEnabled = Config.isAutoKeyboxCheckEnabled
         val revoked = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
-        if (checkEnabled && revoked == null) {
-            Logger.w("Server keybox cache remains inactive because the revocation list is unavailable")
-            return
-        }
         serversList.forEach { server ->
             if (server.enabled) {
                 val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
