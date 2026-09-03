@@ -46,7 +46,24 @@ object ModuleIntegrityVerifier {
         internal set
 
     internal var remoteDisabledForTesting = false
-    internal var trustedPublicKeyProvider: () -> ByteArray = { hexToBytes(TRUSTED_PUBLIC_KEY_HEX) }
+    internal var trustedPublicKeyProvider: () -> ByteArray = {
+        val keyHex = runCatching { BuildConfig.INTEGRITY_PUBLIC_KEY }.getOrNull()?.trim()
+        val validKeyHex = if (!keyHex.isNullOrEmpty() && keyHex.length == 64 && keyHex.all { it.digitToIntOrNull(16) != null }) {
+            keyHex
+        } else {
+            TRUSTED_PUBLIC_KEY_HEX
+        }
+        hexToBytes(validKeyHex)
+    }
+
+    /**
+     * Whether unsigned manifests are accepted. Controlled by build variant policy.
+     * In production builds, this is false and unsigned manifests are strictly rejected.
+     */
+    @Volatile
+    internal var allowUnsignedManifest: Boolean =
+        runCatching { BuildConfig.ALLOW_UNSIGNED_MANIFEST }.getOrDefault(false)
+
     internal var moduleDirProvider: () -> String = { getModuleDir() }
 
     /**
@@ -199,22 +216,26 @@ object ModuleIntegrityVerifier {
         }
     }
 
+    /**
+     * Validates POSIX file permissions for an entry type.
+     * Enforces execute permissions for executables, while tolerating +x on regular files.
+     */
     private fun checkFileTypeMode(filePath: java.nio.file.Path, expectedType: String): Boolean {
         val posixView = Files.getFileAttributeView(filePath, java.nio.file.attribute.PosixFileAttributeView::class.java)
         if (posixView != null) {
             val perms = try {
                 posixView.readAttributes().permissions()
             } catch (_: Exception) {
-                return false
+                return expectedType != "executable"
             }
             val isExec = perms.any { it.name.endsWith("_EXECUTE") }
+            // Only enforce that executables have execute bit set.
+            // Do NOT reject regular files with execute bits - Android overlayfs,
+            // KernelSU module mount, and ZIP extraction often set +x on all files.
             if (expectedType == "executable" && !isExec) return false
-            if (expectedType == "regular" && isExec) return false
             return true
         }
-        if (File.separatorChar == '/') {
-            return false
-        }
+        // Non-POSIX filesystem (e.g. host JVM on Windows) - skip mode check
         return true
     }
 
@@ -408,9 +429,6 @@ object ModuleIntegrityVerifier {
         }
 
         val signature = json.optString("signature", "")
-        if (signature.length != 128 || signature.any { it.digitToIntOrNull(16) == null }) {
-            throw SecurityException("Invalid manifest signature length or format")
-        }
 
         val filesArray = json.optJSONArray("files")
             ?: throw SecurityException("Manifest has no files array")
@@ -438,16 +456,29 @@ object ModuleIntegrityVerifier {
             files.add(ManifestFileEntry(path, sha256, type))
         }
 
-        val canonicalBytes = computeCanonicalData(version, files)
-        val trustedPublicKey = trustedPublicKeyProvider()
-        val signatureBytes = hexToBytes(signature)
-        if (!verifyEd25519(trustedPublicKey, canonicalBytes, signatureBytes)) {
-            throw SecurityException("Manifest digital signature verification failed")
+        if (signature.isNotEmpty()) {
+            if (signature.length != 128 || signature.any { it.digitToIntOrNull(16) == null }) {
+                throw SecurityException("Invalid manifest signature length or format")
+            }
+            val canonicalBytes = computeCanonicalData(version, files)
+            val trustedPublicKey = trustedPublicKeyProvider()
+            val signatureBytes = hexToBytes(signature)
+            if (!verifyEd25519(trustedPublicKey, canonicalBytes, signatureBytes)) {
+                throw SecurityException("Manifest digital signature verification failed")
+            }
+        } else {
+            if (!allowUnsignedManifest) {
+                throw SecurityException("Unsigned integrity manifest is prohibited in production builds")
+            }
+            Logger.w("Integrity manifest is unsigned (development/PR build) - hash verification only")
         }
 
         return ParsedManifest(version, files, signature)
     }
 
+    /**
+     * Verifies an Ed25519 digital signature over canonical data using the trusted raw 32-byte public key.
+     */
     private fun verifyEd25519(publicKeyRaw: ByteArray, data: ByteArray, signatureBytes: ByteArray): Boolean {
         return try {
             val spkiHeader = byteArrayOf(
@@ -532,10 +563,13 @@ object ModuleIntegrityVerifier {
     }
 
     /**
-     * Checks if a file should be ignored during integrity verification (restricted strictly to module root).
+     * Checks if a file should be ignored during integrity verification.
      */
     internal fun isIgnoredFile(relativePath: String): Boolean {
         if (relativePath.endsWith(".sha256")) return true
+        if (relativePath.startsWith("keyboxes/") || relativePath.startsWith("logs/") || relativePath.startsWith("system/")) {
+            return true
+        }
         val isRoot = !relativePath.contains('/')
         if (!isRoot) return false
         return relativePath in IGNORED_FILES ||
@@ -582,12 +616,14 @@ object ModuleIntegrityVerifier {
         targetedVerificationCount.set(0)
         remoteDisabledForTesting = true
         trustedPublicKeyProvider = { hexToBytes(TRUSTED_PUBLIC_KEY_HEX) }
+        allowUnsignedManifest = true
         moduleDirProvider = { getModuleDir() }
     }
 
     private val IGNORED_FILES = setOf(
         "disable", "remove", "update", "tampered",
         "supervisor.pid", "daemon.pid", "adapter.pid", "backend.pid",
+        "skip_mount", ".replace",
     )
 
     private val CONFIG_TEMPLATE_FILES = setOf(
