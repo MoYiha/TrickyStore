@@ -282,20 +282,24 @@ object KeyboxVerifier {
         }
 
         if (!isLeader) {
-            return try {
+            val joined = try {
                 future.join()
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 null
             }
+            if (joined != null) return joined
+            return loadOfflineBaselineCrl()
         }
 
         val result = try {
             val fetched = fetchNetworkCrl(requestedUrl, now)
-            future.complete(fetched)
-            fetched
-        } catch (e: Throwable) {
-            future.completeExceptionally(e)
-            null
+            val finalResult = fetched ?: loadOfflineBaselineCrl()
+            future.complete(finalResult)
+            finalResult
+        } catch (_: Throwable) {
+            val fallback = loadOfflineBaselineCrl()
+            future.complete(fallback)
+            fallback
         } finally {
             cacheLock.lock()
             try {
@@ -307,8 +311,10 @@ object KeyboxVerifier {
             }
         }
 
-        if (result != null) return result
+        return result
+    }
 
+    private fun loadOfflineBaselineCrl(): CrlWire.Handle? {
         cacheLock.lock()
         try {
             cachedCrl?.let { return it }
@@ -325,11 +331,10 @@ object KeyboxVerifier {
                     raw.fill(0)
                 }
             }
+            return null
         } finally {
             cacheLock.unlock()
         }
-
-        return null
     }
 
     private fun fetchNetworkCrl(

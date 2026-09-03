@@ -1784,6 +1784,7 @@ object Config {
         SecureFile.writeText(File(root, DRM_PACKAGES_FILE), DEFAULT_DRM_PACKAGES_CONTENT)
         updateTargetPackages(File(root, TARGET_FILE))
         updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
+        updateSecurityPatch(File(root, SECURITY_PATCH_FILE))
         updateDrmPackages(File(root, DRM_PACKAGES_FILE))
     }
     private val APP_KEYBOX_PATTERN = Regex("[A-Za-z0-9_.-]{1,128}")

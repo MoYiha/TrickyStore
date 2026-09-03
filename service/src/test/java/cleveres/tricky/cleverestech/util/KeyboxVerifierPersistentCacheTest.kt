@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -93,6 +94,43 @@ class KeyboxVerifierPersistentCacheTest {
             val handle = KeyboxVerifier.fetchCrl()
             assertNotNull("Offline fallback should load persisted cache when network fails", handle)
             assertEquals(TEST_GENERATION, handle?.generation)
+        } finally {
+            KeyboxVerifier.resetCrlUrlForTesting()
+            KeyboxVerifier.resetCacheRootForTesting()
+            KeyboxVerifier.clearMemoryCacheForTesting()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun offlineFallbackServesConcurrentFollowersWhenNetworkFails() {
+        val root = Files.createTempDirectory("ct-crl-concurrent").toFile()
+        try {
+            val cacheFile = File(root, "attestation_status_cache.json")
+            cacheFile.writeBytes("""{"entries":{"99999":"REVOKED"}}""".toByteArray())
+
+            KeyboxVerifier.setCacheRootForTesting(root)
+            KeyboxVerifier.clearMemoryCacheForTesting()
+            val deadSocket = ServerSocket(0)
+            val port = deadSocket.localPort
+            deadSocket.close()
+            KeyboxVerifier.setCrlUrlForTesting("http://localhost:$port")
+
+            val threadCount = 4
+            val startGate = java.util.concurrent.CountDownLatch(1)
+            val executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount)
+            val futures = (1..threadCount).map {
+                executor.submit<CrlWire.Handle?> {
+                    startGate.await()
+                    KeyboxVerifier.fetchCrl()
+                }
+            }
+            startGate.countDown()
+            val results = futures.map { it.get(5, java.util.concurrent.TimeUnit.SECONDS) }
+            executor.shutdown()
+
+            assertTrue("Every concurrent caller must receive a fallback handle", results.all { it != null })
+            assertEquals(threadCount, results.filterNotNull().size)
         } finally {
             KeyboxVerifier.resetCrlUrlForTesting()
             KeyboxVerifier.resetCacheRootForTesting()

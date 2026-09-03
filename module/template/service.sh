@@ -280,9 +280,6 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
     chmod 600 "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
     chown 0:0 "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
   fi
-  if [ -f "$CONFIG_DIR/attestation_status_cache.json" ]; then
-    touch "$CONFIG_DIR/attestation_status_cache.json" 2>/dev/null || true
-  fi
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type d -exec chmod 700 {} + 2>/dev/null
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type f -exec chmod 600 {} + 2>/dev/null
   find "$CONFIG_DIR" -xdev -maxdepth 2 -type f -exec chcon u:object_r:system_file:s0 {} + 2>/dev/null
