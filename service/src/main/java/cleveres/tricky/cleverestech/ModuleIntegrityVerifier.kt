@@ -72,7 +72,8 @@ object ModuleIntegrityVerifier {
      */
     fun verifyFull(): IntegrityResult {
         fullVerificationCount.incrementAndGet()
-        when (val daemonResult = queryDaemon(OP_INTEGRITY_VERIFY_FULL, trustedPublicKeyProvider())) {
+        val payload = trustedPublicKeyProvider() + byteArrayOf(if (allowUnsignedManifest) 1 else 0)
+        when (val daemonResult = queryDaemon(OP_INTEGRITY_VERIFY_FULL, payload)) {
             is DaemonQueryResult.Verdict -> return daemonResult.result
             DaemonQueryResult.OperationalError, null -> Unit
         }
@@ -88,7 +89,10 @@ object ModuleIntegrityVerifier {
         providedManifest: ParsedManifest? = cachedManifest,
     ): IntegrityResult {
         targetedVerificationCount.incrementAndGet()
-        val payload = trustedPublicKeyProvider() + relativePath.toByteArray(Charsets.UTF_8)
+        val payload =
+            trustedPublicKeyProvider() +
+                byteArrayOf(if (allowUnsignedManifest) 1 else 0) +
+                relativePath.toByteArray(Charsets.UTF_8)
         when (val daemonResult = queryDaemon(OP_INTEGRITY_VERIFY_FILE, payload)) {
             is DaemonQueryResult.Verdict -> return daemonResult.result
             DaemonQueryResult.OperationalError, null -> Unit
@@ -217,25 +221,28 @@ object ModuleIntegrityVerifier {
     }
 
     /**
-     * Validates POSIX file permissions for an entry type.
+     * Validates file permissions for an entry type.
      * Enforces execute permissions for executables, while tolerating +x on regular files.
      */
     private fun checkFileTypeMode(filePath: java.nio.file.Path, expectedType: String): Boolean {
-        val posixView = Files.getFileAttributeView(filePath, java.nio.file.attribute.PosixFileAttributeView::class.java)
-        if (posixView != null) {
-            val perms = try {
-                posixView.readAttributes().permissions()
-            } catch (_: Exception) {
-                return expectedType != "executable"
+        if (expectedType == "executable") {
+            val file = filePath.toFile()
+            if (file.canExecute()) return true
+
+            val posixView = Files.getFileAttributeView(filePath, java.nio.file.attribute.PosixFileAttributeView::class.java)
+            if (posixView != null) {
+                val perms = try {
+                    posixView.readAttributes().permissions()
+                } catch (_: Exception) {
+                    null
+                }
+                if (perms != null) {
+                    return perms.any { it.name.endsWith("_EXECUTE") }
+                }
             }
-            val isExec = perms.any { it.name.endsWith("_EXECUTE") }
-            // Only enforce that executables have execute bit set.
-            // Do NOT reject regular files with execute bits - Android overlayfs,
-            // KernelSU module mount, and ZIP extraction often set +x on all files.
-            if (expectedType == "executable" && !isExec) return false
-            return true
+            return false
         }
-        // Non-POSIX filesystem (e.g. host JVM on Windows) - skip mode check
+        // Regular files: tolerate any permissions (+x is common on Android overlayfs)
         return true
     }
 
