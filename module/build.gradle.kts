@@ -1,7 +1,10 @@
 import org.apache.tools.ant.filters.FixCrLfFilter
 import org.apache.tools.ant.filters.ReplaceTokens
 import java.io.File
+import java.security.KeyFactory
 import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
 import java.util.HexFormat
 
 plugins {
@@ -390,18 +393,94 @@ afterEvaluate {
                     val payloadFiles =
                         fileTree(moduleDir) {
                             exclude("**/*.sha256")
+                            exclude("integrity_manifest.json")
+                            exclude("**/integrity_manifest.json")
                         }.files
                             .filter(File::isFile)
                             .sortedBy { it.relativeTo(moduleDir.get().asFile).invariantSeparatorsPath }
+
+                    val manifestFilesList = mutableListOf<Map<String, String>>()
+
                     payloadFiles.forEach { payload ->
                         val md = MessageDigest.getInstance("SHA-256")
                         payload.forEachBlock(4096) { bytes, size ->
                             md.update(bytes, 0, size)
                         }
-                        file(payload.path + ".sha256").writeText(
-                            HexFormat.of().formatHex(md.digest()),
+                        val hexHash = HexFormat.of().formatHex(md.digest())
+                        file(payload.path + ".sha256").writeText(hexHash)
+
+                        val relPath = payload.relativeTo(moduleDir.get().asFile).invariantSeparatorsPath
+                        val type = if (relPath.endsWith(".sh") || !relPath.contains(".")) "executable" else "regular"
+                        manifestFilesList.add(
+                            mapOf(
+                                "path" to relPath,
+                                "sha256" to hexHash,
+                                "type" to type,
+                            ),
                         )
                     }
+
+                    // Generate integrity_manifest.json using canonical HMAC data
+                    val sortedEntries = manifestFilesList.sortedBy { it["path"] as String }
+                    val canonicalData =
+                        buildString {
+                            append("1\n")
+                            for (entry in sortedEntries) {
+                                append(entry["path"]).append('\n')
+                                append((entry["sha256"] as String).lowercase()).append('\n')
+                                append(entry["type"]).append('\n')
+                            }
+                        }
+
+                    val pkcs8Header = HexFormat.of().parseHex("302e020100300506032b657004220420")
+                    val privateKeySeed =
+                        System.getenv("INTEGRITY_SIGNING_KEY")?.trim()
+                            ?: rootProject.file("keys/integrity_signer.key").takeIf { it.exists() }?.readText()?.trim()
+
+                    val isReleaseBuild =
+                        System.getenv("CI_RELEASE") == "true" ||
+                            (System.getenv("CI") == "true" && System.getenv("GITHUB_EVENT_NAME") != "pull_request") ||
+                            System.getenv("REQUIRE_INTEGRITY_SIGNING_KEY") == "true"
+
+                    val signatureHex =
+                        if (!privateKeySeed.isNullOrBlank()) {
+                            val privKeyBytes = pkcs8Header + HexFormat.of().parseHex(privateKeySeed)
+                            val keyFactory = KeyFactory.getInstance("Ed25519")
+                            val privKey = keyFactory.generatePrivate(PKCS8EncodedKeySpec(privKeyBytes))
+                            val sig = Signature.getInstance("Ed25519")
+                            sig.initSign(privKey)
+                            sig.update(canonicalData.toByteArray(Charsets.UTF_8))
+                            HexFormat.of().formatHex(sig.sign())
+                        } else if (isReleaseBuild) {
+                            throw GradleException(
+                                "INTEGRITY_SIGNING_KEY environment variable or keys/integrity_signer.key is required " +
+                                    "to sign the module manifest for release builds. Hardcoded signing keys are strictly prohibited.",
+                            )
+                        } else {
+                            // Unsigned development / pull-request test packaging.
+                            // Preserves unsigned packaging for PR verification without exposing secrets
+                            // or signing with mismatched ephemeral keys that falsely mimic a trusted manifest.
+                            ""
+                        }
+
+                    val manifest =
+                        groovy.json.JsonBuilder(
+                            mapOf(
+                                "version" to 1,
+                                "files" to sortedEntries,
+                                "signature" to signatureHex,
+                            ),
+                        ).toPrettyString()
+
+                    val manifestFile = file("${moduleDir.get().asFile}/integrity_manifest.json")
+                    manifestFile.writeText(manifest)
+
+                    val manifestMd = MessageDigest.getInstance("SHA-256")
+                    manifestFile.forEachBlock(4096) { bytes, size ->
+                        manifestMd.update(bytes, 0, size)
+                    }
+                    val manifestSha = HexFormat.of().formatHex(manifestMd.digest())
+                    file("${moduleDir.get().asFile}/integrity_manifest.json.sha256").writeText(manifestSha)
                 }
             }
 
