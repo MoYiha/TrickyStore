@@ -565,8 +565,12 @@ object ServerManager {
                 }
             }
 
-            if (conn.responseCode != 200) {
-                return commitFetchFailure(context, "HTTP_${conn.responseCode}")
+            val responseCode = conn.responseCode
+            if (responseCode != 200) {
+                return commitFetchFailure(
+                    context,
+                    RemoteServerStatus.fromHttp(responseCode, conn.getHeaderField("Retry-After")),
+                )
             }
 
             val maxResponseSize = CboxWireLimits.MAX_BYTES
