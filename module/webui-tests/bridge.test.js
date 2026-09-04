@@ -85,6 +85,7 @@ assert.ok(!policySource.includes("request('/api/reset_environment'"), 'Restore D
 
 require('./bridge-base.test.js');
 require('./localization.test.js');
+require('./remote-server-status-i18n.test.js');
 require('./identity-security-patch-layout.test.js');
 require('./log-responsive.test.js');
 require('./all-pages-responsive.test.js');
