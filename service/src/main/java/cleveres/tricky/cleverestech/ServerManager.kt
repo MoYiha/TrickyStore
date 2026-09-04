@@ -76,8 +76,6 @@ object ServerManager {
     @Synchronized
     private fun initializeLocked() {
         loadServers()
-        // Invalidate every fetch snapshot captured before this reload. Recovery can run while
-        // a server request is in flight, but that request must never publish into rebuilt state.
         stateGeneration++
         loadCachedKeyboxes()
         startScheduler()
@@ -93,12 +91,8 @@ object ServerManager {
             val stored = readFileSnapshotBounded(file, 1, MAX_CONFIG_BYTES)
             val wasPlaintext = stored.firstOrNull() == '['.code.toByte()
             val plaintext =
-                if (wasPlaintext) {
-                    stored
-                } else {
-                    DeviceKeyManager.decrypt(stored)
-                        ?: throw SecurityException("Could not decrypt server configuration")
-                }
+                if (wasPlaintext) stored
+                else DeviceKeyManager.decrypt(stored) ?: throw SecurityException("Could not decrypt server configuration")
             try {
                 val json = JSONArray(String(plaintext, StandardCharsets.UTF_8))
                 require(json.length() <= MAX_SERVERS) { "Too many server configurations" }
@@ -106,9 +100,7 @@ object ServerManager {
                     try {
                         val server = parseServer(json.getJSONObject(i))
                         validateServer(server)
-                        if (serversMap.putIfAbsent(server.id, server) == null) {
-                            serversList.add(server)
-                        }
+                        if (serversMap.putIfAbsent(server.id, server) == null) serversList.add(server)
                     } catch (e: Exception) {
                         Logger.e("Skipping invalid server configuration at index $i", e)
                     }
@@ -128,31 +120,22 @@ object ServerManager {
 
     fun saveServers() {
         val json = JSONArray()
-        synchronized(this) {
-            serversList.forEach { server ->
-                json.put(serializeServer(server))
-            }
-        }
+        synchronized(this) { serversList.forEach { json.put(serializeServer(it)) } }
         val plaintext = json.toString().toByteArray(StandardCharsets.UTF_8)
         val encrypted =
             try {
                 require(plaintext.size <= MAX_CONFIG_BYTES) { "Server configuration is too large" }
-                DeviceKeyManager.encrypt(plaintext)
-                    ?: throw IllegalStateException("Device encryption key is unavailable")
+                DeviceKeyManager.encrypt(plaintext) ?: throw IllegalStateException("Device encryption key is unavailable")
             } finally {
                 plaintext.fill(0)
             }
         synchronized(ioLock) {
-            try {
-                SecureFile.writeBytes(serverFile, encrypted)
-            } finally {
-                encrypted.fill(0)
-            }
+            try { SecureFile.writeBytes(serverFile, encrypted) } finally { encrypted.fill(0) }
         }
     }
 
-    private fun parseServer(json: JSONObject): ServerConfig {
-        return ServerConfig(
+    private fun parseServer(json: JSONObject): ServerConfig =
+        ServerConfig(
             id = json.getString("id"),
             name = json.getString("name"),
             url = json.getString("url"),
@@ -168,52 +151,25 @@ object ServerManager {
             contentPassword = json.optString("contentPassword").ifEmpty { null },
             contentPublicKey = json.optString("contentPublicKey").ifEmpty { null },
         )
+
+    private fun serializeServer(server: ServerConfig): JSONObject = JSONObject().apply {
+        put("id", server.id); put("name", server.name); put("url", server.url)
+        put("priority", server.priority); put("enabled", server.enabled); put("authType", server.authType)
+        put("authData", server.authData); put("autoRefresh", server.autoRefresh)
+        put("refreshIntervalHours", server.refreshIntervalHours); put("lastStatus", server.lastStatus)
+        put("lastChecked", server.lastChecked); put("lastAuthor", server.lastAuthor)
+        put("contentPassword", server.contentPassword ?: ""); put("contentPublicKey", server.contentPublicKey ?: "")
     }
 
-    private fun serializeServer(server: ServerConfig): JSONObject {
-        val json = JSONObject()
-        json.put("id", server.id)
-        json.put("name", server.name)
-        json.put("url", server.url)
-        json.put("priority", server.priority)
-        json.put("enabled", server.enabled)
-        json.put("authType", server.authType)
-        json.put("authData", server.authData)
-        json.put("autoRefresh", server.autoRefresh)
-        json.put("refreshIntervalHours", server.refreshIntervalHours)
-        json.put("lastStatus", server.lastStatus)
-        json.put("lastChecked", server.lastChecked)
-        json.put("lastAuthor", server.lastAuthor)
-        json.put("contentPassword", server.contentPassword ?: "")
-        json.put("contentPublicKey", server.contentPublicKey ?: "")
-        return json
+    internal fun getServers(): List<ServerConfig> = serversList.sortedBy { it.priority }.map {
+        it.copy(authData = JSONObject(), contentPassword = null, contentPublicKey = null)
     }
-
-    internal fun getServers(): List<ServerConfig> =
-        serversList
-            .sortedBy { it.priority }
-            .map {
-                it.copy(
-                    authData = JSONObject(),
-                    contentPassword = null,
-                    contentPublicKey = null,
-                )
-            }
 
     internal fun findServer(id: String): ServerConfig? = if (validServerId.matches(id)) serversMap[id] else null
 
-    internal fun cacheBindingChanged(
-        previous: ServerConfig,
-        replacement: ServerConfig,
-    ): Boolean {
-        val first = serverCacheBinding(previous)
-        val second = serverCacheBinding(replacement)
-        return try {
-            !MessageDigest.isEqual(first, second)
-        } finally {
-            first.fill(0)
-            second.fill(0)
-        }
+    internal fun cacheBindingChanged(previous: ServerConfig, replacement: ServerConfig): Boolean {
+        val first = serverCacheBinding(previous); val second = serverCacheBinding(replacement)
+        return try { !MessageDigest.isEqual(first, second) } finally { first.fill(0); second.fill(0) }
     }
 
     @Synchronized
@@ -221,25 +177,14 @@ object ServerManager {
         validateServer(server)
         require(serversMap.containsKey(server.id) || serversMap.size < MAX_SERVERS) { "Too many servers" }
         val previous = serversMap.put(server.id, server)
-        if (previous != null) {
-            serversList.removeIf { it.id == server.id }
-        }
+        if (previous != null) serversList.removeIf { it.id == server.id }
         serversList.add(server)
-        try {
-            saveServers()
-            stateGeneration++
-        } catch (error: Exception) {
-            serversList.removeIf { it.id == server.id }
-            serversMap.remove(server.id)
-            if (previous != null) {
-                serversMap[previous.id] = previous
-                serversList.add(previous)
-            }
+        try { saveServers(); stateGeneration++ } catch (error: Exception) {
+            serversList.removeIf { it.id == server.id }; serversMap.remove(server.id)
+            if (previous != null) { serversMap[previous.id] = previous; serversList.add(previous) }
             throw error
         }
-        if (previous != null && cacheBindingChanged(previous, server)) {
-            deactivateServerContent(server.id, deleteCache = true)
-        }
+        if (previous != null && cacheBindingChanged(previous, server)) deactivateServerContent(server.id, true)
     }
 
     @Synchronized
@@ -248,89 +193,54 @@ object ServerManager {
         val previous = serversMap.remove(id) ?: return false
         val previousKeyboxes = serverKeyboxes.remove(id)
         serversList.removeIf { it.id == id }
-        try {
-            saveServers()
-            stateGeneration++
-        } catch (error: Exception) {
-            serversMap[id] = previous
-            serversList.add(previous)
+        try { saveServers(); stateGeneration++ } catch (error: Exception) {
+            serversMap[id] = previous; serversList.add(previous)
             if (previousKeyboxes != null) serverKeyboxes[id] = previousKeyboxes
             throw error
         }
-        val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_$id.enc")
-        deleteCacheFile(cacheFile, "removed")
+        deleteCacheFile(File(Config.keyboxDirectory.parentFile, "server_cache_$id.enc"), "removed")
         return true
     }
 
     @Synchronized
-    fun updateServer(
-        id: String,
-        block: (ServerConfig) -> Unit,
-    ) {
+    fun updateServer(id: String, block: (ServerConfig) -> Unit) {
         val s = serversMap[id]
         if (s != null) {
             val previous = s.copy(authData = JSONObject(s.authData.toString()))
-            try {
-                block(s)
-                validateServer(s)
-                saveServers()
-                stateGeneration++
-            } catch (error: Exception) {
-                serversMap[id] = previous
-                serversList.replaceAll { if (it.id == id) previous else it }
-                throw error
+            try { block(s); validateServer(s); saveServers(); stateGeneration++ } catch (error: Exception) {
+                serversMap[id] = previous; serversList.replaceAll { if (it.id == id) previous else it }; throw error
             }
-            if (cacheBindingChanged(previous, s)) {
-                deactivateServerContent(id, deleteCache = true)
-            }
+            if (cacheBindingChanged(previous, s)) deactivateServerContent(id, true)
         }
     }
 
     internal fun validateServer(server: ServerConfig) {
         require(validServerId.matches(server.id)) { "Invalid server ID" }
-        require(server.name.isNotBlank() && server.name.length <= 128) { "Invalid server name" }
-        require(server.name.none { it.isISOControl() }) { "Invalid server name" }
+        require(server.name.isNotBlank() && server.name.length <= 128 && server.name.none { it.isISOControl() }) { "Invalid server name" }
         require(server.authType in supportedAuthTypes) { "Unsupported authentication type" }
         require(server.priority in -1_000_000..1_000_000) { "Invalid priority" }
         require(server.refreshIntervalHours in 1..24 * 30) { "Invalid refresh interval" }
         require((server.contentPassword?.length ?: 0) <= 1024) { "Content password is too long" }
         require(FusedCboxBackend.isPublicKeyWithinLimit(server.contentPublicKey)) { "Public key is too long" }
         require(server.authData.toString().length <= 64 * 1024) { "Authentication data is too large" }
-        require(server.lastStatus.length <= 128 && server.lastStatus.none { it.isISOControl() }) {
-            "Invalid server status"
-        }
-        require(server.lastAuthor.length <= 1024 && server.lastAuthor.none { it.isISOControl() }) {
-            "Invalid server author"
-        }
-        validateAuthentication(server)
-        validatedServerUrl(server.url)
+        require(server.lastStatus.length <= 128 && server.lastStatus.none { it.isISOControl() }) { "Invalid server status" }
+        require(server.lastAuthor.length <= 1024 && server.lastAuthor.none { it.isISOControl() }) { "Invalid server author" }
+        validateAuthentication(server); validatedServerUrl(server.url)
     }
 
     private fun validateAuthentication(server: ServerConfig) {
         when (server.authType) {
             "NONE" -> Unit
-            "BEARER" -> {
-                val token = server.authData.optString("token")
-                if (token.isNotEmpty()) requireSafeHeader("Authorization", "Bearer $token")
-            }
-            "BASIC" -> {
-                val username = server.authData.optString("username")
-                val password = server.authData.optString("password")
-                validateBasicAuthentication(username, password)
-            }
+            "BEARER" -> { val token = server.authData.optString("token"); if (token.isNotEmpty()) requireSafeHeader("Authorization", "Bearer $token") }
+            "BASIC" -> validateBasicAuthentication(server.authData.optString("username"), server.authData.optString("password"))
             "API_KEY" -> {
-                val header = server.authData.optString("headerName", "X-API-Key")
-                val key = server.authData.optString("key")
+                val header = server.authData.optString("headerName", "X-API-Key"); val key = server.authData.optString("key")
                 if (key.isNotEmpty()) requireSafeHeader(header, key)
             }
             "CUSTOM" -> {
                 val headers = server.authData.optJSONObject("headers") ?: return
                 require(headers.length() <= 32) { "Too many custom authentication headers" }
-                val names = headers.keys()
-                while (names.hasNext()) {
-                    val name = names.next()
-                    requireSafeHeader(name, headers.getString(name))
-                }
+                val names = headers.keys(); while (names.hasNext()) { val name = names.next(); requireSafeHeader(name, headers.getString(name)) }
             }
         }
     }
@@ -338,58 +248,25 @@ object ServerManager {
     private fun validatedServerUrl(rawUrl: String): URL {
         require(rawUrl.length in 1..2048) { "Invalid server URL length" }
         val uri = URI(rawUrl)
-        require(
-            uri.scheme.equals("https", ignoreCase = true) &&
-                uri.host?.isNotBlank() == true &&
-                uri.userInfo == null &&
-                uri.fragment == null,
-        ) { "Server URL must be an absolute HTTPS URL without credentials or a fragment" }
+        require(uri.scheme.equals("https", true) && uri.host?.isNotBlank() == true && uri.userInfo == null && uri.fragment == null) {
+            "Server URL must be an absolute HTTPS URL without credentials or a fragment"
+        }
         require(uri.port == -1 || uri.port in 1..65535) { "Invalid server port" }
         return uri.toURL()
     }
 
-    private fun requireSafeHeader(
-        name: String,
-        value: String,
-    ) {
+    private fun requireSafeHeader(name: String, value: String) {
         require(validHeaderName.matches(name)) { "Invalid authentication header name" }
         require(name.lowercase() !in restrictedHeaders) { "Restricted authentication header" }
-        require(
-            value.length <= MAX_HEADER_VALUE_CHARS &&
-                value.all { character -> character >= ' ' && character != '\u007f' },
-        ) {
-            "Invalid authentication header value"
-        }
+        require(value.length <= MAX_HEADER_VALUE_CHARS && value.all { it >= ' ' && it != '\u007f' }) { "Invalid authentication header value" }
     }
 
-    private fun validateBasicAuthentication(
-        username: String,
-        password: String,
-    ) {
-        require(
-            username.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS &&
-                password.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS,
-        ) {
-            "Basic authentication credentials are too long"
-        }
-        require(
-            ':' !in username &&
-                '\r' !in username &&
-                '\n' !in username &&
-                '\r' !in password &&
-                '\n' !in password,
-        ) {
-            "Invalid basic authentication credentials"
-        }
-
-        val credentialsBytes =
-            username.toByteArray(StandardCharsets.UTF_8).size +
-                1 +
-                password.toByteArray(StandardCharsets.UTF_8).size
+    private fun validateBasicAuthentication(username: String, password: String) {
+        require(username.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS && password.length <= MAX_BASIC_CREDENTIAL_UTF16_UNITS) { "Basic authentication credentials are too long" }
+        require(':' !in username && '\r' !in username && '\n' !in username && '\r' !in password && '\n' !in password) { "Invalid basic authentication credentials" }
+        val credentialsBytes = username.toByteArray(StandardCharsets.UTF_8).size + 1 + password.toByteArray(StandardCharsets.UTF_8).size
         val encodedChars = ((credentialsBytes + 2) / 3) * 4
-        require(BASIC_AUTH_PREFIX.length + encodedChars <= MAX_HEADER_VALUE_CHARS) {
-            "Basic authentication credentials are too long"
-        }
+        require(BASIC_AUTH_PREFIX.length + encodedChars <= MAX_HEADER_VALUE_CHARS) { "Basic authentication credentials are too long" }
     }
 
     private fun loadCachedKeyboxes() {
@@ -397,120 +274,64 @@ object ServerManager {
         val checkEnabled = Config.isAutoKeyboxCheckEnabled
         val revoked = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
         serversList.forEach { server ->
-            if (server.enabled) {
-                val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
-                if (Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-                    var decrypted: ByteArray? = null
-                    var cachePayload: ByteArray? = null
-                    try {
-                        val enc = readFileSnapshotBounded(cacheFile, 1, MAX_CACHE_BYTES)
-                        try {
-                            decrypted = DeviceKeyManager.decrypt(enc)
-                                ?: throw SecurityException("Could not decrypt server cache")
-                            cachePayload = decodeServerCache(server, decrypted)
-                                ?: throw SecurityException("Server cache trust binding does not match current configuration")
-                            val parsed = parseCachedKeyboxes(cachePayload, server)
-                            val statuses = if (checkEnabled && revoked != null) {
-                                parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) }
-                            } else {
-                                emptyList()
-                            }
-                            if (parsed.isNotEmpty() && (statuses.isEmpty() || statuses.all { it == KeyboxVerifier.Status.VALID })) {
-                                serverKeyboxes[server.id] = parsed
-                                Logger.i("Loaded cached keyboxes for server: ${server.name}")
-                            } else {
-                                deactivateServerContent(server.id, deleteCache = true)
-                                Logger.w("Rejected incomplete or invalid server cache: ${server.name}")
-                            }
-                        } finally {
-                            enc.fill(0)
-                        }
-                    } catch (e: Exception) {
-                        deactivateServerContent(server.id, deleteCache = true)
-                        Logger.e("Failed to load server cache for ${server.name}", e)
-                    } finally {
-                        cachePayload?.fill(0)
-                        decrypted?.fill(0)
-                    }
-                }
-            }
+            if (!server.enabled) return@forEach
+            val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
+            if (!Files.isRegularFile(cacheFile.toPath(), LinkOption.NOFOLLOW_LINKS)) return@forEach
+            var decrypted: ByteArray? = null; var cachePayload: ByteArray? = null
+            try {
+                val enc = readFileSnapshotBounded(cacheFile, 1, MAX_CACHE_BYTES)
+                try {
+                    decrypted = DeviceKeyManager.decrypt(enc) ?: throw SecurityException("Could not decrypt server cache")
+                    cachePayload = decodeServerCache(server, decrypted) ?: throw SecurityException("Server cache trust binding does not match current configuration")
+                    val parsed = parseCachedKeyboxes(cachePayload, server)
+                    val statuses = if (checkEnabled && revoked != null) parsed.map { KeyboxVerifier.verifyKeybox(it, revoked) } else emptyList()
+                    if (parsed.isNotEmpty() && (statuses.isEmpty() || statuses.all { it == KeyboxVerifier.Status.VALID })) {
+                        serverKeyboxes[server.id] = parsed; Logger.i("Loaded cached keyboxes for server: ${server.name}")
+                    } else { deactivateServerContent(server.id, true); Logger.w("Rejected incomplete or invalid server cache: ${server.name}") }
+                } finally { enc.fill(0) }
+            } catch (e: Exception) { deactivateServerContent(server.id, true); Logger.e("Failed to load server cache for ${server.name}", e) }
+            finally { cachePayload?.fill(0); decrypted?.fill(0) }
         }
     }
 
-    internal fun parseCachedKeyboxes(
-        bytes: ByteArray,
-        server: ServerConfig,
-    ): List<CertHack.KeyBox> {
+    internal fun parseCachedKeyboxes(bytes: ByteArray, server: ServerConfig): List<CertHack.KeyBox> {
         val isZip = bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
         val isCbox = CboxDecryptor.hasSupportedEnvelopeHeader(bytes)
         if (!isZip && !isCbox) return KeyboxLoader.parse(bytes, "server_${server.name}")
-
         val parsed = processContent(bytes, server)
-        return try {
-            parsed.first
-        } finally {
-            parsed.second?.fill(0)
-        }
+        return try { parsed.first } finally { parsed.second?.fill(0) }
     }
 
-    fun fetchFromServer(server: ServerConfig): Boolean =
-        synchronized(fetchLockFor(server.id)) {
-            fetchFromServerLocked(server)
-        }
-
-    private fun fetchLockFor(id: String): Any =
-        fetchLocks[(id.hashCode() and Int.MAX_VALUE) % fetchLocks.size]
+    fun fetchFromServer(server: ServerConfig): Boolean = synchronized(fetchLockFor(server.id)) { fetchFromServerLocked(server) }
+    private fun fetchLockFor(id: String): Any = fetchLocks[(id.hashCode() and Int.MAX_VALUE) % fetchLocks.size]
 
     @Synchronized
     private fun beginFetch(server: ServerConfig): FetchContext? {
         val target = serversMap[server.id] ?: return null
         if (!target.enabled) return null
-        val snapshot = target.copy(authData = JSONObject(target.authData.toString()))
-        snapshot.lastChecked = System.currentTimeMillis()
+        val snapshot = target.copy(authData = JSONObject(target.authData.toString())); snapshot.lastChecked = System.currentTimeMillis()
         return FetchContext(target, snapshot, stateGeneration)
     }
 
-    private fun isFetchCurrent(context: FetchContext): Boolean =
-        context.generation == stateGeneration &&
-            serversMap[context.snapshot.id] === context.target &&
-            context.target.enabled
+    private fun isFetchCurrent(context: FetchContext): Boolean = context.generation == stateGeneration && serversMap[context.snapshot.id] === context.target && context.target.enabled
 
     @Synchronized
-    private fun commitFetchFailure(
-        context: FetchContext,
-        status: String,
-        clearContent: Boolean = false,
-        deleteCache: Boolean = false,
-    ): Boolean {
+    private fun commitFetchFailure(context: FetchContext, status: String, clearContent: Boolean = false, deleteCache: Boolean = false): Boolean {
         if (!isFetchCurrent(context)) return false
-        context.target.lastChecked = context.snapshot.lastChecked
-        context.target.lastStatus = status
+        context.target.lastChecked = context.snapshot.lastChecked; context.target.lastStatus = status
         if (clearContent) deactivateServerContent(context.snapshot.id, deleteCache)
-        persistStatusSafely()
-        return false
+        persistStatusSafely(); return false
     }
 
     @Synchronized
-    private fun commitFetchSuccess(
-        context: FetchContext,
-        keyboxes: List<CertHack.KeyBox>,
-        cacheBytes: ByteArray?,
-    ): Boolean {
+    private fun commitFetchSuccess(context: FetchContext, keyboxes: List<CertHack.KeyBox>, cacheBytes: ByteArray?): Boolean {
         if (!isFetchCurrent(context)) return false
-        val target = context.target
-        target.lastChecked = context.snapshot.lastChecked
-        target.lastStatus = "OK"
+        val target = context.target; target.lastChecked = context.snapshot.lastChecked; target.lastStatus = "OK"
         val cert = keyboxes.firstOrNull()?.certificates?.firstOrNull()
-        target.lastAuthor =
-            if (cert is X509Certificate) {
-                cert.subjectX500Principal.name.take(1024)
-            } else {
-                "Unknown"
-            }
+        target.lastAuthor = if (cert is X509Certificate) cert.subjectX500Principal.name.take(1024) else "Unknown"
         serverKeyboxes[target.id] = keyboxes
         if (cacheBytes != null) cacheXml(context.snapshot, cacheBytes)
-        persistStatusSafely()
-        return true
+        persistStatusSafely(); return true
     }
 
     private fun fetchFromServerLocked(server: ServerConfig): Boolean {
@@ -520,396 +341,163 @@ object ServerManager {
         try {
             validateServer(snapshot)
             conn = validatedServerUrl(snapshot.url).openConnection() as HttpsURLConnection
-            conn.connectTimeout = 15000
-            conn.readTimeout = 30000
-            conn.requestMethod = "GET"
-            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 15000; conn.readTimeout = 30000; conn.requestMethod = "GET"; conn.instanceFollowRedirects = false
             conn.setRequestProperty("Accept-Encoding", "identity")
-
             when (snapshot.authType) {
-                "BEARER" -> {
-                    val token = snapshot.authData.optString("token")
-                    if (token.isNotEmpty()) {
-                        requireSafeHeader("Authorization", "Bearer $token")
-                        conn.setRequestProperty("Authorization", "Bearer $token")
-                    }
-                }
+                "BEARER" -> { val token = snapshot.authData.optString("token"); if (token.isNotEmpty()) { requireSafeHeader("Authorization", "Bearer $token"); conn.setRequestProperty("Authorization", "Bearer $token") } }
                 "BASIC" -> {
-                    val user = snapshot.authData.optString("username")
-                    val pass = snapshot.authData.optString("password")
+                    val user = snapshot.authData.optString("username"); val pass = snapshot.authData.optString("password")
                     if (user.isNotEmpty() || pass.isNotEmpty()) {
-                        val auth = Base64.encodeToString(
-                            "$user:$pass".toByteArray(StandardCharsets.UTF_8),
-                            Base64.NO_WRAP,
-                        )
-                        val authorization = "$BASIC_AUTH_PREFIX$auth"
-                        requireSafeHeader("Authorization", authorization)
-                        conn.setRequestProperty("Authorization", authorization)
+                        val auth = Base64.encodeToString("$user:$pass".toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+                        val authorization = "$BASIC_AUTH_PREFIX$auth"; requireSafeHeader("Authorization", authorization); conn.setRequestProperty("Authorization", authorization)
                     }
                 }
-                "API_KEY" -> {
-                    val key = snapshot.authData.optString("key")
-                    val header = snapshot.authData.optString("headerName", "X-API-Key")
-                    if (key.isNotEmpty()) {
-                        requireSafeHeader(header, key)
-                        conn.setRequestProperty(header, key)
-                    }
-                }
-                "CUSTOM" -> {
-                    val headers = snapshot.authData.optJSONObject("headers")
-                    headers?.keys()?.forEach { key ->
-                        val value = headers.getString(key)
-                        requireSafeHeader(key, value)
-                        conn.setRequestProperty(key, value)
-                    }
-                }
+                "API_KEY" -> { val key = snapshot.authData.optString("key"); val header = snapshot.authData.optString("headerName", "X-API-Key"); if (key.isNotEmpty()) { requireSafeHeader(header, key); conn.setRequestProperty(header, key) } }
+                "CUSTOM" -> snapshot.authData.optJSONObject("headers")?.keys()?.forEach { key -> val value = snapshot.authData.getJSONObject("headers").getString(key); requireSafeHeader(key, value); conn.setRequestProperty(key, value) }
             }
-
-            if (conn.responseCode != 200) {
-                return commitFetchFailure(context, "HTTP_${conn.responseCode}")
+            val responseCode = conn.responseCode
+            if (responseCode != 200) {
+                return commitFetchFailure(context, RemoteServerStatus.fromHttp(responseCode, conn.getHeaderField("Retry-After")))
             }
-
             val maxResponseSize = CboxWireLimits.MAX_BYTES
             val contentLength = conn.contentLengthLong
-            if (contentLength > maxResponseSize) {
-                return commitFetchFailure(context, "RESPONSE_TOO_LARGE")
-            }
-            val bytes =
-                conn.inputStream.use { input ->
-                    val output =
-                        FastByteArrayOutputStream(
-                            minOf(contentLength.coerceAtLeast(0), 65536L).toInt(),
-                        )
-                    val chunk = ByteArray(8192)
-                    try {
-                        var totalRead = 0
-                        var count: Int
-                        while (input.read(chunk).also { count = it } != -1) {
-                            if (count == 0) continue
-                            totalRead += count
-                            if (totalRead > maxResponseSize) {
-                                throw SecurityException("Server response exceeds the CBOX wire limit")
-                            }
-                            output.write(chunk, 0, count)
-                        }
-                        output.toByteArray()
-                    } finally {
-                        chunk.fill(0)
-                        output.wipe()
+            if (contentLength > maxResponseSize) return commitFetchFailure(context, "RESPONSE_TOO_LARGE")
+            val bytes = conn.inputStream.use { input ->
+                val output = FastByteArrayOutputStream(minOf(contentLength.coerceAtLeast(0), 65536L).toInt()); val chunk = ByteArray(8192)
+                try {
+                    var totalRead = 0; var count: Int
+                    while (input.read(chunk).also { count = it } != -1) {
+                        if (count == 0) continue; totalRead += count
+                        if (totalRead > maxResponseSize) throw SecurityException("Server response exceeds the CBOX wire limit")
+                        output.write(chunk, 0, count)
                     }
-                }
-
-            return try {
-                processFetchedContent(context, bytes)
-            } finally {
-                bytes.fill(0)
+                    output.toByteArray()
+                } finally { chunk.fill(0); output.wipe() }
             }
+            return try { processFetchedContent(context, bytes) } finally { bytes.fill(0) }
         } catch (e: IllegalArgumentException) {
-            Logger.e("Invalid server configuration: ${snapshot.name}", e)
-            return commitFetchFailure(context, "INVALID_CONFIG")
+            Logger.e("Invalid server configuration: ${snapshot.name}", e); return commitFetchFailure(context, "INVALID_CONFIG")
         } catch (e: Exception) {
-            Logger.e("Server fetch failed: ${snapshot.name}", e)
-            return commitFetchFailure(context, "NETWORK_ERROR")
-        } finally {
-            conn?.disconnect()
-        }
+            Logger.e("Server fetch failed: ${snapshot.name}", e); return commitFetchFailure(context, "NETWORK_ERROR")
+        } finally { conn?.disconnect() }
     }
 
-    private fun processFetchedContent(
-        context: FetchContext,
-        bytes: ByteArray,
-    ): Boolean =
+    private fun processFetchedContent(context: FetchContext, bytes: ByteArray): Boolean =
         KeyboxActivation.coordinateRefresh {
             val snapshot = context.snapshot
-            val result = processContent(bytes, snapshot)
-            val keyboxes = result.first
-            val cacheBytes = result.second
+            val result = processContent(bytes, snapshot); val keyboxes = result.first; val cacheBytes = result.second
             try {
                 val checkEnabled = Config.isAutoKeyboxCheckEnabled
                 val crl = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
-                if (checkEnabled && crl == null) {
-                    return@coordinateRefresh commitFetchFailure(
-                        context,
-                        "CRL_UNAVAILABLE",
-                        clearContent = true,
-                        deleteCache = false,
-                    )
-                }
-                val statuses = if (checkEnabled && crl != null) {
-                    keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) }
-                } else {
-                    emptyList()
-                }
-                if (keyboxes.isEmpty() || (checkEnabled && statuses.any { it != KeyboxVerifier.Status.VALID })) {
-                    return@coordinateRefresh commitFetchFailure(
-                        context,
-                        "INVALID_CONTENT",
-                        clearContent = true,
-                        deleteCache = true,
-                    )
-                }
+                if (checkEnabled && crl == null) return@coordinateRefresh commitFetchFailure(context, "CRL_UNAVAILABLE", clearContent = true, deleteCache = false)
+                val statuses = if (checkEnabled && crl != null) keyboxes.map { KeyboxVerifier.verifyKeybox(it, crl) } else emptyList()
+                if (keyboxes.isEmpty() || (checkEnabled && statuses.any { it != KeyboxVerifier.Status.VALID })) return@coordinateRefresh commitFetchFailure(context, "INVALID_CONTENT", true, true)
                 commitFetchSuccess(context, keyboxes, cacheBytes)
-            } finally {
-                cacheBytes?.fill(0)
-            }
+            } finally { cacheBytes?.fill(0) }
         }
 
-    internal fun processContent(
-        bytes: ByteArray,
-        server: ServerConfig,
-    ): Pair<List<CertHack.KeyBox>, ByteArray?> {
+    internal fun processContent(bytes: ByteArray, server: ServerConfig): Pair<List<CertHack.KeyBox>, ByteArray?> {
         if (CboxDecryptor.hasSupportedEnvelopeHeader(bytes)) {
-            val password = server.contentPassword ?: ""
-            val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
+            val password = server.contentPassword ?: ""; val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
             val keyboxes = materializeServerCbox(bytes, password, publicKey, "server_${server.name}")
-            if (keyboxes.isNotEmpty()) {
-                return Pair(keyboxes, bytes.copyOf())
-            }
+            if (keyboxes.isNotEmpty()) return Pair(keyboxes, bytes.copyOf())
         } else if (bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()) {
             val pack = ZipProcessor.process(ByteArrayInputStream(bytes))
-            if (pack != null) {
-                try {
-                    val allKeys = ArrayList<CertHack.KeyBox>()
-                    val password = pack.password ?: server.contentPassword ?: ""
-                    val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
-
-                    for ((name, content) in pack.cboxFiles) {
-                        val keyboxes =
-                            materializeServerCbox(
-                                content,
-                                password,
-                                publicKey,
-                                "server_${server.name}_$name",
-                            )
-                        if (keyboxes.isEmpty()) {
-                            Logger.e("Could not decrypt, verify, or materialize zip entry $name")
-                            return Pair(emptyList(), null)
-                        }
-                        if (keyboxes.size > MAX_REMOTE_KEYBOXES - allKeys.size) {
-                            Logger.e("Server archive exceeds the keybox-count limit")
-                            return Pair(emptyList(), null)
-                        }
-                        allKeys.addAll(keyboxes)
-                    }
-
-                    if (allKeys.isNotEmpty()) {
-                        return Pair(allKeys, bytes.copyOf())
-                    }
-                } finally {
-                    pack.cboxFiles.forEach { it.second.fill(0) }
+            if (pack != null) try {
+                val allKeys = ArrayList<CertHack.KeyBox>(); val password = pack.password ?: server.contentPassword ?: ""; val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
+                for ((name, content) in pack.cboxFiles) {
+                    val keyboxes = materializeServerCbox(content, password, publicKey, "server_${server.name}_$name")
+                    if (keyboxes.isEmpty()) { Logger.e("Could not decrypt, verify, or materialize zip entry $name"); return Pair(emptyList(), null) }
+                    if (keyboxes.size > MAX_REMOTE_KEYBOXES - allKeys.size) { Logger.e("Server archive exceeds the keybox-count limit"); return Pair(emptyList(), null) }
+                    allKeys.addAll(keyboxes)
                 }
-            }
+                if (allKeys.isNotEmpty()) return Pair(allKeys, bytes.copyOf())
+            } finally { pack.cboxFiles.forEach { it.second.fill(0) } }
         } else {
-            if (!server.contentPublicKey.isNullOrBlank()) {
-                Logger.e("Signed server refused unsigned plain XML")
-                return Pair(emptyList(), null)
-            }
-            val cacheBytes = bytes.copyOf()
-            val keyboxes = KeyboxLoader.parse(bytes, "server_${server.name}")
-            if (keyboxes.isNotEmpty()) {
-                return Pair(keyboxes, cacheBytes)
-            }
-            cacheBytes.fill(0)
+            if (!server.contentPublicKey.isNullOrBlank()) { Logger.e("Signed server refused unsigned plain XML"); return Pair(emptyList(), null) }
+            val cacheBytes = bytes.copyOf(); val keyboxes = KeyboxLoader.parse(bytes, "server_${server.name}")
+            if (keyboxes.isNotEmpty()) return Pair(keyboxes, cacheBytes); cacheBytes.fill(0)
         }
         return Pair(emptyList(), null)
     }
 
-    private fun materializeServerCbox(
-        encrypted: ByteArray,
-        password: String,
-        publicKey: String?,
-        filename: String,
-    ): List<CertHack.KeyBox> {
+    private fun materializeServerCbox(encrypted: ByteArray, password: String, publicKey: String?, filename: String): List<CertHack.KeyBox> {
         val payload = FusedCboxBackend.open(encrypted, password, publicKey) ?: return emptyList()
-        if (payload.hasSignature && publicKey == null) {
-            Logger.e("Signed CBOX requires an explicit verification key: $filename")
-            return emptyList()
-        }
-        if (publicKey != null && !payload.hasSignature) {
-            Logger.e("CBOX signature verification failed closed: $filename")
-            return emptyList()
-        }
+        if (payload.hasSignature && publicKey == null) { Logger.e("Signed CBOX requires an explicit verification key: $filename"); return emptyList() }
+        if (publicKey != null && !payload.hasSignature) { Logger.e("CBOX signature verification failed closed: $filename"); return emptyList() }
         return KeyboxJcaAdapter.materialize(payload.document, filename)
     }
 
-    private fun cacheXml(
-        server: ServerConfig,
-        plaintext: ByteArray,
-    ) {
-        var boundPlaintext: ByteArray? = null
-        var encrypted: ByteArray? = null
+    private fun cacheXml(server: ServerConfig, plaintext: ByteArray) {
+        var boundPlaintext: ByteArray? = null; var encrypted: ByteArray? = null
         try {
-            boundPlaintext = encodeServerCache(server, plaintext)
-            encrypted = DeviceKeyManager.encrypt(boundPlaintext)
-            if (encrypted != null) {
-                val file = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
-                SecureFile.writeBytes(file, encrypted)
-            }
-        } catch (e: Exception) {
-            Logger.e("Failed to cache server content", e)
-        } finally {
-            encrypted?.fill(0)
-            boundPlaintext?.fill(0)
-            plaintext.fill(0)
-        }
+            boundPlaintext = encodeServerCache(server, plaintext); encrypted = DeviceKeyManager.encrypt(boundPlaintext)
+            if (encrypted != null) SecureFile.writeBytes(File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc"), encrypted)
+        } catch (e: Exception) { Logger.e("Failed to cache server content", e) }
+        finally { encrypted?.fill(0); boundPlaintext?.fill(0); plaintext.fill(0) }
     }
 
-    private fun encodeServerCache(
-        server: ServerConfig,
-        plaintext: ByteArray,
-    ): ByteArray {
+    private fun encodeServerCache(server: ServerConfig, plaintext: ByteArray): ByteArray {
         val binding = serverCacheBinding(server)
-        return try {
-            ByteArray(SERVER_CACHE_PREFIX_BYTES + plaintext.size).also { output ->
-                SERVER_CACHE_MAGIC.copyInto(output, 0)
-                binding.copyInto(output, SERVER_CACHE_MAGIC.size)
-                plaintext.copyInto(output, SERVER_CACHE_PREFIX_BYTES)
-            }
-        } finally {
-            binding.fill(0)
-        }
+        return try { ByteArray(SERVER_CACHE_PREFIX_BYTES + plaintext.size).also { SERVER_CACHE_MAGIC.copyInto(it, 0); binding.copyInto(it, SERVER_CACHE_MAGIC.size); plaintext.copyInto(it, SERVER_CACHE_PREFIX_BYTES) } }
+        finally { binding.fill(0) }
     }
 
-    private fun decodeServerCache(
-        server: ServerConfig,
-        encoded: ByteArray,
-    ): ByteArray? {
-        if (encoded.size <= SERVER_CACHE_PREFIX_BYTES ||
-            !encoded.copyOfRange(0, SERVER_CACHE_MAGIC.size).contentEquals(SERVER_CACHE_MAGIC)
-        ) {
-            return null
-        }
+    private fun decodeServerCache(server: ServerConfig, encoded: ByteArray): ByteArray? {
+        if (encoded.size <= SERVER_CACHE_PREFIX_BYTES || !encoded.copyOfRange(0, SERVER_CACHE_MAGIC.size).contentEquals(SERVER_CACHE_MAGIC)) return null
         val expected = serverCacheBinding(server)
         return try {
             val stored = encoded.copyOfRange(SERVER_CACHE_MAGIC.size, SERVER_CACHE_PREFIX_BYTES)
-            try {
-                if (!MessageDigest.isEqual(stored, expected)) return null
-            } finally {
-                stored.fill(0)
-            }
+            try { if (!MessageDigest.isEqual(stored, expected)) return null } finally { stored.fill(0) }
             encoded.copyOfRange(SERVER_CACHE_PREFIX_BYTES, encoded.size)
-        } finally {
-            expected.fill(0)
-        }
+        } finally { expected.fill(0) }
     }
 
     private fun serverCacheBinding(server: ServerConfig): ByteArray {
-        val material =
-            buildString {
-                append(server.id).append('\n')
-                append(server.url).append('\n')
-                append(server.authType).append('\n')
-                append(canonicalJson(server.authData)).append('\n')
-                append(server.contentPassword.orEmpty()).append('\n')
-                append(server.contentPublicKey.orEmpty())
-            }.toByteArray(StandardCharsets.UTF_8)
-        return try {
-            MessageDigest.getInstance("SHA-256").digest(material)
-        } finally {
-            material.fill(0)
-        }
+        val material = buildString {
+            append(server.id).append('\n'); append(server.url).append('\n'); append(server.authType).append('\n')
+            append(canonicalJson(server.authData)).append('\n'); append(server.contentPassword.orEmpty()).append('\n'); append(server.contentPublicKey.orEmpty())
+        }.toByteArray(StandardCharsets.UTF_8)
+        return try { MessageDigest.getInstance("SHA-256").digest(material) } finally { material.fill(0) }
     }
 
-    private fun canonicalJson(value: Any?): String =
-        when (value) {
-            null, JSONObject.NULL -> "null"
-            is JSONObject ->
-                value.keys().asSequence().toList().sorted().joinToString(prefix = "{", postfix = "}") { key ->
-                    "${JSONObject.quote(key)}:${canonicalJson(value.opt(key))}"
-                }
-            is JSONArray ->
-                (0 until value.length()).joinToString(prefix = "[", postfix = "]") { index ->
-                    canonicalJson(value.opt(index))
-                }
-            is Number, is Boolean -> value.toString()
-            else -> JSONObject.quote(value.toString())
-        }
-
-    private fun deactivateServerContent(
-        serverId: String,
-        deleteCache: Boolean,
-    ) {
-        serverKeyboxes.remove(serverId)
-        if (!deleteCache) return
-        val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_$serverId.enc")
-        deleteCacheFile(cacheFile, "rejected")
+    private fun canonicalJson(value: Any?): String = when (value) {
+        null, JSONObject.NULL -> "null"
+        is JSONObject -> value.keys().asSequence().toList().sorted().joinToString(prefix = "{", postfix = "}") { key -> "${JSONObject.quote(key)}:${canonicalJson(value.opt(key))}" }
+        is JSONArray -> (0 until value.length()).joinToString(prefix = "[", postfix = "]") { canonicalJson(value.opt(it)) }
+        is Number, is Boolean -> value.toString()
+        else -> JSONObject.quote(value.toString())
     }
 
-    private fun deleteCacheFile(
-        cacheFile: File,
-        reason: String,
-    ) {
+    private fun deactivateServerContent(serverId: String, deleteCache: Boolean) {
+        serverKeyboxes.remove(serverId); if (!deleteCache) return
+        deleteCacheFile(File(Config.keyboxDirectory.parentFile, "server_cache_$serverId.enc"), "rejected")
+    }
+
+    private fun deleteCacheFile(cacheFile: File, reason: String) {
         val path = cacheFile.toPath()
-        try {
-            if (Files.isSymbolicLink(path)) {
-                Logger.w("Refusing symbolic-link $reason server cache")
-                return
-            }
-            Files.deleteIfExists(path)
-        } catch (error: Exception) {
-            Logger.w("Could not delete $reason server cache")
-        }
+        try { if (Files.isSymbolicLink(path)) { Logger.w("Refusing symbolic-link $reason server cache"); return }; Files.deleteIfExists(path) }
+        catch (error: Exception) { Logger.w("Could not delete $reason server cache") }
     }
 
-    fun getLoadedKeyboxes(): List<CertHack.KeyBox> {
-        return serversList
-            .asSequence()
-            .filter { it.enabled }
-            .sortedBy { it.priority }
-            .flatMap { serverKeyboxes[it.id].orEmpty().asSequence() }
-            .toList()
-    }
+    fun getLoadedKeyboxes(): List<CertHack.KeyBox> = serversList.asSequence().filter { it.enabled }.sortedBy { it.priority }.flatMap { serverKeyboxes[it.id].orEmpty().asSequence() }.toList()
 
-    fun refreshAll() {
-        serversList.filter { it.enabled }.sortedBy { it.priority }.forEach {
-            fetchFromServer(it)
-        }
-        Config.updateKeyBoxesSync()
-    }
+    fun refreshAll() { serversList.filter { it.enabled }.sortedBy { it.priority }.forEach { fetchFromServer(it) }; Config.updateKeyBoxesSync() }
 
     private fun startScheduler() {
         if (!schedulerStarted.compareAndSet(false, true)) return
-        scheduler.scheduleWithFixedDelay(
-            {
-                try {
-                    val now = System.currentTimeMillis()
-                    val dueServers = selectDueServersForRefresh(serversList, now)
-                    dueServers.forEach(::fetchFromServer)
-                    if (dueServers.isNotEmpty()) Config.updateKeyBoxesSync()
-                } catch (e: Exception) {
-                    Logger.e("Scheduled server refresh failed", e)
-                }
-            },
-            1,
-            60,
-            TimeUnit.MINUTES,
-        )
+        scheduler.scheduleWithFixedDelay({
+            try {
+                val now = System.currentTimeMillis(); val dueServers = selectDueServersForRefresh(serversList, now)
+                dueServers.forEach(::fetchFromServer); if (dueServers.isNotEmpty()) Config.updateKeyBoxesSync()
+            } catch (e: Exception) { Logger.e("Scheduled server refresh failed", e) }
+        }, 1, 60, TimeUnit.MINUTES)
     }
 
-    internal fun selectDueServersForRefresh(
-        candidates: Iterable<ServerConfig>,
-        now: Long,
-    ): List<ServerConfig> =
-        candidates
-            .filter { server ->
-                server.enabled &&
-                    server.autoRefresh &&
-                    (
-                        server.lastChecked <= 0L ||
-                            server.lastChecked > now ||
-                            now - server.lastChecked >=
-                            TimeUnit.HOURS.toMillis(server.refreshIntervalHours.toLong())
-                    )
-            }
-            .sortedBy { it.priority }
+    internal fun selectDueServersForRefresh(candidates: Iterable<ServerConfig>, now: Long): List<ServerConfig> =
+        candidates.filter { server -> server.enabled && server.autoRefresh && (server.lastChecked <= 0L || server.lastChecked > now || now - server.lastChecked >= TimeUnit.HOURS.toMillis(server.refreshIntervalHours.toLong())) }.sortedBy { it.priority }
 
-    private fun persistStatusSafely() {
-        try {
-            saveServers()
-        } catch (e: Exception) {
-            Logger.e("Failed to persist server status", e)
-        }
-    }
+    private fun persistStatusSafely() { try { saveServers() } catch (e: Exception) { Logger.e("Failed to persist server status", e) } }
 
     private const val FETCH_LOCK_STRIPES = 16
     private const val MAX_SERVERS = 64
