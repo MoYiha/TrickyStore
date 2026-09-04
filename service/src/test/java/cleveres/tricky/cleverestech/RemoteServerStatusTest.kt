@@ -15,11 +15,17 @@ class RemoteServerStatusTest {
     }
 
     @Test
-    fun `403 explains access denial without exposing response body`() {
-        val status = RemoteServerStatus.fromHttp(403, null)
-        assertTrue(status.startsWith("ACCESS_DENIED:"))
-        assertTrue(status.contains("temporarily banned"))
-        assertTrue(status.length <= 128)
+    fun `403 explains access denial and temporary ban retry timing`() {
+        val generic = RemoteServerStatus.fromHttp(403, null)
+        assertTrue(generic.startsWith("ACCESS_DENIED:"))
+        assertTrue(generic.contains("temporarily banned"))
+        assertTrue(generic.length <= 128)
+
+        assertEquals(
+            "ACCESS_DENIED: API key temporarily banned. Retry after 2592000 seconds.",
+            RemoteServerStatus.fromHttp(403, "2592000"),
+        )
+        assertFalse(RemoteServerStatus.fromHttp(403, "malicious-value").contains("malicious-value"))
     }
 
     @Test
