@@ -22,7 +22,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Child, Command, Stdio};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -41,6 +41,53 @@ const BACKEND_BROKER_FD: RawFd = 9;
 const FILE_SOCKET_NAME: &[u8] = b"cleverestrickyd.files.v1";
 const CAPABILITY_WORKERS: usize = 2;
 const MAX_MANIFEST_BYTES: usize = 64 * 1024;
+const MAX_PROC_STAT_BYTES: u64 = 16 * 1024;
+
+fn parse_process_start_ticks(stat: &str) -> Option<u64> {
+    let command_end = stat.rfind(')')?;
+    stat.get(command_end + 1..)?
+        .split_ascii_whitespace()
+        .nth(19)?
+        .parse()
+        .ok()
+}
+
+fn process_identity_record(pid: u32) -> io::Result<String> {
+    if pid == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "process id is zero",
+        ));
+    }
+    let mut stat = String::new();
+    fs::File::open(format!("/proc/{pid}/stat"))?
+        .take(MAX_PROC_STAT_BYTES + 1)
+        .read_to_string(&mut stat)?;
+    if stat.len() as u64 > MAX_PROC_STAT_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "process status exceeds its size limit",
+        ));
+    }
+    let start_ticks = parse_process_start_ticks(&stat)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "process status is malformed"))?;
+    Ok(format!("{pid} {start_ticks}\n"))
+}
+
+fn write_process_identity(root: &TrustedDir, filename: &str, pid: u32) {
+    match process_identity_record(pid) {
+        Ok(record) => {
+            if let Err(error) = root.atomic_write(filename, record.as_bytes(), 0o600) {
+                let _ = root.unlink_file(filename);
+                eprintln!("cleverestrickyd: could not record {filename}: {error}");
+            }
+        }
+        Err(error) => {
+            let _ = root.unlink_file(filename);
+            eprintln!("cleverestrickyd: could not identify pid {pid}: {error}");
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct AdapterLease {
@@ -159,7 +206,7 @@ fn run() -> io::Result<()> {
         Err(error) => return Err(error),
     };
     let file_listener = bind_abstract(FILE_SOCKET_NAME)?;
-    let _ = config_root.atomic_write("daemon.pid", process::id().to_string().as_bytes(), 0o600);
+    write_process_identity(&config_root, "daemon.pid", process::id());
     let adapter_identity = Arc::new(AdapterIdentity::default());
 
     let web_identity = Arc::clone(&adapter_identity);
@@ -192,11 +239,7 @@ fn run() -> io::Result<()> {
         match spawn_android_adapter(&module_dir) {
             Ok(mut adapter) => {
                 let lease = adapter_identity.publish(adapter.id());
-                let _ = config_root.atomic_write(
-                    "adapter.pid",
-                    adapter.id().to_string().as_bytes(),
-                    0o600,
-                );
+                write_process_identity(&config_root, "adapter.pid", adapter.id());
                 eprintln!(
                     "cleverestrickyd: Android adapter generation {} started as pid {}",
                     lease.generation, lease.pid
@@ -425,6 +468,21 @@ enum BackendRunOutcome {
     AdapterChanged,
 }
 
+/// Spawns the keybox broker and reports transport failures back to the child-owning supervisor.
+fn spawn_keybox_broker(
+    broker: UnixStream,
+    broker_root: Arc<TrustedDir>,
+    failure_tx: mpsc::SyncSender<io::Error>,
+) -> io::Result<thread::JoinHandle<()>> {
+    thread::Builder::new()
+        .name("ct-keybox-broker".to_string())
+        .spawn(move || {
+            if let Err(error) = keybox_file_broker::serve(broker, &broker_root) {
+                let _ = failure_tx.send(error);
+            }
+        })
+}
+
 /// Runs a single backend instance, monitoring it until exit or adapter change.
 fn run_backend_once(
     module_dir: &Path,
@@ -433,17 +491,10 @@ fn run_backend_once(
     root: Arc<TrustedDir>,
 ) -> io::Result<BackendRunOutcome> {
     let (mut child, broker) = spawn_backend(module_dir, lease.pid)?;
-    let backend_pid = child.id();
-    let _ = root.atomic_write("backend.pid", backend_pid.to_string().as_bytes(), 0o600);
+    write_process_identity(&root, "backend.pid", child.id());
     let broker_root = Arc::clone(&root);
-    let broker_thread = match thread::Builder::new()
-        .name("ct-keybox-broker".to_string())
-        .spawn(move || {
-            if let Err(error) = keybox_file_broker::serve(broker, &broker_root) {
-                eprintln!("cleverestrickyd: keybox broker failed: {error}");
-                let _ = unsafe { libc::kill(backend_pid as libc::pid_t, libc::SIGTERM) };
-            }
-        }) {
+    let (broker_failure_tx, broker_failure_rx) = mpsc::sync_channel(1);
+    let broker_thread = match spawn_keybox_broker(broker, broker_root, broker_failure_tx) {
         Ok(handle) => handle,
         Err(error) => {
             let _ = root.unlink_file("backend.pid");
@@ -457,10 +508,27 @@ fn run_backend_once(
         if !adapter_identity.matches(lease) {
             let _ = child.kill();
             let _ = child.wait();
-            break BackendRunOutcome::AdapterChanged;
+            break Ok(BackendRunOutcome::AdapterChanged);
         }
-        if let Some(status) = child.try_wait()? {
-            break BackendRunOutcome::Exited(format!("backend exited with {status}"));
+        if let Ok(error) = broker_failure_rx.try_recv() {
+            let _ = child.kill();
+            let _ = child.wait();
+            break Ok(BackendRunOutcome::Exited(format!(
+                "keybox broker failed: {error}"
+            )));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                break Ok(BackendRunOutcome::Exited(format!(
+                    "backend exited with {status}"
+                )))
+            }
+            Ok(None) => {}
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(error);
+            }
         }
         thread::sleep(ADAPTER_POLL_INTERVAL);
     };
@@ -468,7 +536,7 @@ fn run_backend_once(
     broker_thread
         .join()
         .map_err(|_| io::Error::other("keybox broker thread panicked"))?;
-    Ok(outcome)
+    outcome
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -671,6 +739,7 @@ struct RegisteredAdapter {
 struct CachedManifest {
     manifest: cleverestricky_integrity_core::IntegrityManifest,
     public_key_fingerprint: [u8; 32],
+    allow_unsigned: bool,
 }
 
 /// Serves WebUI IPC requests, relaying them to the registered adapter and handling integrity checks.
@@ -893,6 +962,7 @@ fn handle_integrity_verify_full(
             *lock = Some(CachedManifest {
                 manifest,
                 public_key_fingerprint: public_key_fingerprint(public_key),
+                allow_unsigned,
             });
         }
         let _ = write_frame(client, OP_INTEGRITY_VERIFY_FULL, 0, &[0]);
@@ -963,7 +1033,7 @@ fn handle_integrity_verify_file(
         )
     };
 
-    let manifest = match cached_manifest_for_key(cached_manifest, public_key) {
+    let manifest = match cached_manifest_for_key(cached_manifest, public_key, allow_unsigned) {
         Some(manifest) => manifest,
         None => {
             let module_dir_str = match module_dir.to_str() {
@@ -1036,6 +1106,7 @@ fn handle_integrity_verify_file(
                 *lock = Some(CachedManifest {
                     manifest: m.clone(),
                     public_key_fingerprint: public_key_fingerprint(public_key),
+                    allow_unsigned,
                 });
             }
             m
@@ -1095,16 +1166,20 @@ fn public_key_fingerprint(public_key: &[u8; 32]) -> [u8; 32] {
     Sha256::digest(public_key).into()
 }
 
-/// Retrieves a cached manifest only when it was authenticated by the current public key.
+/// Retrieves a cached manifest only when it was authenticated under the current verification policy.
 fn cached_manifest_for_key(
     cached_manifest: &std::sync::RwLock<Option<CachedManifest>>,
     public_key: &[u8; 32],
+    allow_unsigned: bool,
 ) -> Option<cleverestricky_integrity_core::IntegrityManifest> {
     let fingerprint = public_key_fingerprint(public_key);
     cached_manifest.read().ok().and_then(|cached| {
         cached
             .as_ref()
-            .filter(|entry| entry.public_key_fingerprint == fingerprint)
+            .filter(|entry| {
+                entry.public_key_fingerprint == fingerprint
+                    && entry.allow_unsigned == allow_unsigned
+            })
             .map(|entry| entry.manifest.clone())
     })
 }
@@ -1172,10 +1247,8 @@ fn delete_dir_descriptor_safe(dir_fd: RawFd) -> io::Result<()> {
             if unsafe { libc::unlinkat(dir_fd, c_name.as_ptr(), libc::AT_REMOVEDIR) } < 0 {
                 return Err(io::Error::last_os_error());
             }
-        } else {
-            if unsafe { libc::unlinkat(dir_fd, c_name.as_ptr(), 0) } < 0 {
-                return Err(io::Error::last_os_error());
-            }
+        } else if unsafe { libc::unlinkat(dir_fd, c_name.as_ptr(), 0) } < 0 {
+            return Err(io::Error::last_os_error());
         }
     }
     Ok(())
@@ -1436,7 +1509,7 @@ mod tests {
     }
 
     #[test]
-    fn manifest_cache_is_bound_to_public_key_fingerprint() {
+    fn manifest_cache_is_bound_to_verification_policy() {
         let first_key = [0x11; 32];
         let second_key = [0x22; 32];
         let manifest = cleverestricky_integrity_core::IntegrityManifest {
@@ -1446,10 +1519,12 @@ mod tests {
         let cache = std::sync::RwLock::new(Some(CachedManifest {
             manifest,
             public_key_fingerprint: public_key_fingerprint(&first_key),
+            allow_unsigned: true,
         }));
 
-        assert!(cached_manifest_for_key(&cache, &first_key).is_some());
-        assert!(cached_manifest_for_key(&cache, &second_key).is_none());
+        assert!(cached_manifest_for_key(&cache, &first_key, true).is_some());
+        assert!(cached_manifest_for_key(&cache, &first_key, false).is_none());
+        assert!(cached_manifest_for_key(&cache, &second_key, true).is_none());
     }
 
     #[test]
@@ -1601,6 +1676,31 @@ mod tests {
     }
 
     #[test]
+    fn keybox_broker_failure_is_reported_to_child_owner() {
+        let test = TestRoot::new();
+        let root = Arc::new(test.trusted());
+        let (mut client, broker) = UnixStream::pair().unwrap();
+        let (failure_tx, failure_rx) = mpsc::sync_channel(1);
+        let handle = spawn_keybox_broker(broker, root, failure_tx).unwrap();
+
+        write_header(
+            &mut client,
+            FrameHeader {
+                opcode: keybox_file_broker::OP_KEYBOX_BROKER_OPEN,
+                flags: 0,
+                payload_len: keybox_file_broker::MAX_REQUEST_BYTES + 1,
+            },
+        )
+        .unwrap();
+
+        let error = failure_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("broker failure should reach the child-owning supervisor");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        handle.join().unwrap();
+    }
+
+    #[test]
     fn backend_circuit_breaker_recovers_after_cooldown() {
         let mut failures = 0;
         for attempt in 1..=BACKEND_CIRCUIT_FAILURES {
@@ -1708,5 +1808,22 @@ mod tests {
         assert_eq!(stable.rapid_failures, 0);
         assert_eq!(stable.delay, Duration::from_secs(1));
         assert!(!stable.circuit_open);
+    }
+
+    #[test]
+    fn process_identity_records_bind_pid_to_linux_start_ticks() {
+        let mut fields = vec!["0"; 20];
+        fields[0] = "S";
+        fields[19] = "987654";
+        let stat = format!("42 (daemon worker) {}", fields.join(" "));
+        assert_eq!(parse_process_start_ticks(&stat), Some(987654));
+        assert_eq!(parse_process_start_ticks("42 malformed"), None);
+
+        let pid = process::id();
+        let record = process_identity_record(pid).expect("current process identity");
+        let values: Vec<&str> = record.split_ascii_whitespace().collect();
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0], pid.to_string());
+        assert!(values[1].parse::<u64>().is_ok_and(|ticks| ticks > 0));
     }
 }

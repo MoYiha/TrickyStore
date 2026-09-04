@@ -35,6 +35,12 @@ internal object CronAutoIdentity {
     @Volatile
     private var observer: FileObserver? = null
 
+    @Volatile
+    internal var observerStarter: (FileObserver) -> Unit = { it.startWatching() }
+
+    @Volatile
+    internal var observerStopper: (FileObserver) -> Unit = { it.stopWatching() }
+
     private var scheduled: ScheduledFuture<*>? = null
     private var workerGeneration = 0L
     private var inFlight = false
@@ -46,31 +52,52 @@ internal object CronAutoIdentity {
 
     fun start(root: File) {
         IdentityCoordinator.initialize(root)
-        synchronized(lock) {
-            if (configDir?.absoluteFile != root.absoluteFile) {
-                observer?.stopWatching()
-                observer = null
-                shutdownExecutorLocked()
-                configDir = root
-            }
-            if (observer == null) {
-                observer =
-                    object : FileObserver(root, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
-                        override fun onEvent(event: Int, path: String?) {
-                            if (path == TOGGLE_FILE) refreshEnabled()
-                        }
-                    }.also { it.startWatching() }
+        IdentityCoordinator.withCommitBarrier {
+            synchronized(lock) {
+                if (configDir?.absoluteFile != root.absoluteFile) {
+                    retireObserverLocked()
+                    shutdownExecutorLocked()
+                    configDir = root
+                }
+                if (observer == null) {
+                    armObserverLocked(root)
+                }
             }
         }
         refreshEnabled()
+    }
+
+    private fun armObserverLocked(root: File) {
+        val replacement =
+            object : FileObserver(root, CREATE or CLOSE_WRITE or DELETE or MOVED_FROM or MOVED_TO) {
+                override fun onEvent(event: Int, path: String?) {
+                    if (path == TOGGLE_FILE) refreshEnabled()
+                }
+            }
+        observer = replacement
+        try {
+            observerStarter(replacement)
+        } catch (error: Throwable) {
+            retireObserverLocked()
+            throw error
+        }
+    }
+
+    private fun retireObserverLocked() {
+        val retired = observer
+        observer = null
+        runCatching { retired?.let { observerStopper(it) } }
+            .onFailure { Logger.w("Failed to stop retired Auto Identity policy watcher", it) }
     }
 
     fun setEnabled(
         root: File,
         enabled: Boolean,
     ) {
-        SafeConfigStore.setMarker(root, TOGGLE_FILE, enabled)
-        if (configDir?.absoluteFile == root.absoluteFile) refreshEnabled()
+        IdentityCoordinator.withCommitBarrier {
+            SafeConfigStore.setMarker(root, TOGGLE_FILE, enabled)
+            if (configDir?.absoluteFile == root.absoluteFile) refreshEnabled()
+        }
     }
 
     fun isEnabled(root: File): Boolean = runCatching { SafeConfigStore.markerEnabled(root, TOGGLE_FILE) }.getOrDefault(false)
@@ -80,25 +107,28 @@ internal object CronAutoIdentity {
     }
 
     fun stop() {
-        synchronized(lock) {
-            observer?.stopWatching()
-            observer = null
-            shutdownExecutorLocked()
-            configDir = null
+        IdentityCoordinator.withCommitBarrier {
+            synchronized(lock) {
+                retireObserverLocked()
+                shutdownExecutorLocked()
+                configDir = null
+            }
         }
     }
 
     internal fun refreshEnabled() {
-        synchronized(lock) {
-            val root = configDir ?: return
-            val decision = currentDecision(root)
-            if (!decision.shouldRun) {
-                shutdownExecutorLocked()
-                return
-            }
-            ensureExecutorLocked()
-            if (!inFlight && scheduled == null) {
-                scheduleLocked(root, workerGeneration, INITIAL_DELAY_MS)
+        IdentityCoordinator.withCommitBarrier {
+            synchronized(lock) {
+                val root = configDir ?: return@synchronized
+                val decision = currentDecision(root)
+                if (!decision.shouldRun) {
+                    shutdownExecutorLocked()
+                    return@synchronized
+                }
+                ensureExecutorLocked()
+                if (!inFlight && scheduled == null) {
+                    scheduleLocked(root, workerGeneration, INITIAL_DELAY_MS)
+                }
             }
         }
     }
@@ -171,6 +201,7 @@ internal object CronAutoIdentity {
     private fun runCheck(
         root: File,
         generation: Long,
+        fetcher: () -> AutoIdentityManager.Result = { AutoIdentityManager.fetchLatest() },
     ) {
         val decision =
             synchronized(lock) {
@@ -193,6 +224,12 @@ internal object CronAutoIdentity {
                 persistGlobal = decision.globalLiveApply,
                 persistProfile = decision.profileScoped,
                 liveApplyGlobal = decision.globalLiveApply,
+                fetcher = fetcher,
+                commitAllowed = {
+                    synchronized(lock) {
+                        ownsWorkLocked(root, generation) && currentDecision(root) == decision
+                    }
+                },
             )
 
         synchronized(lock) {
@@ -203,15 +240,19 @@ internal object CronAutoIdentity {
                 stopWorkerLocked()
                 return
             }
+            val failure = result.exceptionOrNull()
             if (result.isSuccess) {
                 failureCount = 0
                 lastError = null
                 lastSuccessMs = System.currentTimeMillis()
                 scheduleLocked(root, generation, SUCCESS_DELAY_MS)
                 Logger.i("Auto Identity refresh completed; next run is scheduled in 24 hours")
+            } else if (failure is IdentityRefreshCancelledException) {
+                scheduleLocked(root, generation, INITIAL_DELAY_MS)
+                Logger.d("Auto Identity policy ownership changed; refresh is rescheduled without failure backoff")
             } else {
                 failureCount = (failureCount + 1).coerceAtMost(Int.MAX_VALUE)
-                lastError = result.exceptionOrNull()?.javaClass?.simpleName ?: "UnknownFailure"
+                lastError = failure?.javaClass?.simpleName ?: "UnknownFailure"
                 val delay = failureBackoffMs[minOf(failureCount - 1, failureBackoffMs.lastIndex)]
                 scheduleLocked(root, generation, delay)
                 Logger.w("Auto Identity refresh deferred after failure; bounded retry is scheduled")
@@ -232,11 +273,21 @@ internal object CronAutoIdentity {
 
     @VisibleForTesting
     internal fun configureForTesting(root: File) {
+        IdentityCoordinator.withCommitBarrier {
+            synchronized(lock) {
+                retireObserverLocked()
+                shutdownExecutorLocked()
+                configDir = root
+            }
+        }
+    }
+
+    @VisibleForTesting
+    internal fun resetObserverHooksForTesting() {
         synchronized(lock) {
-            observer?.stopWatching()
-            observer = null
-            shutdownExecutorLocked()
-            configDir = root
+            check(observer == null) { "Cannot reset Auto Identity watcher hooks while observer is active" }
+            observerStarter = { it.startWatching() }
+            observerStopper = { it.stopWatching() }
         }
     }
 
@@ -245,4 +296,21 @@ internal object CronAutoIdentity {
         synchronized(lock) {
             executor?.let { !it.isShutdown && (scheduled != null || inFlight) } == true
         }
+
+    @VisibleForTesting
+    internal fun runNowForTesting(fetcher: () -> AutoIdentityManager.Result) {
+        val work =
+            IdentityCoordinator.withCommitBarrier {
+                synchronized(lock) {
+                    val root = configDir ?: error("Auto Identity test root is not configured")
+                    check(currentDecision(root).shouldRun) { "Auto Identity test worker is disabled" }
+                    ensureExecutorLocked()
+                    scheduled?.cancel(false)
+                    scheduled = null
+                    nextRunMs = 0L
+                    root to workerGeneration
+                }
+            }
+        runCheck(work.first, work.second, fetcher)
+    }
 }

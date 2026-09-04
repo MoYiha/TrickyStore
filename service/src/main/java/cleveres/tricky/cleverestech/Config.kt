@@ -584,7 +584,11 @@ object Config {
     ): Boolean =
         KeyboxActivation.coordinateRefresh {
             val refreshTicket = KeyboxActivation.beginRefresh()
-            lastKeyboxInventoryFingerprint = computeKeyboxInventoryFingerprint()
+            // An explicit refresh scans the filesystem regardless of whether a watcher event
+            // invalidated the inventory cache. This also ensures a failed publication retains a
+            // fresh fingerprint that ensureFreshKeyboxes() can compare and retry.
+            keyboxInventoryFingerprintDirty = true
+            val observedInventoryFingerprint = computeKeyboxInventoryFingerprint()
             runCatching {
                 Logger.d("updateKeyBoxes: starting keybox scan (root=${root.absolutePath})")
                 val allKeyboxes = ArrayList<CertHack.KeyBox>(KeyboxLoader.MAX_ACTIVE_KEYS)
@@ -672,6 +676,7 @@ object Config {
 
                 when (KeyboxActivation.commitAndPublish(refreshTicket, verifiedKeyboxes)) {
                     KeyboxActivation.PublicationResult.COMMITTED -> {
+                        lastKeyboxInventoryFingerprint = observedInventoryFingerprint
                         Logger.i(
                             "updateKeyBoxes: ${verifiedKeyboxes.size}/${allKeyboxes.size} verified keyboxes active",
                         )
