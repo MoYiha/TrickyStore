@@ -141,6 +141,76 @@
         }
     };
 
+    const REMOTE_STATUS_COPY = {
+        tr: {
+            auth: 'API anahtarı eksik, geçersiz veya süresi dolmuş. Remote Server API kimlik bilgilerini güncelleyin.',
+            access: 'Erişim reddedildi veya API anahtarı geçici olarak yasaklandı. Sağlayıcı erişimini ya da yasak durumunu kontrol edin.',
+            accessRetry: 'API anahtarı geçici olarak yasaklandı. Kalan süre: {seconds} saniye.',
+            rate: 'Çok fazla istek gönderildi. Yeniden yenilemeden önce bekleyin.',
+            rateRetry: 'Çok fazla istek gönderildi. Tekrar denemeden önce {seconds} saniye bekleyin.',
+            service: 'Remote Server erişilemiyor veya şu anda uygun bir keybox yok.'
+        },
+        'zh-CN': {
+            auth: 'API 密钥缺失、无效或已过期。请更新 Remote Server API 凭据。',
+            access: '访问被拒绝，或 API 密钥被临时封禁。请检查服务提供方的访问权限或封禁状态。',
+            accessRetry: 'API 密钥已被临时封禁。剩余时间：{seconds} 秒。',
+            rate: '请求过多。请稍后再刷新。',
+            rateRetry: '请求过多。请等待 {seconds} 秒后重试。',
+            service: 'Remote Server 当前不可用，或目前没有符合条件的 keybox。'
+        },
+        es: {
+            auth: 'La clave API falta, no es válida o ha caducado. Actualiza las credenciales de la API del Remote Server.',
+            access: 'Acceso denegado o clave API bloqueada temporalmente. Comprueba el acceso del proveedor o el estado del bloqueo.',
+            accessRetry: 'La clave API está bloqueada temporalmente. Tiempo restante: {seconds} segundos.',
+            rate: 'Demasiadas solicitudes. Espera antes de actualizar de nuevo.',
+            rateRetry: 'Demasiadas solicitudes. Vuelve a intentarlo en {seconds} segundos.',
+            service: 'El Remote Server no está disponible o no hay ningún keybox apto en este momento.'
+        },
+        de: {
+            auth: 'API-Schlüssel fehlt, ist ungültig oder abgelaufen. Aktualisiere die Remote-Server-API-Zugangsdaten.',
+            access: 'Zugriff verweigert oder API-Schlüssel vorübergehend gesperrt. Prüfe den Anbieterzugriff oder den Sperrstatus.',
+            accessRetry: 'API-Schlüssel ist vorübergehend gesperrt. Verbleibende Zeit: {seconds} Sekunden.',
+            rate: 'Zu viele Anfragen. Warte, bevor du erneut aktualisierst.',
+            rateRetry: 'Zu viele Anfragen. Versuche es in {seconds} Sekunden erneut.',
+            service: 'Remote Server ist nicht verfügbar oder derzeit ist keine geeignete Keybox verfügbar.'
+        },
+        ru: {
+            auth: 'Ключ API отсутствует, недействителен или истёк. Обновите учётные данные API Remote Server.',
+            access: 'Доступ запрещён или ключ API временно заблокирован. Проверьте доступ у провайдера или статус блокировки.',
+            accessRetry: 'Ключ API временно заблокирован. Осталось: {seconds} с.',
+            rate: 'Слишком много запросов. Подождите перед следующим обновлением.',
+            rateRetry: 'Слишком много запросов. Повторите попытку через {seconds} с.',
+            service: 'Remote Server недоступен или сейчас нет подходящего keybox.'
+        },
+        id: {
+            auth: 'Kunci API tidak ada, tidak valid, atau kedaluwarsa. Perbarui kredensial API Remote Server.',
+            access: 'Akses ditolak atau kunci API diblokir sementara. Periksa akses penyedia atau status blokir.',
+            accessRetry: 'Kunci API diblokir sementara. Sisa waktu: {seconds} detik.',
+            rate: 'Terlalu banyak permintaan. Tunggu sebelum menyegarkan lagi.',
+            rateRetry: 'Terlalu banyak permintaan. Coba lagi dalam {seconds} detik.',
+            service: 'Remote Server tidak tersedia atau saat ini tidak ada keybox yang memenuhi syarat.'
+        },
+        hi: {
+            auth: 'API कुंजी गायब, अमान्य या समाप्त हो चुकी है। Remote Server API क्रेडेंशियल अपडेट करें।',
+            access: 'पहुंच अस्वीकृत है या API कुंजी अस्थायी रूप से प्रतिबंधित है। प्रदाता पहुंच या प्रतिबंध स्थिति जांचें।',
+            accessRetry: 'API कुंजी अस्थायी रूप से प्रतिबंधित है। शेष समय: {seconds} सेकंड।',
+            rate: 'बहुत अधिक अनुरोध भेजे गए। दोबारा रीफ़्रेश करने से पहले प्रतीक्षा करें।',
+            rateRetry: 'बहुत अधिक अनुरोध भेजे गए। {seconds} सेकंड बाद फिर प्रयास करें।',
+            service: 'Remote Server उपलब्ध नहीं है या अभी कोई उपयुक्त keybox उपलब्ध नहीं है।'
+        },
+        ar: {
+            auth: 'مفتاح API مفقود أو غير صالح أو منتهي الصلاحية. حدّث بيانات اعتماد API لـ Remote Server.',
+            access: 'تم رفض الوصول أو حظر مفتاح API مؤقتًا. تحقق من وصول المزوّد أو حالة الحظر.',
+            accessRetry: 'تم حظر مفتاح API مؤقتًا. الوقت المتبقي: {seconds} ثانية.',
+            rate: 'تم إرسال طلبات كثيرة جدًا. انتظر قبل التحديث مرة أخرى.',
+            rateRetry: 'تم إرسال طلبات كثيرة جدًا. أعد المحاولة بعد {seconds} ثانية.',
+            service: 'Remote Server غير متاح أو لا يوجد حاليًا keybox مؤهل.'
+        }
+    };
+    const remoteStatusPrefix = /^(AUTH_ERROR|ACCESS_DENIED|RATE_LIMITED|SERVICE_UNAVAILABLE):/;
+    const remoteRetryAfter = /Retry after ([1-9][0-9]{0,9}) seconds\./;
+    const maxRemoteRetryAfterSeconds = 31 * 24 * 60 * 60;
+
     function normalizeLocale(value) {
         if (typeof value !== 'string' || !value) return null;
         const tag = value.toLowerCase().replace(/_/g, '-');
@@ -181,6 +251,50 @@
         return catalog && typeof catalog[source] === 'string' ? catalog[source] : source;
     }
 
+    function remoteStatusText(source) {
+        const raw = String(source == null ? '' : source).trim();
+        const prefix = raw.match(remoteStatusPrefix);
+        if (!prefix) return source;
+        const locale = extensionLocale();
+        if (locale === 'en') return raw;
+        const catalog = REMOTE_STATUS_COPY[locale];
+        if (!catalog) return raw;
+
+        let key;
+        if (prefix[1] === 'AUTH_ERROR') key = 'auth';
+        else if (prefix[1] === 'SERVICE_UNAVAILABLE') key = 'service';
+        else {
+            const retryMatch = raw.match(remoteRetryAfter);
+            const retrySeconds = retryMatch ? Number(retryMatch[1]) : 0;
+            const hasSafeRetry = Number.isSafeInteger(retrySeconds) && retrySeconds >= 1 && retrySeconds <= maxRemoteRetryAfterSeconds;
+            key = prefix[1] === 'ACCESS_DENIED'
+                ? (hasSafeRetry ? 'accessRetry' : 'access')
+                : (hasSafeRetry ? 'rateRetry' : 'rate');
+            if (hasSafeRetry) {
+                let formatted = String(retrySeconds);
+                try { formatted = new Intl.NumberFormat(locale).format(retrySeconds); } catch (_) {}
+                return `${prefix[1]}: ${catalog[key].replace('{seconds}', formatted)}`;
+            }
+        }
+        return `${prefix[1]}: ${catalog[key]}`;
+    }
+
+    function refreshRemoteServerStatusCopy() {
+        const document = global.document;
+        if (!document || typeof document.querySelectorAll !== 'function') return;
+        document.querySelectorAll('.status-badge').forEach(node => {
+            if (!node || !node.dataset) return;
+            let source = String(node.dataset.ctRemoteStatusSource || '').trim();
+            if (!source) {
+                const current = String(node.textContent || '').trim();
+                if (!remoteStatusPrefix.test(current)) return;
+                source = current;
+                node.dataset.ctRemoteStatusSource = source;
+            }
+            node.textContent = remoteStatusText(source);
+        });
+    }
+
     function abortError() {
         return new DOMException('The request was aborted', 'AbortError');
     }
@@ -218,7 +332,9 @@
         const prefix = `CT_BRIDGE=''; for CT_PATH in ${paths}; do [ -x "$CT_PATH" ] && { CT_BRIDGE="$CT_PATH"; break; }; done; [ -n "$CT_BRIDGE" ] || { echo 'Native WebUI bridge is unavailable' >&2; exit 127; };`;
         const invocation = `"$CT_BRIDGE" ${args.map(value => `'${value}'`).join(' ')}`;
         if (!markSuccess) return `${prefix} exec ${invocation}`;
-        return `${prefix} ${invocation}; CT_STATUS=$?; [ "$CT_STATUS" -eq 0 ] || exit "$CT_STATUS"; printf '\n${nativeSuccessMarker}\n'`;
+        return `${prefix} ${invocation}; CT_STATUS=$?; [ "$CT_STATUS" -eq 0 ] || exit "$CT_STATUS"; printf '\
+${nativeSuccessMarker}\
+'`;
     }
 
     function validateResponseEnvelope(envelope) {
@@ -1201,7 +1317,9 @@
 
     const cleveresLogsCommand =
         `{ logcat -d -t 2000 2>/dev/null | grep -E ' (CleveresTricky|cleverestricky|cleverestrickyd|cleverestricky_backend) *:' || true; ` +
-        `if [ -f '${nativeRuntimeLog}' ] && [ ! -L '${nativeRuntimeLog}' ]; then printf '\n--- native runtime ---\n'; tail -n 1000 '${nativeRuntimeLog}' 2>/dev/null; fi; } | tail -n 2500 | tail -c 1048576`;
+        `if [ -f '${nativeRuntimeLog}' ] && [ ! -L '${nativeRuntimeLog}' ]; then printf '\
+--- native runtime ---\
+'; tail -n 1000 '${nativeRuntimeLog}' 2>/dev/null; fi; } | tail -n 2500 | tail -c 1048576`;
 
     async function loadCleveresLogs() {
         return (await execHostCommand(cleveresLogsCommand, 10000)).trim();
@@ -1241,11 +1359,13 @@
             const input = node.parentElement && node.parentElement.querySelector('input[type="checkbox"]');
             node.textContent = extensionText(input && input.checked ? 'Enabled' : 'Disabled');
         });
+        refreshRemoteServerStatusCopy();
     }
 
     function installRuntimeEnhancements(attempt = 0) {
         const document = global.document;
         if (!document || !document.body) return;
+        refreshRemoteServerStatusCopy();
         ensureProfileEnablement().catch(() => {});
         installCronAutoIdentity().catch(() => {});
         const logsReady = installLogsOwner() || (typeof global.fetchLogs === 'function' && global.fetchLogs.ctCleveresLogs === true);
@@ -1295,6 +1415,9 @@
     } catch (_) {
     }
 
+    if (typeof global.addEventListener === 'function') {
+        global.addEventListener('ct_retranslate', refreshRemoteServerStatusCopy);
+    }
     scheduleCommunityCard();
     routeExternalLinks();
     installNativeFilePickerCompatibility();
@@ -1314,7 +1437,8 @@
         setCronAutoIdentity,
         applyIdentityLive,
         loadCleveresLogs,
-        translateExtension: extensionText
+        translateExtension: extensionText,
+        translateRemoteStatus: remoteStatusText
     });
     loadUxEnhancements();
 })(window);
