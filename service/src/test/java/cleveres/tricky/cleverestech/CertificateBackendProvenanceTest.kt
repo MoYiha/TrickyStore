@@ -33,6 +33,28 @@ class CertificateBackendProvenanceTest {
     }
 
     @Test
+    fun `Rust rewrite boundary independently rejects non TEE provenance before issuer access`() {
+        val source =
+            File(
+                locateRoot(),
+                "rust/backend/src/certificate_wire.rs",
+            ).readText()
+        val rewrite = source.indexOf("pub fn rewrite_and_encode")
+        val provenance = source.indexOf("inspect_certificate(parsed.genuine_leaf_der)", rewrite)
+        val attestationGate =
+            source.indexOf("provenance.attestation_security_level != SecurityLevel::TrustedEnvironment", provenance)
+        val keymintGate =
+            source.indexOf("provenance.keymint_security_level != SecurityLevel::TrustedEnvironment", attestationGate)
+        val issuerAccess = source.indexOf("key_store::with_prepared_key", keymintGate)
+
+        assertTrue(rewrite >= 0)
+        assertTrue(provenance > rewrite)
+        assertTrue(attestationGate > provenance)
+        assertTrue(keymintGate > attestationGate)
+        assertTrue(issuerAccess > keymintGate)
+    }
+
+    @Test
     fun `passthrough cache is marker only and adds no background execution`() {
         val source =
             File(
@@ -50,7 +72,7 @@ class CertificateBackendProvenanceTest {
     }
 
     @Test
-    fun `certificate backend rewrite does not repeat provenance inspection`() {
+    fun `certificate backend rewrite does not repeat managed provenance inspection`() {
         val source =
             File(
                 locateRoot(),
