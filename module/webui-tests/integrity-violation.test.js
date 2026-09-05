@@ -14,30 +14,9 @@ const handlerSource = fs.readFileSync(
 assert.ok(handlerSource.includes(VIOLATION_MESSAGE), 'IntegrityViolationHandler.kt must contain the violation message');
 assert.ok(handlerSource.includes('internal var disableModule'), 'violation handling must use disable quarantine');
 assert.ok(handlerSource.includes('createDisableMarker'), 'violation handling must create a disable marker');
-assert.ok(!handlerSource.includes('deleteDirectoryRecursivelyNoFollow'), 'runtime integrity failure must not recursively delete the module');
-assert.ok(!handlerSource.includes('OP_INTEGRITY_DELETE_MODULE'), 'runtime handler must not request destructive daemon deletion');
+assert.ok(!handlerSource.includes('deleteDirectoryRecursivelyNoFollow'), 'integrity failure must not recursively delete the module');
+assert.ok(!handlerSource.includes('OP_INTEGRITY_DELETE_MODULE'), 'integrity handler must not request destructive daemon deletion');
 assert.ok(!handlerSource.includes('ModuleIntegrityWatcher'), 'violation handling must not initialize the disabled runtime watcher');
-
-const watcherSource = fs.readFileSync(
-    path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
-        'cleveres', 'tricky', 'cleverestech', 'ModuleIntegrityWatcher.kt'),
-    'utf8'
-);
-assert.ok(
-    watcherSource.includes('Only a cryptographic verification of the settled final'),
-    'FileObserver activity must be treated as an invalidation hint, not proof of tampering'
-);
-assert.ok(watcherSource.includes('pendingWritePaths'), 'in-progress writes must be tracked until CLOSE_WRITE');
-assert.ok(watcherSource.includes('mutationEpoch != verificationEpoch'), 'stale verifier results must be discarded');
-assert.ok(watcherSource.includes('fullReverificationPending'), 'structural events must require a settled full recheck');
-assert.ok(
-    !watcherSource.includes('violationHandler(listOf("Critical payload deleted:'),
-    'DELETE callbacks must not directly declare a payload violation'
-);
-assert.ok(
-    !watcherSource.includes('violationHandler(listOf("Module directory was deleted or moved'),
-    'DELETE_SELF/MOVE_SELF callbacks must not directly declare a module violation'
-);
 
 const webServerSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
@@ -72,13 +51,18 @@ assert.ok(
     integrityVerifyIndex > 0 && backendAwaitIndex > 0 && integrityVerifyIndex < backendAwaitIndex,
     'Integrity verification must happen BEFORE NativeBackend.awaitReady in Main.kt'
 );
-assert.ok(
-    !mainSource.includes('ModuleIntegrityWatcher.start('),
-    'production runtime must not register a persistent integrity FileObserver'
+assert.strictEqual(
+    (mainSource.match(/ModuleIntegrityVerifier\.verifyFull\(\)/g) || []).length,
+    1,
+    'production runtime must perform exactly one full integrity verification at startup'
 );
 assert.ok(
-    !mainSource.includes('ModuleIntegrityWatcher.stop()'),
-    'production runtime must not initialize ModuleIntegrityWatcher merely for shutdown cleanup'
+    !mainSource.includes('ModuleIntegrityVerifier.loadManifest()'),
+    'production runtime must not reload and retain the integrity manifest after startup verification'
+);
+assert.ok(
+    !mainSource.includes('ModuleIntegrityWatcher'),
+    'production Main.kt must not initialize, start, stop, or otherwise reference the runtime integrity watcher'
 );
 assert.ok(
     mainSource.includes('ModuleIntegrityVerifier.cachedManifest = null'),
