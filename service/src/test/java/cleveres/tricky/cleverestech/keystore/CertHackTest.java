@@ -12,6 +12,8 @@ import java.util.Map;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import cleveres.tricky.cleverestech.Logger;
@@ -90,6 +92,20 @@ public class CertHackTest {
         assertEquals("EC", CertHack.signingKeyAlgorithm("SHA256withECDSA"));
         assertEquals("RSA", CertHack.signingKeyAlgorithm("SHA256withRSA"));
         assertEquals(null, CertHack.signingKeyAlgorithm("Ed25519"));
+    }
+
+    @Test
+    public void testVerifiedBootDigestSelectionUsesOnlyRuntimeOrHardwareMaterial() {
+        byte[] runtime = new byte[32];
+        byte[] original = new byte[32];
+        java.util.Arrays.fill(runtime, (byte) 0x11);
+        java.util.Arrays.fill(original, (byte) 0x22);
+
+        assertSame(runtime, CertHack.selectVerifiedBootDigest(runtime, original));
+        assertSame(original, CertHack.selectVerifiedBootDigest(null, original));
+        assertSame(original, CertHack.selectVerifiedBootDigest(new byte[32], original));
+        assertNull(CertHack.selectVerifiedBootDigest(null, null));
+        assertNull(CertHack.selectVerifiedBootDigest(new byte[32], new byte[31]));
     }
 
     @Test
