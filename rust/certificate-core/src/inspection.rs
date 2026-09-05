@@ -28,9 +28,9 @@ impl SecurityLevel {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct SecurityLevels {
-    pub attestation: SecurityLevel,
-    pub keymint: SecurityLevel,
+struct SecurityLevels {
+    attestation: SecurityLevel,
+    keymint: SecurityLevel,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -112,18 +112,6 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
         attestation_security_level: security_levels.attestation,
         keymint_security_level: security_levels.keymint,
     })
-}
-
-pub(crate) fn inspect_security_levels(extension_der: &[u8]) -> Result<SecurityLevels, Error> {
-    let outer = AnyRef::from_der(extension_der).map_err(|_| Error::AttestationRewrite)?;
-    if outer.tag() != Tag::Sequence {
-        return Err(Error::AttestationRewrite);
-    }
-    let fields = split(outer.value(), MAX_FIELDS)?;
-    if fields.len() <= TEE_INDEX {
-        return Err(Error::AttestationRewrite);
-    }
-    security_levels_from_fields(&fields)
 }
 
 fn security_levels_from_fields(fields: &[Vec<u8>]) -> Result<SecurityLevels, Error> {
