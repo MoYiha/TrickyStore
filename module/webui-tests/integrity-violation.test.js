@@ -60,6 +60,10 @@ assert.ok(
     'Stale verifier failures must be discarded when a newer filesystem event arrives'
 );
 assert.ok(
+    watcherSource.includes('fullReverificationPending'),
+    'Structural full verification must remain authoritative across later write events'
+);
+assert.ok(
     !watcherSource.includes('violationHandler(listOf("Critical payload deleted:'),
     'A DELETE callback must not directly declare a critical payload violation'
 );
