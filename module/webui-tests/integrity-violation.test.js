@@ -36,6 +36,38 @@ assert.ok(
     'IntegrityViolationHandler must not request destructive daemon module deletion'
 );
 
+// FileObserver activity is only an invalidation signal. A settled cryptographic verifier result must
+// decide whether a transient delete/move/write sequence is a real integrity violation.
+const watcherSource = fs.readFileSync(
+    path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
+        'cleveres', 'tricky', 'cleverestech', 'ModuleIntegrityWatcher.kt'),
+    'utf8'
+);
+assert.ok(
+    watcherSource.includes('Only a cryptographic verification of the settled final'),
+    'ModuleIntegrityWatcher must document settled-state verification as the authority'
+);
+assert.ok(
+    watcherSource.includes('scheduleFullCheckLocked()'),
+    'Structural FileObserver events must schedule settled full verification'
+);
+assert.ok(
+    watcherSource.includes('pendingWritePaths'),
+    'ModuleIntegrityWatcher must track writes that have not reached CLOSE_WRITE'
+);
+assert.ok(
+    watcherSource.includes('mutationEpoch != verificationEpoch'),
+    'Stale verifier failures must be discarded when a newer filesystem event arrives'
+);
+assert.ok(
+    !watcherSource.includes('Critical payload deleted: $affectedPath'),
+    'A DELETE callback must not directly declare a critical payload violation'
+);
+assert.ok(
+    !watcherSource.includes('Module directory was deleted or moved (self event)'),
+    'DELETE_SELF/MOVE_SELF callbacks must not directly declare a module violation'
+);
+
 // Verify the violation message is used in WebServer.kt
 const webServerSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
