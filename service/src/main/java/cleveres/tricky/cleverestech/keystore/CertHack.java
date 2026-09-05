@@ -419,8 +419,13 @@ public final class CertHack {
 
             boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
                     PolicyState.Feature.SECURITY_PATCH, uid);
-            byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
-            byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
+            // RootOfTrust is a statement about AVB measurements. Only a boot value derived from
+            // this runtime or captured from the genuine hardware attestation is acceptable here.
+            // Never manufacture a persistent random digest and label it as Verified.
+            byte[] verifiedBootKey = selectVerifiedBootDigest(
+                    UtilKt.getBootKey(), inspection.getOriginalBootKey());
+            byte[] verifiedBootHash = selectVerifiedBootDigest(
+                    UtilKt.getBootHash(), inspection.getOriginalBootHash());
             Config.AttestationPatchLevels patchLevels = needsCapturedPatchLevels
                     ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
                             uid,
@@ -428,14 +433,6 @@ public final class CertHack {
                             inspection.getVendorPatch(),
                             inspection.getBootPatch())
                     : keepPatchLevels();
-            if (verifiedBootKey == null) {
-                verifiedBootKey = firstUsableBootDigest(
-                        null, inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
-            }
-            if (verifiedBootHash == null) {
-                verifiedBootHash = firstUsableBootDigest(
-                        null, inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
-            }
 
             String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
@@ -547,12 +544,9 @@ public final class CertHack {
         return 0;
     }
 
-    private static byte[] firstUsableBootDigest(byte[] preferred, byte[] original, byte[] persistent) {
-        byte[] value = usableBootDigest(preferred);
-        if (value != null) return value;
-        value = usableBootDigest(original);
-        if (value != null) return value;
-        return usableBootDigest(persistent);
+    static byte[] selectVerifiedBootDigest(byte[] runtime, byte[] original) {
+        byte[] value = usableBootDigest(runtime);
+        return value != null ? value : usableBootDigest(original);
     }
 
     private static byte[] usableBootDigest(byte[] value) {
