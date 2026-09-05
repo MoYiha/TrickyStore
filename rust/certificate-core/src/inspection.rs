@@ -12,6 +12,21 @@ const ID_TAGS: [u32; 9] = [710, 711, 712, 713, 714, 715, 716, 717, 723];
 const MAX_FIELDS: usize = 16;
 const MAX_TAGS: usize = 256;
 
+/// Canonical Android KeyMint security levels carried by KeyDescription.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum SecurityLevel {
+    Software = 0,
+    TrustedEnvironment = 1,
+    StrongBox = 2,
+}
+
+impl SecurityLevel {
+    pub const fn wire_value(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CertificateInspection {
     pub captured_patch_levels: CapturedPatchLevels,
@@ -19,6 +34,8 @@ pub struct CertificateInspection {
     pub supports_module_hash: bool,
     pub original_boot_key: Option<[u8; 32]>,
     pub original_boot_hash: Option<[u8; 32]>,
+    pub attestation_security_level: SecurityLevel,
+    pub keymint_security_level: SecurityLevel,
 }
 
 pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Error> {
@@ -53,8 +70,10 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
     }
     let attestation_version = <i32 as attestation_der::Decode>::from_der(&fields[0])
         .map_err(|_| Error::AttestationRewrite)?;
+    let attestation_security_level = decode_security_level(&fields[1])?;
     let keymint_version = <i32 as attestation_der::Decode>::from_der(&fields[2])
         .map_err(|_| Error::AttestationRewrite)?;
+    let keymint_security_level = decode_security_level(&fields[3])?;
     let list_six = tagged_fields(&fields[SOFTWARE_INDEX])?;
     let list_seven = tagged_fields(&fields[TEE_INDEX])?;
     let six_has_root = list_six.iter().any(|field| field.0 == ROOT_OF_TRUST_TAG);
@@ -85,7 +104,22 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
         supports_module_hash: attestation_version >= 400 && keymint_version >= 400,
         original_boot_key,
         original_boot_hash,
+        attestation_security_level,
+        keymint_security_level,
     })
+}
+
+fn decode_security_level(encoded: &[u8]) -> Result<SecurityLevel, Error> {
+    let level = AnyRef::from_der(encoded).map_err(|_| Error::AttestationRewrite)?;
+    if level.tag() != Tag::Enumerated || level.value().len() != 1 {
+        return Err(Error::AttestationRewrite);
+    }
+    match level.value()[0] {
+        0 => Ok(SecurityLevel::Software),
+        1 => Ok(SecurityLevel::TrustedEnvironment),
+        2 => Ok(SecurityLevel::StrongBox),
+        _ => Err(Error::AttestationRewrite),
+    }
 }
 
 fn tagged_fields(encoded: &[u8]) -> Result<Vec<(u32, Vec<u8>)>, Error> {
