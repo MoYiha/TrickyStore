@@ -155,9 +155,8 @@ internal object ModuleIntegrityWatcher {
                             val now = nanoTime()
                             val writeGraceExpired = writeGraceExpiredLocked(now)
                             if (
-                                !writeGraceExpired &&
-                                (hasPendingWritesLocked() ||
-                                    now - lastMutationNanos < TimeUnit.MILLISECONDS.toNanos(fullVerificationDelayMs))
+                                (hasPendingWritesLocked() && !writeGraceExpired) ||
+                                now - lastMutationNanos < TimeUnit.MILLISECONDS.toNanos(fullVerificationDelayMs)
                             ) {
                                 eventCoalescedCount.incrementAndGet()
                                 fullScheduler?.submit()

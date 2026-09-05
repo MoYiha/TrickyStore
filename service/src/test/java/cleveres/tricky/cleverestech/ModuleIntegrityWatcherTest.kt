@@ -438,6 +438,31 @@ class ModuleIntegrityWatcherTest {
     }
 
     @Test
+    fun expiredWriteGraceStillWaitsForTheLatestMutationToSettle() {
+        val dir = tempFolder.newFolder("expired-active-write", "cleverestricky")
+        val manifest = createRealManifest(dir)
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.start(dir, manifest) { violations.add(it) }
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+
+        clock.set(TimeUnit.MILLISECONDS.toNanos(4_999))
+        java.io.File(dir, "test.so").writeText("partial")
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        clock.set(TimeUnit.SECONDS.toNanos(5))
+        Thread.sleep(150)
+        assertEquals("An expired old write must not bypass the quiet interval", 0, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertTrue(violations.isEmpty())
+
+        java.io.File(dir, "test.so").writeText("original")
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        clock.set(TimeUnit.MILLISECONDS.toNanos(5_100))
+        awaitCondition { ModuleIntegrityWatcher.pendingWriteCountForTesting() == 0 }
+        assertEquals(1, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertTrue(violations.isEmpty())
+    }
+
+    @Test
     fun repeatedModifyCannotRenewAnUnclosedWritesDeadline() {
         val dir = tempFolder.newFolder("unclosed-changed", "cleverestricky")
         val manifest = createRealManifest(dir)
