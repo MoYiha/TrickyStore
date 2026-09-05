@@ -93,6 +93,11 @@ internal object ModuleIntegrityWatcher {
                             if (!ownsWatcherGenerationLocked(generation)) {
                                 return@ConflatedRefreshScheduler
                             }
+                            if (fullReverificationPending) {
+                                pendingDirtyPaths.clear()
+                                eventCoalescedCount.incrementAndGet()
+                                return@ConflatedRefreshScheduler
+                            }
                             val snapshot = ArrayList(pendingDirtyPaths)
                             pendingDirtyPaths.clear()
                             if (snapshot.isEmpty()) {
@@ -437,12 +442,10 @@ internal object ModuleIntegrityWatcher {
             pendingWritePaths.remove(affectedPath)
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
+            } else if (requireFullVerification) {
+                fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (requireFullVerification) {
-                    fullReverificationPending = true
-                    fullScheduler?.submit()
-                }
             }
             return
         }
@@ -453,12 +456,10 @@ internal object ModuleIntegrityWatcher {
             pendingWritePaths.remove(affectedPath)
             if (isManifest) {
                 scheduleFullCheckLocked()
+            } else if (requireFullVerification) {
+                fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (requireFullVerification) {
-                    fullReverificationPending = true
-                    fullScheduler?.submit()
-                }
             }
             return
         }
@@ -485,12 +486,10 @@ internal object ModuleIntegrityWatcher {
             }
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
+            } else if (requireFullVerification) {
+                fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (requireFullVerification) {
-                    fullReverificationPending = true
-                    fullScheduler?.submit()
-                }
             }
         }
     }
