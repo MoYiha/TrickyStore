@@ -17,39 +17,34 @@ class StrongBoxBinderRoutingTest {
     }
 
     @Test
-    fun `real StrongBox child binder is registered with generic replacement disabled`() {
+    fun `StrongBox child binder remains completely unhooked`() {
         val source = source("KeystoreInterceptor.kt")
-        val strongBoxLookup = source.indexOf("ks.getSecurityLevel(SecurityLevel.STRONGBOX)")
-        val transparentInterceptor =
-            source.indexOf(
-                "SecurityLevelInterceptor(allowGenericReplacement = false)",
-                strongBoxLookup,
-            )
-        val strongBoxRegistration =
-            source.indexOf("strongBox.asBinder(),", transparentInterceptor)
-        val strongBoxTargetCapture =
-            source.indexOf("strongBoxTarget = strongBox.asBinder()", strongBoxRegistration)
+        val teeLookup = source.indexOf("ks.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT)")
+        val teeRegistration = source.indexOf("tee.asBinder(),", teeLookup)
 
-        assertTrue(strongBoxLookup >= 0)
-        assertTrue(transparentInterceptor > strongBoxLookup)
-        assertTrue(strongBoxRegistration > transparentInterceptor)
-        assertTrue(strongBoxTargetCapture > strongBoxRegistration)
+        assertTrue(teeLookup >= 0)
+        assertTrue(teeRegistration > teeLookup)
+        assertFalse(source.contains("SecurityLevel.STRONGBOX"))
+        assertFalse(source.contains("strongBox.asBinder()"))
+        assertFalse(source.contains("strongBoxInterceptor"))
+        assertFalse(source.contains("strongBoxTarget"))
     }
 
     @Test
-    fun `security level interceptor gates generateKey before policy and backend work`() {
-        val source = source("SecurityLevelInterceptor.kt")
-        val preTransact = source.indexOf("override fun onPreTransact")
-        val replacementGate = source.indexOf("allowGenericReplacement &&", preTransact)
-        val generateKeyGate = source.indexOf("code == generateKeyTransaction", replacementGate)
-        val backendGate = source.indexOf("CertHack.canHack()", generateKeyGate)
-        val policyGate = source.indexOf("Config.needHack(callingUid)", backendGate)
+    fun `security level interceptor is used only for TEE generateKey`() {
+        val keystore = source("KeystoreInterceptor.kt")
+        val interceptor = source("SecurityLevelInterceptor.kt")
+        val teeLookup = keystore.indexOf("ks.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT)")
+        val interceptorCreation = keystore.indexOf("SecurityLevelInterceptor()", teeLookup)
+        val generateKeyGate = interceptor.indexOf("code == generateKeyTransaction")
+        val backendGate = interceptor.indexOf("CertHack.canHack()", generateKeyGate)
+        val policyGate = interceptor.indexOf("Config.needHack(callingUid)", backendGate)
 
-        assertTrue(preTransact >= 0)
-        assertTrue(replacementGate > preTransact)
-        assertTrue(generateKeyGate > replacementGate)
+        assertTrue(interceptorCreation > teeLookup)
+        assertTrue(generateKeyGate >= 0)
         assertTrue(backendGate > generateKeyGate)
         assertTrue(policyGate > backendGate)
+        assertFalse(interceptor.contains("allowGenericReplacement"))
     }
 
     private fun source(name: String): String =
