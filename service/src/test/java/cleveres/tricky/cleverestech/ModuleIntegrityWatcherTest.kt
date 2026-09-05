@@ -12,6 +12,8 @@ import org.junit.rules.TemporaryFolder
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class ModuleIntegrityWatcherTest {
 
@@ -382,6 +384,180 @@ class ModuleIntegrityWatcherTest {
         assertEquals(0, ModuleIntegrityWatcher.pendingWriteCountForTesting())
         assertEquals(0, ModuleIntegrityWatcher.targetedVerificationExecutions.get())
         assertEquals(0, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+    }
+
+    @Test
+    fun manifestStableEventsAlwaysRequireFullVerification() {
+        val dir = tempFolder.newFolder("manifest-events", "cleverestricky")
+        ModuleIntegrityWatcher.fullVerifier = { IntegrityResult.Pass }
+        val events = listOf(FileObserver.DELETE, FileObserver.MOVED_FROM, FileObserver.MOVED_TO, FileObserver.CLOSE_WRITE, FileObserver.ATTRIB)
+        for (event in events) {
+            ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+            val before = ModuleIntegrityWatcher.fullVerificationExecutions.get()
+            ModuleIntegrityWatcher.injectChildEventForTesting(event, "integrity_manifest.json")
+            awaitCondition { ModuleIntegrityWatcher.fullVerificationExecutions.get() > before }
+            ModuleIntegrityWatcher.stop()
+        }
+        assertEquals(0, ModuleIntegrityWatcher.targetedVerificationExecutions.get())
+        assertTrue(violations.isEmpty())
+    }
+
+    @Test
+    fun unclosedWriteAutomaticallyReverifiesUnchangedBytesAfterGrace() {
+        val dir = tempFolder.newFolder("unclosed-clean", "cleverestricky")
+        val manifest = createRealManifest(dir)
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.start(dir, manifest) { violations.add(it) }
+
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        Thread.sleep(100)
+        assertEquals(0, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertEquals(1, ModuleIntegrityWatcher.pendingWriteCountForTesting())
+
+        clock.set(TimeUnit.SECONDS.toNanos(5))
+        awaitCondition { ModuleIntegrityWatcher.pendingWriteCountForTesting() == 0 }
+        assertEquals(1, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertTrue("Missing CLOSE_WRITE alone must not disable unchanged files", violations.isEmpty())
+    }
+
+    @Test
+    fun unclosedManifestWriteStillChecksTrustAfterGrace() {
+        val dir = tempFolder.newFolder("unclosed-manifest", "cleverestricky")
+        val manifest = createRealManifest(dir)
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.start(dir, manifest) { violations.add(it) }
+
+        java.io.File(dir, "integrity_manifest.json").writeText("invalid manifest")
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "integrity_manifest.json")
+        clock.set(TimeUnit.SECONDS.toNanos(5))
+
+        awaitCondition { violations.isNotEmpty() }
+        assertTrue(violations.flatten().any { it.contains("Manifest") })
+    }
+
+    @Test
+    fun repeatedModifyCannotRenewAnUnclosedWritesDeadline() {
+        val dir = tempFolder.newFolder("unclosed-changed", "cleverestricky")
+        val manifest = createRealManifest(dir)
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.start(dir, manifest) { violations.add(it) }
+
+        java.io.File(dir, "test.so").writeText("changed")
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        clock.set(TimeUnit.SECONDS.toNanos(4))
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        clock.set(TimeUnit.SECONDS.toNanos(5))
+
+        awaitCondition { violations.isNotEmpty() }
+        assertTrue(violations.flatten().any { it.contains("Hash mismatch") })
+    }
+
+    @Test
+    fun pendingWriteOverflowRemainsCoveredAfterTrackedPathsClose() {
+        val dir = tempFolder.newFolder("write-overflow", "cleverestricky")
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.singleFileVerifier = { _, _ -> IntegrityResult.Pass }
+        ModuleIntegrityWatcher.fullVerifier = { IntegrityResult.Fail(listOf("untracked overflow payload")) }
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+
+        repeat(512) { ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CREATE, "payload$it.so") }
+        assertEquals("Active tracked writes must be retained within the bound", 64, ModuleIntegrityWatcher.pendingWriteCountForTesting())
+        repeat(64) { ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "payload$it.so") }
+        assertEquals(0, ModuleIntegrityWatcher.pendingWriteCountForTesting())
+        clock.set(TimeUnit.SECONDS.toNanos(5))
+
+        awaitCondition { violations.isNotEmpty() }
+        assertEquals(listOf("untracked overflow payload"), violations.single())
+    }
+
+    @Test
+    fun staleTargetedFailureFromAnUnrelatedEventIsReverified() {
+        val dir = tempFolder.newFolder("stale-unrelated", "cleverestricky")
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        ModuleIntegrityWatcher.singleFileVerifier = { path, _ ->
+            if (path == "test.so") {
+                started.countDown()
+                release.await(2, TimeUnit.SECONDS)
+                IntegrityResult.Fail(listOf("persistent test.so mismatch"))
+            } else {
+                IntegrityResult.Pass
+            }
+        }
+        ModuleIntegrityWatcher.fullVerifier = { IntegrityResult.Fail(listOf("persistent test.so mismatch")) }
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+        try {
+            ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "test.so")
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "inject")
+            release.countDown()
+            awaitCondition { violations.isNotEmpty() }
+            assertEquals(1, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+            assertEquals(listOf("persistent test.so mismatch"), violations.single())
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
+    fun staleFullFailureIsRetriedWithoutReportingTheOldResult() {
+        val dir = tempFolder.newFolder("stale-full", "cleverestricky")
+        val calls = AtomicInteger(0)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        ModuleIntegrityWatcher.fullVerifier = {
+            if (calls.incrementAndGet() == 1) {
+                started.countDown()
+                release.await(2, TimeUnit.SECONDS)
+                IntegrityResult.Fail(listOf("transient mismatch"))
+            } else {
+                IntegrityResult.Pass
+            }
+        }
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+        try {
+            ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.DELETE, "inject")
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "inject")
+            release.countDown()
+            awaitCondition { calls.get() == 2 }
+            assertTrue(violations.isEmpty())
+        } finally {
+            release.countDown()
+        }
+    }
+
+    @Test
+    fun stopAndRestartRetiresUnclosedWriteRetry() {
+        val dir = tempFolder.newFolder("write-restart", "cleverestricky")
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CREATE, "test.so")
+        ModuleIntegrityWatcher.stop()
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+        clock.set(TimeUnit.SECONDS.toNanos(10))
+        Thread.sleep(150)
+
+        assertEquals(0, ModuleIntegrityWatcher.pendingWriteCountForTesting())
+        assertEquals(0, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertTrue(violations.isEmpty())
+    }
+
+    private fun createRealManifest(dir: java.io.File): ParsedManifest {
+        val payload = java.io.File(dir, "test.so").apply { writeText("original") }
+        val hash =
+            java.security.MessageDigest.getInstance("SHA-256").digest(payload.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        java.io.File(dir, "integrity_manifest.json").writeText(
+            """{"version":1,"files":[{"path":"test.so","sha256":"$hash","type":"regular"}],"signature":""}""",
+        )
+        ModuleIntegrityVerifier.moduleDirProvider = { dir.absolutePath }
+        return requireNotNull(ModuleIntegrityVerifier.loadManifest())
     }
 
     @Test

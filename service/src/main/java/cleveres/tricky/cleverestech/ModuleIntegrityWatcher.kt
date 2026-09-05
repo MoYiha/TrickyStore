@@ -13,11 +13,14 @@ import android.os.FileObserver.MOVE_SELF
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import java.io.File
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val INTEGRITY_TARGETED_DEBOUNCE_MS = 100L
 private const val INTEGRITY_FULL_SETTLE_MS = 1_000L
+private const val INTEGRITY_WRITE_GRACE_MS = 5_000L
 private const val MAX_PENDING_PATHS = 64
 private const val INTEGRITY_MANIFEST_FILENAME = "integrity_manifest.json"
 
@@ -27,7 +30,8 @@ private const val INTEGRITY_MANIFEST_FILENAME = "integrity_manifest.json"
  * FileObserver events are treated as invalidation hints rather than proof of tampering. Android
  * module managers and atomic file replacement can emit transient DELETE/MOVE/MODIFY sequences even
  * when the final module bytes are unchanged. Only a cryptographic verification of the settled final
- * filesystem state is allowed to report an integrity violation.
+ * filesystem state is allowed to report an integrity violation. A missing CLOSE_WRITE gets a
+ * bounded grace period, after which the current bytes must still pass cryptographic verification.
  */
 internal object ModuleIntegrityWatcher {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -47,10 +51,18 @@ internal object ModuleIntegrityWatcher {
     private var watcherGeneration = 0L
     private var childGeneration = 0L
     private var mutationEpoch = 0L
+    private var lastMutationNanos = 0L
     private var fullReverificationPending = false
 
     private val pendingDirtyPaths = LinkedHashSet<String>()
-    private val pendingWritePaths = LinkedHashSet<String>()
+    private val pendingWritePaths = LinkedHashMap<String, Long>()
+    private var writeOverflowSinceNanos: Long? = null
+
+    @androidx.annotation.VisibleForTesting
+    internal var nanoTime: () -> Long = System::nanoTime
+
+    @androidx.annotation.VisibleForTesting
+    internal var writeGraceMs: Long = INTEGRITY_WRITE_GRACE_MS
 
     @androidx.annotation.VisibleForTesting
     internal var fullVerificationDelayMs: Long = INTEGRITY_FULL_SETTLE_MS
@@ -79,9 +91,10 @@ internal object ModuleIntegrityWatcher {
             val generation = ++watcherGeneration
             isRunning = true
             mutationEpoch = 0L
+            lastMutationNanos = nanoTime()
             fullReverificationPending = false
             pendingDirtyPaths.clear()
-            pendingWritePaths.clear()
+            clearPendingWritesLocked()
 
             targetedScheduler =
                 ConflatedRefreshScheduler(scope, INTEGRITY_TARGETED_DEBOUNCE_MS) {
@@ -117,6 +130,7 @@ internal object ModuleIntegrityWatcher {
                                     fullReverificationPending
                                 ) {
                                     eventCoalescedCount.incrementAndGet()
+                                    scheduleFullCheckLocked()
                                     return@ConflatedRefreshScheduler
                                 }
                                 violationHandler(result.violations)
@@ -127,17 +141,30 @@ internal object ModuleIntegrityWatcher {
                 }
 
             fullScheduler =
-                ConflatedRefreshScheduler(scope, fullVerificationDelayMs) {
+                ConflatedRefreshScheduler(scope, 0L) {
+                    // Delay inside the worker so incoming events cannot keep resetting its timer.
+                    delay(fullVerificationDelayMs)
                     val verificationEpoch =
                         synchronized(lock) {
                             if (!ownsWatcherGenerationLocked(generation)) {
                                 return@ConflatedRefreshScheduler
                             }
-                            if (!fullReverificationPending) return@ConflatedRefreshScheduler
-                            if (pendingWritePaths.isNotEmpty()) {
-                                eventCoalescedCount.incrementAndGet()
+                            if (!fullReverificationPending && !hasPendingWritesLocked()) {
                                 return@ConflatedRefreshScheduler
                             }
+                            val now = nanoTime()
+                            val writeGraceExpired = writeGraceExpiredLocked(now)
+                            if (
+                                !writeGraceExpired &&
+                                (hasPendingWritesLocked() ||
+                                    now - lastMutationNanos < TimeUnit.MILLISECONDS.toNanos(fullVerificationDelayMs))
+                            ) {
+                                eventCoalescedCount.incrementAndGet()
+                                fullScheduler?.submit()
+                                return@ConflatedRefreshScheduler
+                            }
+                            fullReverificationPending = true
+                            pendingDirtyPaths.clear()
                             if (childObserver == null && directory.exists()) {
                                 try {
                                     tryArmChildLocked(directory, loadedManifest, violationHandler, generation)
@@ -157,11 +184,13 @@ internal object ModuleIntegrityWatcher {
                     val result = fullVerifier()
                     synchronized(lock) {
                         if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
-                        if (mutationEpoch != verificationEpoch || pendingWritePaths.isNotEmpty()) {
+                        if (mutationEpoch != verificationEpoch) {
                             eventCoalescedCount.incrementAndGet()
+                            fullScheduler?.submit()
                             return@ConflatedRefreshScheduler
                         }
                         fullReverificationPending = false
+                        clearPendingWritesLocked()
                         if (result is IntegrityResult.Fail) violationHandler(result.violations)
                     }
                 }
@@ -218,9 +247,9 @@ internal object ModuleIntegrityWatcher {
     ) {
         synchronized(lock) {
             if (!ownsWatcherGenerationLocked(generation) || path != directory.name) return
-            mutationEpoch++
+            recordMutationLocked()
             pendingDirtyPaths.clear()
-            pendingWritePaths.clear()
+            clearPendingWritesLocked()
 
             if ((event and (DELETE or MOVED_FROM)) != 0) {
                 Logger.w("Module directory moved or removed - waiting for settled integrity verification")
@@ -321,9 +350,9 @@ internal object ModuleIntegrityWatcher {
         synchronized(lock) {
             if (!ownsChildGenerationLocked(generation, childToken)) return
             if ((event and (DELETE_SELF or MOVE_SELF)) != 0) {
-                mutationEpoch++
+                recordMutationLocked()
                 pendingDirtyPaths.clear()
-                pendingWritePaths.clear()
+                clearPendingWritesLocked()
                 Logger.w("Module directory self event - waiting for settled integrity verification")
                 disarmChildLocked()
                 scheduleFullCheckLocked()
@@ -346,9 +375,9 @@ internal object ModuleIntegrityWatcher {
         synchronized(lock) {
             if (!ownsChildGenerationLocked(generation, childToken)) return
             if ((event and (DELETE_SELF or MOVE_SELF)) != 0) {
-                mutationEpoch++
+                recordMutationLocked()
                 pendingDirtyPaths.clear()
-                pendingWritePaths.clear()
+                clearPendingWritesLocked()
                 Logger.w("Critical subdirectory $subdirRel changed - waiting for settled verification")
                 disarmChildLocked()
                 scheduleFullCheckLocked()
@@ -369,13 +398,12 @@ internal object ModuleIntegrityWatcher {
         event: Int,
     ) {
         if (!ownsChildGenerationLocked(generation, childToken)) return
-        if (ModuleIntegrityVerifier.isIgnoredFile(affectedPath)) return
-
         val isManifest = affectedPath == INTEGRITY_MANIFEST_FILENAME
+        if (!isManifest && ModuleIntegrityVerifier.isIgnoredFile(affectedPath)) return
         val affectedFile = File(directory, affectedPath)
 
         if ((event and (DELETE or MOVED_FROM)) != 0) {
-            mutationEpoch++
+            recordMutationLocked()
             pendingDirtyPaths.clear()
             pendingWritePaths.remove(affectedPath)
             scheduleFullCheckLocked()
@@ -384,7 +412,7 @@ internal object ModuleIntegrityWatcher {
 
         if ((event and MOVED_TO) != 0) {
             val requireFullVerification = fullReverificationPending
-            mutationEpoch++
+            recordMutationLocked()
             pendingWritePaths.remove(affectedPath)
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
@@ -399,7 +427,7 @@ internal object ModuleIntegrityWatcher {
 
         if ((event and CLOSE_WRITE) != 0) {
             val requireFullVerification = fullReverificationPending
-            mutationEpoch++
+            recordMutationLocked()
             pendingWritePaths.remove(affectedPath)
             if (isManifest) {
                 scheduleFullCheckLocked()
@@ -413,21 +441,21 @@ internal object ModuleIntegrityWatcher {
         }
 
         if ((event and (CREATE or MODIFY)) != 0) {
-            mutationEpoch++
+            recordMutationLocked()
             pendingDirtyPaths.remove(affectedPath)
             if (affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
             } else {
-                pendingWritePaths.add(affectedPath)
-                if (isManifest) scheduleFullCheckLocked()
-                if (fullReverificationPending) fullScheduler?.submit()
+                trackPendingWriteLocked(affectedPath)
+                if (isManifest) fullReverificationPending = true
+                fullScheduler?.submit()
             }
             return
         }
 
         if ((event and ATTRIB) != 0) {
             val requireFullVerification = fullReverificationPending
-            mutationEpoch++
+            recordMutationLocked()
             if (affectedPath in pendingWritePaths) {
                 if (requireFullVerification) fullScheduler?.submit()
                 return
@@ -461,6 +489,36 @@ internal object ModuleIntegrityWatcher {
         }
         pendingDirtyPaths.add(relPath)
         targetedScheduler?.submit()
+    }
+
+    private fun recordMutationLocked() {
+        mutationEpoch++
+        lastMutationNanos = nanoTime()
+    }
+
+    /** Retains at most 64 paths; overflow retains a deadline for a full scan, never a clean verdict. */
+    private fun trackPendingWriteLocked(path: String) {
+        if (path in pendingWritePaths) return
+        if (pendingWritePaths.size < MAX_PENDING_PATHS) {
+            pendingWritePaths[path] = nanoTime()
+        } else if (writeOverflowSinceNanos == null) {
+            writeOverflowSinceNanos = nanoTime()
+        }
+    }
+
+    private fun hasPendingWritesLocked(): Boolean =
+        pendingWritePaths.isNotEmpty() || writeOverflowSinceNanos != null
+
+    /** Repeated MODIFY events cannot extend the first unresolved write's grace period. */
+    private fun writeGraceExpiredLocked(now: Long): Boolean {
+        val graceNanos = TimeUnit.MILLISECONDS.toNanos(writeGraceMs)
+        return pendingWritePaths.values.any { now - it >= graceNanos } ||
+            writeOverflowSinceNanos?.let { now - it >= graceNanos } == true
+    }
+
+    private fun clearPendingWritesLocked() {
+        pendingWritePaths.clear()
+        writeOverflowSinceNanos = null
     }
 
     /** Requires a settled full verification before any violation decision. */
@@ -507,7 +565,7 @@ internal object ModuleIntegrityWatcher {
             fullScheduler = null
             fullReverificationPending = false
             pendingDirtyPaths.clear()
-            pendingWritePaths.clear()
+            clearPendingWritesLocked()
         }
     }
 
@@ -554,6 +612,8 @@ internal object ModuleIntegrityWatcher {
         parentObserverStarter = { it.startWatching() }
         childObserverStarter = { it.startWatching() }
         observerStopper = { it.stopWatching() }
+        nanoTime = System::nanoTime
+        writeGraceMs = INTEGRITY_WRITE_GRACE_MS
         fullVerificationDelayMs = INTEGRITY_FULL_SETTLE_MS
         fullVerifier = { ModuleIntegrityVerifier.verifyFull() }
         singleFileVerifier = { path, manifest -> ModuleIntegrityVerifier.verifySingleFile(path, manifest) }
