@@ -60,11 +60,11 @@ assert.ok(
     'Stale verifier failures must be discarded when a newer filesystem event arrives'
 );
 assert.ok(
-    !watcherSource.includes('Critical payload deleted: $affectedPath'),
+    !watcherSource.includes('violationHandler(listOf("Critical payload deleted:'),
     'A DELETE callback must not directly declare a critical payload violation'
 );
 assert.ok(
-    !watcherSource.includes('Module directory was deleted or moved (self event)'),
+    !watcherSource.includes('violationHandler(listOf("Module directory was deleted or moved'),
     'DELETE_SELF/MOVE_SELF callbacks must not directly declare a module violation'
 );
 
