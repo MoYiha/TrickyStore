@@ -352,6 +352,7 @@ class ModuleIntegrityWatcherTest {
         val testFile = java.io.File(dir, "test.so")
         testFile.writeBytes(ByteArray(16))
         ModuleIntegrityWatcher.fullVerifier = { IntegrityResult.Pass }
+        ModuleIntegrityWatcher.singleFileVerifier = { _, _ -> IntegrityResult.Pass }
         ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
 
         ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.DELETE, "inject")
