@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech.keystore;
 
 import android.os.Parcel;
 import android.system.keystore2.IKeystoreSecurityLevel;
-import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyEntryResponse;
 import android.system.keystore2.KeyMetadata;
 import android.util.Log;
@@ -69,17 +68,42 @@ public final class Utils {
         int position = request.dataPosition();
         try {
             request.enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR);
-            if (request.dataAvail() < Integer.BYTES ||
-                    request.readTypedObject(KeyDescriptor.CREATOR) == null ||
-                    request.dataAvail() < Integer.BYTES) {
+            if (!skipStableTypedParcelable(request) || request.dataAvail() < Integer.BYTES) {
                 return false;
             }
-            return request.readTypedObject(KeyDescriptor.CREATOR) == null;
+            // Parcel.writeTypedObject writes zero for null and a nonzero presence marker otherwise.
+            // We only need to distinguish the optional attestationKey, so do not instantiate its
+            // hidden platform class or depend on a generated CREATOR field that may change by API.
+            return request.readInt() == 0;
         } catch (RuntimeException invalidRequest) {
             return false;
         } finally {
             request.setDataPosition(position);
         }
+    }
+
+    /**
+     * Skips one non-null stable-AIDL typed parcelable without allocating or binding to its Java ABI.
+     * Stable parcelables are size-prefixed; reject missing, undersized, overflowing, or truncated
+     * values instead of allowing an ambiguous prefix to select the default attestation key.
+     */
+    private static boolean skipStableTypedParcelable(Parcel request) {
+        if (request.dataAvail() < Integer.BYTES || request.readInt() != 1 ||
+                request.dataAvail() < Integer.BYTES) {
+            return false;
+        }
+
+        int parcelableStart = request.dataPosition();
+        int parcelableSize = request.readInt();
+        if (parcelableSize < Integer.BYTES ||
+                parcelableStart > Integer.MAX_VALUE - parcelableSize) {
+            return false;
+        }
+
+        int parcelableEnd = parcelableStart + parcelableSize;
+        if (parcelableEnd > request.dataSize()) return false;
+        request.setDataPosition(parcelableEnd);
+        return true;
     }
 
     /**
@@ -89,11 +113,17 @@ public final class Utils {
      * or restart. Check the raw metadata before cache lookup, X.509 parsing or backend IPC.
      */
     public static boolean isCertificateChainRewriteCandidate(KeyMetadata metadata) {
-        return metadata != null && metadata.certificate != null &&
-                metadata.certificate.length > 0 &&
-                metadata.certificate.length <= MAX_CERTIFICATE_BYTES &&
-                metadata.certificateChain != null && metadata.certificateChain.length > 0 &&
-                metadata.certificateChain.length <= MAX_CHAIN_BYTES;
+        return metadata != null &&
+                isCertificateChainRewriteCandidate(metadata.certificate, metadata.certificateChain);
+    }
+
+    /** Raw-byte form keeps platform-contract tests independent of hidden KeyMetadata constructors. */
+    public static boolean isCertificateChainRewriteCandidate(
+            byte[] certificate, byte[] certificateChain) {
+        return certificate != null && certificate.length > 0 &&
+                certificate.length <= MAX_CERTIFICATE_BYTES &&
+                certificateChain != null && certificateChain.length > 0 &&
+                certificateChain.length <= MAX_CHAIN_BYTES;
     }
 
     static X509Certificate toCertificate(byte[] encoded) {
