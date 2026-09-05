@@ -364,6 +364,7 @@ class ModuleIntegrityWatcherTest {
 
         ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "test.so")
         awaitCondition { ModuleIntegrityWatcher.fullVerificationExecutions.get() == 1 }
+        assertEquals(0, ModuleIntegrityWatcher.targetedVerificationExecutions.get())
         assertTrue(violations.isEmpty())
     }
 
