@@ -28,6 +28,12 @@ impl SecurityLevel {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SecurityLevels {
+    pub attestation: SecurityLevel,
+    pub keymint: SecurityLevel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CertificateInspection {
     pub captured_patch_levels: CapturedPatchLevels,
     pub present_id_mask: u16,
@@ -70,10 +76,9 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
     }
     let attestation_version = <i32 as attestation_der::Decode>::from_der(&fields[0])
         .map_err(|_| Error::AttestationRewrite)?;
-    let attestation_security_level = decode_security_level(&fields[1])?;
+    let security_levels = security_levels_from_fields(&fields)?;
     let keymint_version = <i32 as attestation_der::Decode>::from_der(&fields[2])
         .map_err(|_| Error::AttestationRewrite)?;
-    let keymint_security_level = decode_security_level(&fields[3])?;
     let list_six = tagged_fields(&fields[SOFTWARE_INDEX])?;
     let list_seven = tagged_fields(&fields[TEE_INDEX])?;
     let six_has_root = list_six.iter().any(|field| field.0 == ROOT_OF_TRUST_TAG);
@@ -104,8 +109,27 @@ pub fn inspect_certificate(leaf_der: &[u8]) -> Result<CertificateInspection, Err
         supports_module_hash: attestation_version >= 400 && keymint_version >= 400,
         original_boot_key,
         original_boot_hash,
-        attestation_security_level,
-        keymint_security_level,
+        attestation_security_level: security_levels.attestation,
+        keymint_security_level: security_levels.keymint,
+    })
+}
+
+pub(crate) fn inspect_security_levels(extension_der: &[u8]) -> Result<SecurityLevels, Error> {
+    let outer = AnyRef::from_der(extension_der).map_err(|_| Error::AttestationRewrite)?;
+    if outer.tag() != Tag::Sequence {
+        return Err(Error::AttestationRewrite);
+    }
+    let fields = split(outer.value(), MAX_FIELDS)?;
+    if fields.len() <= TEE_INDEX {
+        return Err(Error::AttestationRewrite);
+    }
+    security_levels_from_fields(&fields)
+}
+
+fn security_levels_from_fields(fields: &[Vec<u8>]) -> Result<SecurityLevels, Error> {
+    Ok(SecurityLevels {
+        attestation: decode_security_level(&fields[1])?,
+        keymint: decode_security_level(&fields[3])?,
     })
 }
 
