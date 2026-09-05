@@ -363,7 +363,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             Logger.i("TEE SecurityLevel is unavailable")
         }
         if (strongBox != null) {
-            val interceptor = SecurityLevelInterceptor()
+            val interceptor = SecurityLevelInterceptor(allowGenericReplacement = false)
             if (!registerBinderInterceptor(
                     bd,
                     strongBox.asBinder(),
