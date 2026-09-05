@@ -2,7 +2,6 @@ package cleveres.tricky.cleverestech.keystore;
 
 import android.os.Parcel;
 import android.system.keystore2.IKeystoreSecurityLevel;
-import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyMetadata;
 import org.junit.Test;
 
@@ -23,39 +22,50 @@ import static org.mockito.Mockito.when;
 public class AttestationRequestContractTest {
     @Test
     public void onlyExplicitNullAttestationKeyPermitsGenericRewrite() {
-        Parcel request = request(null);
+        Parcel request = request(false);
         assertTrue(Utils.usesDefaultAttestationKey(request));
         verify(request).enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR);
         verify(request).setDataPosition(28);
 
-        for (int domain : new int[] {0, 1, 2, 3, 4}) {
-            KeyDescriptor issuer = new KeyDescriptor();
-            issuer.domain = domain;
-            issuer.alias = null;
-            request = request(issuer);
-            assertFalse(Utils.usesDefaultAttestationKey(request));
-            verify(request).setDataPosition(28);
-        }
+        request = request(true);
+        assertFalse(Utils.usesDefaultAttestationKey(request));
+        verify(request).setDataPosition(28);
     }
 
     @Test
     public void missingOrMalformedRequestCannotBecomeDefaultIssuer() {
-        Parcel request = request(null);
+        Parcel request = request(false);
         when(request.dataAvail()).thenReturn(0);
         assertFalse(Utils.usesDefaultAttestationKey(request));
         verify(request).setDataPosition(28);
 
-        request = request(null);
+        request = request(false);
         when(request.dataAvail()).thenReturn(64, 0);
         assertFalse(Utils.usesDefaultAttestationKey(request));
         verify(request).setDataPosition(28);
 
-        request = request(null);
-        when(request.readTypedObject(KeyDescriptor.CREATOR)).thenReturn(null);
+        request = request(false);
+        when(request.readInt()).thenReturn(0);
         assertFalse(Utils.usesDefaultAttestationKey(request));
         verify(request).setDataPosition(28);
 
-        request = request(null);
+        request = request(false);
+        when(request.readInt()).thenReturn(1, Integer.BYTES - 1);
+        assertFalse(Utils.usesDefaultAttestationKey(request));
+        verify(request).setDataPosition(28);
+
+        request = request(false);
+        when(request.dataPosition()).thenReturn(28, Integer.MAX_VALUE - 1);
+        when(request.readInt()).thenReturn(1, Integer.BYTES);
+        assertFalse(Utils.usesDefaultAttestationKey(request));
+        verify(request).setDataPosition(28);
+
+        request = request(false);
+        when(request.dataSize()).thenReturn(40);
+        assertFalse(Utils.usesDefaultAttestationKey(request));
+        verify(request).setDataPosition(28);
+
+        request = request(false);
         doThrow(new SecurityException("wrong interface"))
                 .when(request).enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR);
         assertFalse(Utils.usesDefaultAttestationKey(request));
@@ -124,11 +134,12 @@ public class AttestationRequestContractTest {
         }
     }
 
-    static Parcel request(KeyDescriptor issuer) {
+    static Parcel request(boolean explicitIssuer) {
         Parcel request = mock(Parcel.class);
-        when(request.dataPosition()).thenReturn(28);
+        when(request.dataPosition()).thenReturn(28, 32);
         when(request.dataAvail()).thenReturn(64);
-        when(request.readTypedObject(KeyDescriptor.CREATOR)).thenReturn(new KeyDescriptor(), issuer);
+        when(request.readInt()).thenReturn(1, 16, explicitIssuer ? 1 : 0);
+        when(request.dataSize()).thenReturn(128);
         return request;
     }
 }
