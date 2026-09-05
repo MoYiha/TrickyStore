@@ -68,6 +68,7 @@ internal object ModuleIntegrityWatcher {
     val targetedVerificationExecutions = AtomicInteger(0)
     val fullVerificationExecutions = AtomicInteger(0)
 
+    /** Starts watching the module directory, its parent, and manifest subdirectories. */
     fun start(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -191,6 +192,7 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
+    /** Handles parent-directory changes by revalidating the final module root after settling. */
     private fun handleParentEvent(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -228,6 +230,7 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
+    /** Arms child and manifest-subdirectory observers for the current watcher generation. */
     private fun tryArmChildLocked(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -339,6 +342,7 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
+    /** Routes path events so only stable file states are hashed. */
     private fun handlePathEventLocked(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -422,6 +426,7 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
+    /** Queues a stable path for coalesced single-file verification. */
     private fun scheduleTargetedCheckLocked(
         relPath: String,
         generation: Long,
@@ -441,6 +446,7 @@ internal object ModuleIntegrityWatcher {
         targetedScheduler?.submit()
     }
 
+    /** Requires a settled full verification before any violation decision. */
     private fun scheduleFullCheckLocked() {
         fullReverificationPending = true
         fullScheduler?.submit()
@@ -468,6 +474,7 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
+    /** Stops all observers and cancels pending verification work. */
     fun stop() {
         synchronized(lock) {
             isRunning = false
