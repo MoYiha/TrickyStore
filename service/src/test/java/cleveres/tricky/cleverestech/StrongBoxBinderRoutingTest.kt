@@ -31,6 +31,27 @@ class StrongBoxBinderRoutingTest {
     }
 
     @Test
+    fun `non TEE getKeyEntry exits before cache hashing or certificate parsing`() {
+        val source = source("KeystoreInterceptor.kt")
+        val metadataRead = source.indexOf("val metadata = response?.metadata")
+        val levelGate =
+            source.indexOf(
+                "metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT",
+                metadataRead,
+            )
+        val cacheLookup = source.indexOf("CertHack.applyCachedCertificateChain(metadata)", levelGate)
+        val chainRead = source.indexOf("val originalChain = Utils.getCertificateChain(response)", cacheLookup)
+        val gateBody = source.substring(levelGate, cacheLookup)
+
+        assertTrue(metadataRead >= 0)
+        assertTrue(levelGate > metadataRead)
+        assertTrue(cacheLookup > levelGate)
+        assertTrue(chainRead > cacheLookup)
+        assertTrue(gateBody.contains("p.recycle()"))
+        assertTrue(gateBody.contains("return Skip"))
+    }
+
+    @Test
     fun `security level interceptor is used only for TEE generateKey`() {
         val keystore = source("KeystoreInterceptor.kt")
         val interceptor = source("SecurityLevelInterceptor.kt")
