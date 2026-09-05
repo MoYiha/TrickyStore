@@ -1,12 +1,9 @@
 package cleveres.tricky.cleverestech
 
 import android.os.Parcel
-import android.os.Parcelable
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.system.keystore2.IKeystoreSecurityLevel
-import android.system.keystore2.KeyDescriptor
-import android.system.keystore2.KeyMetadata
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import cleveres.tricky.cleverestech.keystore.Utils
 import java.security.KeyPairGenerator
@@ -31,11 +28,12 @@ class AttestationKeyContractTest {
                 request.writeInt(42)
                 val start = request.dataPosition()
                 request.writeInterfaceToken(IKeystoreSecurityLevel.DESCRIPTOR)
-                request.writeTypedObject(platformKeyDescriptor("child"), 0)
-                request.writeTypedObject(
-                    if (explicitIssuer) platformKeyDescriptor("issuer") else null,
-                    0,
-                )
+                writeKeyDescriptor(request, "child")
+                if (explicitIssuer) {
+                    writeKeyDescriptor(request, "issuer")
+                } else {
+                    request.writeInt(0)
+                }
                 request.setDataPosition(start)
                 assertEquals(!explicitIssuer, Utils.usesDefaultAttestationKey(request))
                 assertEquals(start, request.dataPosition())
@@ -48,12 +46,24 @@ class AttestationKeyContractTest {
         val truncated = Parcel.obtain()
         try {
             truncated.writeInterfaceToken(IKeystoreSecurityLevel.DESCRIPTOR)
-            truncated.writeTypedObject(platformKeyDescriptor("child"), 0)
+            writeKeyDescriptor(truncated, "child")
             truncated.setDataPosition(0)
             assertFalse(Utils.usesDefaultAttestationKey(truncated))
             assertEquals(0, truncated.dataPosition())
         } finally {
             truncated.recycle()
+        }
+
+        val invalidSize = Parcel.obtain()
+        try {
+            invalidSize.writeInterfaceToken(IKeystoreSecurityLevel.DESCRIPTOR)
+            invalidSize.writeInt(1)
+            invalidSize.writeInt(Int.MAX_VALUE)
+            invalidSize.setDataPosition(0)
+            assertFalse(Utils.usesDefaultAttestationKey(invalidSize))
+            assertEquals(0, invalidSize.dataPosition())
+        } finally {
+            invalidSize.recycle()
         }
     }
 
@@ -73,8 +83,7 @@ class AttestationKeyContractTest {
                 val child = store.getCertificate(childAlias)
                 child.verify(issuer.publicKey)
                 assertEquals(1, store.getCertificateChain(childAlias).size)
-                val metadata = platformKeyMetadata(child.encoded)
-                assertFalse(Utils.isCertificateChainRewriteCandidate(metadata))
+                assertFalse(Utils.isCertificateChainRewriteCandidate(child.encoded, null))
                 repeat(8) {
                     assertArrayEquals(child.encoded, store.getCertificate(childAlias).encoded)
                     store.getCertificate(childAlias).verify(issuer.publicKey)
@@ -82,62 +91,43 @@ class AttestationKeyContractTest {
             }
             val ordinary = store.getCertificate(aliases[3])
             assertFalse(Utils.hasAndroidAttestationExtension(ordinary))
-            val ordinaryMetadata = platformKeyMetadata(ordinary.encoded)
-            assertFalse(Utils.isCertificateChainRewriteCandidate(ordinaryMetadata))
-            val completeOrdinaryMetadata =
-                platformKeyMetadata(
+            assertFalse(Utils.isCertificateChainRewriteCandidate(ordinary.encoded, null))
+            assertTrue(
+                Utils.isCertificateChainRewriteCandidate(
                     ordinary.encoded,
                     store.getCertificate(aliases[0]).encoded,
-                )
-            assertTrue(Utils.isCertificateChainRewriteCandidate(completeOrdinaryMetadata))
+                ),
+            )
         } finally {
             aliases.reversed().forEach(store::deleteEntry)
         }
     }
 
     /*
-     * Android 17's framework parcelables do not expose the compile stub's no-arg
-     * constructors. Build test values through the stable AIDL wire format instead
-     * so the real platform CREATOR owns deserialization and constructor details.
+     * IKeystoreSecurityLevel.generateKey transports KeyDescriptor as a stable-AIDL typed
+     * parcelable. Emit the official presence + size-prefixed wire form directly so this platform
+     * contract test does not depend on hidden Java constructors or CREATOR fields that changed in
+     * Android 17. Production only needs to skip the first descriptor and inspect whether the
+     * optional attestationKey is present, so this is also the smallest exact input for that parser.
      */
-    private fun platformKeyDescriptor(alias: String): KeyDescriptor =
-        decodeStableParcelable(KeyDescriptor.CREATOR) { parcel ->
-            parcel.writeInt(0) // Domain.APP in the stable keystore2 AIDL contract.
-            parcel.writeLong(0L)
-            parcel.writeString(alias)
-            parcel.writeByteArray(null)
+    private fun writeKeyDescriptor(parcel: Parcel, alias: String) {
+        parcel.writeInt(1)
+        writeStableParcelable(parcel) {
+            writeInt(0) // Domain.APP.
+            writeLong(0L)
+            writeString(alias)
+            writeByteArray(null)
         }
+    }
 
-    private fun platformKeyMetadata(
-        certificate: ByteArray,
-        certificateChain: ByteArray? = null,
-    ): KeyMetadata =
-        decodeStableParcelable(KeyMetadata.CREATOR) { parcel ->
-            parcel.writeTypedObject(platformKeyDescriptor("metadata"), 0)
-            parcel.writeInt(0) // SecurityLevel.SOFTWARE.
-            parcel.writeInt(0) // Empty Authorization[]; a non-null AIDL field.
-            parcel.writeByteArray(certificate)
-            parcel.writeByteArray(certificateChain)
-            parcel.writeLong(0L)
-        }
-
-    private fun <T> decodeStableParcelable(
-        creator: Parcelable.Creator<T>,
-        writeFields: (Parcel) -> Unit,
-    ): T {
-        val parcel = Parcel.obtain()
-        try {
-            val start = parcel.dataPosition()
-            parcel.writeInt(0)
-            writeFields(parcel)
-            val end = parcel.dataPosition()
-            parcel.setDataPosition(start)
-            parcel.writeInt(end - start)
-            parcel.setDataPosition(start)
-            return creator.createFromParcel(parcel)
-        } finally {
-            parcel.recycle()
-        }
+    private fun writeStableParcelable(parcel: Parcel, writeFields: Parcel.() -> Unit) {
+        val start = parcel.dataPosition()
+        parcel.writeInt(0)
+        parcel.writeFields()
+        val end = parcel.dataPosition()
+        parcel.setDataPosition(start)
+        parcel.writeInt(end - start)
+        parcel.setDataPosition(end)
     }
 
     private fun generate(
