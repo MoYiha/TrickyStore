@@ -40,32 +40,32 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
-    fun `default attested generateKey does not require a Rust inspection round trip`() {
+    fun `fresh attested generateKey performs exactly one provenance inspection before issuer selection`() {
         val root = locateRoot()
         val source =
             File(
                 root,
                 "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
             ).readText()
-        val featureGate =
-            source.indexOf("PolicyState.Feature.SECURITY_PATCH, uid")
-        val inspectionDecision =
-            source.indexOf("boolean needsInspection = needsCapturedPatchLevels", featureGate)
-        val conditionalInspection =
-            source.indexOf("if (needsInspection)", inspectionDecision)
+        val method = source.indexOf("public static Certificate[] hackCertificateChain")
+        val localExtensionGuard =
+            source.indexOf("!Utils.hasAndroidAttestationExtension(caList[0])", method)
         val backendInspect =
-            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", conditionalInspection)
-        val configuredIds =
-            source.indexOf("? configuredIdOverrides(uid)", backendInspect)
-        val backendRewrite =
-            source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", configuredIds)
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", localExtensionGuard)
+        val nextBackendInspect =
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", backendInspect + 1)
+        val provenanceGate =
+            source.indexOf("inspection.getAttestationSecurityLevel()", backendInspect)
+        val issuerSelection = source.indexOf("selectKeyboxPool(", provenanceGate)
+        val backendRewrite = source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", issuerSelection)
 
-        assertTrue(featureGate >= 0)
-        assertTrue(inspectionDecision > featureGate)
-        assertTrue(conditionalInspection > inspectionDecision)
-        assertTrue(backendInspect > conditionalInspection)
-        assertTrue(configuredIds > backendInspect)
-        assertTrue(backendRewrite > configuredIds)
+        assertTrue(method >= 0)
+        assertTrue(localExtensionGuard > method)
+        assertTrue(backendInspect > localExtensionGuard)
+        assertTrue(nextBackendInspect < 0)
+        assertTrue(provenanceGate > backendInspect)
+        assertTrue(issuerSelection > provenanceGate)
+        assertTrue(backendRewrite > issuerSelection)
     }
 
     @Test
@@ -131,7 +131,7 @@ class GenerateKeyTimingFastPathTest {
         assertTrue(cacheLookup > method)
         assertTrue(localExtensionGuard > cacheLookup)
         assertTrue(backendInspect > localExtensionGuard)
-        assertTrue(backendRewrite > localExtensionGuard)
+        assertTrue(backendRewrite > backendInspect)
     }
 
     @Test
