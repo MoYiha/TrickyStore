@@ -40,7 +40,7 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
-    fun `fresh attested generateKey performs exactly one provenance inspection before issuer selection`() {
+    fun `fresh attested generateKey performs exactly one dual provenance inspection before issuer selection`() {
         val root = locateRoot()
         val source =
             File(
@@ -54,17 +54,20 @@ class GenerateKeyTimingFastPathTest {
             source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", localExtensionGuard)
         val nextBackendInspect =
             source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", backendInspect + 1)
-        val provenanceGate =
+        val attestationGate =
             source.indexOf("inspection.getAttestationSecurityLevel()", backendInspect)
-        val issuerSelection = source.indexOf("selectKeyboxPool(", provenanceGate)
+        val keymintGate =
+            source.indexOf("inspection.getKeymintSecurityLevel()", attestationGate)
+        val issuerSelection = source.indexOf("selectKeyboxPool(", keymintGate)
         val backendRewrite = source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", issuerSelection)
 
         assertTrue(method >= 0)
         assertTrue(localExtensionGuard > method)
         assertTrue(backendInspect > localExtensionGuard)
         assertTrue(nextBackendInspect < 0)
-        assertTrue(provenanceGate > backendInspect)
-        assertTrue(issuerSelection > provenanceGate)
+        assertTrue(attestationGate > backendInspect)
+        assertTrue(keymintGate > attestationGate)
+        assertTrue(issuerSelection > keymintGate)
         assertTrue(backendRewrite > issuerSelection)
     }
 
