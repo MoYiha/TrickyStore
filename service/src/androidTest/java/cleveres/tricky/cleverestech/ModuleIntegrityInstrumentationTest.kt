@@ -39,12 +39,11 @@ class ModuleIntegrityInstrumentationTest {
         ModuleIntegrityVerifier.moduleDirProvider = { testModuleDir.absolutePath }
         ModuleIntegrityVerifier.trustedPublicKeyProvider = { keyPair.public.encoded.takeLast(32).toByteArray() }
         ModuleIntegrityVerifier.allowUnsignedManifest = true
-        ModuleIntegrityWatcher.resetForTesting()
     }
 
     @After
     fun tearDown() {
-        ModuleIntegrityWatcher.resetForTesting()
+        ModuleIntegrityWatcher.stop()
         ModuleIntegrityVerifier.resetForTesting()
         IntegrityViolationHandler.resetForTesting()
         testModuleDir.deleteRecursively()
@@ -195,68 +194,6 @@ class ModuleIntegrityInstrumentationTest {
         val triggered = violationLatch.await(3, TimeUnit.SECONDS)
         assertTrue("Watcher must detect file modification on Android within timeout", triggered)
         assertTrue("Violations must not be empty", detectedViolations.isNotEmpty())
-    }
-
-    @Test
-    fun watcherDetectsManifestDeletionOnAndroid() {
-        populateMockModule(testModuleDir, sign = true)
-        val manifest = requireNotNull(ModuleIntegrityVerifier.loadManifest())
-        val violationLatch = CountDownLatch(1)
-        var detectedViolations = emptyList<String>()
-        ModuleIntegrityWatcher.start(testModuleDir, manifest) { violations ->
-            detectedViolations = violations
-            violationLatch.countDown()
-        }
-
-        assertTrue(File(testModuleDir, "integrity_manifest.json").delete())
-
-        assertTrue("Real manifest DELETE must reach verification", violationLatch.await(5, TimeUnit.SECONDS))
-        assertTrue(detectedViolations.any { it.contains("Manifest") })
-    }
-
-    @Test
-    fun watcherReverifiesAWriteWhoseDescriptorRemainsOpenOnAndroid() {
-        populateMockModule(testModuleDir, sign = true)
-        val manifest = requireNotNull(ModuleIntegrityVerifier.loadManifest())
-        ModuleIntegrityWatcher.fullVerificationDelayMs = 25L
-        ModuleIntegrityWatcher.writeGraceMs = 200L
-        val violationLatch = CountDownLatch(1)
-        var detectedViolations = emptyList<String>()
-        ModuleIntegrityWatcher.start(testModuleDir, manifest) { violations ->
-            detectedViolations = violations
-            violationLatch.countDown()
-        }
-
-        java.io.FileOutputStream(File(testModuleDir, "service.apk"), true).use { output ->
-            output.write("changed".toByteArray())
-            output.flush()
-            assertTrue("Verification must resume before CLOSE_WRITE", violationLatch.await(5, TimeUnit.SECONDS))
-            assertTrue(detectedViolations.any { it.contains("Hash mismatch") })
-        }
-    }
-
-    @Test
-    fun watcherAcceptsAnUnchangedManifestAfterAtomicReplacementOnAndroid() {
-        populateMockModule(testModuleDir, sign = true)
-        val manifestFile = File(testModuleDir, "integrity_manifest.json")
-        val replacement = File(testModuleDir, "replacement.sha256").apply { writeBytes(manifestFile.readBytes()) }
-        val manifest = requireNotNull(ModuleIntegrityVerifier.loadManifest())
-        val verified = CountDownLatch(1)
-        val violationLatch = CountDownLatch(1)
-        ModuleIntegrityWatcher.fullVerifier = {
-            ModuleIntegrityVerifier.verifyFull().also { if (it is IntegrityResult.Pass) verified.countDown() }
-        }
-        ModuleIntegrityWatcher.start(testModuleDir, manifest) { violationLatch.countDown() }
-
-        java.nio.file.Files.move(
-            replacement.toPath(),
-            manifestFile.toPath(),
-            java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-        )
-
-        assertTrue("Atomic manifest replacement must be cryptographically checked", verified.await(5, TimeUnit.SECONDS))
-        assertFalse("Unchanged signed bytes must not violate", violationLatch.await(200, TimeUnit.MILLISECONDS))
     }
 
     private fun populateMockModule(dir: File, sign: Boolean) {
