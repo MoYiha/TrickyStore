@@ -96,6 +96,13 @@ object KeystoreInterceptor : BinderInterceptor() {
                 return Skip
             }
 
+            // Caller-signed attestation leaves must keep their original issuer and signature.
+            // This also avoids re-parsing ordinary non-attested keys on every getKeyEntry call.
+            if (!Utils.isCertificateChainRewriteCandidate(metadata)) {
+                p.recycle()
+                return Skip
+            }
+
             val targeted = Config.needHack(callingUid)
             val mayReadGrantedChain = callingUid >= FIRST_APPLICATION_UID
 

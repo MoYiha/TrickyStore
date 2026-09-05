@@ -337,9 +337,7 @@ public final class CertHack {
      * getKeyEntry calls to avoid X.509 parsing and Rust IPC while preserving the genuine reply.
      */
     public static boolean applyCachedCertificateChain(KeyMetadata metadata) {
-        if (metadata == null || metadata.certificate == null ||
-                metadata.certificate.length == 0 ||
-                metadata.certificate.length > MAX_LEAF_CERTIFICATE_BYTES) {
+        if (!Utils.isCertificateChainRewriteCandidate(metadata)) {
             return false;
         }
         State currentState = state;

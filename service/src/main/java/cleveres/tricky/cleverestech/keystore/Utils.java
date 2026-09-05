@@ -1,5 +1,8 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import android.os.Parcel;
+import android.system.keystore2.IKeystoreSecurityLevel;
+import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyEntryResponse;
 import android.system.keystore2.KeyMetadata;
 import android.util.Log;
@@ -59,6 +62,38 @@ public final class Utils {
             ENCODED_ISSUER_CHAINS = ThreadLocal.withInitial(IdentityHashMap::new);
 
     private Utils() {
+    }
+
+    /** Reads the generateKey AIDL prefix without changing the caller's parcel position. */
+    public static boolean usesDefaultAttestationKey(Parcel request) {
+        int position = request.dataPosition();
+        try {
+            request.enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR);
+            if (request.dataAvail() < Integer.BYTES ||
+                    request.readTypedObject(KeyDescriptor.CREATOR) == null ||
+                    request.dataAvail() < Integer.BYTES) {
+                return false;
+            }
+            return request.readTypedObject(KeyDescriptor.CREATOR) == null;
+        } catch (RuntimeException invalidRequest) {
+            return false;
+        } finally {
+            request.setDataPosition(position);
+        }
+    }
+
+    /**
+     * KeyCreationResult's caller-provided ATTEST_KEY case returns only the signed leaf; its
+     * issuer chain belongs to the caller. Non-attested keys also have no issuer chain.
+     * Neither case permits substituting a generic keybox issuer, including after cache eviction
+     * or restart. Check the raw metadata before cache lookup, X.509 parsing or backend IPC.
+     */
+    public static boolean isCertificateChainRewriteCandidate(KeyMetadata metadata) {
+        return metadata != null && metadata.certificate != null &&
+                metadata.certificate.length > 0 &&
+                metadata.certificate.length <= MAX_CERTIFICATE_BYTES &&
+                metadata.certificateChain != null && metadata.certificateChain.length > 0 &&
+                metadata.certificateChain.length <= MAX_CHAIN_BYTES;
     }
 
     static X509Certificate toCertificate(byte[] encoded) {
