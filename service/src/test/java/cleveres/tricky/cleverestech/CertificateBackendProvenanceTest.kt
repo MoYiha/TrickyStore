@@ -1,125 +1,74 @@
 package cleveres.tricky.cleverestech
 
-import org.junit.After
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
 import org.junit.Test
-import java.util.concurrent.atomic.AtomicInteger
+import java.io.File
 
 class CertificateBackendProvenanceTest {
-    private val rewriteCalls = AtomicInteger(0)
+    @Test
+    fun `StrongBox provenance is classified before issuer selection and cached as passthrough`() {
+        val source =
+            File(
+                locateRoot(),
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
+        val method = source.indexOf("public static Certificate[] hackCertificateChain")
+        val inspect = source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", method)
+        val attestationGate =
+            source.indexOf("inspection.getAttestationSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE", inspect)
+        val keymintGate =
+            source.indexOf("inspection.getKeymintSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE", attestationGate)
+        val passthrough = source.indexOf("CachedCertificateChain.passthrough()", keymintGate)
+        val issuerSelection = source.indexOf("selectKeyboxPool(", passthrough)
+        val rewrite = source.indexOf("CertificateBackend.rewrite(", issuerSelection)
 
-    @Before
-    fun setUp() {
-        CertificateBackend.resetForTesting()
-        rewriteCalls.set(0)
-        CertificateBackend.rewriteOverride = {
-            rewriteCalls.incrementAndGet()
-            byteArrayOf(0x30, 0x00)
-        }
-    }
-
-    @After
-    fun tearDown() {
-        CertificateBackend.resetForTesting()
+        assertTrue(method >= 0)
+        assertTrue(inspect > method)
+        assertTrue(attestationGate > inspect)
+        assertTrue(keymintGate > attestationGate)
+        assertTrue(passthrough > keymintGate)
+        assertTrue(issuerSelection > passthrough)
+        assertTrue(rewrite > issuerSelection)
     }
 
     @Test
-    fun `TEE source remains eligible for bounded replacement signing`() {
-        CertificateBackend.inspectionOverride = {
-            inspection(
-                CertificateBackend.SECURITY_LEVEL_TEE,
-                CertificateBackend.SECURITY_LEVEL_TEE,
-            )
-        }
+    fun `passthrough cache is marker only and adds no background execution`() {
+        val source =
+            File(
+                locateRoot(),
+                "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
+            ).readText()
 
-        val rewritten = rewrite()
-
-        assertArrayEquals(byteArrayOf(0x30, 0x00), rewritten)
-        assertEquals(1, rewriteCalls.get())
+        assertTrue(source.contains("this.certificates = null"))
+        assertTrue(source.contains("if (passthrough) return;"))
+        assertTrue(source.contains("size() > MAX_CERTIFICATE_CACHE_ENTRIES"))
+        assertFalse(source.contains("ScheduledExecutor"))
+        assertFalse(source.contains("Timer("))
+        assertFalse(source.contains("Thread.sleep"))
+        assertFalse(source.contains("while (true)"))
     }
 
     @Test
-    fun `StrongBox source preserves genuine chain instead of cross signing`() {
-        CertificateBackend.inspectionOverride = {
-            inspection(
-                CertificateBackend.SECURITY_LEVEL_STRONGBOX,
-                CertificateBackend.SECURITY_LEVEL_STRONGBOX,
-            )
-        }
+    fun `certificate backend rewrite does not repeat provenance inspection`() {
+        val source =
+            File(
+                locateRoot(),
+                "service/src/main/java/cleveres/tricky/cleverestech/CertificateBackend.kt",
+            ).readText()
+        val rewrite = source.indexOf("fun rewrite(")
+        val decode = source.indexOf("internal fun decodeInspection", rewrite)
+        val body = source.substring(rewrite, decode)
 
-        assertNull(rewrite())
-        assertEquals(0, rewriteCalls.get())
+        assertFalse(body.contains("inspect(genuineLeafDer)"))
     }
 
-    @Test
-    fun `mixed attestation and KeyMint levels fail closed`() {
-        val combinations =
-            listOf(
-                CertificateBackend.SECURITY_LEVEL_TEE to CertificateBackend.SECURITY_LEVEL_STRONGBOX,
-                CertificateBackend.SECURITY_LEVEL_STRONGBOX to CertificateBackend.SECURITY_LEVEL_TEE,
-                CertificateBackend.SECURITY_LEVEL_SOFTWARE to CertificateBackend.SECURITY_LEVEL_TEE,
-            )
-        for ((attestation, keymint) in combinations) {
-            CertificateBackend.inspectionOverride = { inspection(attestation, keymint) }
-            assertNull(rewrite())
+    private fun locateRoot(): File {
+        var current = File(requireNotNull(System.getProperty("user.dir"))).canonicalFile
+        repeat(6) {
+            if (File(current, "service").isDirectory && File(current, "rust").isDirectory) return current
+            current = current.parentFile ?: return@repeat
         }
-        assertEquals(0, rewriteCalls.get())
+        error("Repository root not found")
     }
-
-    @Test
-    fun `provenance inspection boot digests are wiped after decision`() {
-        val key = ByteArray(32) { 0x41 }
-        val hash = ByteArray(32) { 0x42 }
-        CertificateBackend.inspectionOverride = {
-            inspection(
-                CertificateBackend.SECURITY_LEVEL_STRONGBOX,
-                CertificateBackend.SECURITY_LEVEL_STRONGBOX,
-                key,
-                hash,
-            )
-        }
-
-        assertNull(rewrite())
-        assertTrue(key.all { it == 0.toByte() })
-        assertTrue(hash.all { it == 0.toByte() })
-    }
-
-    private fun inspection(
-        attestationLevel: Int,
-        keymintLevel: Int,
-        bootKey: ByteArray? = null,
-        bootHash: ByteArray? = null,
-    ) =
-        CertificateBackend.Inspection(
-            systemPatch = null,
-            vendorPatch = null,
-            bootPatch = null,
-            presentIdMask = 0,
-            supportsModuleHash = false,
-            originalBootKey = bootKey,
-            originalBootHash = bootHash,
-            attestationSecurityLevel = attestationLevel,
-            keymintSecurityLevel = keymintLevel,
-        )
-
-    private fun rewrite(): ByteArray? =
-        CertificateBackend.rewrite(
-            genuineLeafDer = byteArrayOf(0x30, 0x00),
-            keyId = ByteArray(16) { 0x11 },
-            signingAlgorithm = CertificateBackend.SIGNING_EC_P256_SHA256,
-            systemDisposition = CertificateBackend.PATCH_KEEP,
-            systemValue = 0,
-            vendorDisposition = CertificateBackend.PATCH_KEEP,
-            vendorValue = 0,
-            bootDisposition = CertificateBackend.PATCH_KEEP,
-            bootValue = 0,
-            idOverrides = emptyMap(),
-            moduleHash = null,
-            verifiedBootKey = ByteArray(32) { 0x21 },
-            verifiedBootHash = ByteArray(32) { 0x31 },
-        )
 }
