@@ -11,7 +11,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /** Thin Android adapter for descriptor-relative mutations owned by the privileged Rust daemon. */
-internal class RustSecureFileOperations : SecureFileOperations {
+internal class RustSecureFileOperations : SecureFileOperations, RestoreFileOperations {
     override fun writeText(
         file: File,
         content: String,
@@ -30,7 +30,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(content.size <= MAX_FILE_BYTES) { "File exceeds the Rust broker size limit" }
         ByteArrayInputStream(content).use { input ->
-            transactAtomicWrite(file, input, content.size)
+            transactAtomicWrite(relativePath(file), input, content.size)
         }
     }
 
@@ -54,7 +54,7 @@ internal class RustSecureFileOperations : SecureFileOperations {
         // known (for example the fixed-size privacy seed). Keep that path atomic through the
         // descriptor-relative broker. WebUI download staging above is the maximum-bound stream
         // where the final length is intentionally unknown in advance.
-        transactAtomicWrite(file, inputStream, limit.toInt())
+        transactAtomicWrite(relative, inputStream, limit.toInt())
     }
 
     override fun mkdirs(
@@ -75,6 +75,96 @@ internal class RustSecureFileOperations : SecureFileOperations {
     ) {
         require(mode == FILE_MODE) { "Rust broker only accepts private config files" }
         transactControl(ACTION_TOUCH, relativePathBytes(file))
+    }
+
+    override fun begin(
+        configDir: File,
+        token: String,
+        maxSnapshotBytes: Long,
+    ) {
+        requireConfigRoot(configDir)
+        validateRestoreToken(token)
+        require(maxSnapshotBytes in 0L..MAX_RESTORE_SNAPSHOT_BYTES) {
+            "Restore snapshot limit exceeds the Rust broker bound"
+        }
+        transactControl(
+            ACTION_RESTORE_BEGIN,
+            restorePairBytes(token, maxSnapshotBytes.toString()),
+        )
+    }
+
+    override fun snapshot(
+        configDir: File,
+        token: String,
+        target: File,
+    ) {
+        requireConfigRoot(configDir)
+        validateRestoreToken(token)
+        transactControl(
+            ACTION_RESTORE_SNAPSHOT,
+            restorePairBytes(token, restoreRelativePath(target)),
+        )
+    }
+
+    override fun replace(
+        configDir: File,
+        token: String,
+        target: File,
+        content: ByteArray,
+    ) {
+        requireConfigRoot(configDir)
+        validateRestoreToken(token)
+        require(content.size <= MAX_FILE_BYTES) { "File exceeds the Rust broker size limit" }
+        val relative = restoreRelativePath(target)
+        ByteArrayInputStream(content).use { input ->
+            transactAtomicWrite(restorePair(token, relative), input, content.size)
+        }
+    }
+
+    override fun delete(
+        configDir: File,
+        token: String,
+        target: File,
+    ) {
+        requireConfigRoot(configDir)
+        validateRestoreToken(token)
+        transactControl(
+            ACTION_DELETE,
+            restorePairBytes(token, restoreRelativePath(target)),
+        )
+    }
+
+    override fun rollback(
+        configDir: File,
+        token: String,
+    ) {
+        requireConfigRoot(configDir)
+        transactRestoreToken(ACTION_RESTORE_ROLLBACK, token)
+    }
+
+    override fun commit(
+        configDir: File,
+        token: String,
+    ) {
+        requireConfigRoot(configDir)
+        transactRestoreToken(ACTION_RESTORE_COMMIT, token)
+    }
+
+    override fun abort(
+        configDir: File,
+        token: String,
+    ) {
+        requireConfigRoot(configDir)
+        transactRestoreToken(ACTION_RESTORE_ABORT, token)
+    }
+
+    override fun exportRecovery(
+        configDir: File,
+        token: String,
+    ): String {
+        requireConfigRoot(configDir)
+        transactRestoreToken(ACTION_RESTORE_EXPORT, token)
+        return File(configDir, ".restore-recovery-$token.manifest").absolutePath
     }
 
     private fun awaitAdapterRegistration() {
@@ -102,11 +192,11 @@ internal class RustSecureFileOperations : SecureFileOperations {
     }
 
     private fun transactAtomicWrite(
-        file: File,
+        relativePath: String,
         input: InputStream,
         declaredBodyLength: Int,
     ) {
-        val pathBytes = relativePath(file).toByteArray(Charsets.UTF_8)
+        val pathBytes = relativePath.toByteArray(Charsets.UTF_8)
         val scratch = ByteArray(STREAM_BUFFER_BYTES)
         try {
             require(pathBytes.size <= MAX_RELATIVE_PATH_BYTES)
@@ -165,6 +255,14 @@ internal class RustSecureFileOperations : SecureFileOperations {
         } finally {
             pathBytes.fill(0)
         }
+    }
+
+    private fun transactRestoreToken(
+        action: Int,
+        token: String,
+    ) {
+        validateRestoreToken(token)
+        transactControl(action, token.toByteArray(Charsets.UTF_8))
     }
 
     private fun transactControl(
@@ -238,7 +336,44 @@ internal class RustSecureFileOperations : SecureFileOperations {
         socket.setSoTimeout(IO_TIMEOUT_MS)
     }
 
+    private fun requireConfigRoot(configDir: File) {
+        if (configDir.absoluteFile.toPath().normalize().toString() != CONFIG_ROOT) {
+            throw SecurityException("Restore root does not match the Rust config capability")
+        }
+    }
+
+    private fun restorePair(
+        token: String,
+        argument: String,
+    ): String {
+        validateRestoreToken(token)
+        if (argument.isEmpty() || '\u0000' in argument) {
+            throw SecurityException("Invalid restore transaction argument")
+        }
+        return "$token\u0000$argument"
+    }
+
+    private fun restorePairBytes(
+        token: String,
+        argument: String,
+    ): ByteArray = restorePair(token, argument).toByteArray(Charsets.UTF_8)
+
+    private fun validateRestoreToken(token: String) {
+        if (token.length != RESTORE_TOKEN_LENGTH || token.any { it !in '0'..'9' && it !in 'a'..'f' }) {
+            throw SecurityException("Invalid restore transaction token")
+        }
+    }
+
     private fun relativePathBytes(file: File): ByteArray = relativePath(file).toByteArray(Charsets.UTF_8)
+
+    private fun restoreRelativePath(file: File): String {
+        val relative = relativePath(file)
+        val components = relative.split('/')
+        if (components.size != 1 && !(components.size == 2 && components[0] == KEYBOX_DIRECTORY)) {
+            throw IOException("Restore target is outside an allowed capability subtree")
+        }
+        return relative
+    }
 
     private fun relativePath(file: File): String {
         val absolute = file.absolutePath
@@ -388,6 +523,13 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val ACTION_ROOT_VALIDATE = 3
         const val ACTION_STAGE_CREATE = 4
         const val ACTION_STAGE_APPEND = 5
+        const val ACTION_RESTORE_BEGIN = 6
+        const val ACTION_RESTORE_SNAPSHOT = 7
+        const val ACTION_RESTORE_ROLLBACK = 8
+        const val ACTION_RESTORE_COMMIT = 9
+        const val ACTION_RESTORE_ABORT = 10
+        const val ACTION_DELETE = 11
+        const val ACTION_RESTORE_EXPORT = 12
         const val WRITE_COMMIT_MARKER = 0xa5
         const val HEADER_BYTES = 16
         const val REQUEST_PREFIX_BYTES = 7
@@ -395,6 +537,8 @@ internal class RustSecureFileOperations : SecureFileOperations {
         const val FILE_MODE = 384
         const val DIRECTORY_MODE = 448
         const val MAX_FILE_BYTES = 20 * 1024 * 1024
+        const val MAX_RESTORE_SNAPSHOT_BYTES = 32L * 1024L * 1024L
+        const val RESTORE_TOKEN_LENGTH = 32
         const val MAX_RELATIVE_PATH_BYTES = 511
         const val MAX_COMPONENT_BYTES = 255
         const val MAX_REQUEST_BYTES = REQUEST_PREFIX_BYTES + MAX_RELATIVE_PATH_BYTES + MAX_FILE_BYTES + WRITE_COMMIT_BYTES
