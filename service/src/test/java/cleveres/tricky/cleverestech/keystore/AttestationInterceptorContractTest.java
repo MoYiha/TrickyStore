@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech.keystore;
 import android.hardware.security.keymint.SecurityLevel;
 import android.os.Binder;
 import android.os.Parcel;
-import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyEntryResponse;
 import android.system.keystore2.KeyMetadata;
 import cleveres.tricky.cleverestech.KeystoreInterceptor;
@@ -48,7 +47,7 @@ public class AttestationInterceptorContractTest {
         X509Certificate child = certificate(keyPair("RSA"), issuer, "child", "issuer");
         KeyMetadata metadata = metadata(child, child.getEncoded());
         Parcel reply = generatedReply(metadata);
-        Parcel request = AttestationRequestContractTest.request(new KeyDescriptor());
+        Parcel request = AttestationRequestContractTest.request(true);
 
         try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
             backend.when(() -> CertHack.hackCertificateChain(any(), anyInt()))
@@ -87,7 +86,7 @@ public class AttestationInterceptorContractTest {
                     byte[] original = metadata.certificate.clone();
                     // Also exercise the reply invariant independently of the request guard.
                     assertSame(BinderInterceptor.Skip.INSTANCE,
-                            generate(AttestationRequestContractTest.request(null), generatedReply(metadata)));
+                            generate(AttestationRequestContractTest.request(false), generatedReply(metadata)));
 
                     for (int read = 0; read < 320; read++) {
                         KeyEntryResponse response = new KeyEntryResponse();
@@ -121,7 +120,7 @@ public class AttestationInterceptorContractTest {
         try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
             backend.when(() -> CertHack.hackCertificateChain(any(), anyInt())).thenReturn(replacement);
             BinderInterceptor.Result result =
-                    generate(AttestationRequestContractTest.request(null), generatedReply(metadata));
+                    generate(AttestationRequestContractTest.request(false), generatedReply(metadata));
             org.junit.Assert.assertTrue(result instanceof BinderInterceptor.OverrideReply);
             backend.verify(() -> CertHack.hackCertificateChain(any(), anyInt()));
             ((BinderInterceptor.OverrideReply) result).getReply().recycle();
