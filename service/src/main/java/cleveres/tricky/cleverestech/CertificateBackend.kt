@@ -174,6 +174,8 @@ object CertificateBackend {
     }
 
     internal fun decodeInspection(response: ByteArray): Inspection {
+        var key: ByteArray? = null
+        var hash: ByteArray? = null
         try {
             if (response.size != INSPECT_RESPONSE_BYTES ||
                 (response[0].toInt() and 0xff) != INSPECT_WIRE_VERSION
@@ -191,10 +193,12 @@ object CertificateBackend {
             val systemPatch = readOptionalI32(response, 4)
             val vendorPatch = readOptionalI32(response, 9)
             val bootPatch = readOptionalI32(response, 14)
-            val key = decodeOptionalDigest(response, 19, flags and FLAG_BOOT_KEY_PRESENT != 0)
-            val hash = decodeOptionalDigest(response, 51, flags and FLAG_BOOT_HASH_PRESENT != 0)
+            // Validate cheap scalar provenance before copying either boot digest out of the
+            // transport buffer. Any later decode failure wipes whichever digest was already made.
             val attestationSecurityLevel = decodeSecurityLevel(response[83])
             val keymintSecurityLevel = decodeSecurityLevel(response[84])
+            key = decodeOptionalDigest(response, 19, flags and FLAG_BOOT_KEY_PRESENT != 0)
+            hash = decodeOptionalDigest(response, 51, flags and FLAG_BOOT_HASH_PRESENT != 0)
             return Inspection(
                 systemPatch,
                 vendorPatch,
@@ -206,6 +210,10 @@ object CertificateBackend {
                 attestationSecurityLevel,
                 keymintSecurityLevel,
             )
+        } catch (error: Throwable) {
+            key?.fill(0)
+            hash?.fill(0)
+            throw error
         } finally {
             response.fill(0)
         }
