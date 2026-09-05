@@ -81,10 +81,21 @@ object KeystoreInterceptor : BinderInterceptor() {
         val p = Parcel.obtain()
         try {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
-            if (response == null || response.metadata == null) {
+            val metadata = response?.metadata
+            if (metadata == null) {
                 p.recycle()
                 return Skip
             }
+
+            // getKeyEntry exposes the platform-owned security level directly in KeyMetadata.
+            // Generic replacement is a TEE-only policy, so reject StrongBox/software metadata
+            // before cache hashing, X.509 parsing or Rust IPC. This keeps StrongBox reads fully
+            // platform-owned and removes even the first-read provenance-classification overhead.
+            if (metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT) {
+                p.recycle()
+                return Skip
+            }
+
             val targeted = Config.needHack(callingUid)
             val mayReadGrantedChain = callingUid >= FIRST_APPLICATION_UID
 
@@ -96,7 +107,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             // getEncoded(), issuer parsing and every Rust backend operation on the measured path.
             if (
                 (targeted || mayReadGrantedChain) &&
-                CertHack.applyCachedCertificateChain(response.metadata)
+                CertHack.applyCachedCertificateChain(metadata)
             ) {
                 p.writeNoException()
                 p.writeTypedObject(response, 0)
