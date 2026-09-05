@@ -432,13 +432,17 @@ internal object ModuleIntegrityWatcher {
         }
 
         if ((event and MOVED_TO) != 0) {
+            val requireFullVerification = fullReverificationPending
             mutationEpoch++
             pendingWritePaths.remove(affectedPath)
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (fullReverificationPending) fullScheduler?.submit()
+                if (requireFullVerification) {
+                    fullReverificationPending = true
+                    fullScheduler?.submit()
+                }
             }
             return
         }
@@ -473,16 +477,20 @@ internal object ModuleIntegrityWatcher {
         }
 
         if ((event and ATTRIB) != 0) {
+            val requireFullVerification = fullReverificationPending
             mutationEpoch++
             if (affectedPath in pendingWritePaths) {
-                if (fullReverificationPending) fullScheduler?.submit()
+                if (requireFullVerification) fullScheduler?.submit()
                 return
             }
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (fullReverificationPending) fullScheduler?.submit()
+                if (requireFullVerification) {
+                    fullReverificationPending = true
+                    fullScheduler?.submit()
+                }
             }
         }
     }
