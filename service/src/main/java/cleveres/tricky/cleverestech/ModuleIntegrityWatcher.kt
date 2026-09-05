@@ -288,7 +288,6 @@ internal object ModuleIntegrityWatcher {
                         handleChildEvent(
                             directory,
                             loadedManifest,
-                            violationHandler,
                             generation,
                             childToken,
                             event,
@@ -320,7 +319,6 @@ internal object ModuleIntegrityWatcher {
                                 handleSubdirectoryEvent(
                                     directory,
                                     loadedManifest,
-                                    violationHandler,
                                     generation,
                                     childToken,
                                     subdirRel,
@@ -344,7 +342,6 @@ internal object ModuleIntegrityWatcher {
     private fun handleChildEvent(
         directory: File,
         loadedManifest: ParsedManifest,
-        violationHandler: (List<String>) -> Unit,
         generation: Long,
         childToken: Long,
         event: Int,
@@ -377,7 +374,6 @@ internal object ModuleIntegrityWatcher {
     private fun handleSubdirectoryEvent(
         directory: File,
         loadedManifest: ParsedManifest,
-        violationHandler: (List<String>) -> Unit,
         generation: Long,
         childToken: Long,
         subdirRel: String,
