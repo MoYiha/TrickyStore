@@ -8,7 +8,7 @@ import org.junit.Test
 class StrongBoxBinderRoutingTest {
     @Test
     fun `root keystore interceptor never remaps StrongBox to TEE`() {
-        val source = keystoreInterceptorSource()
+        val source = source("KeystoreInterceptor.kt")
 
         assertFalse(source.contains("getSecurityLevelTransaction"))
         assertFalse(source.contains("returned == strongBoxTarget"))
@@ -17,23 +17,45 @@ class StrongBoxBinderRoutingTest {
     }
 
     @Test
-    fun `real StrongBox child binder remains independently intercepted`() {
-        val source = keystoreInterceptorSource()
+    fun `real StrongBox child binder is registered with generic replacement disabled`() {
+        val source = source("KeystoreInterceptor.kt")
         val strongBoxLookup = source.indexOf("ks.getSecurityLevel(SecurityLevel.STRONGBOX)")
+        val transparentInterceptor =
+            source.indexOf(
+                "SecurityLevelInterceptor(allowGenericReplacement = false)",
+                strongBoxLookup,
+            )
         val strongBoxRegistration =
-            source.indexOf("strongBox.asBinder(),", strongBoxLookup)
+            source.indexOf("strongBox.asBinder(),", transparentInterceptor)
         val strongBoxTargetCapture =
             source.indexOf("strongBoxTarget = strongBox.asBinder()", strongBoxRegistration)
 
         assertTrue(strongBoxLookup >= 0)
-        assertTrue(strongBoxRegistration > strongBoxLookup)
+        assertTrue(transparentInterceptor > strongBoxLookup)
+        assertTrue(strongBoxRegistration > transparentInterceptor)
         assertTrue(strongBoxTargetCapture > strongBoxRegistration)
     }
 
-    private fun keystoreInterceptorSource(): String =
+    @Test
+    fun `security level interceptor gates generateKey before policy and backend work`() {
+        val source = source("SecurityLevelInterceptor.kt")
+        val preTransact = source.indexOf("override fun onPreTransact")
+        val replacementGate = source.indexOf("allowGenericReplacement &&", preTransact)
+        val generateKeyGate = source.indexOf("code == generateKeyTransaction", replacementGate)
+        val backendGate = source.indexOf("CertHack.canHack()", generateKeyGate)
+        val policyGate = source.indexOf("Config.needHack(callingUid)", backendGate)
+
+        assertTrue(preTransact >= 0)
+        assertTrue(replacementGate > preTransact)
+        assertTrue(generateKeyGate > replacementGate)
+        assertTrue(backendGate > generateKeyGate)
+        assertTrue(policyGate > backendGate)
+    }
+
+    private fun source(name: String): String =
         File(
             locateRoot(),
-            "service/src/main/java/cleveres/tricky/cleverestech/KeystoreInterceptor.kt",
+            "service/src/main/java/cleveres/tricky/cleverestech/$name",
         ).readText()
 
     private fun locateRoot(): File {
