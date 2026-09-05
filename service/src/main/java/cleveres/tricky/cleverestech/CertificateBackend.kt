@@ -15,7 +15,7 @@ object CertificateBackend {
     const val SECURITY_LEVEL_TEE = 1
     const val SECURITY_LEVEL_STRONGBOX = 2
 
-    data class Inspection(
+    data class Inspection @JvmOverloads constructor(
         val systemPatch: Int?,
         val vendorPatch: Int?,
         val bootPatch: Int?,
@@ -25,6 +25,7 @@ object CertificateBackend {
         val originalBootHash: ByteArray?,
         val attestationSecurityLevel: Int,
         val keymintSecurityLevel: Int,
+        val hasAttestKeyPurpose: Boolean = false,
     ) {
         fun wipe() {
             originalBootKey?.fill(0)
@@ -47,6 +48,8 @@ object CertificateBackend {
         val moduleHash: ByteArray?,
         val verifiedBootKey: ByteArray,
         val verifiedBootHash: ByteArray,
+        val preserveIssuerName: Boolean = false,
+        val virtualizeSubjectKey: Boolean = false,
     )
 
     @VisibleForTesting
@@ -86,6 +89,42 @@ object CertificateBackend {
         moduleHash: ByteArray?,
         verifiedBootKey: ByteArray,
         verifiedBootHash: ByteArray,
+    ): ByteArray? =
+        rewriteWithMode(
+            genuineLeafDer,
+            keyId,
+            signingAlgorithm,
+            systemDisposition,
+            systemValue,
+            vendorDisposition,
+            vendorValue,
+            bootDisposition,
+            bootValue,
+            idOverrides,
+            moduleHash,
+            verifiedBootKey,
+            verifiedBootHash,
+            preserveIssuerName = false,
+            virtualizeSubjectKey = false,
+        )
+
+    @JvmStatic
+    fun rewriteWithMode(
+        genuineLeafDer: ByteArray,
+        keyId: ByteArray,
+        signingAlgorithm: Int,
+        systemDisposition: Int,
+        systemValue: Int,
+        vendorDisposition: Int,
+        vendorValue: Int,
+        bootDisposition: Int,
+        bootValue: Int,
+        idOverrides: Map<Int, ByteArray>,
+        moduleHash: ByteArray?,
+        verifiedBootKey: ByteArray,
+        verifiedBootHash: ByteArray,
+        preserveIssuerName: Boolean,
+        virtualizeSubjectKey: Boolean,
     ): ByteArray? {
         if (genuineLeafDer.isEmpty() || genuineLeafDer.size > MAX_CERTIFICATE_DER_BYTES ||
             keyId.size != KEY_ID_BYTES || keyId.all { it == 0.toByte() } ||
@@ -120,6 +159,10 @@ object CertificateBackend {
             ) ?: return null
         if (payloadLength > MAX_REWRITE_REQUEST_BYTES) return null
 
+        val mode =
+            (if (preserveIssuerName) REWRITE_MODE_PRESERVE_ISSUER_NAME else 0) or
+                (if (virtualizeSubjectKey) REWRITE_MODE_VIRTUALIZE_SUBJECT_KEY else 0)
+
         rewriteOverride?.let { override ->
             return override(
                 RewriteRequest(
@@ -136,6 +179,8 @@ object CertificateBackend {
                     moduleHash = moduleHash,
                     verifiedBootKey = verifiedBootKey,
                     verifiedBootHash = verifiedBootHash,
+                    preserveIssuerName = preserveIssuerName,
+                    virtualizeSubjectKey = virtualizeSubjectKey,
                 ),
             )
         }
@@ -148,6 +193,7 @@ object CertificateBackend {
         ) { output ->
             output.write(REWRITE_WIRE_VERSION)
             output.write(signingAlgorithm)
+            output.write(mode)
             writePatch(output, systemDisposition, systemValue)
             writePatch(output, vendorDisposition, vendorValue)
             writePatch(output, bootDisposition, bootValue)
@@ -209,6 +255,7 @@ object CertificateBackend {
                 hash,
                 attestationSecurityLevel,
                 keymintSecurityLevel,
+                flags and FLAG_ATTEST_KEY_PURPOSE != 0,
             )
         } catch (error: Throwable) {
             key?.fill(0)
@@ -334,12 +381,13 @@ object CertificateBackend {
     private const val OP_CERTIFICATE_INSPECT = 25
     private const val OP_CERTIFICATE_REWRITE = 26
     private const val INSPECT_WIRE_VERSION = 2
-    private const val REWRITE_WIRE_VERSION = 2
+    private const val REWRITE_WIRE_VERSION = 3
     private const val INSPECT_RESPONSE_BYTES = 85
     private const val FLAG_MODULE_HASH_SUPPORTED = 1
     private const val FLAG_BOOT_KEY_PRESENT = 1 shl 1
     private const val FLAG_BOOT_HASH_PRESENT = 1 shl 2
-    private const val INSPECT_RESERVED_FLAGS = 0xf8
+    private const val FLAG_ATTEST_KEY_PURPOSE = 1 shl 3
+    private const val INSPECT_RESERVED_FLAGS = 0xf0
     private const val PRESENT_ID_RESERVED_MASK = 0xfe00
     private const val KEY_ID_BYTES = 16
     private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
@@ -347,8 +395,10 @@ object CertificateBackend {
     private const val MAX_MODULE_HASH_BYTES = 1024
     private const val MAX_ID_OVERRIDES = 9
     private const val BOOT_DIGEST_BYTES = 32
+    private const val REWRITE_MODE_PRESERVE_ISSUER_NAME = 1
+    private const val REWRITE_MODE_VIRTUALIZE_SUBJECT_KEY = 1 shl 1
     private const val ID_HEADER_BYTES = 4
-    private const val REWRITE_FIXED_BYTES = 104
+    private const val REWRITE_FIXED_BYTES = 105
     private const val MAX_ID_WIRE_BYTES = MAX_ID_OVERRIDES * (ID_HEADER_BYTES + MAX_ATTESTATION_ID_BYTES)
     private const val MAX_REWRITE_REQUEST_BYTES =
         REWRITE_FIXED_BYTES +
