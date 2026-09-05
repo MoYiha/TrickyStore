@@ -69,7 +69,7 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
-    fun `measured getKeyEntry serves encoded cache before X509 chain parsing`() {
+    fun `measured getKeyEntry serves encoded TEE cache before X509 chain parsing`() {
         val root = locateRoot()
         val source =
             File(
@@ -78,14 +78,22 @@ class GenerateKeyTimingFastPathTest {
             ).readText()
         val postTransact = source.indexOf("override fun onPostTransact")
         val responseRead = source.indexOf("val response = reply.readTypedObject", postTransact)
+        val metadataRead = source.indexOf("val metadata = response?.metadata", responseRead)
+        val levelGate =
+            source.indexOf(
+                "metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT",
+                metadataRead,
+            )
         val encodedCache =
-            source.indexOf("CertHack.applyCachedCertificateChain(response.metadata)", responseRead)
+            source.indexOf("CertHack.applyCachedCertificateChain(metadata)", levelGate)
         val chainRead =
             source.indexOf("val originalChain = Utils.getCertificateChain(response)", encodedCache)
 
         assertTrue(postTransact >= 0)
         assertTrue(responseRead > postTransact)
-        assertTrue(encodedCache > responseRead)
+        assertTrue(metadataRead > responseRead)
+        assertTrue(levelGate > metadataRead)
+        assertTrue(encodedCache > levelGate)
         assertTrue(chainRead > encodedCache)
     }
 
