@@ -10,4 +10,4 @@ pub use cleverestricky_attestation_core::{
     MAX_MODULE_HASH_BYTES,
 };
 pub use core::*;
-pub use inspection::{inspect_certificate, CertificateInspection};
+pub use inspection::{inspect_certificate, CertificateInspection, SecurityLevel};
