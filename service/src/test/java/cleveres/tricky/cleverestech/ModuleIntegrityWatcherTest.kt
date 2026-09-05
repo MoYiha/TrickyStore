@@ -347,6 +347,26 @@ class ModuleIntegrityWatcherTest {
     }
 
     @Test
+    fun structuralFullReverificationWaitsForCloseWriteAndStillRunsAfterward() {
+        val dir = tempFolder.newFolder("modules", "cleverestricky")
+        val testFile = java.io.File(dir, "test.so")
+        testFile.writeBytes(ByteArray(16))
+        ModuleIntegrityWatcher.fullVerifier = { IntegrityResult.Pass }
+        ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
+
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.DELETE, "inject")
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.MODIFY, "test.so")
+        Thread.sleep(150)
+
+        assertEquals(0, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+        assertEquals(1, ModuleIntegrityWatcher.pendingWriteCountForTesting())
+
+        ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CLOSE_WRITE, "test.so")
+        awaitCondition { ModuleIntegrityWatcher.fullVerificationExecutions.get() == 1 }
+        assertTrue(violations.isEmpty())
+    }
+
+    @Test
     fun ignoredFilesDoNotTriggerAnyVerification() {
         val dir = tempFolder.newFolder("modules", "cleverestricky")
         ModuleIntegrityWatcher.start(dir, testManifest) { violations.add(it) }
