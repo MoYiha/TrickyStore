@@ -87,7 +87,9 @@ internal object ModuleIntegrityWatcher {
                 ConflatedRefreshScheduler(scope, INTEGRITY_TARGETED_DEBOUNCE_MS) {
                     val work =
                         synchronized(lock) {
-                            if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
+                            if (!ownsWatcherGenerationLocked(generation)) {
+                                return@ConflatedRefreshScheduler
+                            }
                             if (fullReverificationPending) {
                                 pendingDirtyPaths.clear()
                                 eventCoalescedCount.incrementAndGet()
@@ -106,7 +108,9 @@ internal object ModuleIntegrityWatcher {
                         val result = singleFileVerifier(relPath, loadedManifest)
                         if (result is IntegrityResult.Fail) {
                             synchronized(lock) {
-                                if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
+                                if (!ownsWatcherGenerationLocked(generation)) {
+                                    return@ConflatedRefreshScheduler
+                                }
                                 if (
                                     mutationEpoch != verificationEpoch ||
                                     relPath in pendingWritePaths ||
@@ -126,7 +130,9 @@ internal object ModuleIntegrityWatcher {
                 ConflatedRefreshScheduler(scope, fullVerificationDelayMs) {
                     val verificationEpoch =
                         synchronized(lock) {
-                            if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
+                            if (!ownsWatcherGenerationLocked(generation)) {
+                                return@ConflatedRefreshScheduler
+                            }
                             if (!fullReverificationPending) return@ConflatedRefreshScheduler
                             if (pendingWritePaths.isNotEmpty()) {
                                 eventCoalescedCount.incrementAndGet()
@@ -163,7 +169,14 @@ internal object ModuleIntegrityWatcher {
                     val pObserver =
                         object : FileObserver(parent, CREATE or MOVED_TO or DELETE or MOVED_FROM) {
                             override fun onEvent(event: Int, path: String?) {
-                                handleParentEvent(directory, loadedManifest, violationHandler, generation, event, path)
+                                handleParentEvent(
+                                    directory,
+                                    loadedManifest,
+                                    violationHandler,
+                                    generation,
+                                    event,
+                                    path,
+                                )
                             }
                         }
                     parentObserver = pObserver
@@ -221,7 +234,9 @@ internal object ModuleIntegrityWatcher {
                     } catch (error: Throwable) {
                         Logger.e("Failed to arm child watcher upon recreate - failing closed", error)
                         disarmChildLocked()
-                        violationHandler(listOf("Failed to arm integrity child watcher upon recreate: ${error.message}"))
+                        violationHandler(
+                            listOf("Failed to arm integrity child watcher upon recreate: ${error.message}"),
+                        )
                         return
                     }
                 }
@@ -495,10 +510,12 @@ internal object ModuleIntegrityWatcher {
     }
 
     @androidx.annotation.VisibleForTesting
-    internal fun isChildObserverActiveForTesting(): Boolean = synchronized(lock) { childObserver != null }
+    internal fun isChildObserverActiveForTesting(): Boolean =
+        synchronized(lock) { childObserver != null }
 
     @androidx.annotation.VisibleForTesting
-    internal fun isParentObserverActiveForTesting(): Boolean = synchronized(lock) { parentObserver != null }
+    internal fun isParentObserverActiveForTesting(): Boolean =
+        synchronized(lock) { parentObserver != null }
 
     @androidx.annotation.VisibleForTesting
     internal fun injectChildEventForTesting(event: Int, path: String?) {
