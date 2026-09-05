@@ -1,6 +1,5 @@
 package cleveres.tricky.cleverestech
 
-
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,8 +11,8 @@ import org.junit.Test
 class CertificateBackendWireTest {
     @Test
     fun `inspection response decodes strict fields and wipes transport bytes`() {
-        val response = ByteArray(83)
-        response[0] = 1
+        val response = ByteArray(85)
+        response[0] = 2
         response[1] = 0x07
         writeU16(response, 2, (1 shl 0) or (1 shl 4) or (1 shl 8))
         writeOptionalI32(response, 4, 20260105)
@@ -23,6 +22,8 @@ class CertificateBackendWireTest {
             response[19 + index] = (index + 1).toByte()
             response[51 + index] = (0x40 + index).toByte()
         }
+        response[83] = CertificateBackend.SECURITY_LEVEL_STRONGBOX.toByte()
+        response[84] = CertificateBackend.SECURITY_LEVEL_STRONGBOX.toByte()
 
         val inspection = CertificateBackend.decodeInspection(response)
 
@@ -31,6 +32,8 @@ class CertificateBackendWireTest {
         assertEquals(20260205, inspection.bootPatch)
         assertEquals((1 shl 0) or (1 shl 4) or (1 shl 8), inspection.presentIdMask)
         assertTrue(inspection.supportsModuleHash)
+        assertEquals(CertificateBackend.SECURITY_LEVEL_STRONGBOX, inspection.attestationSecurityLevel)
+        assertEquals(CertificateBackend.SECURITY_LEVEL_STRONGBOX, inspection.keymintSecurityLevel)
         assertArrayEquals(ByteArray(32) { (it + 1).toByte() }, inspection.originalBootKey)
         assertArrayEquals(ByteArray(32) { (0x40 + it).toByte() }, inspection.originalBootHash)
         assertTrue(response.all { it == 0.toByte() })
@@ -41,33 +44,46 @@ class CertificateBackendWireTest {
     }
 
     @Test
-    fun `reserved flags and noncanonical absent fields fail closed`() {
-        val reserved = ByteArray(83)
-        reserved[0] = 1
+    fun `reserved flags noncanonical fields and unknown levels fail closed`() {
+        val reserved = canonicalResponse()
         reserved[1] = 0x08
         assertThrows(RustBackendUnavailableException::class.java) {
             CertificateBackend.decodeInspection(reserved)
         }
         assertTrue(reserved.all { it == 0.toByte() })
 
-        val noncanonical = ByteArray(83)
-        noncanonical[0] = 1
+        val noncanonical = canonicalResponse()
         writeI32(noncanonical, 5, 1)
         assertThrows(RustBackendUnavailableException::class.java) {
             CertificateBackend.decodeInspection(noncanonical)
         }
         assertTrue(noncanonical.all { it == 0.toByte() })
+
+        val unknownLevel = canonicalResponse()
+        unknownLevel[83] = 3
+        assertThrows(RustBackendUnavailableException::class.java) {
+            CertificateBackend.decodeInspection(unknownLevel)
+        }
+        assertTrue(unknownLevel.all { it == 0.toByte() })
     }
 
     @Test
     fun `absent boot digests remain absent`() {
-        val response = ByteArray(83)
-        response[0] = 1
+        val response = canonicalResponse()
         val inspection = CertificateBackend.decodeInspection(response)
         assertFalse(inspection.supportsModuleHash)
         assertNull(inspection.originalBootKey)
         assertNull(inspection.originalBootHash)
+        assertEquals(CertificateBackend.SECURITY_LEVEL_TEE, inspection.attestationSecurityLevel)
+        assertEquals(CertificateBackend.SECURITY_LEVEL_TEE, inspection.keymintSecurityLevel)
     }
+
+    private fun canonicalResponse(): ByteArray =
+        ByteArray(85).also {
+            it[0] = 2
+            it[83] = CertificateBackend.SECURITY_LEVEL_TEE.toByte()
+            it[84] = CertificateBackend.SECURITY_LEVEL_TEE.toByte()
+        }
 
     private fun writeOptionalI32(
         bytes: ByteArray,
