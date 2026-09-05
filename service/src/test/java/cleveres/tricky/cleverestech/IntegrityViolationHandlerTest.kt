@@ -12,23 +12,23 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class IntegrityViolationHandlerTest {
 
-    private val deleteCalls = AtomicInteger(0)
+    private val disableCalls = AtomicInteger(0)
     private val rebootCalls = AtomicInteger(0)
     private val terminateCalls = AtomicInteger(0)
     private val terminateExitCodes = CopyOnWriteArrayList<Int>()
-    private val deletedPaths = CopyOnWriteArrayList<String>()
+    private val disabledPaths = CopyOnWriteArrayList<String>()
 
     @Before
     fun setUp() {
         IntegrityViolationHandler.resetForTesting()
-        deleteCalls.set(0)
+        disableCalls.set(0)
         rebootCalls.set(0)
         terminateCalls.set(0)
         terminateExitCodes.clear()
-        deletedPaths.clear()
-        IntegrityViolationHandler.deleteModule = { path ->
-            deletedPaths.add(path)
-            deleteCalls.incrementAndGet()
+        disabledPaths.clear()
+        IntegrityViolationHandler.disableModule = { path ->
+            disabledPaths.add(path)
+            disableCalls.incrementAndGet()
             true
         }
         IntegrityViolationHandler.rebootSystem = {
@@ -46,10 +46,10 @@ class IntegrityViolationHandlerTest {
     }
 
     @Test
-    fun singleViolationTriggersDeleteAndReboot() {
+    fun singleViolationDisablesAndRebootsWithoutDeletingModule() {
         IntegrityViolationHandler.handleViolation(listOf("test violation"))
         assertTrue(IntegrityViolationHandler.isViolated)
-        assertEquals(1, deleteCalls.get())
+        assertEquals(1, disableCalls.get())
         assertEquals(1, rebootCalls.get())
         assertEquals(0, terminateCalls.get())
     }
@@ -59,7 +59,7 @@ class IntegrityViolationHandlerTest {
         IntegrityViolationHandler.handleViolation(listOf("first"))
         IntegrityViolationHandler.handleViolation(listOf("second"))
         IntegrityViolationHandler.handleViolation(listOf("third"))
-        assertEquals(1, deleteCalls.get())
+        assertEquals(1, disableCalls.get())
         assertEquals(1, rebootCalls.get())
         assertEquals(0, terminateCalls.get())
     }
@@ -67,25 +67,26 @@ class IntegrityViolationHandlerTest {
     @Test
     fun concurrentViolationsAreIdempotent() {
         val latch = CountDownLatch(1)
-        val threads = (1..10).map { i ->
-            Thread {
-                latch.await()
-                IntegrityViolationHandler.handleViolation(listOf("concurrent $i"))
+        val threads =
+            (1..10).map { i ->
+                Thread {
+                    latch.await()
+                    IntegrityViolationHandler.handleViolation(listOf("concurrent $i"))
+                }
             }
-        }
         threads.forEach { it.start() }
         latch.countDown()
         threads.forEach { it.join(5000) }
-        assertEquals(1, deleteCalls.get())
+        assertEquals(1, disableCalls.get())
         assertEquals(1, rebootCalls.get())
         assertEquals(0, terminateCalls.get())
         assertTrue(IntegrityViolationHandler.isViolated)
     }
 
     @Test
-    fun deleteFailureStillSetsViolatedFlagAndAbortsReboot() {
-        IntegrityViolationHandler.deleteModule = { false }
-        IntegrityViolationHandler.handleViolation(listOf("delete will fail"))
+    fun disableFailureStillSetsViolatedFlagAndAbortsReboot() {
+        IntegrityViolationHandler.disableModule = { false }
+        IntegrityViolationHandler.handleViolation(listOf("disable will fail"))
         assertTrue(IntegrityViolationHandler.isViolated)
         assertEquals(0, rebootCalls.get())
         assertEquals(1, terminateCalls.get())
@@ -93,9 +94,9 @@ class IntegrityViolationHandlerTest {
     }
 
     @Test
-    fun deleteExceptionStillSetsViolatedFlagAndAbortsReboot() {
-        IntegrityViolationHandler.deleteModule = { throw RuntimeException("I/O error") }
-        IntegrityViolationHandler.handleViolation(listOf("delete throws"))
+    fun disableExceptionStillSetsViolatedFlagAndAbortsReboot() {
+        IntegrityViolationHandler.disableModule = { throw RuntimeException("I/O error") }
+        IntegrityViolationHandler.handleViolation(listOf("disable throws"))
         assertTrue(IntegrityViolationHandler.isViolated)
         assertEquals(0, rebootCalls.get())
         assertEquals(1, terminateCalls.get())
@@ -107,7 +108,7 @@ class IntegrityViolationHandlerTest {
         IntegrityViolationHandler.rebootSystem = { throw RuntimeException("reboot failed") }
         IntegrityViolationHandler.handleViolation(listOf("reboot fails"))
         assertTrue(IntegrityViolationHandler.isViolated)
-        assertEquals(1, deleteCalls.get())
+        assertEquals(1, disableCalls.get())
         assertEquals(1, terminateCalls.get())
         assertEquals(1, terminateExitCodes[0])
     }
@@ -126,91 +127,77 @@ class IntegrityViolationHandlerTest {
     }
 
     @Test
-    fun deletedPathMatchesModuleDir() {
+    fun disabledPathMatchesModuleDir() {
         IntegrityViolationHandler.handleViolation(listOf("check path"))
-        assertEquals(1, deletedPaths.size)
-        assertTrue(deletedPaths[0].contains("cleverestricky"))
+        assertEquals(1, disabledPaths.size)
+        assertTrue(disabledPaths[0].contains("cleverestricky"))
     }
 
     @Test
-    fun symlinkInsideModulePreservesExternalTarget() {
-        val root = java.nio.file.Files.createTempDirectory("test_module_root").toFile()
-        val externalTarget = java.nio.file.Files.createTempFile("external_target", ".txt").toFile()
-        externalTarget.writeText("vital external system data")
-
-        val subDir = java.io.File(root, "subdir")
-        subDir.mkdirs()
-        java.io.File(subDir, "payload.txt").writeText("payload")
-
-        val symlinkFile = java.io.File(root, "external_link")
+    fun disableMarkerCreationPreservesInstalledFiles() {
+        val root = java.nio.file.Files.createTempDirectory("test_module_root")
         try {
-            java.nio.file.Files.createSymbolicLink(symlinkFile.toPath(), externalTarget.toPath())
-        } catch (_: Exception) {
-            // Symlinks not supported in host environment
-            root.deleteRecursively()
-            externalTarget.delete()
-            return
-        }
+            val payload = root.resolve("payload.bin")
+            java.nio.file.Files.write(payload, byteArrayOf(1, 2, 3, 4))
 
-        val noFollowMethod =
-            Class.forName("cleveres.tricky.cleverestech.IntegrityViolationHandlerKt")
-                .getDeclaredMethod("deleteDirectoryRecursivelyNoFollow", java.nio.file.Path::class.java, Int::class.javaPrimitiveType)
-        noFollowMethod.isAccessible = true
-        val deleted = noFollowMethod.invoke(null, root.toPath(), 16) as Boolean
+            assertTrue(createDisableMarker(root))
 
-        assertTrue("Expected recursive deletion to succeed", deleted)
-        assertFalse("Module directory should be deleted", root.exists())
-        assertTrue("External target file MUST NOT be deleted!", externalTarget.exists())
-        assertEquals("vital external system data", externalTarget.readText())
-        externalTarget.delete()
-    }
-
-    @Test
-    fun childDirectorySwappedToSymlinkDoesNotTraverseExternalTarget() {
-        val root = java.nio.file.Files.createTempDirectory("test_module_swap_root").toFile()
-        val externalDir = java.nio.file.Files.createTempDirectory("test_external_dir").toFile()
-        val sensitiveFile = java.io.File(externalDir, "sensitive_system_file.txt")
-        sensitiveFile.writeText("critical system data that must not be deleted")
-
-        // Start with swappedEntry as a genuine directory
-        val swappedEntry = java.io.File(root, "swapped_dir")
-        swappedEntry.mkdirs()
-        java.io.File(swappedEntry, "child_file.txt").writeText("initial content")
-
-        var swapOccurred = false
-        IntegrityViolationHandler.onPreDescentCheck = { entryPath ->
-            if (entryPath == swappedEntry.toPath() && !swapOccurred) {
-                swapOccurred = true
-                swappedEntry.deleteRecursively()
-                try {
-                    java.nio.file.Files.createSymbolicLink(swappedEntry.toPath(), externalDir.toPath())
-                } catch (_: Exception) {
-                    // Symlinks not supported in host environment
-                }
-            }
-        }
-
-        try {
-            val noFollowMethod =
-                Class.forName("cleveres.tricky.cleverestech.IntegrityViolationHandlerKt")
-                    .getDeclaredMethod(
-                        "deleteDirectoryRecursivelyNoFollow",
-                        java.nio.file.Path::class.java,
-                        Int::class.javaPrimitiveType,
-                    )
-            noFollowMethod.isAccessible = true
-            val deleted = noFollowMethod.invoke(null, root.toPath(), 16) as Boolean
-
-            assertTrue("Expected recursive deletion to succeed", deleted)
-            assertFalse("Module root should be deleted", root.exists())
-            assertFalse("Swapped symlink should be deleted", swappedEntry.exists())
-            assertTrue("External directory MUST NOT be traversed or deleted!", externalDir.exists())
-            assertTrue("Sensitive file in external directory MUST NOT be deleted!", sensitiveFile.exists())
-            assertEquals("critical system data that must not be deleted", sensitiveFile.readText())
+            assertTrue(java.nio.file.Files.exists(root))
+            assertTrue(java.nio.file.Files.exists(payload))
+            assertEquals(listOf<Byte>(1, 2, 3, 4), java.nio.file.Files.readAllBytes(payload).toList())
+            assertTrue(
+                java.nio.file.Files.isRegularFile(
+                    root.resolve("disable"),
+                    java.nio.file.LinkOption.NOFOLLOW_LINKS,
+                ),
+            )
         } finally {
-            IntegrityViolationHandler.onPreDescentCheck = null
-            root.deleteRecursively()
-            externalDir.deleteRecursively()
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun disableMarkerCreationIsIdempotent() {
+        val root = java.nio.file.Files.createTempDirectory("test_module_idempotent")
+        try {
+            assertTrue(createDisableMarker(root))
+            assertTrue(createDisableMarker(root))
+            assertEquals(0L, java.nio.file.Files.size(root.resolve("disable")))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun disableMarkerRejectsExistingDirectory() {
+        val root = java.nio.file.Files.createTempDirectory("test_module_bad_marker")
+        try {
+            java.nio.file.Files.createDirectory(root.resolve("disable"))
+            assertFalse(createDisableMarker(root))
+            assertTrue(java.nio.file.Files.isDirectory(root.resolve("disable")))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun disableMarkerRejectsSymlinkAndPreservesExternalTarget() {
+        val root = java.nio.file.Files.createTempDirectory("test_module_symlink")
+        val external = java.nio.file.Files.createTempFile("test_disable_external", ".txt")
+        java.nio.file.Files.writeString(external, "preserve me")
+        try {
+            try {
+                java.nio.file.Files.createSymbolicLink(root.resolve("disable"), external)
+            } catch (_: Exception) {
+                return
+            }
+
+            assertFalse(createDisableMarker(root))
+            assertTrue(java.nio.file.Files.exists(external))
+            assertEquals("preserve me", java.nio.file.Files.readString(external))
+        } finally {
+            root.toFile().deleteRecursively()
+            java.nio.file.Files.deleteIfExists(external)
         }
     }
 }
