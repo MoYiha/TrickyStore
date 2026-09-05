@@ -10,20 +10,18 @@ import cleveres.tricky.cleverestech.keystore.Utils
 import java.security.cert.Certificate
 
 /**
- * Rewrites only the certificate chain returned by a successful, genuine
+ * Rewrites only the certificate chain returned by a successful, genuine TEE
  * KeyMint key generation. The private key and every later cryptographic
  * operation remain owned by the platform security level.
  *
- * Generic keybox replacement is enabled only for the TEE child binder. The StrongBox child binder
- * is registered with [allowGenericReplacement] disabled so its generateKey reply remains completely
- * platform-owned even if a malformed/vendor certificate were to report an unexpected security level.
- * Targeted TEE generateKey and getKeyEntry calls deliberately use the same certificate-compatibility
- * path. No synthetic timing delay is added here; certificate caching in CertHack handles repeated
- * reads without parking Keystore threads.
+ * This interceptor is registered only on the TEE child binder. StrongBox is
+ * deliberately left completely unhooked so its binder identity, generateKey
+ * reply and genuine hardware certificate chain remain platform-owned. Targeted
+ * TEE generateKey and getKeyEntry calls use the same certificate-compatibility
+ * path. No synthetic timing delay is added here; certificate caching in
+ * CertHack handles repeated reads without parking Keystore threads.
  */
-class SecurityLevelInterceptor(
-    private val allowGenericReplacement: Boolean = true,
-) : BinderInterceptor() {
+class SecurityLevelInterceptor : BinderInterceptor() {
     companion object {
         private val generateKeyTransaction =
             getTransactCode(IKeystoreSecurityLevel.Stub::class.java, "generateKey")
@@ -40,7 +38,6 @@ class SecurityLevelInterceptor(
         data: Parcel,
     ): Result {
         return if (
-            allowGenericReplacement &&
             code == generateKeyTransaction &&
             CertHack.canHack() &&
             Config.needHack(callingUid)
