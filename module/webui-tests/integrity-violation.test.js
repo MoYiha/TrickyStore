@@ -16,6 +16,7 @@ assert.ok(handlerSource.includes('internal var disableModule'), 'violation handl
 assert.ok(handlerSource.includes('createDisableMarker'), 'violation handling must create a disable marker');
 assert.ok(!handlerSource.includes('deleteDirectoryRecursivelyNoFollow'), 'runtime integrity failure must not recursively delete the module');
 assert.ok(!handlerSource.includes('OP_INTEGRITY_DELETE_MODULE'), 'runtime handler must not request destructive daemon deletion');
+assert.ok(!handlerSource.includes('ModuleIntegrityWatcher'), 'violation handling must not initialize the disabled runtime watcher');
 
 const watcherSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
@@ -70,6 +71,18 @@ const backendAwaitIndex = mainSource.indexOf('NativeBackend.awaitReady');
 assert.ok(
     integrityVerifyIndex > 0 && backendAwaitIndex > 0 && integrityVerifyIndex < backendAwaitIndex,
     'Integrity verification must happen BEFORE NativeBackend.awaitReady in Main.kt'
+);
+assert.ok(
+    !mainSource.includes('ModuleIntegrityWatcher.start('),
+    'production runtime must not register a persistent integrity FileObserver'
+);
+assert.ok(
+    !mainSource.includes('ModuleIntegrityWatcher.stop()'),
+    'production runtime must not initialize ModuleIntegrityWatcher merely for shutdown cleanup'
+);
+assert.ok(
+    mainSource.includes('ModuleIntegrityVerifier.cachedManifest = null'),
+    'startup integrity must release the parsed manifest after a successful boot verdict'
 );
 
 console.log('integrity-violation.test.js: all assertions passed');
