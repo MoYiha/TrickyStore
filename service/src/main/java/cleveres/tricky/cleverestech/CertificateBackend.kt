@@ -11,6 +11,9 @@ object CertificateBackend {
     const val PATCH_KEEP = 0
     const val PATCH_OMIT = 1
     const val PATCH_REPLACE = 2
+    const val SECURITY_LEVEL_SOFTWARE = 0
+    const val SECURITY_LEVEL_TEE = 1
+    const val SECURITY_LEVEL_STRONGBOX = 2
 
     data class Inspection(
         val systemPatch: Int?,
@@ -20,6 +23,8 @@ object CertificateBackend {
         val supportsModuleHash: Boolean,
         val originalBootKey: ByteArray?,
         val originalBootHash: ByteArray?,
+        val attestationSecurityLevel: Int,
+        val keymintSecurityLevel: Int,
     ) {
         fun wipe() {
             originalBootKey?.fill(0)
@@ -188,6 +193,8 @@ object CertificateBackend {
             val bootPatch = readOptionalI32(response, 14)
             val key = decodeOptionalDigest(response, 19, flags and FLAG_BOOT_KEY_PRESENT != 0)
             val hash = decodeOptionalDigest(response, 51, flags and FLAG_BOOT_HASH_PRESENT != 0)
+            val attestationSecurityLevel = decodeSecurityLevel(response[83])
+            val keymintSecurityLevel = decodeSecurityLevel(response[84])
             return Inspection(
                 systemPatch,
                 vendorPatch,
@@ -196,10 +203,20 @@ object CertificateBackend {
                 flags and FLAG_MODULE_HASH_SUPPORTED != 0,
                 key,
                 hash,
+                attestationSecurityLevel,
+                keymintSecurityLevel,
             )
         } finally {
             response.fill(0)
         }
+    }
+
+    private fun decodeSecurityLevel(encoded: Byte): Int {
+        val level = encoded.toInt() and 0xff
+        if (level !in SECURITY_LEVEL_SOFTWARE..SECURITY_LEVEL_STRONGBOX) {
+            throw RustBackendUnavailableException(IOException("Invalid certificate security level"))
+        }
+        return level
     }
 
     private fun readOptionalI32(
@@ -308,9 +325,9 @@ object CertificateBackend {
 
     private const val OP_CERTIFICATE_INSPECT = 25
     private const val OP_CERTIFICATE_REWRITE = 26
-    private const val INSPECT_WIRE_VERSION = 1
+    private const val INSPECT_WIRE_VERSION = 2
     private const val REWRITE_WIRE_VERSION = 2
-    private const val INSPECT_RESPONSE_BYTES = 83
+    private const val INSPECT_RESPONSE_BYTES = 85
     private const val FLAG_MODULE_HASH_SUPPORTED = 1
     private const val FLAG_BOOT_KEY_PRESENT = 1 shl 1
     private const val FLAG_BOOT_HASH_PRESENT = 1 shl 2
