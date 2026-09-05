@@ -56,7 +56,7 @@ internal object ModuleIntegrityWatcher {
 
     private val pendingDirtyPaths = LinkedHashSet<String>()
     private val pendingWritePaths = LinkedHashMap<String, Long>()
-    private var writeOverflowSinceNanos: Long? = null
+    private var writeOverflowLastSeenNanos: Long? = null
 
     @androidx.annotation.VisibleForTesting
     internal var nanoTime: () -> Long = System::nanoTime
@@ -153,9 +153,8 @@ internal object ModuleIntegrityWatcher {
                                 return@ConflatedRefreshScheduler
                             }
                             val now = nanoTime()
-                            val writeGraceExpired = writeGraceExpiredLocked(now)
                             if (
-                                (hasPendingWritesLocked() && !writeGraceExpired) ||
+                                hasUnexpiredPendingWritesLocked(now) ||
                                 now - lastMutationNanos < TimeUnit.MILLISECONDS.toNanos(fullVerificationDelayMs)
                             ) {
                                 eventCoalescedCount.incrementAndGet()
@@ -495,30 +494,31 @@ internal object ModuleIntegrityWatcher {
         lastMutationNanos = nanoTime()
     }
 
-    /** Retains at most 64 paths; overflow retains a deadline for a full scan, never a clean verdict. */
+    /** Retains at most 64 paths; overflow keeps a conservative deadline for untracked writes. */
     private fun trackPendingWriteLocked(path: String) {
         if (path in pendingWritePaths) return
+        val now = nanoTime()
         if (pendingWritePaths.size < MAX_PENDING_PATHS) {
-            pendingWritePaths[path] = nanoTime()
-        } else if (writeOverflowSinceNanos == null) {
-            writeOverflowSinceNanos = nanoTime()
+            pendingWritePaths[path] = now
+        } else {
+            writeOverflowLastSeenNanos = now
             fullReverificationPending = true
         }
     }
 
     private fun hasPendingWritesLocked(): Boolean =
-        pendingWritePaths.isNotEmpty() || writeOverflowSinceNanos != null
+        pendingWritePaths.isNotEmpty() || writeOverflowLastSeenNanos != null
 
-    /** Repeated MODIFY events cannot extend the first unresolved write's grace period. */
-    private fun writeGraceExpiredLocked(now: Long): Boolean {
+    /** Every unresolved write gets its own grace window before a settled full scan can run. */
+    private fun hasUnexpiredPendingWritesLocked(now: Long): Boolean {
         val graceNanos = TimeUnit.MILLISECONDS.toNanos(writeGraceMs)
-        return pendingWritePaths.values.any { now - it >= graceNanos } ||
-            writeOverflowSinceNanos?.let { now - it >= graceNanos } == true
+        return pendingWritePaths.values.any { now - it < graceNanos } ||
+            writeOverflowLastSeenNanos?.let { now - it < graceNanos } == true
     }
 
     private fun clearPendingWritesLocked() {
         pendingWritePaths.clear()
-        writeOverflowSinceNanos = null
+        writeOverflowLastSeenNanos = null
     }
 
     /** Requires a settled full verification before any violation decision. */
