@@ -60,8 +60,8 @@ assert.ok(
     'Stale verifier failures must be discarded when a newer filesystem event arrives'
 );
 assert.ok(
-    watcherSource.includes('val requireFullVerification = fullReverificationPending'),
-    'Stable events must preserve an already-required structural full verification'
+    watcherSource.includes('if (fullReverificationPending)'),
+    'A pending structural full verification must suppress targeted decisions'
 );
 assert.ok(
     !watcherSource.includes('violationHandler(listOf("Critical payload deleted:'),
