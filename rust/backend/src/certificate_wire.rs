@@ -2,12 +2,12 @@
 use crate::keybox_wire::key_store::{self, KeyId, KEY_ID_BYTES};
 use cleverestricky_certificate_core::{
     inspect_certificate, rewrite_certificate_prepared, AttestationIdOverride, PatchComponent,
-    PatchLevels, PreparedCertificateRewriteRequest, SigningAlgorithm, MAX_ATTESTATION_ID_BYTES,
-    MAX_CERTIFICATE_DER_BYTES, MAX_MODULE_HASH_BYTES,
+    PatchLevels, PreparedCertificateRewriteRequest, SecurityLevel, SigningAlgorithm,
+    MAX_ATTESTATION_ID_BYTES, MAX_CERTIFICATE_DER_BYTES, MAX_MODULE_HASH_BYTES,
 };
 use zeroize::Zeroize;
 
-const INSPECT_WIRE_VERSION: u8 = 1;
+const INSPECT_WIRE_VERSION: u8 = 2;
 const REWRITE_WIRE_VERSION: u8 = 2;
 const SIGNING_EC_P256_SHA256: u8 = 1;
 const SIGNING_RSA_PKCS1_SHA256: u8 = 2;
@@ -19,7 +19,7 @@ const REWRITE_FIXED_BYTES: usize = 1 + 1 + 3 * 5 + 1 + 2 + 4 + KEY_ID_BYTES + 2 
 const MAX_ID_WIRE_BYTES: usize = MAX_ID_OVERRIDES * (2 + 2 + MAX_ATTESTATION_ID_BYTES);
 
 pub const MAX_INSPECT_REQUEST_BYTES: usize = MAX_CERTIFICATE_DER_BYTES;
-pub const INSPECT_RESPONSE_BYTES: usize = 1 + 1 + 2 + 3 * 5 + 2 * 32;
+pub const INSPECT_RESPONSE_BYTES: usize = 1 + 1 + 2 + 3 * 5 + 2 * 32 + 2;
 pub const MAX_REWRITE_REQUEST_BYTES: usize =
     REWRITE_FIXED_BYTES + MAX_ID_WIRE_BYTES + MAX_MODULE_HASH_BYTES + MAX_CERTIFICATE_DER_BYTES;
 pub const MAX_REWRITE_RESPONSE_BYTES: usize = MAX_CERTIFICATE_DER_BYTES;
@@ -47,6 +47,8 @@ pub fn inspect_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
         encode_optional_i32(&mut output, inspection.captured_patch_levels.boot);
         output.extend_from_slice(&inspection.original_boot_key.unwrap_or([0; 32]));
         output.extend_from_slice(&inspection.original_boot_hash.unwrap_or([0; 32]));
+        output.push(inspection.attestation_security_level.wire_value());
+        output.push(inspection.keymint_security_level.wire_value());
         debug_assert_eq!(output.len(), INSPECT_RESPONSE_BYTES);
         Ok(output)
     })();
@@ -60,6 +62,19 @@ pub fn rewrite_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
             return Err("certificate rewrite request rejected");
         }
         let parsed = parse_rewrite_request(&request)?;
+
+        // Defense in depth: do not trust the managed caller to classify provenance correctly.
+        // The production replacement keybox format proves key ownership/signature validity but not
+        // a hardware TEE-vs-StrongBox origin. Reinspect the genuine source and reject every source
+        // that is not unambiguously TEE/TEE before an opaque replacement issuer can sign it.
+        let provenance = inspect_certificate(parsed.genuine_leaf_der)
+            .map_err(|_| "certificate rewrite provenance rejected")?;
+        if provenance.attestation_security_level != SecurityLevel::TrustedEnvironment
+            || provenance.keymint_security_level != SecurityLevel::TrustedEnvironment
+        {
+            return Err("certificate rewrite provenance is not TEE compatible");
+        }
+
         key_store::with_prepared_key(&parsed.key_id, |stored_algorithm, prepared_issuer| {
             if stored_algorithm != parsed.signing_algorithm
                 || prepared_issuer.algorithm() != stored_algorithm

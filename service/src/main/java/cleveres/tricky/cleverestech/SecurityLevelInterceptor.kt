@@ -10,15 +10,16 @@ import cleveres.tricky.cleverestech.keystore.Utils
 import java.security.cert.Certificate
 
 /**
- * Rewrites only the certificate chain returned by a successful, genuine
+ * Rewrites only the certificate chain returned by a successful, genuine TEE
  * KeyMint key generation. The private key and every later cryptographic
  * operation remain owned by the platform security level.
  *
- * Targeted generateKey and getKeyEntry calls deliberately use the same
- * certificate-compatibility path. The retired RKP passthrough switch must not
- * split those two paths, otherwise the same alias can expose two different
- * attestation leaves. No synthetic timing delay is added here; certificate
- * caching in CertHack handles repeated reads without parking Keystore threads.
+ * This interceptor is registered only on the TEE child binder. StrongBox is
+ * deliberately left completely unhooked so its binder identity, generateKey
+ * reply and genuine hardware certificate chain remain platform-owned. Targeted
+ * TEE generateKey and getKeyEntry calls use the same certificate-compatibility
+ * path. No synthetic timing delay is added here; certificate caching in
+ * CertHack handles repeated reads without parking Keystore threads.
  */
 class SecurityLevelInterceptor : BinderInterceptor() {
     companion object {
@@ -90,7 +91,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 return Skip
             }
 
-            // A successful attestation rewrite discards Android's genuine issuer chain and
+            // A successful TEE attestation rewrite discards Android's genuine issuer chain and
             // replaces it with the selected keybox chain. Parsing every genuine issuer first
             // therefore adds work only to attested generateKey calls. Keep the hot path leaf-only
             // until CertHack confirms that a replacement can actually be produced.

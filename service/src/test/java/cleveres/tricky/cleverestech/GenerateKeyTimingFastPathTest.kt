@@ -40,36 +40,39 @@ class GenerateKeyTimingFastPathTest {
     }
 
     @Test
-    fun `default attested generateKey does not require a Rust inspection round trip`() {
+    fun `fresh attested generateKey performs exactly one dual provenance inspection before issuer selection`() {
         val root = locateRoot()
         val source =
             File(
                 root,
                 "service/src/main/java/cleveres/tricky/cleverestech/keystore/CertHack.java",
             ).readText()
-        val featureGate =
-            source.indexOf("PolicyState.Feature.SECURITY_PATCH, uid")
-        val inspectionDecision =
-            source.indexOf("boolean needsInspection = needsCapturedPatchLevels", featureGate)
-        val conditionalInspection =
-            source.indexOf("if (needsInspection)", inspectionDecision)
+        val method = source.indexOf("public static Certificate[] hackCertificateChain")
+        val localExtensionGuard =
+            source.indexOf("!Utils.hasAndroidAttestationExtension(caList[0])", method)
         val backendInspect =
-            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", conditionalInspection)
-        val configuredIds =
-            source.indexOf("? configuredIdOverrides(uid)", backendInspect)
-        val backendRewrite =
-            source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", configuredIds)
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", localExtensionGuard)
+        val nextBackendInspect =
+            source.indexOf("inspection = CertificateBackend.inspect(leafEncoded)", backendInspect + 1)
+        val attestationGate =
+            source.indexOf("inspection.getAttestationSecurityLevel()", backendInspect)
+        val keymintGate =
+            source.indexOf("inspection.getKeymintSecurityLevel()", attestationGate)
+        val issuerSelection = source.indexOf("selectKeyboxPool(", keymintGate)
+        val backendRewrite = source.indexOf("byte[] rewrittenDer = CertificateBackend.rewrite", issuerSelection)
 
-        assertTrue(featureGate >= 0)
-        assertTrue(inspectionDecision > featureGate)
-        assertTrue(conditionalInspection > inspectionDecision)
-        assertTrue(backendInspect > conditionalInspection)
-        assertTrue(configuredIds > backendInspect)
-        assertTrue(backendRewrite > configuredIds)
+        assertTrue(method >= 0)
+        assertTrue(localExtensionGuard > method)
+        assertTrue(backendInspect > localExtensionGuard)
+        assertTrue(nextBackendInspect < 0)
+        assertTrue(attestationGate > backendInspect)
+        assertTrue(keymintGate > attestationGate)
+        assertTrue(issuerSelection > keymintGate)
+        assertTrue(backendRewrite > issuerSelection)
     }
 
     @Test
-    fun `measured getKeyEntry serves encoded cache before X509 chain parsing`() {
+    fun `measured getKeyEntry serves encoded TEE cache before X509 chain parsing`() {
         val root = locateRoot()
         val source =
             File(
@@ -78,14 +81,22 @@ class GenerateKeyTimingFastPathTest {
             ).readText()
         val postTransact = source.indexOf("override fun onPostTransact")
         val responseRead = source.indexOf("val response = reply.readTypedObject", postTransact)
+        val metadataRead = source.indexOf("val metadata = response?.metadata", responseRead)
+        val levelGate =
+            source.indexOf(
+                "metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT",
+                metadataRead,
+            )
         val encodedCache =
-            source.indexOf("CertHack.applyCachedCertificateChain(response.metadata)", responseRead)
+            source.indexOf("CertHack.applyCachedCertificateChain(metadata)", levelGate)
         val chainRead =
             source.indexOf("val originalChain = Utils.getCertificateChain(response)", encodedCache)
 
         assertTrue(postTransact >= 0)
         assertTrue(responseRead > postTransact)
-        assertTrue(encodedCache > responseRead)
+        assertTrue(metadataRead > responseRead)
+        assertTrue(levelGate > metadataRead)
+        assertTrue(encodedCache > levelGate)
         assertTrue(chainRead > encodedCache)
     }
 
@@ -131,7 +142,7 @@ class GenerateKeyTimingFastPathTest {
         assertTrue(cacheLookup > method)
         assertTrue(localExtensionGuard > cacheLookup)
         assertTrue(backendInspect > localExtensionGuard)
-        assertTrue(backendRewrite > localExtensionGuard)
+        assertTrue(backendRewrite > backendInspect)
     }
 
     @Test

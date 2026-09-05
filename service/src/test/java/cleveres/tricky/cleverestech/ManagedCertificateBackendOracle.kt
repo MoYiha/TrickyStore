@@ -43,6 +43,8 @@ object ManagedCertificateBackendOracle {
             val sequence = ASN1Sequence.getInstance(extension.extnValue.octets)
             val fields = sequence.toArray()
             require(fields.size > 7)
+            val attestationSecurityLevel = decodeSecurityLevel(fields[1])
+            val keymintSecurityLevel = decodeSecurityLevel(fields[3])
             val listSix = ASN1Sequence.getInstance(fields[6])
             val listSeven = ASN1Sequence.getInstance(fields[7])
             val sixSummary = summarize(listSix)
@@ -69,6 +71,8 @@ object ManagedCertificateBackendOracle {
                         ASN1Integer.getInstance(fields[2]).value.intValueExact() >= 400,
                 originalBootKey = root?.let { usableDigest(it.getObjectAt(0)) },
                 originalBootHash = root?.let { usableDigest(it.getObjectAt(3)) },
+                attestationSecurityLevel = attestationSecurityLevel,
+                keymintSecurityLevel = keymintSecurityLevel,
             )
         }.getOrNull()
 
@@ -81,6 +85,8 @@ object ManagedCertificateBackendOracle {
             val sequence = ASN1Sequence.getInstance(extension.extnValue.octets)
             val fields = sequence.toArray()
             require(fields.size > 7)
+            require(decodeSecurityLevel(fields[1]) == CertificateBackend.SECURITY_LEVEL_TEE)
+            require(decodeSecurityLevel(fields[3]) == CertificateBackend.SECURITY_LEVEL_TEE)
             val listSix = ASN1Sequence.getInstance(fields[6])
             val listSeven = ASN1Sequence.getInstance(fields[7])
             val sixSummary = summarize(listSix)
@@ -205,6 +211,12 @@ object ManagedCertificateBackendOracle {
             val signer = JcaContentSignerBuilder(signatureAlgorithm).build(keyMaterial.privateKey)
             builder.build(signer).encoded
         }.getOrNull()
+
+    private fun decodeSecurityLevel(field: ASN1Encodable): Int {
+        val value = ASN1Enumerated.getInstance(field).value.intValueExact()
+        require(value in CertificateBackend.SECURITY_LEVEL_SOFTWARE..CertificateBackend.SECURITY_LEVEL_STRONGBOX)
+        return value
+    }
 
     private fun shouldRemovePatch(
         tag: Int,

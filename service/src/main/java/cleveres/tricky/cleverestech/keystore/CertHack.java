@@ -77,13 +77,14 @@ public final class CertHack {
 
     /**
      * One immutable cache value serves both compatibility APIs and the latency-sensitive raw
-     * KeyMetadata readback path. Certificate bytes are public data. Keeping their already-encoded
-     * form avoids reparsing the genuine chain and re-encoding the replacement on every getKeyEntry.
+     * KeyMetadata readback path. Replacement entries retain public encoded certificate bytes.
+     * Passthrough entries are marker-only and deliberately retain no certificate or chain arrays.
      */
     private static final class CachedCertificateChain {
         final Certificate[] certificates;
         final byte[] leafEncoded;
         final byte[] issuerChainEncoded;
+        final boolean passthrough;
 
         CachedCertificateChain(
                 Certificate[] certificates,
@@ -93,13 +94,26 @@ public final class CertHack {
             this.certificates = certificates.clone();
             this.leafEncoded = Objects.requireNonNull(leafEncoded, "leafEncoded");
             this.issuerChainEncoded = Objects.requireNonNull(issuerChainEncoded, "issuerChainEncoded");
+            this.passthrough = false;
+        }
+
+        private CachedCertificateChain() {
+            this.certificates = null;
+            this.leafEncoded = null;
+            this.issuerChainEncoded = null;
+            this.passthrough = true;
+        }
+
+        static CachedCertificateChain passthrough() {
+            return new CachedCertificateChain();
         }
 
         Certificate[] certificateCopy() {
-            return certificates.clone();
+            return passthrough ? null : certificates.clone();
         }
 
         void applyTo(KeyMetadata metadata) {
+            if (passthrough) return;
             // Parcel.writeTypedObject copies these byte arrays synchronously. The transient
             // KeyMetadata object never owns or mutates the cache storage after the reply is built.
             metadata.certificate = leafEncoded;
@@ -318,11 +332,9 @@ public final class CertHack {
     }
 
     /**
-     * Applies an already-produced attestation replacement directly to the raw KeyMetadata bytes.
-     * Duck Detector's side-channel probe repeatedly measures service.getKeyEntry for the same two
-     * keys, so the attested key should hit this path after generateKey populated the cache. A hit
-     * performs only one bounded DER hash/equality lookup and the later Parcel serialization: no
-     * CertificateFactory, no issuer-chain parsing, no getEncoded(), and no Rust IPC.
+     * Applies a cached replacement or passthrough decision directly to raw KeyMetadata bytes.
+     * A passthrough hit is intentionally a no-op and still returns true, allowing repeated
+     * getKeyEntry calls to avoid X.509 parsing and Rust IPC while preserving the genuine reply.
      */
     public static boolean applyCachedCertificateChain(KeyMetadata metadata) {
         if (metadata == null || metadata.certificate == null ||
@@ -346,7 +358,9 @@ public final class CertHack {
             byte[] leafEncoded = caList[0].getEncoded();
             if (leafEncoded.length == 0 || leafEncoded.length > MAX_LEAF_CERTIFICATE_BYTES) return null;
             CachedCertificateChain cached = state.certificateCache.get(new CacheKey(leafEncoded));
-            return cached == null ? null : cached.certificateCopy();
+            if (cached == null) return null;
+            Certificate[] replacement = cached.certificateCopy();
+            return replacement == null ? caList : replacement;
         } catch (Throwable error) {
             Logger.e("Could not resolve a cached attestation chain", error);
             return null;
@@ -378,49 +392,51 @@ public final class CertHack {
             Object cacheEpoch;
             synchronized (cache) {
                 CachedCertificateChain cached = cache.get(cacheKey);
-                if (cached != null) return cached.certificateCopy();
+                if (cached != null) {
+                    Certificate[] replacement = cached.certificateCopy();
+                    return replacement == null ? caList : replacement;
+                }
                 cacheEpoch = currentState.certificateCacheEpoch;
             }
 
-            // Preserve 2.5.8's ordering: look for a completed replacement first, then classify an
-            // uncached leaf locally. This keeps repeated attested getKeyEntry off the X.509/OID
-            // classifier while guaranteeing a non-attested cache miss never enters the Rust
-            // certificate backend.
+            // Preserve the local non-attested fast path. Only genuine Android attestation leaves
+            // cross the Rust certificate-inspection boundary.
             if (!Utils.hasAndroidAttestationExtension(caList[0])) return caList;
 
-            // In 2.6.0 every fresh attested key paid one backend round trip just to inspect fields
-            // that are irrelevant when security-patch rewriting is disabled. Keep DER parsing and
-            // signing in the hardened Rust backend, but do not ask it to inspect a leaf unless
-            // policy or verified-boot fallback actually needs data from that leaf.
+            // Security provenance is mandatory before choosing any replacement issuer. This is one
+            // bounded inspection for a fresh attested leaf. The existing 64-entry LRU stores both
+            // rewrite results and marker-only passthrough decisions, so repeated StrongBox reads do
+            // not create recurring IPC, parsing, allocations, timers or background work.
+            inspection = CertificateBackend.inspect(leafEncoded);
+            if (inspection == null) return caList;
+            if (inspection.getAttestationSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE ||
+                    inspection.getKeymintSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE) {
+                synchronized (cache) {
+                    if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
+                        cache.putIfAbsent(cacheKey, CachedCertificateChain.passthrough());
+                    }
+                }
+                return caList;
+            }
+
             boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
                     PolicyState.Feature.SECURITY_PATCH, uid);
             byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
             byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
-            boolean needsInspection = needsCapturedPatchLevels
-                    || verifiedBootKey == null
-                    || verifiedBootHash == null;
-
-            Config.AttestationPatchLevels patchLevels;
-            if (needsInspection) {
-                inspection = CertificateBackend.inspect(leafEncoded);
-                if (inspection == null) return caList;
-                patchLevels = needsCapturedPatchLevels
-                        ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
-                                uid,
-                                inspection.getSystemPatch(),
-                                inspection.getVendorPatch(),
-                                inspection.getBootPatch())
-                        : keepPatchLevels();
-                if (verifiedBootKey == null) {
-                    verifiedBootKey = firstUsableBootDigest(
-                            null, inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
-                }
-                if (verifiedBootHash == null) {
-                    verifiedBootHash = firstUsableBootDigest(
-                            null, inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
-                }
-            } else {
-                patchLevels = keepPatchLevels();
+            Config.AttestationPatchLevels patchLevels = needsCapturedPatchLevels
+                    ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
+                            uid,
+                            inspection.getSystemPatch(),
+                            inspection.getVendorPatch(),
+                            inspection.getBootPatch())
+                    : keepPatchLevels();
+            if (verifiedBootKey == null) {
+                verifiedBootKey = firstUsableBootDigest(
+                        null, inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
+            }
+            if (verifiedBootHash == null) {
+                verifiedBootHash = firstUsableBootDigest(
+                        null, inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
             }
 
             String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
@@ -445,10 +461,8 @@ public final class CertHack {
                 return caList;
             }
 
-            Map<Integer, byte[]> idOverrides = inspection == null
-                    ? configuredIdOverrides(uid)
-                    : presentIdOverrides(uid, inspection.getPresentIdMask());
-            byte[] moduleHash = inspection == null || inspection.getSupportsModuleHash()
+            Map<Integer, byte[]> idOverrides = presentIdOverrides(uid, inspection.getPresentIdMask());
+            byte[] moduleHash = inspection.getSupportsModuleHash()
                     ? Config.INSTANCE.getModuleHash()
                     : null;
             keyId = keybox.keyPair.getPrivate().getEncoded();
@@ -479,7 +493,10 @@ public final class CertHack {
                     return result;
                 }
                 CachedCertificateChain raced = cache.get(cacheKey);
-                if (raced != null) return raced.certificateCopy();
+                if (raced != null) {
+                    Certificate[] replacement = raced.certificateCopy();
+                    return replacement == null ? caList : replacement;
+                }
                 cache.put(cacheKey, completed);
             }
             return result;

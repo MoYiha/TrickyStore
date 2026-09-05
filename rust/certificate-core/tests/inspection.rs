@@ -1,6 +1,6 @@
 // Additional GPLv3 section 7(b) attribution term for tryigit-owned material: see ../../NOTICE.
 use cleverestricky_attestation_core::CapturedPatchLevels;
-use cleverestricky_certificate_core::{inspect_certificate, Error};
+use cleverestricky_certificate_core::{inspect_certificate, Error, SecurityLevel};
 
 mod fixture {
     include!("rewrite.rs");
@@ -50,6 +50,14 @@ fn inspection_returns_only_policy_inputs_needed_by_android_adapter() {
     assert!(inspected.supports_module_hash);
     assert_eq!(inspected.original_boot_key, Some([0x21; 32]));
     assert_eq!(inspected.original_boot_hash, Some([0x31; 32]));
+    assert_eq!(
+        inspected.attestation_security_level,
+        SecurityLevel::TrustedEnvironment
+    );
+    assert_eq!(
+        inspected.keymint_security_level,
+        SecurityLevel::TrustedEnvironment
+    );
 }
 
 #[test]

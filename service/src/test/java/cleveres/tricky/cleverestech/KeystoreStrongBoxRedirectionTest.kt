@@ -1,15 +1,15 @@
 package cleveres.tricky.cleverestech
 
 import android.system.keystore2.IKeystoreService
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.io.File
 
 class KeystoreStrongBoxRedirectionTest {
-
     @Before
     fun setUp() {
         Config.reset()
@@ -21,13 +21,13 @@ class KeystoreStrongBoxRedirectionTest {
     }
 
     @Test
-    fun `keystore interceptor declares getSecurityLevel and getKeyEntry codes`() {
+    fun `root keystore leaves getSecurityLevel transparent and intercepts only getKeyEntry`() {
         val source = sourceFile("KeystoreInterceptor.kt").readText()
 
-        assertTrue(source.contains("getSecurityLevelTransaction"))
+        assertFalse(source.contains("getSecurityLevelTransaction"))
         assertTrue(source.contains("getKeyEntryTransaction"))
-        assertTrue(source.contains("validTransactCodes"))
-        assertTrue(source.contains("getSecurityLevelTransaction, getKeyEntryTransaction"))
+        assertTrue(source.contains("validTransactCodes(getKeyEntryTransaction)"))
+        assertFalse(source.contains("SecurityLevel.STRONGBOX"))
     }
 
     @Test

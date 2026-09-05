@@ -19,18 +19,13 @@ object KeystoreInterceptor : BinderInterceptor() {
     private const val MAX_PROC_SCAN_ENTRIES = 4_096
     private const val INJECTION_RETRY_INTERVAL_MS = 15_000L
 
-    private val getSecurityLevelTransaction =
-        getTransactCode(IKeystoreService.Stub::class.java, "getSecurityLevel") // 1
-
     private val getKeyEntryTransaction =
         getTransactCode(IKeystoreService.Stub::class.java, "getKeyEntry") // 2
 
     private lateinit var keystore: IBinder
 
     private var teeInterceptor: SecurityLevelInterceptor? = null
-    private var strongBoxInterceptor: SecurityLevelInterceptor? = null
     private var teeTarget: IBinder? = null
-    private var strongBoxTarget: IBinder? = null
     private var binderBackdoor: IBinder? = null
 
     @Volatile private var keystoreRegistered = false
@@ -48,9 +43,6 @@ object KeystoreInterceptor : BinderInterceptor() {
         data: Parcel,
     ): Result {
         if (target != keystore || !CertHack.canHack()) return Skip
-        if (code == getSecurityLevelTransaction) {
-            return if (Config.needHack(callingUid) && teeTarget != null) Continue else Skip
-        }
         if (code == getKeyEntryTransaction) {
             val targeted = Config.needHack(callingUid)
             val mayReadGrantedChain =
@@ -79,24 +71,6 @@ object KeystoreInterceptor : BinderInterceptor() {
             return Skip
         }
 
-        if (code == getSecurityLevelTransaction) {
-            if (!Config.needHack(callingUid)) return Skip
-            val currentTeeTarget = teeTarget ?: return Skip
-            try {
-                reply.readException()
-                val returned = reply.readStrongBinder()
-                if (returned != null && strongBoxTarget != null && returned == strongBoxTarget) {
-                    val p = Parcel.obtain()
-                    p.writeNoException()
-                    p.writeStrongBinder(currentTeeTarget)
-                    return OverrideReply(0, p)
-                }
-            } catch (_: Throwable) {
-                return Skip
-            }
-            return Skip
-        }
-
         if (code != getKeyEntryTransaction) return Skip
 
         try {
@@ -107,10 +81,21 @@ object KeystoreInterceptor : BinderInterceptor() {
         val p = Parcel.obtain()
         try {
             val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
-            if (response == null || response.metadata == null) {
+            val metadata = response?.metadata
+            if (metadata == null) {
                 p.recycle()
                 return Skip
             }
+
+            // getKeyEntry exposes the platform-owned security level directly in KeyMetadata.
+            // Generic replacement is a TEE-only policy, so reject StrongBox/software metadata
+            // before cache hashing, X.509 parsing or Rust IPC. This keeps StrongBox reads fully
+            // platform-owned and removes even the first-read provenance-classification overhead.
+            if (metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT) {
+                p.recycle()
+                return Skip
+            }
+
             val targeted = Config.needHack(callingUid)
             val mayReadGrantedChain = callingUid >= FIRST_APPLICATION_UID
 
@@ -122,7 +107,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             // getEncoded(), issuer parsing and every Rust backend operation on the measured path.
             if (
                 (targeted || mayReadGrantedChain) &&
-                CertHack.applyCachedCertificateChain(response.metadata)
+                CertHack.applyCachedCertificateChain(metadata)
             ) {
                 p.writeNoException()
                 p.writeTypedObject(response, 0)
@@ -276,12 +261,12 @@ object KeystoreInterceptor : BinderInterceptor() {
 
     fun refreshKernelIdentity(): Boolean {
         val pid = findKeystore2Pid() ?: return false
-        
+
         val needsActivation = synchronized(this) {
             injected && injectedPid == pid
         }
         if (!needsActivation) return true
-        
+
         return runNativeActivation(pid, "resume")
     }
 
@@ -297,7 +282,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                 return false
             }
         val bd = getBinderControlEndpoint(b)
-        
+
         binderBackdoor = bd
         if (bd == null) {
             val pid = findKeystore2Pid()
@@ -306,7 +291,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                 triedCount.incrementAndGet()
                 return false
             }
-            
+
             val now = SystemClock.elapsedRealtime()
             val symbol = synchronized(this) {
                 if (lastInjectionAttemptMs != 0L && now - lastInjectionAttemptMs < INJECTION_RETRY_INTERVAL_MS) {
@@ -315,14 +300,14 @@ object KeystoreInterceptor : BinderInterceptor() {
                 lastInjectionAttemptMs = now
                 if (injected && injectedPid == pid) "resume" else "entry"
             }
-            
+
             Logger.i("trying to activate the keystore Binder hook ...")
             if (!runNativeActivation(pid, symbol)) {
                 triedCount.incrementAndGet()
                 return false
             }
-            
-            Logger.i("keystore Binder hook activated successfully")
+
+            Logger.i("Keystore Binder hook activated successfully")
             synchronized(this) {
                 injected = true
                 injectedPid = pid
@@ -330,7 +315,7 @@ object KeystoreInterceptor : BinderInterceptor() {
             triedCount.incrementAndGet()
             return false
         }
-        
+
         val ks = IKeystoreService.Stub.asInterface(b)
         val tee =
             try {
@@ -338,22 +323,20 @@ object KeystoreInterceptor : BinderInterceptor() {
             } catch (e: Exception) {
                 null
             }
-        val strongBox =
-            try {
-                ks.getSecurityLevel(SecurityLevel.STRONGBOX)
-            } catch (e: Exception) {
-                null
-            }
-        val interceptedCodes =
-            validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)
-            
+
+        // Keep the service-level Binder transparent for getSecurityLevel. StrongBox is neither
+        // acquired nor registered with our child interceptor, so StrongBox binder identity and
+        // generateKey replies stay entirely inside the platform. The root service only needs
+        // getKeyEntry for cached TEE replacement-chain handling and provenance-safe passthrough.
+        val interceptedCodes = validTransactCodes(getKeyEntryTransaction)
+
         val registeredHook = registerBinderInterceptor(bd, b, this, interceptedCodes)
         if (!registeredHook) {
             Logger.e("Failed to register the Keystore Binder interceptor")
             parkBinderHook(bd)
             return false
         }
-        
+
         synchronized(this) {
             keystore = b
             binderBackdoor = bd
@@ -382,27 +365,6 @@ object KeystoreInterceptor : BinderInterceptor() {
         } else {
             Logger.i("TEE SecurityLevel is unavailable")
         }
-        if (strongBox != null) {
-            val interceptor = SecurityLevelInterceptor()
-            if (!registerBinderInterceptor(
-                    bd,
-                    strongBox.asBinder(),
-                    interceptor,
-                    SecurityLevelInterceptor.INTERCEPTED_CODES,
-                )
-            ) {
-                Logger.e("Failed to register the StrongBox SecurityLevel interceptor")
-                stopKeystoreInterceptor()
-                return false
-            }
-            synchronized(this) {
-                strongBoxInterceptor = interceptor
-                strongBoxTarget = strongBox.asBinder()
-            }
-            Logger.i("StrongBox SecurityLevel interceptor registered")
-        } else {
-            Logger.i("StrongBox SecurityLevel is unavailable")
-        }
 
         var linkSuccess = false
         try {
@@ -411,19 +373,19 @@ object KeystoreInterceptor : BinderInterceptor() {
         } catch (error: android.os.RemoteException) {
             Logger.w("Keystore exited before its interceptor lifecycle could be monitored")
         }
-        
+
         synchronized(this) {
             if (linkSuccess) {
                 deathRecipientLinked = true
             }
         }
-        
+
         val linked = synchronized(this) { deathRecipientLinked }
         if (!linked) {
             stopKeystoreInterceptor()
             return false
         }
-        
+
         synchronized(this) {
             registered = true
         }
@@ -440,18 +402,13 @@ object KeystoreInterceptor : BinderInterceptor() {
             targetAlive = ::keystore.isInitialized && keystore.isBinderAlive
             control = binderBackdoor
         }
-        
+
         if (control == null && targetAlive) {
             control = getBinderControlEndpoint(keystore)
         }
-        
+
         var stopped = control?.let(::clearAndParkBinderHook) == true
         if (!stopped && control != null) {
-            strongBoxInterceptor?.let { interceptor ->
-                strongBoxTarget?.let { target ->
-                    unregisterBinderInterceptor(control, target, interceptor)
-                }
-            }
             teeInterceptor?.let { interceptor ->
                 teeTarget?.let { target ->
                     unregisterBinderInterceptor(control, target, interceptor)
@@ -462,10 +419,9 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
             stopped = parkBinderHook(control)
         }
-        
+
         val shouldUnlink = synchronized(this) {
-            val hasKnownRegistration =
-                registered || keystoreRegistered || teeInterceptor != null || strongBoxInterceptor != null
+            val hasKnownRegistration = registered || keystoreRegistered || teeInterceptor != null
             if (!targetAlive || (!hasKnownRegistration && control == null)) stopped = true
             if (!stopped) {
                 binderBackdoor = control
@@ -485,8 +441,6 @@ object KeystoreInterceptor : BinderInterceptor() {
 
         synchronized(this) {
             deathRecipientLinked = false
-            strongBoxInterceptor = null
-            strongBoxTarget = null
             teeInterceptor = null
             teeTarget = null
             keystoreRegistered = false
@@ -510,8 +464,6 @@ object KeystoreInterceptor : BinderInterceptor() {
         binderBackdoor = null
         teeInterceptor = null
         teeTarget = null
-        strongBoxInterceptor = null
-        strongBoxTarget = null
         Config.signalRuntimeController()
     }
 
