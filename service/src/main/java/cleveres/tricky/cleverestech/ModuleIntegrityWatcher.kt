@@ -68,10 +68,6 @@ internal object ModuleIntegrityWatcher {
     val targetedVerificationExecutions = AtomicInteger(0)
     val fullVerificationExecutions = AtomicInteger(0)
 
-    /**
-     * Starts watching the module directory for integrity violations.
-     * Registers FileObserver instances for the directory, its parent, and subdirectories.
-     */
     fun start(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -90,9 +86,7 @@ internal object ModuleIntegrityWatcher {
                 ConflatedRefreshScheduler(scope, INTEGRITY_TARGETED_DEBOUNCE_MS) {
                     val work =
                         synchronized(lock) {
-                            if (!ownsWatcherGenerationLocked(generation)) {
-                                return@ConflatedRefreshScheduler
-                            }
+                            if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
                             if (fullReverificationPending) {
                                 pendingDirtyPaths.clear()
                                 eventCoalescedCount.incrementAndGet()
@@ -100,9 +94,7 @@ internal object ModuleIntegrityWatcher {
                             }
                             val snapshot = ArrayList(pendingDirtyPaths)
                             pendingDirtyPaths.clear()
-                            if (snapshot.isEmpty()) {
-                                return@ConflatedRefreshScheduler
-                            }
+                            if (snapshot.isEmpty()) return@ConflatedRefreshScheduler
                             snapshot to mutationEpoch
                         }
                     val pathsToVerify = work.first
@@ -113,9 +105,7 @@ internal object ModuleIntegrityWatcher {
                         val result = singleFileVerifier(relPath, loadedManifest)
                         if (result is IntegrityResult.Fail) {
                             synchronized(lock) {
-                                if (!ownsWatcherGenerationLocked(generation)) {
-                                    return@ConflatedRefreshScheduler
-                                }
+                                if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
                                 if (
                                     mutationEpoch != verificationEpoch ||
                                     relPath in pendingWritePaths ||
@@ -135,12 +125,8 @@ internal object ModuleIntegrityWatcher {
                 ConflatedRefreshScheduler(scope, fullVerificationDelayMs) {
                     val verificationEpoch =
                         synchronized(lock) {
-                            if (!ownsWatcherGenerationLocked(generation)) {
-                                return@ConflatedRefreshScheduler
-                            }
-                            if (!fullReverificationPending) {
-                                return@ConflatedRefreshScheduler
-                            }
+                            if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
+                            if (!fullReverificationPending) return@ConflatedRefreshScheduler
                             if (pendingWritePaths.isNotEmpty()) {
                                 eventCoalescedCount.incrementAndGet()
                                 return@ConflatedRefreshScheduler
@@ -151,9 +137,7 @@ internal object ModuleIntegrityWatcher {
                                 } catch (error: Throwable) {
                                     fullReverificationPending = false
                                     Logger.e("Failed to re-arm integrity watcher before settled verification", error)
-                                    violationHandler(
-                                        listOf("Failed to re-arm integrity watcher: ${error.message}"),
-                                    )
+                                    violationHandler(listOf("Failed to re-arm integrity watcher: ${error.message}"))
                                     return@ConflatedRefreshScheduler
                                 }
                             }
@@ -163,41 +147,22 @@ internal object ModuleIntegrityWatcher {
                     fullVerificationExecutions.incrementAndGet()
                     val result = fullVerifier()
                     synchronized(lock) {
-                        if (!ownsWatcherGenerationLocked(generation)) {
-                            return@ConflatedRefreshScheduler
-                        }
-                        if (
-                            mutationEpoch != verificationEpoch ||
-                            pendingWritePaths.isNotEmpty()
-                        ) {
+                        if (!ownsWatcherGenerationLocked(generation)) return@ConflatedRefreshScheduler
+                        if (mutationEpoch != verificationEpoch || pendingWritePaths.isNotEmpty()) {
                             eventCoalescedCount.incrementAndGet()
                             return@ConflatedRefreshScheduler
                         }
-
                         fullReverificationPending = false
-                        if (result is IntegrityResult.Fail) {
-                            violationHandler(result.violations)
-                        }
+                        if (result is IntegrityResult.Fail) violationHandler(result.violations)
                     }
                 }
 
-            val parent = directory.parentFile
-            if (parent != null) {
+            directory.parentFile?.let { parent ->
                 try {
                     val pObserver =
-                        object : FileObserver(
-                            parent,
-                            CREATE or MOVED_TO or DELETE or MOVED_FROM,
-                        ) {
+                        object : FileObserver(parent, CREATE or MOVED_TO or DELETE or MOVED_FROM) {
                             override fun onEvent(event: Int, path: String?) {
-                                handleParentEvent(
-                                    directory,
-                                    loadedManifest,
-                                    violationHandler,
-                                    generation,
-                                    event,
-                                    path,
-                                )
+                                handleParentEvent(directory, loadedManifest, violationHandler, generation, event, path)
                             }
                         }
                     parentObserver = pObserver
@@ -236,7 +201,6 @@ internal object ModuleIntegrityWatcher {
     ) {
         synchronized(lock) {
             if (!ownsWatcherGenerationLocked(generation) || path != directory.name) return
-
             mutationEpoch++
             pendingDirtyPaths.clear()
             pendingWritePaths.clear()
@@ -247,7 +211,6 @@ internal object ModuleIntegrityWatcher {
                 scheduleFullCheckLocked()
                 return
             }
-
             if ((event and (CREATE or MOVED_TO)) != 0) {
                 Logger.w("Module directory appeared - re-arming and verifying settled state")
                 if (directory.exists()) {
@@ -256,9 +219,7 @@ internal object ModuleIntegrityWatcher {
                     } catch (error: Throwable) {
                         Logger.e("Failed to arm child watcher upon recreate - failing closed", error)
                         disarmChildLocked()
-                        violationHandler(
-                            listOf("Failed to arm integrity child watcher upon recreate: ${error.message}"),
-                        )
+                        violationHandler(listOf("Failed to arm integrity child watcher upon recreate: ${error.message}"))
                         return
                     }
                 }
@@ -267,20 +228,13 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
-    /**
-     * Attempts to register FileObserver instances for the module directory and its subdirectories.
-     * Throws an exception if registration fails to enforce fail-closed behavior.
-     */
     private fun tryArmChildLocked(
         directory: File,
         loadedManifest: ParsedManifest,
         violationHandler: (List<String>) -> Unit,
         generation: Long,
     ) {
-        if (!ownsWatcherGenerationLocked(generation)) return
-        if (childObserver != null) return
-        if (!directory.exists()) return
-
+        if (!ownsWatcherGenerationLocked(generation) || childObserver != null || !directory.exists()) return
         val childToken = ++childGeneration
         try {
             val cObserver =
@@ -290,14 +244,7 @@ internal object ModuleIntegrityWatcher {
                         MODIFY or ATTRIB or DELETE_SELF or MOVE_SELF,
                 ) {
                     override fun onEvent(event: Int, path: String?) {
-                        handleChildEvent(
-                            directory,
-                            loadedManifest,
-                            generation,
-                            childToken,
-                            event,
-                            path,
-                        )
+                        handleChildEvent(directory, loadedManifest, generation, childToken, event, path)
                     }
                 }
             childObserver = cObserver
@@ -310,7 +257,6 @@ internal object ModuleIntegrityWatcher {
                         val idx = it.path.lastIndexOf('/')
                         if (idx > 0) it.path.substring(0, idx) else null
                     }.distinct()
-
             for (subdirRel in subdirs) {
                 val subDir = File(directory, subdirRel)
                 if (subDir.isDirectory) {
@@ -363,16 +309,8 @@ internal object ModuleIntegrityWatcher {
                 scheduleFullCheckLocked()
                 return
             }
-
             val affectedPath = path ?: return
-            handlePathEventLocked(
-                directory,
-                loadedManifest,
-                generation,
-                childToken,
-                affectedPath,
-                event,
-            )
+            handlePathEventLocked(directory, loadedManifest, generation, childToken, affectedPath, event)
         }
     }
 
@@ -396,24 +334,11 @@ internal object ModuleIntegrityWatcher {
                 scheduleFullCheckLocked()
                 return
             }
-
             val affectedPath = path?.let { "$subdirRel/$it" } ?: return
-            handlePathEventLocked(
-                directory,
-                loadedManifest,
-                generation,
-                childToken,
-                affectedPath,
-                event,
-            )
+            handlePathEventLocked(directory, loadedManifest, generation, childToken, affectedPath, event)
         }
     }
 
-    /**
-     * Converts a raw FileObserver event into a settled cryptographic re-verification request.
-     * CREATE/MODIFY are intentionally not hashed until CLOSE_WRITE because those events can expose
-     * an in-progress file and would otherwise turn a normal write into a false integrity failure.
-     */
     private fun handlePathEventLocked(
         directory: File,
         loadedManifest: ParsedManifest,
@@ -497,10 +422,6 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
-    /**
-     * Schedules a targeted integrity check for a specific stable file path, coalescing duplicates.
-     * The caller already owns [lock], which keeps callback ownership and queue mutation atomic.
-     */
     private fun scheduleTargetedCheckLocked(
         relPath: String,
         generation: Long,
@@ -520,7 +441,6 @@ internal object ModuleIntegrityWatcher {
         targetedScheduler?.submit()
     }
 
-    /** Marks that only a settled full verifier result may decide whether the module is violated. */
     private fun scheduleFullCheckLocked() {
         fullReverificationPending = true
         fullScheduler?.submit()
@@ -534,16 +454,12 @@ internal object ModuleIntegrityWatcher {
         childToken: Long,
     ): Boolean = ownsWatcherGenerationLocked(generation) && childGeneration == childToken
 
-    /**
-     * Stops and clears all child and subdirectory FileObserver instances.
-     */
     private fun disarmChildLocked() {
         childGeneration++
         val retiredChild = childObserver
         childObserver = null
         val retiredSubs = subObservers.toList()
         subObservers.clear()
-
         runCatching { retiredChild?.let(observerStopper) }
             .onFailure { Logger.w("Failed to stop retired integrity child watcher", it) }
         for (observer in retiredSubs) {
@@ -552,9 +468,6 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
-    /**
-     * Stops all FileObserver instances and clears watcher state.
-     */
     fun stop() {
         synchronized(lock) {
             isRunning = false
@@ -574,58 +487,38 @@ internal object ModuleIntegrityWatcher {
         }
     }
 
-    /** Returns true if the child observer is currently active. */
     @androidx.annotation.VisibleForTesting
-    internal fun isChildObserverActiveForTesting(): Boolean =
-        synchronized(lock) { childObserver != null }
+    internal fun isChildObserverActiveForTesting(): Boolean = synchronized(lock) { childObserver != null }
 
-    /** Returns true if the parent observer is currently active. */
     @androidx.annotation.VisibleForTesting
-    internal fun isParentObserverActiveForTesting(): Boolean =
-        synchronized(lock) { parentObserver != null }
+    internal fun isParentObserverActiveForTesting(): Boolean = synchronized(lock) { parentObserver != null }
 
-    /** Injects a file observer event into the child observer for testing. */
     @androidx.annotation.VisibleForTesting
     internal fun injectChildEventForTesting(event: Int, path: String?) {
-        synchronized(lock) {
-            childObserver?.onEvent(event, path)
-        }
+        synchronized(lock) { childObserver?.onEvent(event, path) }
     }
 
-    /** Returns the number of active subdirectory observers. */
     @androidx.annotation.VisibleForTesting
-    internal fun subObserverCountForTesting(): Int =
-        synchronized(lock) { subObservers.size }
+    internal fun subObserverCountForTesting(): Int = synchronized(lock) { subObservers.size }
 
-    /** Injects a file observer event into a specific subdirectory observer for testing. */
     @androidx.annotation.VisibleForTesting
     internal fun injectSubEventForTesting(index: Int, event: Int, path: String?) {
         synchronized(lock) {
-            if (index in subObservers.indices) {
-                subObservers[index].onEvent(event, path)
-            }
+            if (index in subObservers.indices) subObservers[index].onEvent(event, path)
         }
     }
 
-    /** Injects a file observer event into the parent observer for testing. */
     @androidx.annotation.VisibleForTesting
     internal fun injectParentEventForTesting(event: Int, path: String?) {
-        synchronized(lock) {
-            parentObserver?.onEvent(event, path)
-        }
+        synchronized(lock) { parentObserver?.onEvent(event, path) }
     }
 
-    /** Returns the number of pending dirty paths awaiting verification. */
     @androidx.annotation.VisibleForTesting
-    internal fun pendingDirtyCountForTesting(): Int =
-        synchronized(lock) { pendingDirtyPaths.size }
+    internal fun pendingDirtyCountForTesting(): Int = synchronized(lock) { pendingDirtyPaths.size }
 
-    /** Returns the number of paths currently waiting for CLOSE_WRITE. */
     @androidx.annotation.VisibleForTesting
-    internal fun pendingWriteCountForTesting(): Int =
-        synchronized(lock) { pendingWritePaths.size }
+    internal fun pendingWriteCountForTesting(): Int = synchronized(lock) { pendingWritePaths.size }
 
-    /** Resets watcher state, verifier hooks, and counters for testing. */
     @androidx.annotation.VisibleForTesting
     internal fun resetForTesting() {
         stop()
