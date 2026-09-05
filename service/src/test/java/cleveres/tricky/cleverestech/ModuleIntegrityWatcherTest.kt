@@ -500,6 +500,36 @@ class ModuleIntegrityWatcherTest {
     }
 
     @Test
+    fun overflowStableEventsCannotReportPrematureTargetedFailures() {
+        val dir = tempFolder.newFolder("overflow-stable-events", "cleverestricky")
+        val manifest = createRealManifest(dir)
+        val clock = AtomicLong(0L)
+        ModuleIntegrityWatcher.nanoTime = clock::get
+        ModuleIntegrityWatcher.singleFileVerifier = { _, _ ->
+            IntegrityResult.Fail(listOf("premature verification of overflowed write"))
+        }
+
+        for (event in listOf(FileObserver.CLOSE_WRITE, FileObserver.MOVED_TO, FileObserver.ATTRIB)) {
+            clock.set(0L)
+            ModuleIntegrityWatcher.start(dir, manifest) { violations.add(it) }
+            val fullBefore = ModuleIntegrityWatcher.fullVerificationExecutions.get()
+            repeat(65) { ModuleIntegrityWatcher.injectChildEventForTesting(FileObserver.CREATE, "payload$it.so") }
+            ModuleIntegrityWatcher.injectChildEventForTesting(event, "payload64.so")
+
+            Thread.sleep(150)
+            assertEquals("Overflow requires full verification before any targeted decision", 0, ModuleIntegrityWatcher.targetedVerificationExecutions.get())
+            assertEquals(fullBefore, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+            assertTrue("A transient overflowed path must not trigger quarantine", violations.isEmpty())
+
+            clock.set(TimeUnit.SECONDS.toNanos(5))
+            awaitCondition { ModuleIntegrityWatcher.pendingWriteCountForTesting() == 0 }
+            assertEquals(fullBefore + 1, ModuleIntegrityWatcher.fullVerificationExecutions.get())
+            assertTrue("Clean final bytes must pass the real full verifier", violations.isEmpty())
+            ModuleIntegrityWatcher.stop()
+        }
+    }
+
+    @Test
     fun staleTargetedFailureFromAnUnrelatedEventIsReverified() {
         val dir = tempFolder.newFolder("stale-unrelated", "cleverestricky")
         val started = CountDownLatch(1)

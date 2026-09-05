@@ -502,6 +502,7 @@ internal object ModuleIntegrityWatcher {
             pendingWritePaths[path] = nanoTime()
         } else if (writeOverflowSinceNanos == null) {
             writeOverflowSinceNanos = nanoTime()
+            fullReverificationPending = true
         }
     }
 
