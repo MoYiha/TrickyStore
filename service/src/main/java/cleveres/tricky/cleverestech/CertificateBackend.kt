@@ -58,6 +58,9 @@ object CertificateBackend {
     @VisibleForTesting
     internal var rewriteOverride: ((RewriteRequest) -> ByteArray?)? = null
 
+    @VisibleForTesting
+    internal var rewriteTransportOverride: ((Int, (OutputStream) -> Unit) -> ByteArray?)? = null
+
     @JvmStatic
     fun inspect(leafDer: ByteArray): Inspection? {
         if (leafDer.isEmpty() || leafDer.size > MAX_CERTIFICATE_DER_BYTES) return null
@@ -126,6 +129,9 @@ object CertificateBackend {
         preserveIssuerName: Boolean,
         virtualizeSubjectKey: Boolean,
     ): ByteArray? {
+        // The paired Rust backend implements v2 only. Unsupported modes must not silently
+        // become default-issuer rewrites or change the wire format of ordinary requests.
+        if (preserveIssuerName || virtualizeSubjectKey) return null
         if (genuineLeafDer.isEmpty() || genuineLeafDer.size > MAX_CERTIFICATE_DER_BYTES ||
             keyId.size != KEY_ID_BYTES || keyId.all { it == 0.toByte() } ||
             signingAlgorithm !in SIGNING_EC_P256_SHA256..SIGNING_RSA_PKCS1_SHA256 ||
@@ -159,10 +165,6 @@ object CertificateBackend {
             ) ?: return null
         if (payloadLength > MAX_REWRITE_REQUEST_BYTES) return null
 
-        val mode =
-            (if (preserveIssuerName) REWRITE_MODE_PRESERVE_ISSUER_NAME else 0) or
-                (if (virtualizeSubjectKey) REWRITE_MODE_VIRTUALIZE_SUBJECT_KEY else 0)
-
         rewriteOverride?.let { override ->
             return override(
                 RewriteRequest(
@@ -185,15 +187,9 @@ object CertificateBackend {
             )
         }
 
-        return NativeBackend.transact(
-            OP_CERTIFICATE_REWRITE,
-            payloadLength,
-            MAX_CERTIFICATE_DER_BYTES,
-            propagateTransportFailure = true,
-        ) { output ->
+        val writePayload: (OutputStream) -> Unit = { output ->
             output.write(REWRITE_WIRE_VERSION)
             output.write(signingAlgorithm)
-            output.write(mode)
             writePatch(output, systemDisposition, systemValue)
             writePatch(output, vendorDisposition, vendorValue)
             writePatch(output, bootDisposition, bootValue)
@@ -211,12 +207,21 @@ object CertificateBackend {
             if (moduleHash != null) output.write(moduleHash)
             output.write(genuineLeafDer)
         }
+        rewriteTransportOverride?.let { return it(payloadLength, writePayload) }
+        return NativeBackend.transact(
+            OP_CERTIFICATE_REWRITE,
+            payloadLength,
+            MAX_CERTIFICATE_DER_BYTES,
+            propagateTransportFailure = true,
+            writePayload = writePayload,
+        )
     }
 
     @VisibleForTesting
     internal fun resetForTesting() {
         inspectionOverride = null
         rewriteOverride = null
+        rewriteTransportOverride = null
     }
 
     internal fun decodeInspection(response: ByteArray): Inspection {
@@ -255,7 +260,6 @@ object CertificateBackend {
                 hash,
                 attestationSecurityLevel,
                 keymintSecurityLevel,
-                flags and FLAG_ATTEST_KEY_PURPOSE != 0,
             )
         } catch (error: Throwable) {
             key?.fill(0)
@@ -381,13 +385,12 @@ object CertificateBackend {
     private const val OP_CERTIFICATE_INSPECT = 25
     private const val OP_CERTIFICATE_REWRITE = 26
     private const val INSPECT_WIRE_VERSION = 2
-    private const val REWRITE_WIRE_VERSION = 3
+    private const val REWRITE_WIRE_VERSION = 2
     private const val INSPECT_RESPONSE_BYTES = 85
     private const val FLAG_MODULE_HASH_SUPPORTED = 1
     private const val FLAG_BOOT_KEY_PRESENT = 1 shl 1
     private const val FLAG_BOOT_HASH_PRESENT = 1 shl 2
-    private const val FLAG_ATTEST_KEY_PURPOSE = 1 shl 3
-    private const val INSPECT_RESERVED_FLAGS = 0xf0
+    private const val INSPECT_RESERVED_FLAGS = 0xf8
     private const val PRESENT_ID_RESERVED_MASK = 0xfe00
     private const val KEY_ID_BYTES = 16
     private const val MAX_CERTIFICATE_DER_BYTES = 256 * 1024
@@ -395,10 +398,8 @@ object CertificateBackend {
     private const val MAX_MODULE_HASH_BYTES = 1024
     private const val MAX_ID_OVERRIDES = 9
     private const val BOOT_DIGEST_BYTES = 32
-    private const val REWRITE_MODE_PRESERVE_ISSUER_NAME = 1
-    private const val REWRITE_MODE_VIRTUALIZE_SUBJECT_KEY = 1 shl 1
     private const val ID_HEADER_BYTES = 4
-    private const val REWRITE_FIXED_BYTES = 105
+    private const val REWRITE_FIXED_BYTES = 104
     private const val MAX_ID_WIRE_BYTES = MAX_ID_OVERRIDES * (ID_HEADER_BYTES + MAX_ATTESTATION_ID_BYTES)
     private const val MAX_REWRITE_REQUEST_BYTES =
         REWRITE_FIXED_BYTES +

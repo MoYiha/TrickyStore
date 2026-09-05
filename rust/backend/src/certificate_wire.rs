@@ -315,7 +315,15 @@ mod tests {
 
     #[test]
     fn strict_rewrite_wire_parses_opaque_key_and_bounded_fields() {
-        let input = minimal_request();
+        // The managed production serializer emits this same fixture. A one-sided wire
+        // version/layout change must fail even when a managed signing oracle still passes.
+        let hex = include_str!("../tests/fixtures/certificate-rewrite-v2.hex").trim();
+        assert_eq!(hex.len() % 2, 0);
+        let input: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .map(|offset| u8::from_str_radix(&hex[offset..offset + 2], 16).unwrap())
+            .collect();
+        assert_eq!(input, minimal_request());
         let parsed = parse_rewrite_request(&input).unwrap();
         assert_eq!(parsed.signing_algorithm, SigningAlgorithm::EcP256Sha256);
         assert_eq!(parsed.patch_levels.system, PatchComponent::KEEP);
