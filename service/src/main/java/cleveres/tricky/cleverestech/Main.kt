@@ -52,9 +52,7 @@ private fun startWebUiBridge(
     return null
 }
 
-/**
- * Returns the count of active keyboxes, or zero if the count cannot be determined.
- */
+/** Returns the count of active keyboxes, or zero if the count cannot be determined. */
 private fun activeKeyboxCountOrZero(): Int =
     try {
         CertHack.getKeyboxCount()
@@ -95,9 +93,7 @@ internal suspend fun retryDeferredKeyboxRefresh(
     return isActive()
 }
 
-/**
- * Checks if the configuration directory contains any configured keybox sources.
- */
+/** Checks if the configuration directory contains any configured keybox sources. */
 internal fun hasConfiguredKeyboxSource(configDir: File): Boolean =
     runCatching { StoredKeyboxInventory.list(configDir).isNotEmpty() }
         .onFailure { Logger.w("Could not inspect configured keybox sources: ${it.message}") }
@@ -142,12 +138,13 @@ fun main(args: Array<String>) {
             }
         }
 
-        val integrityResult = try {
-            ModuleIntegrityVerifier.verifyFull()
-        } catch (error: Exception) {
-            Logger.e("Integrity verification threw unexpected exception", error)
-            IntegrityResult.Fail(listOf("Integrity verification exception: ${error.message}"))
-        }
+        val integrityResult =
+            try {
+                ModuleIntegrityVerifier.verifyFull()
+            } catch (error: Exception) {
+                Logger.e("Integrity verification threw unexpected exception", error)
+                IntegrityResult.Fail(listOf("Integrity verification exception: ${error.message}"))
+            }
         if (integrityResult is IntegrityResult.Fail) {
             Logger.e("INTEGRITY VERIFICATION FAILED")
             IntegrityViolationHandler.handleViolation(integrityResult.violations)
@@ -155,6 +152,12 @@ fun main(args: Array<String>) {
                 delay(60_000)
             }
         }
+
+        // Integrity is intentionally startup-only. Runtime FileObserver monitoring retained heap,
+        // coroutine state and wakeups even on otherwise idle devices. Release the parsed manifest
+        // after the boot verdict so integrity adds no persistent watcher/scheduler state.
+        ModuleIntegrityVerifier.cachedManifest = null
+        Logger.i("Startup integrity verification passed; runtime integrity watcher remains disabled")
 
         while (!NativeBackend.awaitReady(BACKEND_STARTUP_TIMEOUT_MS)) {
             if (Thread.currentThread().isInterrupted) {
@@ -249,29 +252,6 @@ fun main(args: Array<String>) {
 
         runCatching { KeyboxDirectoryRefreshWatcher.start(Config.keyboxDirectory) }
             .onFailure { Logger.e("Failed to install conflated keybox watcher; keeping legacy observer", it) }
-
-        val integrityManifest = ModuleIntegrityVerifier.loadManifest()
-        if (integrityManifest == null) {
-            Logger.e("Integrity manifest missing or invalid: failing closed")
-            IntegrityViolationHandler.handleViolation(listOf("Integrity manifest missing or invalid at startup"))
-            return@runBlocking
-        }
-
-        val watcherStarted = runCatching {
-            ModuleIntegrityWatcher.start(
-                File(getModuleDir()),
-                integrityManifest,
-            ) { violations ->
-                IntegrityViolationHandler.handleViolation(violations)
-            }
-        }.onFailure {
-            Logger.e("Failed to start integrity watcher: failing closed", it)
-            IntegrityViolationHandler.handleViolation(listOf("Failed to start integrity watcher: ${it.message}"))
-        }.isSuccess
-
-        if (!watcherStarted) {
-            return@runBlocking
-        }
 
         KeyboxAutoCleaner.start()
         CronAutoIdentity.start(configDir)
@@ -460,7 +440,6 @@ fun main(args: Array<String>) {
                 startupRetryJobs.forEach { it.cancel() }
                 CronAutoIdentity.stop()
                 KeyboxDirectoryRefreshWatcher.stop()
-                ModuleIntegrityWatcher.stop()
                 CertificatePolicyWatcher.stop()
                 SubscriptionVisibilityInterceptor.stop()
                 CameraVisibilityInterceptor.stop()

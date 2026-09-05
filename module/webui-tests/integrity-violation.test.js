@@ -4,38 +4,30 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const VIOLATION_MESSAGE = 'Module change detected! Module is being deleted and system is being restarted.';
+const VIOLATION_MESSAGE = 'Module change detected! Module has been disabled and the system is being restarted.';
 
-// Verify the violation message is defined in IntegrityViolationHandler.kt
 const handlerSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
         'cleveres', 'tricky', 'cleverestech', 'IntegrityViolationHandler.kt'),
     'utf8'
 );
+assert.ok(handlerSource.includes(VIOLATION_MESSAGE), 'IntegrityViolationHandler.kt must contain the violation message');
+assert.ok(handlerSource.includes('internal var disableModule'), 'violation handling must use disable quarantine');
+assert.ok(handlerSource.includes('createDisableMarker'), 'violation handling must create a disable marker');
+assert.ok(!handlerSource.includes('deleteDirectoryRecursivelyNoFollow'), 'integrity failure must not recursively delete the module');
+assert.ok(!handlerSource.includes('OP_INTEGRITY_DELETE_MODULE'), 'integrity handler must not request destructive daemon deletion');
+assert.ok(!handlerSource.includes('ModuleIntegrityWatcher'), 'violation handling must not initialize the disabled runtime watcher');
 
-assert.ok(
-    handlerSource.includes(VIOLATION_MESSAGE),
-    'IntegrityViolationHandler.kt must contain the exact violation message'
-);
-
-// Verify the violation message is used in WebServer.kt
 const webServerSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
         'cleveres', 'tricky', 'cleverestech', 'WebServer.kt'),
     'utf8'
 );
-
 assert.ok(
     webServerSource.includes('IntegrityViolationHandler.VIOLATION_MESSAGE'),
-    'WebServer.kt must reference IntegrityViolationHandler.VIOLATION_MESSAGE for the violation page'
+    'WebServer.kt must reference IntegrityViolationHandler.VIOLATION_MESSAGE'
 );
-
-assert.ok(
-    webServerSource.includes('IntegrityViolationHandler.isViolated'),
-    'WebServer.kt must check IntegrityViolationHandler.isViolated'
-);
-
-// Verify the violation check happens BEFORE the isTampered check
+assert.ok(webServerSource.includes('IntegrityViolationHandler.isViolated'), 'WebServer.kt must check integrity violation state');
 const violatedIndex = webServerSource.indexOf('IntegrityViolationHandler.isViolated');
 const tamperedIndex = webServerSource.indexOf('isTampered && (trustedBridge');
 assert.ok(
@@ -43,42 +35,38 @@ assert.ok(
     'Integrity violation check must occur before the isTampered check in WebServer.kt'
 );
 
-// Verify IntegrityViolationHandler has idempotent AtomicBoolean guard
-assert.ok(
-    handlerSource.includes('AtomicBoolean'),
-    'IntegrityViolationHandler must use AtomicBoolean for idempotent violation handling'
-);
-assert.ok(
-    handlerSource.includes('compareAndSet(false, true)'),
-    'IntegrityViolationHandler must use compareAndSet for idempotent guard'
-);
+assert.ok(handlerSource.includes('AtomicBoolean'), 'IntegrityViolationHandler must use AtomicBoolean');
+assert.ok(handlerSource.includes('compareAndSet(false, true)'), 'IntegrityViolationHandler must be idempotent');
+assert.ok(handlerSource.includes('internal var rebootSystem'), 'IntegrityViolationHandler must keep injectable rebootSystem');
+assert.ok(handlerSource.includes('resetForTesting'), 'IntegrityViolationHandler must keep resetForTesting');
 
-// Verify the violation handler has injectable test hooks
-assert.ok(
-    handlerSource.includes('internal var deleteModule'),
-    'IntegrityViolationHandler must have injectable deleteModule for testing'
-);
-assert.ok(
-    handlerSource.includes('internal var rebootSystem'),
-    'IntegrityViolationHandler must have injectable rebootSystem for testing'
-);
-assert.ok(
-    handlerSource.includes('resetForTesting'),
-    'IntegrityViolationHandler must have resetForTesting'
-);
-
-// Verify Main.kt integrates integrity verification before native loading
 const mainSource = fs.readFileSync(
     path.resolve(__dirname, '..', '..', 'service', 'src', 'main', 'java',
         'cleveres', 'tricky', 'cleverestech', 'Main.kt'),
     'utf8'
 );
-
 const integrityVerifyIndex = mainSource.indexOf('ModuleIntegrityVerifier.verifyFull');
 const backendAwaitIndex = mainSource.indexOf('NativeBackend.awaitReady');
 assert.ok(
     integrityVerifyIndex > 0 && backendAwaitIndex > 0 && integrityVerifyIndex < backendAwaitIndex,
     'Integrity verification must happen BEFORE NativeBackend.awaitReady in Main.kt'
+);
+assert.strictEqual(
+    (mainSource.match(/ModuleIntegrityVerifier\.verifyFull\(\)/g) || []).length,
+    1,
+    'production runtime must perform exactly one full integrity verification at startup'
+);
+assert.ok(
+    !mainSource.includes('ModuleIntegrityVerifier.loadManifest()'),
+    'production runtime must not reload and retain the integrity manifest after startup verification'
+);
+assert.ok(
+    !mainSource.includes('ModuleIntegrityWatcher'),
+    'production Main.kt must not initialize, start, stop, or otherwise reference the runtime integrity watcher'
+);
+assert.ok(
+    mainSource.includes('ModuleIntegrityVerifier.cachedManifest = null'),
+    'startup integrity must release the parsed manifest after a successful boot verdict'
 );
 
 console.log('integrity-violation.test.js: all assertions passed');
