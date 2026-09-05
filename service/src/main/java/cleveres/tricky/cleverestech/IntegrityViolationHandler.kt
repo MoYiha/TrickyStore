@@ -38,12 +38,6 @@ object IntegrityViolationHandler {
         Logger.e("INTEGRITY VIOLATION DETECTED:")
         violations.forEach { Logger.e("  - $it") }
 
-        try {
-            ModuleIntegrityWatcher.stop()
-        } catch (e: Throwable) {
-            Logger.e("Failed to stop ModuleIntegrityWatcher during violation handling", e)
-        }
-
         val moduleDir = getModuleDir()
         val disabled =
             try {
