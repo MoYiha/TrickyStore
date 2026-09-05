@@ -443,6 +443,7 @@ internal object ModuleIntegrityWatcher {
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
             } else if (requireFullVerification) {
+                fullReverificationPending = true
                 fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
@@ -457,6 +458,7 @@ internal object ModuleIntegrityWatcher {
             if (isManifest) {
                 scheduleFullCheckLocked()
             } else if (requireFullVerification) {
+                fullReverificationPending = true
                 fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
@@ -487,6 +489,7 @@ internal object ModuleIntegrityWatcher {
             if (isManifest || affectedFile.isDirectory) {
                 scheduleFullCheckLocked()
             } else if (requireFullVerification) {
+                fullReverificationPending = true
                 fullScheduler?.submit()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
