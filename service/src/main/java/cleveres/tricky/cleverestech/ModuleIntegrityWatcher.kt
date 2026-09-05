@@ -144,7 +144,9 @@ internal object ModuleIntegrityWatcher {
                                 } catch (error: Throwable) {
                                     fullReverificationPending = false
                                     Logger.e("Failed to re-arm integrity watcher before settled verification", error)
-                                    violationHandler(listOf("Failed to re-arm integrity watcher: ${error.message}"))
+                                    violationHandler(
+                                        listOf("Failed to re-arm integrity watcher: ${error.message}"),
+                                    )
                                     return@ConflatedRefreshScheduler
                                 }
                             }
@@ -523,7 +525,8 @@ internal object ModuleIntegrityWatcher {
     }
 
     @androidx.annotation.VisibleForTesting
-    internal fun subObserverCountForTesting(): Int = synchronized(lock) { subObservers.size }
+    internal fun subObserverCountForTesting(): Int =
+        synchronized(lock) { subObservers.size }
 
     @androidx.annotation.VisibleForTesting
     internal fun injectSubEventForTesting(index: Int, event: Int, path: String?) {
@@ -538,10 +541,12 @@ internal object ModuleIntegrityWatcher {
     }
 
     @androidx.annotation.VisibleForTesting
-    internal fun pendingDirtyCountForTesting(): Int = synchronized(lock) { pendingDirtyPaths.size }
+    internal fun pendingDirtyCountForTesting(): Int =
+        synchronized(lock) { pendingDirtyPaths.size }
 
     @androidx.annotation.VisibleForTesting
-    internal fun pendingWriteCountForTesting(): Int = synchronized(lock) { pendingWritePaths.size }
+    internal fun pendingWriteCountForTesting(): Int =
+        synchronized(lock) { pendingWritePaths.size }
 
     @androidx.annotation.VisibleForTesting
     internal fun resetForTesting() {
