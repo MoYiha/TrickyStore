@@ -444,13 +444,17 @@ internal object ModuleIntegrityWatcher {
         }
 
         if ((event and CLOSE_WRITE) != 0) {
+            val requireFullVerification = fullReverificationPending
             mutationEpoch++
             pendingWritePaths.remove(affectedPath)
             if (isManifest) {
                 scheduleFullCheckLocked()
             } else {
                 scheduleTargetedCheckLocked(affectedPath, generation, childToken)
-                if (fullReverificationPending) fullScheduler?.submit()
+                if (requireFullVerification) {
+                    fullReverificationPending = true
+                    fullScheduler?.submit()
+                }
             }
             return
         }
