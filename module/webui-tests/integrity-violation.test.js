@@ -61,7 +61,7 @@ assert.ok(
 );
 assert.ok(
     watcherSource.includes('val requireFullVerification = fullReverificationPending'),
-    'CLOSE_WRITE handling must preserve an already-required structural full verification'
+    'Stable events must preserve an already-required structural full verification'
 );
 assert.ok(
     !watcherSource.includes('violationHandler(listOf("Critical payload deleted:'),
