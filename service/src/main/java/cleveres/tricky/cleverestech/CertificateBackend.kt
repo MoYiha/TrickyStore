@@ -103,27 +103,6 @@ object CertificateBackend {
             return null
         }
 
-        // The currently supported replacement keybox format proves key ownership and chain
-        // signatures, but it carries no trustworthy TEE-vs-StrongBox provenance. Cross-signing a
-        // StrongBox (or mixed-level) genuine leaf with that issuer would preserve the DER enum while
-        // lying about the signer graph. Only the legacy TEE/TEE case is therefore eligible for
-        // replacement. StrongBox, Software, mixed and malformed inputs preserve their genuine chain.
-        val sourceInspection =
-            try {
-                inspect(genuineLeafDer)
-            } catch (_: RustBackendUnavailableException) {
-                null
-            } ?: return null
-        try {
-            if (sourceInspection.attestationSecurityLevel != SECURITY_LEVEL_TEE ||
-                sourceInspection.keymintSecurityLevel != SECURITY_LEVEL_TEE
-            ) {
-                return null
-            }
-        } finally {
-            sourceInspection.wipe()
-        }
-
         val orderedIds = idOverrides.entries.sortedBy { it.key }
         var idWireBytes = 0
         for ((tag, value) in orderedIds) {
