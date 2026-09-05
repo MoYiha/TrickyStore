@@ -4,7 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 
-const VIOLATION_MESSAGE = 'Module change detected! Module is being deleted and system is being restarted.';
+const VIOLATION_MESSAGE = 'Module change detected! Module has been disabled and the system is being restarted.';
 
 // Verify the violation message is defined in IntegrityViolationHandler.kt
 const handlerSource = fs.readFileSync(
@@ -16,6 +16,24 @@ const handlerSource = fs.readFileSync(
 assert.ok(
     handlerSource.includes(VIOLATION_MESSAGE),
     'IntegrityViolationHandler.kt must contain the exact violation message'
+);
+
+// Runtime integrity failures must fail closed without recursively deleting the installed module.
+assert.ok(
+    handlerSource.includes('internal var disableModule'),
+    'IntegrityViolationHandler must expose an injectable disableModule quarantine action'
+);
+assert.ok(
+    handlerSource.includes('createDisableMarker'),
+    'IntegrityViolationHandler must quarantine with a module disable marker'
+);
+assert.ok(
+    !handlerSource.includes('deleteDirectoryRecursivelyNoFollow'),
+    'IntegrityViolationHandler must not recursively delete the module after a runtime integrity failure'
+);
+assert.ok(
+    !handlerSource.includes('OP_INTEGRITY_DELETE_MODULE'),
+    'IntegrityViolationHandler must not request destructive daemon module deletion'
 );
 
 // Verify the violation message is used in WebServer.kt
@@ -51,12 +69,6 @@ assert.ok(
 assert.ok(
     handlerSource.includes('compareAndSet(false, true)'),
     'IntegrityViolationHandler must use compareAndSet for idempotent guard'
-);
-
-// Verify the violation handler has injectable test hooks
-assert.ok(
-    handlerSource.includes('internal var deleteModule'),
-    'IntegrityViolationHandler must have injectable deleteModule for testing'
 );
 assert.ok(
     handlerSource.includes('internal var rebootSystem'),
