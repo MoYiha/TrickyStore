@@ -409,8 +409,11 @@ public final class CertHack {
             if (inspection == null) return caList;
             int attLevel = inspection.getAttestationSecurityLevel();
             int kmLevel = inspection.getKeymintSecurityLevel();
-            boolean isTeeOrStrongbox = (attLevel == CertificateBackend.SECURITY_LEVEL_TEE || attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX)
-                    && (kmLevel == CertificateBackend.SECURITY_LEVEL_TEE || kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX);
+            boolean isTee = attLevel == CertificateBackend.SECURITY_LEVEL_TEE
+                    && kmLevel == CertificateBackend.SECURITY_LEVEL_TEE;
+            boolean isStrongbox = attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX
+                    && kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
+            boolean isTeeOrStrongbox = isTee || isStrongbox;
             if (!isTeeOrStrongbox) {
                 synchronized (cache) {
                     if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
