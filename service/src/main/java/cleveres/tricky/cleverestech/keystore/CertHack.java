@@ -407,8 +407,11 @@ public final class CertHack {
             // not create recurring IPC, parsing, allocations, timers or background work.
             inspection = CertificateBackend.inspect(leafEncoded);
             if (inspection == null) return caList;
-            if (inspection.getAttestationSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE ||
-                    inspection.getKeymintSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE) {
+            int attLevel = inspection.getAttestationSecurityLevel();
+            int kmLevel = inspection.getKeymintSecurityLevel();
+            boolean isTeeOrStrongbox = (attLevel == CertificateBackend.SECURITY_LEVEL_TEE || attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX)
+                    && (kmLevel == CertificateBackend.SECURITY_LEVEL_TEE || kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX);
+            if (!isTeeOrStrongbox) {
                 synchronized (cache) {
                     if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
                         cache.putIfAbsent(cacheKey, CachedCertificateChain.passthrough());

@@ -11,13 +11,11 @@ import java.security.cert.Certificate
 
 /**
  * Rewrites only the certificate chain returned by a successful, genuine TEE
- * KeyMint key generation. The private key and every later cryptographic
+ * or StrongBox KeyMint key generation. The private key and every later cryptographic
  * operation remain owned by the platform security level.
  *
- * This interceptor is registered only on the TEE child binder. StrongBox is
- * deliberately left completely unhooked so its binder identity, generateKey
- * reply and genuine hardware certificate chain remain platform-owned. Targeted
- * TEE generateKey and getKeyEntry calls use the same certificate-compatibility
+ * This interceptor is registered on both the TEE and StrongBox child binders.
+ * Targeted generateKey and getKeyEntry calls use the same certificate-compatibility
  * path. No synthetic timing delay is added here; certificate caching in
  * CertHack handles repeated reads without parking Keystore threads.
  */

@@ -26,6 +26,8 @@ object KeystoreInterceptor : BinderInterceptor() {
 
     private var teeInterceptor: SecurityLevelInterceptor? = null
     private var teeTarget: IBinder? = null
+    private var strongboxInterceptor: SecurityLevelInterceptor? = null
+    private var strongboxTarget: IBinder? = null
     private var binderBackdoor: IBinder? = null
 
     @Volatile private var keystoreRegistered = false
@@ -87,10 +89,9 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
 
             // getKeyEntry exposes the platform-owned security level directly in KeyMetadata.
-            // Generic replacement remains a TEE-only policy. Genuine StrongBox/software metadata
-            // exits before cache hashing, X.509 parsing or Rust IPC, so StrongBox stays fully
-            // platform-owned and receives no compatibility-layer latency on readback.
-            if (metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT) {
+            // Generic replacement policy applies to both TEE and StrongBox metadata.
+            if (metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT &&
+                metadata.keySecurityLevel != SecurityLevel.STRONGBOX) {
                 p.recycle()
                 return Skip
             }
@@ -330,8 +331,15 @@ object KeystoreInterceptor : BinderInterceptor() {
                 null
             }
 
-        // Root discovery is not intercepted. StrongBox remains discoverable exactly as Keystore2
-        // exposes it, while the TEE child retains the existing certificate compatibility hook.
+        val strongbox =
+            try {
+                ks.getSecurityLevel(SecurityLevel.STRONGBOX)
+            } catch (e: Exception) {
+                null
+            }
+
+        // Root discovery is not intercepted. Both TEE and StrongBox children
+        // are hooked for certificate compatibility.
         val interceptedCodes = validTransactCodes(getKeyEntryTransaction)
 
         val registeredHook = registerBinderInterceptor(bd, b, this, interceptedCodes)
@@ -365,9 +373,31 @@ object KeystoreInterceptor : BinderInterceptor() {
                 teeInterceptor = interceptor
                 teeTarget = tee.asBinder()
             }
-            Logger.i("TEE SecurityLevel interceptor registered; StrongBox remains platform-owned")
+            Logger.i("TEE SecurityLevel interceptor registered")
         } else {
-            Logger.i("TEE SecurityLevel is unavailable; StrongBox remains platform-owned")
+            Logger.i("TEE SecurityLevel is unavailable")
+        }
+
+        if (strongbox != null) {
+            val interceptor = SecurityLevelInterceptor()
+            if (!registerBinderInterceptor(
+                    bd,
+                    strongbox.asBinder(),
+                    interceptor,
+                    SecurityLevelInterceptor.INTERCEPTED_CODES,
+                )
+            ) {
+                Logger.e("Failed to register the StrongBox SecurityLevel interceptor")
+                stopKeystoreInterceptor()
+                return false
+            }
+            synchronized(this) {
+                strongboxInterceptor = interceptor
+                strongboxTarget = strongbox.asBinder()
+            }
+            Logger.i("StrongBox SecurityLevel interceptor registered")
+        } else {
+            Logger.i("StrongBox SecurityLevel is unavailable")
         }
 
         var linkSuccess = false
@@ -418,6 +448,11 @@ object KeystoreInterceptor : BinderInterceptor() {
                     unregisterBinderInterceptor(control, target, interceptor)
                 }
             }
+            strongboxInterceptor?.let { interceptor ->
+                strongboxTarget?.let { target ->
+                    unregisterBinderInterceptor(control, target, interceptor)
+                }
+            }
             if (keystoreRegistered && ::keystore.isInitialized) {
                 unregisterBinderInterceptor(control, keystore, this)
             }
@@ -447,6 +482,8 @@ object KeystoreInterceptor : BinderInterceptor() {
             deathRecipientLinked = false
             teeInterceptor = null
             teeTarget = null
+            strongboxInterceptor = null
+            strongboxTarget = null
             keystoreRegistered = false
             registered = false
             binderBackdoor = null
@@ -468,6 +505,8 @@ object KeystoreInterceptor : BinderInterceptor() {
         binderBackdoor = null
         teeInterceptor = null
         teeTarget = null
+        strongboxInterceptor = null
+        strongboxTarget = null
         Config.signalRuntimeController()
     }
 
