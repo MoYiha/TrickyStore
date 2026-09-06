@@ -22,24 +22,21 @@ class KeystoreStrongBoxRedirectionTest {
     }
 
     @Test
-    fun `root keystore fails targeted StrongBox unavailable without TEE remapping`() {
+    fun `root keystore leaves StrongBox discovery platform owned`() {
         val source = sourceFile("KeystoreInterceptor.kt").readText()
 
-        assertTrue(source.contains("getSecurityLevelTransaction"))
         assertTrue(source.contains("getKeyEntryTransaction"))
-        assertTrue(
-            source.contains(
-                "validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)",
-            ),
-        )
-        assertTrue(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
-        assertTrue(
+        assertTrue(source.contains("validTransactCodes(getKeyEntryTransaction)"))
+        assertFalse(source.contains("getSecurityLevelTransaction"))
+        assertFalse(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
+        assertFalse(
             source.contains(
                 "ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE)",
             ),
         )
         assertFalse(source.contains("writeStrongBinder(currentTeeTarget)"))
         assertFalse(source.contains("ks.getSecurityLevel(SecurityLevel.STRONGBOX)"))
+        assertTrue(source.contains("StrongBox remains platform-owned"))
     }
 
     @Test
