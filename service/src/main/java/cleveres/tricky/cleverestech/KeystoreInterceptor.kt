@@ -1,12 +1,10 @@
 package cleveres.tricky.cleverestech
 
 import android.annotation.SuppressLint
-import android.hardware.security.keymint.ErrorCode
 import android.hardware.security.keymint.SecurityLevel
 import android.os.IBinder
 import android.os.Parcel
 import android.os.ServiceManager
-import android.os.ServiceSpecificException
 import android.os.SystemClock
 import android.system.keystore2.IKeystoreService
 import android.system.keystore2.KeyEntryResponse
@@ -20,9 +18,6 @@ object KeystoreInterceptor : BinderInterceptor() {
     private const val FIRST_APPLICATION_UID = 10_000
     private const val MAX_PROC_SCAN_ENTRIES = 4_096
     private const val INJECTION_RETRY_INTERVAL_MS = 15_000L
-
-    private val getSecurityLevelTransaction =
-        getTransactCode(IKeystoreService.Stub::class.java, "getSecurityLevel") // 1
 
     private val getKeyEntryTransaction =
         getTransactCode(IKeystoreService.Stub::class.java, "getKeyEntry") // 2
@@ -49,22 +44,10 @@ object KeystoreInterceptor : BinderInterceptor() {
     ): Result {
         if (target != keystore) return Skip
 
-        // StrongBox discovery is fail-closed for targeted clients. Never hand a TEE child binder
-        // back for a StrongBox request: that changes the requested hardware class and makes the
-        // generated key/certificate contract internally inconsistent. Keystore2 documents
-        // HARDWARE_TYPE_UNAVAILABLE as the correct result when a requested security level cannot
-        // be provided.
-        if (code == getSecurityLevelTransaction) {
-            return if (
-                Config.needHack(callingUid) &&
-                requestedSecurityLevel(data) == SecurityLevel.STRONGBOX
-            ) {
-                Continue
-            } else {
-                Skip
-            }
-        }
-
+        // Security-level discovery remains completely platform-owned. In particular, a StrongBox
+        // request must reach Keystore2 unchanged so callers receive the genuine StrongBox child
+        // binder when the device provides one. Never substitute TEE and never manufacture an
+        // unavailable result for hardware that is actually present.
         if (!CertHack.canHack()) return Skip
         if (code == getKeyEntryTransaction) {
             val targeted = Config.needHack(callingUid)
@@ -87,23 +70,6 @@ object KeystoreInterceptor : BinderInterceptor() {
     ): Result {
         if (target != keystore || reply == null || resultCode != 0) return Skip
 
-        if (code == getSecurityLevelTransaction) {
-            if (
-                !Config.needHack(callingUid) ||
-                requestedSecurityLevel(data) != SecurityLevel.STRONGBOX
-            ) {
-                return Skip
-            }
-
-            // Match the AIDL contract instead of returning the TEE binder under a StrongBox
-            // request. This is intentionally independent of certificate/keybox availability:
-            // callers either obtain genuine StrongBox from the platform or receive the documented
-            // KeyMint unavailable error; a TEE key is never mislabeled as StrongBox.
-            val p = Parcel.obtain()
-            p.writeException(ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE))
-            return OverrideReply(0, p)
-        }
-
         if (!CertHack.canHack() || code != getKeyEntryTransaction) return Skip
 
         try {
@@ -121,9 +87,9 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
 
             // getKeyEntry exposes the platform-owned security level directly in KeyMetadata.
-            // Generic replacement is a TEE-only policy, so reject StrongBox/software metadata
-            // before cache hashing, X.509 parsing or Rust IPC. This keeps StrongBox reads fully
-            // platform-owned and removes even the first-read provenance-classification overhead.
+            // Generic replacement remains a TEE-only policy. Genuine StrongBox/software metadata
+            // exits before cache hashing, X.509 parsing or Rust IPC, so StrongBox stays fully
+            // platform-owned and receives no compatibility-layer latency on readback.
             if (metadata.keySecurityLevel != SecurityLevel.TRUSTED_ENVIRONMENT) {
                 p.recycle()
                 return Skip
@@ -179,18 +145,6 @@ object KeystoreInterceptor : BinderInterceptor() {
             p.recycle()
         }
         return Skip
-    }
-
-    private fun requestedSecurityLevel(data: Parcel): Int? {
-        val position = data.dataPosition()
-        return try {
-            data.enforceInterface(IKeystoreService.DESCRIPTOR)
-            if (data.dataAvail() < Integer.BYTES) null else data.readInt()
-        } catch (_: RuntimeException) {
-            null
-        } finally {
-            data.setDataPosition(position)
-        }
     }
 
     private val triedCount = java.util.concurrent.atomic.AtomicInteger(0)
@@ -376,12 +330,9 @@ object KeystoreInterceptor : BinderInterceptor() {
                 null
             }
 
-        // Root getSecurityLevel is intercepted only to fail targeted StrongBox discovery closed.
-        // No StrongBox child binder is acquired or hooked, and a StrongBox request is never
-        // redirected to the TEE child. getKeyEntry remains the cached TEE replacement/readback
-        // path for targeted callers and granted-chain readers.
-        val interceptedCodes =
-            validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)
+        // Root discovery is not intercepted. StrongBox remains discoverable exactly as Keystore2
+        // exposes it, while the TEE child retains the existing certificate compatibility hook.
+        val interceptedCodes = validTransactCodes(getKeyEntryTransaction)
 
         val registeredHook = registerBinderInterceptor(bd, b, this, interceptedCodes)
         if (!registeredHook) {
@@ -414,9 +365,9 @@ object KeystoreInterceptor : BinderInterceptor() {
                 teeInterceptor = interceptor
                 teeTarget = tee.asBinder()
             }
-            Logger.i("TEE SecurityLevel interceptor registered")
+            Logger.i("TEE SecurityLevel interceptor registered; StrongBox remains platform-owned")
         } else {
-            Logger.i("TEE SecurityLevel is unavailable")
+            Logger.i("TEE SecurityLevel is unavailable; StrongBox remains platform-owned")
         }
 
         var linkSuccess = false
