@@ -934,12 +934,7 @@ mod tests {
         root_of_trust_with_state(key, true, 0, hash)
     }
 
-    fn root_of_trust_with_state(
-        key: [u8; 32],
-        locked: bool,
-        state: u8,
-        hash: [u8; 32],
-    ) -> Vec<u8> {
+    fn root_of_trust_with_state(key: [u8; 32], locked: bool, state: u8, hash: [u8; 32]) -> Vec<u8> {
         let key = Any::new(Tag::OctetString, key.to_vec())
             .unwrap()
             .to_der()
