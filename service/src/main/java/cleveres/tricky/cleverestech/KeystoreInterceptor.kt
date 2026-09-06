@@ -6,7 +6,6 @@ import android.hardware.security.keymint.SecurityLevel
 import android.os.IBinder
 import android.os.Parcel
 import android.os.ServiceManager
-import android.os.ServiceSpecificException
 import android.os.SystemClock
 import android.system.keystore2.IKeystoreService
 import android.system.keystore2.KeyEntryResponse
@@ -339,13 +338,15 @@ object KeystoreInterceptor : BinderInterceptor() {
         val strongbox =
             try {
                 ks.getSecurityLevel(SecurityLevel.STRONGBOX)
-            } catch (e: ServiceSpecificException) {
-                if (e.errorCode != ErrorCode.HARDWARE_TYPE_UNAVAILABLE) {
+            } catch (e: Exception) {
+                val isHardwareUnavailable =
+                    e.javaClass.simpleName == "ServiceSpecificException" &&
+                        runCatching {
+                            e.javaClass.getField("errorCode").getInt(e) == ErrorCode.HARDWARE_TYPE_UNAVAILABLE
+                        }.getOrDefault(false)
+                if (!isHardwareUnavailable) {
                     Logger.e("Failed to obtain StrongBox SecurityLevel", e)
                 }
-                null
-            } catch (e: Exception) {
-                Logger.e("Failed to obtain StrongBox SecurityLevel", e)
                 null
             }
 
