@@ -7,27 +7,19 @@ import org.junit.Test
 
 class StrongBoxBinderRoutingTest {
     @Test
-    fun `root keystore returns StrongBox unavailable instead of remapping to TEE`() {
+    fun `root keystore does not intercept or remap StrongBox discovery`() {
         val source = source("KeystoreInterceptor.kt")
 
-        assertTrue(source.contains("getSecurityLevelTransaction"))
+        assertFalse(source.contains("getSecurityLevelTransaction"))
         assertFalse(source.contains("returned == strongBoxTarget"))
         assertFalse(source.contains("writeStrongBinder(currentTeeTarget)"))
-        assertTrue(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
-        assertTrue(
-            source.contains(
-                "ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE)",
-            ),
-        )
-        assertTrue(
-            source.contains(
-                "validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)",
-            ),
-        )
+        assertFalse(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
+        assertFalse(source.contains("ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE)"))
+        assertTrue(source.contains("validTransactCodes(getKeyEntryTransaction)"))
     }
 
     @Test
-    fun `StrongBox child binder remains completely unhooked`() {
+    fun `StrongBox child binder remains completely unhooked and platform owned`() {
         val source = source("KeystoreInterceptor.kt")
         val teeLookup = source.indexOf("ks.getSecurityLevel(SecurityLevel.TRUSTED_ENVIRONMENT)")
         val teeRegistration = source.indexOf("tee.asBinder(),", teeLookup)
@@ -38,6 +30,7 @@ class StrongBoxBinderRoutingTest {
         assertFalse(source.contains("strongBox.asBinder()"))
         assertFalse(source.contains("strongBoxInterceptor"))
         assertFalse(source.contains("strongBoxTarget"))
+        assertTrue(source.contains("StrongBox remains platform-owned"))
     }
 
     @Test
