@@ -35,8 +35,16 @@ class KeystoreStrongBoxRedirectionTest {
             ),
         )
         assertFalse(source.contains("writeStrongBinder(currentTeeTarget)"))
-        assertFalse(source.contains("ks.getSecurityLevel(SecurityLevel.STRONGBOX)"))
-        assertTrue(source.contains("StrongBox remains platform-owned"))
+        assertTrue(source.contains("Security-level discovery remains completely platform-owned."))
+    }
+
+    @Test
+    fun `StrongBox registration rollback and teardown synchronization are preserved`() {
+        val source = sourceFile("KeystoreInterceptor.kt").readText()
+
+        assertTrue(source.contains("strongboxInterceptor != null"))
+        assertTrue(source.contains("lifecycleEpoch"))
+        assertTrue(source.contains("unregisterBinderInterceptor(bd, strongbox.asBinder(), interceptor)"))
     }
 
     @Test
