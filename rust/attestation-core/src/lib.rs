@@ -149,10 +149,24 @@ pub fn rewrite_extension(request: &RewriteRequest<'_>) -> Result<RewriteResult, 
     }
 
     let attestation_version = decode_i32(&fields[0])?;
-    validate_security_level(&fields[1])?;
+    let attestation_level = decode_security_level(&fields[1])?;
     let keymint_version = decode_i32(&fields[2])?;
-    validate_security_level(&fields[3])?;
+    let keymint_level = decode_security_level(&fields[3])?;
     let supports_module_hash = attestation_version >= 400 && keymint_version >= 400;
+
+    let target_security_level = if attestation_level == 2 || keymint_level == 2 {
+        2u8
+    } else if attestation_level == 1 || keymint_level == 1 {
+        1u8
+    } else {
+        attestation_level
+    };
+    let encoded_level = Any::new(Tag::Enumerated, vec![target_security_level])
+        .map_err(|_| Error::Der)?
+        .to_der()
+        .map_err(|_| Error::Der)?;
+    fields[1] = encoded_level.clone();
+    fields[3] = encoded_level;
 
     let list_six = parse_authorization_list(&fields[AUTHORIZATION_LIST_SOFTWARE_INDEX])?;
     let list_seven = parse_authorization_list(&fields[AUTHORIZATION_LIST_TEE_INDEX])?;
@@ -464,7 +478,7 @@ fn decode_i32(encoded: &[u8]) -> Result<i32, Error> {
     i32::from_der(encoded).map_err(|_| Error::InvalidStructure)
 }
 
-fn validate_security_level(encoded: &[u8]) -> Result<(), Error> {
+fn decode_security_level(encoded: &[u8]) -> Result<u8, Error> {
     let level = parse_any(encoded)?;
     if level.tag() != Tag::Enumerated
         || level.value().len() != 1
@@ -472,7 +486,7 @@ fn validate_security_level(encoded: &[u8]) -> Result<(), Error> {
     {
         return Err(Error::InvalidStructure);
     }
-    Ok(())
+    Ok(level.value()[0])
 }
 
 fn decode_explicit_i32(encoded: &[u8]) -> Result<i32, Error> {
