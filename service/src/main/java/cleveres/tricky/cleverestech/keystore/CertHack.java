@@ -401,20 +401,19 @@ public final class CertHack {
             // cross the Rust certificate-inspection boundary.
             if (!Utils.hasAndroidAttestationExtension(caList[0])) return caList;
 
-            // Security provenance is mandatory before choosing any replacement issuer. This is one
-            // bounded inspection for a fresh attested leaf. The existing 64-entry LRU stores both
-            // rewrite results and marker-only passthrough decisions, so repeated StrongBox reads do
-            // not create recurring IPC, parsing, allocations, timers or background work.
+            // Generic replacement keyboxes carry no trustworthy StrongBox signer provenance.
+            // Rewriting a genuine StrongBox leaf with a TEE/generic issuer makes the chain claim
+            // contradictory security origins (the regression visible as repeated T=TEE issuers).
+            // Keep StrongBox completely hardware-owned and cache the passthrough decision so
+            // repeated reads remain allocation/IPC free. TEE keeps the established compatibility
+            // path; every other source also fails closed.
             inspection = CertificateBackend.inspect(leafEncoded);
             if (inspection == null) return caList;
             int attLevel = inspection.getAttestationSecurityLevel();
             int kmLevel = inspection.getKeymintSecurityLevel();
             boolean isTee = attLevel == CertificateBackend.SECURITY_LEVEL_TEE
                     && kmLevel == CertificateBackend.SECURITY_LEVEL_TEE;
-            boolean isStrongbox = attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX
-                    && kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
-            boolean isTeeOrStrongbox = isTee || isStrongbox;
-            if (!isTeeOrStrongbox) {
+            if (!isTee) {
                 synchronized (cache) {
                     if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
                         cache.putIfAbsent(cacheKey, CachedCertificateChain.passthrough());
