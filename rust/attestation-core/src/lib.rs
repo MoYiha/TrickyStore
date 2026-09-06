@@ -90,9 +90,6 @@ pub struct RewriteRequest<'a> {
     pub patch_levels: PatchLevels,
     pub id_overrides: &'a [AttestationIdOverride<'a>],
     pub module_hash: Option<&'a [u8]>,
-    // Kept in the v2 wire contract for compatibility with the managed/backend boundary. RootOfTrust
-    // itself is hardware provenance and is preserved byte-for-byte rather than synthesized from
-    // userspace values.
     pub verified_boot_key: &'a [u8; 32],
     pub verified_boot_hash: &'a [u8; 32],
 }
@@ -200,9 +197,9 @@ pub fn rewrite_extension(request: &RewriteRequest<'_>) -> Result<RewriteResult, 
     sorted_overrides.sort_unstable_by_key(|o| o.tag);
 
     for field in tee_original {
-        // RootOfTrust is intentionally copied as an opaque canonical TLV. In particular,
-        // deviceLocked and verifiedBootState must remain exactly what hardware attested; replacing
-        // them with userspace boot properties creates a signed-provenance contradiction.
+        if field.tag == ROOT_OF_TRUST_TAG {
+            continue;
+        }
         if field.tag == MODULE_HASH_TAG && supports_module_hash {
             original_module_hash = Some(field);
             continue;
@@ -272,6 +269,10 @@ pub fn rewrite_extension(request: &RewriteRequest<'_>) -> Result<RewriteResult, 
         }
     }
 
+    tee.push(TaggedTlv {
+        tag: ROOT_OF_TRUST_TAG,
+        encoded: explicit_root_of_trust(request.verified_boot_key, request.verified_boot_hash)?,
+    });
     tee.sort_by_key(|field| field.tag);
     software.sort_by_key(|field| field.tag);
 
@@ -322,8 +323,6 @@ fn validate_request(request: &RewriteRequest<'_>) -> Result<(), Error> {
     {
         return Err(Error::Bounds);
     }
-    // Retain the v2 wire validation while those fields are present in the protocol. They are not
-    // authoritative for RootOfTrust and are never used to replace the hardware TLV.
     if request.verified_boot_key.iter().all(|byte| *byte == 0)
         || request.verified_boot_hash.iter().all(|byte| *byte == 0)
     {
@@ -499,6 +498,29 @@ fn explicit_octet_string(tag: u32, value: &[u8]) -> Result<Vec<u8>, Error> {
     explicit_tag(tag, &inner)
 }
 
+fn explicit_root_of_trust(boot_key: &[u8; 32], boot_hash: &[u8; 32]) -> Result<Vec<u8>, Error> {
+    let key = Any::new(Tag::OctetString, boot_key.to_vec())
+        .map_err(|_| Error::Bounds)?
+        .to_der()
+        .map_err(|_| Error::Der)?;
+    let verified = true.to_der().map_err(|_| Error::Der)?;
+    let state = Any::new(Tag::Enumerated, vec![0])
+        .map_err(|_| Error::Der)?
+        .to_der()
+        .map_err(|_| Error::Der)?;
+    let hash = Any::new(Tag::OctetString, boot_hash.to_vec())
+        .map_err(|_| Error::Bounds)?
+        .to_der()
+        .map_err(|_| Error::Der)?;
+    let sequence = encode_sequence([
+        key.as_slice(),
+        verified.as_slice(),
+        state.as_slice(),
+        hash.as_slice(),
+    ])?;
+    explicit_tag(ROOT_OF_TRUST_TAG, &sequence)
+}
+
 fn explicit_tag(tag: u32, inner_der: &[u8]) -> Result<Vec<u8>, Error> {
     Any::new(
         Tag::ContextSpecific {
@@ -556,11 +578,11 @@ mod tests {
     const BOOT_HASH: [u8; 32] = [0x22; 32];
 
     #[test]
-    fn rewrites_patch_ids_module_hash_and_preserves_root_of_trust() {
+    fn rewrites_patch_ids_module_hash_and_root_of_trust() {
         let original_root = root_of_trust_with_state([0x33; 32], false, 2, [0x44; 32]);
         let original_root_tag = explicit_tag_raw(ROOT_OF_TRUST_TAG, &original_root);
         let tee = auth_list([
-            original_root_tag.clone(),
+            original_root_tag,
             explicit_integer_raw(SYSTEM_PATCH_TAG, 202401),
             explicit_integer_raw(VENDOR_PATCH_TAG, 20240205),
             explicit_octet_raw(714, b"old-imei"),
@@ -611,10 +633,8 @@ mod tests {
             Some(b"new-module".to_vec())
         );
         assert_eq!(
-            tee.iter()
-                .find(|field| field.tag == ROOT_OF_TRUST_TAG)
-                .map(|field| field.encoded.as_slice()),
-            Some(original_root_tag.as_slice())
+            root_of_trust_fields(&tee),
+            (BOOT_KEY.to_vec(), true, 0, BOOT_HASH.to_vec())
         );
         assert_sorted(&tee);
         assert_sorted(&software);
@@ -985,6 +1005,32 @@ mod tests {
             assert_eq!(inner.tag(), Tag::OctetString);
             inner.value().to_vec()
         })
+    }
+
+    fn root_of_trust_fields(tee: &[TaggedTlv]) -> (Vec<u8>, bool, u8, Vec<u8>) {
+        let root = tee
+            .iter()
+            .find(|field| field.tag == ROOT_OF_TRUST_TAG)
+            .unwrap();
+        let explicit = parse_any(&root.encoded).unwrap();
+        let sequence = parse_any(explicit.value()).unwrap();
+        assert_eq!(sequence.tag(), Tag::Sequence);
+        let fields = split_tlvs(sequence.value(), 4).unwrap();
+        assert_eq!(fields.len(), 4);
+        let key = parse_any(&fields[0]).unwrap();
+        assert_eq!(key.tag(), Tag::OctetString);
+        let locked = bool::from_der(&fields[1]).unwrap();
+        let state = parse_any(&fields[2]).unwrap();
+        assert_eq!(state.tag(), Tag::Enumerated);
+        assert_eq!(state.value().len(), 1);
+        let hash = parse_any(&fields[3]).unwrap();
+        assert_eq!(hash.tag(), Tag::OctetString);
+        (
+            key.value().to_vec(),
+            locked,
+            state.value()[0],
+            hash.value().to_vec(),
+        )
     }
 
     fn assert_sorted(fields: &[TaggedTlv]) {
