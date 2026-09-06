@@ -7,13 +7,23 @@ import org.junit.Test
 
 class StrongBoxBinderRoutingTest {
     @Test
-    fun `root keystore interceptor never remaps StrongBox to TEE`() {
+    fun `root keystore returns StrongBox unavailable instead of remapping to TEE`() {
         val source = source("KeystoreInterceptor.kt")
 
-        assertFalse(source.contains("getSecurityLevelTransaction"))
+        assertTrue(source.contains("getSecurityLevelTransaction"))
         assertFalse(source.contains("returned == strongBoxTarget"))
         assertFalse(source.contains("writeStrongBinder(currentTeeTarget)"))
-        assertTrue(source.contains("validTransactCodes(getKeyEntryTransaction)"))
+        assertTrue(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
+        assertTrue(
+            source.contains(
+                "ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE)",
+            ),
+        )
+        assertTrue(
+            source.contains(
+                "validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)",
+            ),
+        )
     }
 
     @Test
@@ -24,7 +34,7 @@ class StrongBoxBinderRoutingTest {
 
         assertTrue(teeLookup >= 0)
         assertTrue(teeRegistration > teeLookup)
-        assertFalse(source.contains("SecurityLevel.STRONGBOX"))
+        assertFalse(source.contains("ks.getSecurityLevel(SecurityLevel.STRONGBOX)"))
         assertFalse(source.contains("strongBox.asBinder()"))
         assertFalse(source.contains("strongBoxInterceptor"))
         assertFalse(source.contains("strongBoxTarget"))

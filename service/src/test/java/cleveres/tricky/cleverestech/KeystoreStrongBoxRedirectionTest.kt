@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech
 
+import android.hardware.security.keymint.ErrorCode
 import android.system.keystore2.IKeystoreService
 import java.io.File
 import org.junit.After
@@ -21,23 +22,35 @@ class KeystoreStrongBoxRedirectionTest {
     }
 
     @Test
-    fun `root keystore leaves getSecurityLevel transparent and intercepts only getKeyEntry`() {
+    fun `root keystore fails targeted StrongBox unavailable without TEE remapping`() {
         val source = sourceFile("KeystoreInterceptor.kt").readText()
 
-        assertFalse(source.contains("getSecurityLevelTransaction"))
+        assertTrue(source.contains("getSecurityLevelTransaction"))
         assertTrue(source.contains("getKeyEntryTransaction"))
-        assertTrue(source.contains("validTransactCodes(getKeyEntryTransaction)"))
-        assertFalse(source.contains("SecurityLevel.STRONGBOX"))
+        assertTrue(
+            source.contains(
+                "validTransactCodes(getSecurityLevelTransaction, getKeyEntryTransaction)",
+            ),
+        )
+        assertTrue(source.contains("requestedSecurityLevel(data) == SecurityLevel.STRONGBOX"))
+        assertTrue(
+            source.contains(
+                "ServiceSpecificException(ErrorCode.HARDWARE_TYPE_UNAVAILABLE)",
+            ),
+        )
+        assertFalse(source.contains("writeStrongBinder(currentTeeTarget)"))
+        assertFalse(source.contains("ks.getSecurityLevel(SecurityLevel.STRONGBOX)"))
     }
 
     @Test
-    fun `stub IKeystoreService declares correct transaction codes`() {
+    fun `stub IKeystoreService declares correct transaction and unavailable codes`() {
         val stub = IKeystoreService.Stub::class.java
         val fieldGetSecLevel = stub.getDeclaredField("TRANSACTION_getSecurityLevel")
         val fieldGetKeyEntry = stub.getDeclaredField("TRANSACTION_getKeyEntry")
 
         assertEquals(1, fieldGetSecLevel.getInt(null))
         assertEquals(2, fieldGetKeyEntry.getInt(null))
+        assertEquals(-68, ErrorCode.HARDWARE_TYPE_UNAVAILABLE)
     }
 
     private fun sourceFile(name: String): File {
