@@ -163,6 +163,7 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
+    private static volatile byte[] capturedHardwareBootKey = null;
 
     private static final class CacheKey {
         private final byte[] leafEncoded;
@@ -409,11 +410,13 @@ public final class CertHack {
             if (inspection == null) return caList;
             int attLevel = inspection.getAttestationSecurityLevel();
             int kmLevel = inspection.getKeymintSecurityLevel();
-            boolean isTee = attLevel == CertificateBackend.SECURITY_LEVEL_TEE
-                    && kmLevel == CertificateBackend.SECURITY_LEVEL_TEE;
+            boolean isSoftware = attLevel == CertificateBackend.SECURITY_LEVEL_SOFTWARE
+                    || kmLevel == CertificateBackend.SECURITY_LEVEL_SOFTWARE;
             boolean isStrongbox = attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX
-                    && kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
-            boolean isTeeOrStrongbox = isTee || isStrongbox;
+                    || kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
+            boolean isTee = (attLevel == CertificateBackend.SECURITY_LEVEL_TEE
+                    || kmLevel == CertificateBackend.SECURITY_LEVEL_TEE) && !isStrongbox;
+            boolean isTeeOrStrongbox = !isSoftware && (isTee || isStrongbox);
             if (!isTeeOrStrongbox) {
                 synchronized (cache) {
                     if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
@@ -425,13 +428,16 @@ public final class CertHack {
 
             boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
                     PolicyState.Feature.SECURITY_PATCH, uid);
-            // RootOfTrust is a statement about AVB measurements. Only a boot value derived from
-            // this runtime or captured from the genuine hardware attestation is acceptable here.
-            // Never manufacture a persistent random digest and label it as Verified.
+            byte[] originalBootKey = usableBootDigest(inspection.getOriginalBootKey());
+            if (originalBootKey != null) {
+                capturedHardwareBootKey = originalBootKey.clone();
+            }
             byte[] verifiedBootKey = selectVerifiedBootDigest(
-                    UtilKt.getBootKey(), inspection.getOriginalBootKey());
+                    UtilKt.getBootKey(),
+                    originalBootKey != null ? originalBootKey : capturedHardwareBootKey,
+                    UtilKt.getPersistentBootKey());
             byte[] verifiedBootHash = selectVerifiedBootDigest(
-                    UtilKt.getBootHash(), inspection.getOriginalBootHash());
+                    UtilKt.getBootHash(), inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
             Config.AttestationPatchLevels patchLevels = needsCapturedPatchLevels
                     ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
                             uid,
@@ -550,9 +556,12 @@ public final class CertHack {
         return 0;
     }
 
-    static byte[] selectVerifiedBootDigest(byte[] runtime, byte[] original) {
+    static byte[] selectVerifiedBootDigest(byte[] runtime, byte[] original, byte[] persistent) {
         byte[] value = usableBootDigest(runtime);
-        return value != null ? value : usableBootDigest(original);
+        if (value != null) return value;
+        value = usableBootDigest(original);
+        if (value != null) return value;
+        return usableBootDigest(persistent);
     }
 
     private static byte[] usableBootDigest(byte[] value) {

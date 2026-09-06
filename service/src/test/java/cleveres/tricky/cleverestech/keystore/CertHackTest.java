@@ -95,17 +95,21 @@ public class CertHackTest {
     }
 
     @Test
-    public void testVerifiedBootDigestSelectionUsesOnlyRuntimeOrHardwareMaterial() {
+    public void testVerifiedBootDigestSelectionWithFallback() {
         byte[] runtime = new byte[32];
         byte[] original = new byte[32];
+        byte[] persistent = new byte[32];
         java.util.Arrays.fill(runtime, (byte) 0x11);
         java.util.Arrays.fill(original, (byte) 0x22);
+        java.util.Arrays.fill(persistent, (byte) 0x33);
 
-        assertSame(runtime, CertHack.selectVerifiedBootDigest(runtime, original));
-        assertSame(original, CertHack.selectVerifiedBootDigest(null, original));
-        assertSame(original, CertHack.selectVerifiedBootDigest(new byte[32], original));
-        assertNull(CertHack.selectVerifiedBootDigest(null, null));
-        assertNull(CertHack.selectVerifiedBootDigest(new byte[32], new byte[31]));
+        assertSame(runtime, CertHack.selectVerifiedBootDigest(runtime, original, persistent));
+        assertSame(original, CertHack.selectVerifiedBootDigest(null, original, persistent));
+        assertSame(original, CertHack.selectVerifiedBootDigest(new byte[32], original, persistent));
+        assertSame(persistent, CertHack.selectVerifiedBootDigest(null, null, persistent));
+        assertSame(persistent, CertHack.selectVerifiedBootDigest(new byte[32], new byte[32], persistent));
+        assertNull(CertHack.selectVerifiedBootDigest(null, null, null));
+        assertNull(CertHack.selectVerifiedBootDigest(new byte[32], new byte[31], new byte[32]));
     }
 
     @Test
