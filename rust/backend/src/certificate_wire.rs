@@ -66,13 +66,15 @@ pub fn rewrite_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
         // Defense in depth: do not trust the managed caller to classify provenance correctly.
         // The production replacement keybox format proves key ownership/signature validity but not
         // a hardware TEE-vs-StrongBox origin. Reinspect the genuine source and reject every source
-        // that is not unambiguously TEE/TEE before an opaque replacement issuer can sign it.
+        // that is not unambiguously hardware-backed before an opaque replacement issuer can sign it.
         let provenance = inspect_certificate(parsed.genuine_leaf_der)
             .map_err(|_| "certificate rewrite provenance rejected")?;
-        if provenance.attestation_security_level != SecurityLevel::TrustedEnvironment
-            || provenance.keymint_security_level != SecurityLevel::TrustedEnvironment
-        {
-            return Err("certificate rewrite provenance is not TEE compatible");
+        let is_tee = provenance.attestation_security_level == SecurityLevel::TrustedEnvironment
+            && provenance.keymint_security_level == SecurityLevel::TrustedEnvironment;
+        let is_strongbox = provenance.attestation_security_level == SecurityLevel::StrongBox
+            && provenance.keymint_security_level == SecurityLevel::StrongBox;
+        if !is_tee && !is_strongbox {
+            return Err("certificate rewrite provenance is not hardware compatible");
         }
 
         key_store::with_prepared_key(&parsed.key_id, |stored_algorithm, prepared_issuer| {
