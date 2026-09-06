@@ -69,12 +69,12 @@ pub fn rewrite_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'static str>
         // that is not unambiguously hardware-backed before an opaque replacement issuer can sign it.
         let provenance = inspect_certificate(parsed.genuine_leaf_der)
             .map_err(|_| "certificate rewrite provenance rejected")?;
-        let is_software = provenance.attestation_security_level == SecurityLevel::Software
-            || provenance.keymint_security_level == SecurityLevel::Software;
-        let is_strongbox = provenance.attestation_security_level == SecurityLevel::StrongBox
-            || provenance.keymint_security_level == SecurityLevel::StrongBox;
         let is_tee = provenance.attestation_security_level == SecurityLevel::TrustedEnvironment
             || provenance.keymint_security_level == SecurityLevel::TrustedEnvironment;
+        let is_strongbox = provenance.attestation_security_level == SecurityLevel::StrongBox
+            || provenance.keymint_security_level == SecurityLevel::StrongBox;
+        let is_software = provenance.attestation_security_level == SecurityLevel::Software
+            || provenance.keymint_security_level == SecurityLevel::Software;
         if is_software || (!is_tee && !is_strongbox) {
             return Err("certificate rewrite provenance is not hardware compatible");
         }
