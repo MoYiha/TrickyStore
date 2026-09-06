@@ -5,29 +5,23 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object VbMetaParser {
+    // AVB0 Magic (4 bytes)
     private val AVB_MAGIC = "AVB0".toByteArray()
     private const val HEADER_SIZE = 256
     private const val AUTH_DATA_BLOCK_SIZE_LOC = 12
     private const val AUX_DATA_BLOCK_SIZE_LOC = 20
     private const val PUBLIC_KEY_OFFSET_LOC = 64
     private const val PUBLIC_KEY_SIZE_LOC = 72
-
-    // libavb/avb_slot_verify.c bounds each complete vbmeta image to 64 KiB.
-    private const val MAX_IMAGE_BYTES = 64 * 1024
-    private const val BLOCK_ALIGNMENT = 64
+    private const val MAX_PUBLIC_KEY_BYTES = 64 * 1024
 
     /**
-     * Extracts public-key bytes from a bounded vbmeta image. Extraction does not verify the
-     * image's signature, the bootloader's trust anchor, or the device's actual boot state.
+     * Extracts the public key from the vbmeta image at the given path.
+     * Returns null if the file cannot be read or parsing fails.
      */
-    fun extractPublicKey(path: String): ByteArray? = extractPublicKey(path) { RandomAccessFile(it, "r") }
-
-    internal fun extractPublicKey(
-        path: String,
-        openFile: (String) -> RandomAccessFile,
-    ): ByteArray? {
+    fun extractPublicKey(path: String): ByteArray? {
         return try {
-            openFile(path).use { file ->
+            RandomAccessFile(path, "r").use { file ->
+                // Read header
                 val header = ByteArray(HEADER_SIZE)
                 try {
                     file.readFully(header)
@@ -36,6 +30,7 @@ object VbMetaParser {
                     return null
                 }
 
+                // Verify Magic
                 for (i in AVB_MAGIC.indices) {
                     if (header[i] != AVB_MAGIC[i]) {
                         Logger.e("VbMetaParser: Invalid magic in $path")
@@ -49,12 +44,9 @@ object VbMetaParser {
                 val publicKeyOffset = buffer.getLong(PUBLIC_KEY_OFFSET_LOC)
                 val publicKeySize = buffer.getLong(PUBLIC_KEY_SIZE_LOC)
 
-                if (authDataBlockSize < 0 || auxiliaryDataBlockSize < 0 ||
-                    authDataBlockSize > MAX_IMAGE_BYTES - HEADER_SIZE ||
-                    auxiliaryDataBlockSize > MAX_IMAGE_BYTES - HEADER_SIZE - authDataBlockSize ||
-                    authDataBlockSize % BLOCK_ALIGNMENT != 0L ||
-                    auxiliaryDataBlockSize % BLOCK_ALIGNMENT != 0L ||
-                    publicKeyOffset < 0 || publicKeySize <= 0 ||
+                if (publicKeyOffset < 0 || publicKeySize <= 0 ||
+                    authDataBlockSize < 0 || auxiliaryDataBlockSize < 0 ||
+                    publicKeySize > MAX_PUBLIC_KEY_BYTES ||
                     publicKeyOffset > auxiliaryDataBlockSize ||
                     publicKeySize > auxiliaryDataBlockSize - publicKeyOffset
                 ) {
@@ -62,22 +54,36 @@ object VbMetaParser {
                     return null
                 }
 
-                // Android RandomAccessFile.length() uses fstat().st_size, which is zero for
-                // block devices. Read the bounded, declared image instead of treating that as EOF.
-                // Reading the full body also rejects truncation after an otherwise readable key.
-                val body = ByteArray((authDataBlockSize + auxiliaryDataBlockSize).toInt())
-                try {
-                    file.readFully(body)
-                    val keyStart = (authDataBlockSize + publicKeyOffset).toInt()
-                    val keyEnd = keyStart + publicKeySize.toInt()
-                    Logger.d("VbMetaParser: Successfully extracted public key from $path")
-                    body.copyOfRange(keyStart, keyEnd)
-                } catch (e: java.io.EOFException) {
-                    Logger.e("VbMetaParser: Truncated vbmeta image")
-                    null
-                } finally {
-                    body.fill(0)
+                // Seek to public key location
+                // The public key is in the Auxiliary Data block, which follows the Authentication Data block.
+                // The Authentication Data block starts at HEADER_SIZE (256).
+                // So the Auxiliary Data block starts at HEADER_SIZE + authDataBlockSize.
+                // publicKeyOffset is relative to the start of the Auxiliary Data block.
+
+                val absoluteOffset =
+                    try {
+                        Math.addExact(Math.addExact(HEADER_SIZE.toLong(), authDataBlockSize), publicKeyOffset)
+                    } catch (e: ArithmeticException) {
+                        Logger.e("VbMetaParser: Public-key offset overflow")
+                        return null
+                    }
+                if (absoluteOffset > file.length() || publicKeySize > file.length() - absoluteOffset) {
+                    Logger.e("VbMetaParser: Public key extends past the vbmeta image")
+                    return null
                 }
+                file.seek(absoluteOffset)
+
+                val keyBytes = ByteArray(publicKeySize.toInt())
+                try {
+                    file.readFully(keyBytes)
+                } catch (e: java.io.EOFException) {
+                    keyBytes.fill(0)
+                    Logger.e("VbMetaParser: Failed to read public key bytes")
+                    return null
+                }
+
+                Logger.d("VbMetaParser: Successfully extracted public key from $path")
+                keyBytes
             }
         } catch (e: Exception) {
             Logger.e("VbMetaParser: Error reading $path", e)

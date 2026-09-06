@@ -148,7 +148,6 @@ dependencies {
     testImplementation(libs.kxml)
     testImplementation(libs.json)
     testImplementation(libs.mockito.core)
-    androidTestCompileOnly(project(":stub"))
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.androidx.test.runner)

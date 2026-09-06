@@ -163,7 +163,6 @@ public final class CertHack {
     }
 
     private static volatile State state = new State(Collections.emptyMap(), Collections.emptyMap());
-    private static volatile byte[] capturedHardwareBootKey = null;
 
     private static final class CacheKey {
         private final byte[] leafEncoded;
@@ -338,7 +337,9 @@ public final class CertHack {
      * getKeyEntry calls to avoid X.509 parsing and Rust IPC while preserving the genuine reply.
      */
     public static boolean applyCachedCertificateChain(KeyMetadata metadata) {
-        if (!Utils.isCertificateChainRewriteCandidate(metadata)) {
+        if (metadata == null || metadata.certificate == null ||
+                metadata.certificate.length == 0 ||
+                metadata.certificate.length > MAX_LEAF_CERTIFICATE_BYTES) {
             return false;
         }
         State currentState = state;
@@ -408,16 +409,8 @@ public final class CertHack {
             // not create recurring IPC, parsing, allocations, timers or background work.
             inspection = CertificateBackend.inspect(leafEncoded);
             if (inspection == null) return caList;
-            int attLevel = inspection.getAttestationSecurityLevel();
-            int kmLevel = inspection.getKeymintSecurityLevel();
-            boolean isSoftware = attLevel == CertificateBackend.SECURITY_LEVEL_SOFTWARE
-                    || kmLevel == CertificateBackend.SECURITY_LEVEL_SOFTWARE;
-            boolean isStrongbox = attLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX
-                    || kmLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
-            boolean isTee = (attLevel == CertificateBackend.SECURITY_LEVEL_TEE
-                    || kmLevel == CertificateBackend.SECURITY_LEVEL_TEE) && !isStrongbox;
-            boolean isTeeOrStrongbox = !isSoftware && (isTee || isStrongbox);
-            if (!isTeeOrStrongbox) {
+            if (inspection.getAttestationSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE ||
+                    inspection.getKeymintSecurityLevel() != CertificateBackend.SECURITY_LEVEL_TEE) {
                 synchronized (cache) {
                     if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
                         cache.putIfAbsent(cacheKey, CachedCertificateChain.passthrough());
@@ -428,16 +421,8 @@ public final class CertHack {
 
             boolean needsCapturedPatchLevels = PolicyState.INSTANCE.isFeatureEnabled(
                     PolicyState.Feature.SECURITY_PATCH, uid);
-            byte[] originalBootKey = usableBootDigest(inspection.getOriginalBootKey());
-            if (originalBootKey != null) {
-                capturedHardwareBootKey = originalBootKey.clone();
-            }
-            byte[] verifiedBootKey = selectVerifiedBootDigest(
-                    UtilKt.getBootKey(),
-                    originalBootKey != null ? originalBootKey : capturedHardwareBootKey,
-                    UtilKt.getPersistentBootKey());
-            byte[] verifiedBootHash = selectVerifiedBootDigest(
-                    UtilKt.getBootHash(), inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
+            byte[] verifiedBootKey = usableBootDigest(UtilKt.getBootKey());
+            byte[] verifiedBootHash = usableBootDigest(UtilKt.getBootHash());
             Config.AttestationPatchLevels patchLevels = needsCapturedPatchLevels
                     ? PolicyState.INSTANCE.resolveAttestationPatchLevels(
                             uid,
@@ -445,6 +430,14 @@ public final class CertHack {
                             inspection.getVendorPatch(),
                             inspection.getBootPatch())
                     : keepPatchLevels();
+            if (verifiedBootKey == null) {
+                verifiedBootKey = firstUsableBootDigest(
+                        null, inspection.getOriginalBootKey(), UtilKt.getPersistentBootKey());
+            }
+            if (verifiedBootHash == null) {
+                verifiedBootHash = firstUsableBootDigest(
+                        null, inspection.getOriginalBootHash(), UtilKt.getPersistentBootHash());
+            }
 
             String preferredSignerAlgorithm = KeyProperties.KEY_ALGORITHM_EC;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
@@ -556,8 +549,8 @@ public final class CertHack {
         return 0;
     }
 
-    static byte[] selectVerifiedBootDigest(byte[] runtime, byte[] original, byte[] persistent) {
-        byte[] value = usableBootDigest(runtime);
+    private static byte[] firstUsableBootDigest(byte[] preferred, byte[] original, byte[] persistent) {
+        byte[] value = usableBootDigest(preferred);
         if (value != null) return value;
         value = usableBootDigest(original);
         if (value != null) return value;

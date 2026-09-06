@@ -63,12 +63,6 @@ public class ModuleHashTest {
         ManagedCertificateBackendOracle.reset();
     }
 
-    private static byte[] validBootDigest(int marker) {
-        byte[] digest = new byte[32];
-        digest[0] = (byte) marker;
-        return digest;
-    }
-
     private static Field moduleHashField() throws Exception {
         Field field = Config.class.getDeclaredField("moduleHash");
         field.setAccessible(true);
@@ -101,10 +95,10 @@ public class ModuleHashTest {
         keyDesc.add(new DERSequence());
 
         ASN1EncodableVector rootOfTrust = new ASN1EncodableVector();
-        rootOfTrust.add(new DEROctetString(validBootDigest(0x11)));
+        rootOfTrust.add(new DEROctetString(new byte[32]));
         rootOfTrust.add(ASN1Boolean.TRUE);
         rootOfTrust.add(new ASN1Enumerated(0));
-        rootOfTrust.add(new DEROctetString(validBootDigest(0x22)));
+        rootOfTrust.add(new DEROctetString(new byte[32]));
         ASN1EncodableVector teeEnforced = new ASN1EncodableVector();
         teeEnforced.add(new DERTaggedObject(true, 704, new DERSequence(rootOfTrust)));
         keyDesc.add(new DERSequence(teeEnforced));
