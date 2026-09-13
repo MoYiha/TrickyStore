@@ -3,6 +3,7 @@ package cleveres.tricky.cleverestech.keystore;
 import android.hardware.security.keymint.SecurityLevel;
 import android.os.Binder;
 import android.os.Parcel;
+import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyEntryResponse;
 import android.system.keystore2.KeyMetadata;
 import cleveres.tricky.cleverestech.Config;
@@ -952,6 +953,148 @@ public class AttestationInterceptorContractTest {
             ((BinderInterceptor.OverrideReply) result).getReply().recycle();
         } finally {
             keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void childKeyWithAssignedDescriptorSucceedsWithoutAliasingBackend() throws Exception {
+        KeyPair parentKey = keyPair("EC");
+        KeyPair childKey = keyPair("EC");
+        X509Certificate parentCert = certificate(parentKey, parentKey, "parent", "parent", false);
+        X509Certificate childCert = certificate(childKey, parentKey, "child", "parent", true);
+        X509Certificate childRewritten = certificate(childKey, parentKey, "child_rewritten", "parent", true);
+        Certificate[] childChain = new Certificate[] {childRewritten};
+
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(10_001, new String[] {"com.test.app"});
+
+        java.util.concurrent.atomic.AtomicBoolean aliasAttempted = new java.util.concurrent.atomic.AtomicBoolean(false);
+        cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(
+                (uid, primary, alias) -> {
+                    aliasAttempted.set(true);
+                    return cleveres.tricky.cleverestech.CertificateBackend.AttestKeyAliasResult.FAILED;
+                });
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.applyCachedCertificateChain(any())).thenReturn(false);
+
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(10_001), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenReturn(childChain);
+
+            Parcel request = mock(Parcel.class);
+            java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+            when(request.dataPosition()).thenAnswer(inv -> pos.get());
+            org.mockito.Mockito.doAnswer(inv -> {
+                pos.set(inv.getArgument(0));
+                return null;
+            }).when(request).setDataPosition(anyInt());
+            when(request.dataAvail()).thenReturn(256);
+            when(request.dataSize()).thenReturn(256);
+
+            java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                    1, 32, 0,
+                    1,
+                    32, 0,
+                    0
+            ).iterator();
+            when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+            when(request.readLong()).thenReturn(0L);
+            java.util.Iterator<String> aliases = java.util.Arrays.asList("child_alias", "parent_alias").iterator();
+            when(request.readString()).thenAnswer(inv -> aliases.hasNext() ? aliases.next() : null);
+            when(request.createByteArray()).thenReturn(null);
+
+            KeyMetadata childMetadata = metadata(childCert, childCert.getEncoded());
+            childMetadata.key = new KeyDescriptor();
+            childMetadata.key.domain = 0;
+            childMetadata.key.nspace = 10001L;
+            childMetadata.key.alias = "child_alias";
+            childMetadata.key.blob = new byte[] { 1, 2, 3, 4 };
+            Parcel reply = generatedReply(childMetadata);
+
+            BinderInterceptor.Result result = generate(request, reply);
+            assertTrue("Child key rewrite with assigned descriptor must succeed",
+                    result instanceof BinderInterceptor.OverrideReply);
+            assertFalse("Child key must not invoke aliasAttestKey backend", aliasAttempted.get());
+
+            byte[] assignedKeyId = Utils.computeKeyDescriptorIdentity(10_001, 0, 10001L, "child_alias", childMetadata.key.blob);
+            assertTrue("Child key alias must be remembered in managed registry",
+                    cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.isKnown(10_001, assignedKeyId));
+
+            ((BinderInterceptor.OverrideReply) result).getReply().recycle();
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(null);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void attestKeyWithAssignedDescriptorRecordsCodeFortyThreeOnAliasFailure() throws Exception {
+        KeyPair attestKey = keyPair("EC");
+        X509Certificate attestCert = certificate(attestKey, attestKey, "attest", "attest", true);
+        X509Certificate attestRewritten = certificate(attestKey, attestKey, "attest_rewritten", "keybox", true);
+        Certificate[] attestChain = new Certificate[] {attestRewritten};
+
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(10_001, new String[] {"com.test.app"});
+
+        CertHack.resetAttestFailureRingForTesting();
+        cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(
+                (uid, primary, alias) -> cleveres.tricky.cleverestech.CertificateBackend.AttestKeyAliasResult.FAILED);
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.applyCachedCertificateChain(any())).thenReturn(false);
+            backend.when(CertHack::attestFailureSnapshot).thenCallRealMethod();
+            backend.when(() -> CertHack.noteAttestFailure(anyInt(), anyInt())).thenCallRealMethod();
+            backend.when(() -> CertHack.noteAttestFailure(anyInt(), anyInt(), any())).thenCallRealMethod();
+
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(
+                    any(), eq(10_001), anyBoolean(), any(), anyInt()))
+                    .thenReturn(attestChain);
+
+            Parcel request = mock(Parcel.class);
+            java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+            when(request.dataPosition()).thenAnswer(inv -> pos.get());
+            org.mockito.Mockito.doAnswer(inv -> {
+                pos.set(inv.getArgument(0));
+                return null;
+            }).when(request).setDataPosition(anyInt());
+            when(request.dataAvail()).thenReturn(256);
+            when(request.dataSize()).thenReturn(256);
+
+            java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                    1, 32, 0,
+                    0,
+                    1, 1, 24, 536870913, 1, 7, 7
+            ).iterator();
+            when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+            when(request.readLong()).thenReturn(0L);
+            when(request.readString()).thenReturn("attest_alias");
+            when(request.createByteArray()).thenReturn(null);
+
+            KeyMetadata attestMetadata = metadata(attestCert, attestCert.getEncoded());
+            attestMetadata.key = new KeyDescriptor();
+            attestMetadata.key.domain = 0;
+            attestMetadata.key.nspace = 10001L;
+            attestMetadata.key.alias = "attest_alias";
+            attestMetadata.key.blob = new byte[] { 5, 6, 7, 8 };
+            Parcel reply = generatedReply(attestMetadata);
+
+            BinderInterceptor.Result result = generate(request, reply);
+            assertTrue("Attest key aliasing failure must return Skip",
+                    result instanceof BinderInterceptor.Skip);
+            assertTrue("Attest failure ring must contain code 43",
+                    CertHack.attestFailureSnapshot().contains("10001:43"));
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(null);
+            CertHack.resetAttestFailureRingForTesting();
             globalModeField.set(Config.INSTANCE, prevGlobalMode);
         }
     }

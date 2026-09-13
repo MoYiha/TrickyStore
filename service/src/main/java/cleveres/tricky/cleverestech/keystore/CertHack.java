@@ -122,10 +122,19 @@ public final class CertHack {
 
     /** Cold failure paths only; safe to call from interceptors. */
     public static void noteAttestFailure(int callingUid, int code) {
+        noteAttestFailure(callingUid, code, null);
+    }
+
+    public static void noteAttestFailure(int callingUid, int code, Throwable t) {
         synchronized (attestFailureLock) {
             long packed = ((long) callingUid << 32) | (code & 0xffffffffL);
             attestFailureRing[Math.floorMod(attestFailureTotal, ATTEST_FAILURE_RING_SIZE)] = packed;
             attestFailureTotal++;
+        }
+        if (t != null) {
+            Logger.w("Attest failure recorded: uid=" + callingUid + ", code=" + code + ": " + t.getMessage(), t);
+        } else {
+            Logger.w("Attest failure recorded: uid=" + callingUid + ", code=" + code);
         }
     }
 
@@ -1451,6 +1460,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
+            noteAttestFailure(uid, 1, t);
             return caList;
         } finally {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
@@ -1758,7 +1768,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
-            noteAttestFailure(uid, 15);
+            noteAttestFailure(uid, 15, t);
             return caList;
         } finally {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
@@ -2231,7 +2241,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
-            noteAttestFailure(uid, 35);
+            noteAttestFailure(uid, 35, t);
             return caList;
         } finally {
             if (childInspection != null) childInspection.wipe();

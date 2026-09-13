@@ -264,10 +264,13 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     if (context.generatedKeyId != null && assignedKeyId != null &&
                         !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                     ) {
-                        val aliasResult =
-                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                            return Skip
+                        if (context.isAttestKeyPurpose) {
+                            val aliasResult =
+                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
                         }
                         ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                     }
@@ -416,10 +419,13 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 if (context.generatedKeyId != null && assignedKeyId != null &&
                     !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                 ) {
-                    val aliasResult =
-                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                    if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                        return Skip
+                    if (context.isAttestKeyPurpose) {
+                        val aliasResult =
+                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            CertHack.noteAttestFailure(callingUid, 43)
+                            return Skip
+                        }
                     }
                     ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                 }
