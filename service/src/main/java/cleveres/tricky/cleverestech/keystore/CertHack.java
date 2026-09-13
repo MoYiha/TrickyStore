@@ -1671,6 +1671,14 @@ public final class CertHack {
             }
             keyId = prepared.keyId.clone();
 
+            if (graphStateUnhealthy) {
+                if (clearCertificateCache()) {
+                    graphStateUnhealthy = false;
+                } else {
+                    noteAttestFailure(uid, 12);
+                    return caList;
+                }
+            }
             evictDescendants(cache, uid, attestKeyId);
             if (graphStateUnhealthy) {
                 noteAttestFailure(uid, 12);

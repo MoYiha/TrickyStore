@@ -431,6 +431,7 @@ class AttestSubtreeEvictionTest {
 
     @Test
     fun `child key rewrite does not expand passthrough cache entry`() {
+        CertHack.resetAttestFailureRingForTesting()
         val leaf = attestedLeaf("passthrough-cached-child")
         val original = arrayOf<Certificate>(leaf, leaf)
         val key = cacheKey(leaf.encoded)
@@ -451,6 +452,7 @@ class AttestSubtreeEvictionTest {
                 CertificateBackend.SECURITY_LEVEL_TEE,
             )
         assertSame("passthrough cached entry must return caList without attempting expansion", original, result)
+        assertEquals("0:", CertHack.attestFailureSnapshot())
     }
 
     @Test
