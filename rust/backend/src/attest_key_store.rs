@@ -171,6 +171,15 @@ pub fn alias_attest_key(calling_uid: u32, primary_key_id: &KeyId, alias_key_id: 
         return true;
     }
 
+    if guard
+        .entries
+        .iter()
+        .enumerate()
+        .any(|(i, e)| i != pos && e.matches(calling_uid, &alias_key_id))
+    {
+        return false;
+    }
+
     if guard.entries[pos].alias_key_ids.len() >= 4 {
         return false;
     }
@@ -684,6 +693,18 @@ mod tests {
         insert_attest_key(1000, primary, make_test_issuer(b"no-zero"));
 
         assert!(!alias_attest_key(1000, &primary, [0u8; 32]));
+    }
+
+    #[test]
+    fn alias_already_owned_by_another_entry_is_rejected() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let key_a = [10u8; 32];
+        let key_b = [20u8; 32];
+        insert_attest_key(1000, key_a, make_test_issuer(b"key-a"));
+        insert_attest_key(1000, key_b, make_test_issuer(b"key-b"));
+
+        assert!(!alias_attest_key(1000, &key_a, key_b));
     }
 
     #[test]
