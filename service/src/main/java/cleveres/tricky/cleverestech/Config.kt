@@ -939,6 +939,9 @@ object Config {
 
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
 
+    /**
+     * Resolves an attestation ID for a given tag and calling UID with bounded caching.
+     */
     fun getAttestationId(
         tag: String,
         uid: Int,
@@ -1541,6 +1544,9 @@ object Config {
             else -> runCatching { value.convertPatchLevel(false) }.map { value }.getOrNull()
         }
 
+    /**
+     * Resolves the security patch integer level for a template date string with bounded caching.
+     */
     private fun resolvePatchValue(value: String, long: Boolean): Int {
         val cacheKey = "${if (long) "long" else "short"}:$value"
         val nowMs = clockSource()

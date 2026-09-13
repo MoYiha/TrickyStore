@@ -603,6 +603,10 @@ static int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
 
 static thread_local bool tls_forwarding = false;
 
+/**
+ * RAII guard to manage the thread-local Binder forwarding state.
+ * Prevents recursive ioctl interception during outgoing Binder transactions.
+ */
 struct ForwardGuard {
   ForwardGuard() { tls_forwarding = true; }
   ~ForwardGuard() { tls_forwarding = false; }

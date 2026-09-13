@@ -104,6 +104,9 @@ object KeystoreInterceptor : BinderInterceptor() {
         }
     }
 
+    /**
+     * Rewrites child certificates under managed attest keys, releasing the publication lock across IPC.
+     */
     private fun rewriteManagedChildWithParentRecovery(
         original: Array<Certificate>,
         callingUid: Int,

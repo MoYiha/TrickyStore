@@ -105,6 +105,9 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         )
     }
 
+    /**
+     * Rewrites child certificates under managed attest keys, releasing the publication lock across IPC.
+     */
     private fun rewriteChildWithParentRecoveryInternal(
         original: Array<Certificate>,
         callingUid: Int,
