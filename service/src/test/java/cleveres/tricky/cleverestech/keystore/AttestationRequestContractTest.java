@@ -2,12 +2,24 @@ package cleveres.tricky.cleverestech.keystore;
 
 import android.os.Parcel;
 import android.system.keystore2.IKeystoreSecurityLevel;
+import android.system.keystore2.IKeystoreService;
+import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyMetadata;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.junit.Test;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.math.BigInteger;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.util.Date;
 import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -840,6 +852,168 @@ public class AttestationRequestContractTest {
         Utils.GenerateKeyRequestInfo signInfo = Utils.parseGenerateKeyRequest(request, 10001);
         assertNotNull(signInfo);
         assertFalse(signInfo.isAttestKeyPurpose);
+    }
+
+    @Test
+    public void parseGenerateKeyRequestExtractsParentKeyDescriptor() {
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(128);
+        when(request.dataSize()).thenReturn(128);
+
+        java.util.Iterator<Integer> explicitParentInts = java.util.Arrays.asList(
+                1, 16, 0,
+                1, 32, 0,
+                0
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> explicitParentInts.hasNext() ? explicitParentInts.next() : 0);
+        when(request.readLong()).thenReturn(0L);
+        when(request.readString()).thenReturn("test_parent_alias");
+        when(request.createByteArray()).thenReturn(new byte[] {1, 2, 3});
+
+        Utils.GenerateKeyRequestInfo childInfo = Utils.parseGenerateKeyRequest(request, 10001);
+        assertNotNull(childInfo);
+        assertNotNull(childInfo.parentKeyId);
+        assertNotNull(childInfo.parentKeyDescriptor);
+        assertEquals("test_parent_alias", childInfo.parentKeyDescriptor.alias);
+        assertEquals(0, childInfo.parentKeyDescriptor.domain);
+        assertEquals(0L, childInfo.parentKeyDescriptor.nspace);
+        assertArrayEquals(new byte[] {1, 2, 3}, childInfo.parentKeyDescriptor.blob);
+    }
+
+    @Test
+    public void writeKeyDescriptorToParcelWritesCorrectStructure() {
+        KeyDescriptor descriptor = new KeyDescriptor();
+        descriptor.domain = 1;
+        descriptor.nspace = 10001L;
+        descriptor.alias = "my_attest_key";
+        descriptor.blob = new byte[] {4, 5, 6};
+
+        Parcel parcel = mock(Parcel.class);
+        when(parcel.dataPosition()).thenReturn(4, 48);
+
+        Utils.writeKeyDescriptorToParcel(parcel, descriptor);
+
+        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(parcel);
+        inOrder.verify(parcel).writeInt(1);
+        inOrder.verify(parcel).writeInt(0);
+        inOrder.verify(parcel).writeInt(1);
+        inOrder.verify(parcel).writeLong(10001L);
+        inOrder.verify(parcel).writeString("my_attest_key");
+        inOrder.verify(parcel).writeByteArray(descriptor.blob);
+        inOrder.verify(parcel).setDataPosition(4);
+        inOrder.verify(parcel).writeInt(44);
+        inOrder.verify(parcel).setDataPosition(48);
+
+        Parcel nullParcel = mock(Parcel.class);
+        Utils.writeKeyDescriptorToParcel(nullParcel, null);
+        verify(nullParcel).writeInt(0);
+    }
+
+    @Test
+    public void parseUpdateSubcomponentRequestExtractsKeyAndCerts() {
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(0);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(256);
+        when(request.dataSize()).thenReturn(256);
+
+        byte[] originalPublicCert = new byte[] {0x30, 0x10, 0x01, 0x02};
+        byte[] originalChain = new byte[] {0x30, 0x20, 0x03, 0x04};
+
+        java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                1, 32, 0,
+                originalPublicCert.length,
+                originalChain.length
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+        when(request.readLong()).thenReturn(10001L);
+        when(request.readString()).thenReturn("unattested_parent");
+        when(request.createByteArray()).thenReturn(null, originalPublicCert, originalChain);
+
+        Utils.UpdateSubcomponentRequestInfo info =
+                Utils.parseUpdateSubcomponentRequest(request, 10001);
+        assertNotNull(info);
+        assertEquals("unattested_parent", info.descriptor.alias);
+        assertEquals(0, info.descriptor.domain);
+        assertEquals(10001L, info.descriptor.nspace);
+        assertArrayEquals(originalPublicCert, info.publicCert);
+        assertArrayEquals(originalChain, info.certificateChain);
+        verify(request).enforceInterface(IKeystoreService.DESCRIPTOR);
+    }
+
+    @Test
+    public void createRewrittenUpdateSubcomponentParcelRewritesCertificate() {
+        KeyDescriptor descriptor = new KeyDescriptor();
+        descriptor.domain = 0;
+        descriptor.nspace = 10001L;
+        descriptor.alias = "unattested_parent";
+
+        byte[] originalPublicCert = new byte[] {0x30, 0x10, 0x01, 0x02};
+        byte[] originalChain = new byte[] {0x30, 0x20, 0x03, 0x04};
+        byte[] newPublicCert = new byte[] {0x30, 0x15, 0x05, 0x06};
+
+        Utils.UpdateSubcomponentRequestInfo info = new Utils.UpdateSubcomponentRequestInfo(
+                descriptor, new byte[32], originalPublicCert, originalChain,
+                40, originalPublicCert.length, 50, originalChain.length
+        );
+
+        Parcel original = mock(Parcel.class);
+        when(original.dataSize()).thenReturn(80);
+
+        Parcel rewritten = Utils.createRewrittenUpdateSubcomponentParcel(original, info, newPublicCert);
+        assertNotNull(rewritten);
+        rewritten.recycle();
+
+        assertNull(Utils.createRewrittenUpdateSubcomponentParcel(null, info, newPublicCert));
+        assertNull(Utils.createRewrittenUpdateSubcomponentParcel(original, null, newPublicCert));
+        assertNull(Utils.createRewrittenUpdateSubcomponentParcel(original, info, null));
+        assertNull(Utils.createRewrittenUpdateSubcomponentParcel(original, info, new byte[0]));
+    }
+
+    @Test
+    public void isAttestKeyCertificateIdentifiesKeyCertSign() throws Exception {
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("EC");
+        gen.initialize(256);
+        KeyPair pair = gen.generateKeyPair();
+
+        // 1. Certificate with KeyUsage keyCertSign
+        BouncyCastleProvider provider = new BouncyCastleProvider();
+        JcaX509v3CertificateBuilder attestBuilder = new JcaX509v3CertificateBuilder(
+                new X500Name("CN=attest"), BigInteger.ONE,
+                new Date(0), new Date(4_102_444_800_000L),
+                new X500Name("CN=attest"), pair.getPublic());
+        attestBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true,
+                new org.bouncycastle.asn1.x509.KeyUsage(org.bouncycastle.asn1.x509.KeyUsage.keyCertSign));
+        X509Certificate attestCert = new JcaX509CertificateConverter().setProvider(provider).getCertificate(
+                attestBuilder.build(new JcaContentSignerBuilder("SHA256withECDSA").setProvider(provider)
+                        .build(pair.getPrivate())));
+        assertTrue(Utils.isAttestKeyCertificate(attestCert.getEncoded()));
+
+        // 2. Certificate without KeyUsage or with only digitalSignature
+        JcaX509v3CertificateBuilder nonAttestBuilder = new JcaX509v3CertificateBuilder(
+                new X500Name("CN=leaf"), BigInteger.ONE,
+                new Date(0), new Date(4_102_444_800_000L),
+                new X500Name("CN=leaf"), pair.getPublic());
+        nonAttestBuilder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true,
+                new org.bouncycastle.asn1.x509.KeyUsage(org.bouncycastle.asn1.x509.KeyUsage.digitalSignature));
+        X509Certificate nonAttestCert = new JcaX509CertificateConverter().setProvider(provider).getCertificate(
+                nonAttestBuilder.build(new JcaContentSignerBuilder("SHA256withECDSA").setProvider(provider)
+                        .build(pair.getPrivate())));
+        assertFalse(Utils.isAttestKeyCertificate(nonAttestCert.getEncoded()));
+
+        // 3. Null / empty checks
+        assertFalse(Utils.isAttestKeyCertificate(null));
+        assertFalse(Utils.isAttestKeyCertificate(new byte[0]));
     }
 
     static Parcel request(boolean explicitIssuer) {

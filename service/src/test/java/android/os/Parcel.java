@@ -10,6 +10,8 @@ public class Parcel {
     private Queue<Object> queue = new LinkedList<>();
     private int lastDeclaredSize;
 
+    private Queue<Parcelable> typedObjects = new LinkedList<>();
+
     public static void resetStats() {
         obtainCount.set(0);
     }
@@ -21,6 +23,7 @@ public class Parcel {
 
     public void recycle() {
         queue.clear();
+        typedObjects.clear();
     }
 
     public int dataSize() {
@@ -64,11 +67,27 @@ public class Parcel {
     // Other stubs
     public void writeNoException() {}
     public void readException() {}
-    public <T> T readTypedObject(Parcelable.Creator<T> c) { return null; }
-    public void writeTypedObject(Parcelable val, int parcelableFlags) {}
+    @SuppressWarnings("unchecked")
+    public <T> T readTypedObject(Parcelable.Creator<T> c) {
+        return (T) typedObjects.poll();
+    }
+    public void writeTypedObject(Parcelable val, int parcelableFlags) {
+        if (val != null) {
+            typedObjects.add(val);
+        }
+    }
     public void enforceInterface(String interfaceName) {}
-    public byte[] createByteArray() { return new byte[0]; }
-    public void readByteArray(byte[] val) {}
+    public void writeInterfaceToken(String interfaceName) {}
+    public byte[] createByteArray() {
+        Object o = queue.poll();
+        return (o instanceof byte[]) ? (byte[]) o : new byte[0];
+    }
+    public void readByteArray(byte[] val) {
+        byte[] bytes = createByteArray();
+        if (bytes != null && val != null) {
+            System.arraycopy(bytes, 0, val, 0, Math.min(bytes.length, val.length));
+        }
+    }
     public void setDataPosition(int pos) {}
     public void setDataSize(int size) {}
     public int dataPosition() { return 0; }

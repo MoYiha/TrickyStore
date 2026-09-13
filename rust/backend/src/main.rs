@@ -53,6 +53,7 @@ const MAX_CBOX_RESPONSE_BYTES: usize =
 const MAX_CBOX_UNLOCK_RESPONSE_BYTES: usize = RECOVERY_KEY_BYTES + MAX_CBOX_RESPONSE_BYTES;
 const MAX_ERROR_BYTES: usize = 256;
 const BACKEND_STATUS_REJECTED: u8 = 1;
+const BACKEND_STATUS_UNKNOWN_KEY_ID: u8 = 2;
 const BACKEND_BROKER_FD: RawFd = 9;
 const OP_KEYBOX_FILE_PARSE: u16 = 24;
 const OP_CERTIFICATE_INSPECT: u16 = 25;
@@ -814,8 +815,13 @@ fn read_u16(input: &[u8], offset: usize) -> Result<usize, &'static str> {
     Ok(u16::from_be_bytes(bytes) as usize)
 }
 
-fn reply_error(stream: &mut UnixStream, opcode: u16, _message: &str) -> io::Result<()> {
-    let status = [BACKEND_STATUS_REJECTED];
+fn reply_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::Result<()> {
+    let status_byte = if message.contains("attest issuer not found in managed store") {
+        BACKEND_STATUS_UNKNOWN_KEY_ID
+    } else {
+        BACKEND_STATUS_REJECTED
+    };
+    let status = [status_byte];
     write_frame_bounded(stream, opcode.max(1), FLAG_ERROR, &status, status.len())?;
     stream.flush()
 }

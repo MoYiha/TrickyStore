@@ -2,6 +2,8 @@ package cleveres.tricky.cleverestech.keystore;
 
 import android.os.Parcel;
 import android.system.keystore2.IKeystoreSecurityLevel;
+import android.system.keystore2.IKeystoreService;
+import android.system.keystore2.KeyDescriptor;
 import android.system.keystore2.KeyEntryResponse;
 import android.system.keystore2.KeyMetadata;
 import android.util.Log;
@@ -48,21 +50,42 @@ public final class Utils {
                 }
             };
 
+    public static final class ParsedKeyDescriptor {
+        public final KeyDescriptor descriptor;
+        public final byte[] identity;
+
+        public ParsedKeyDescriptor(KeyDescriptor descriptor, byte[] identity) {
+            this.descriptor = descriptor;
+            this.identity = identity;
+        }
+    }
+
     public static final class GenerateKeyRequestInfo {
         public final boolean usesDefaultAttestationKey;
         public final boolean isAttestKeyPurpose;
         public final byte[] generatedKeyId;
         public final byte[] parentKeyId;
+        public final KeyDescriptor parentKeyDescriptor;
 
         public GenerateKeyRequestInfo(
                 boolean usesDefaultAttestationKey,
                 boolean isAttestKeyPurpose,
                 byte[] generatedKeyId,
                 byte[] parentKeyId) {
+            this(usesDefaultAttestationKey, isAttestKeyPurpose, generatedKeyId, parentKeyId, null);
+        }
+
+        public GenerateKeyRequestInfo(
+                boolean usesDefaultAttestationKey,
+                boolean isAttestKeyPurpose,
+                byte[] generatedKeyId,
+                byte[] parentKeyId,
+                KeyDescriptor parentKeyDescriptor) {
             this.usesDefaultAttestationKey = usesDefaultAttestationKey;
             this.isAttestKeyPurpose = isAttestKeyPurpose;
             this.generatedKeyId = generatedKeyId;
             this.parentKeyId = parentKeyId;
+            this.parentKeyDescriptor = parentKeyDescriptor;
         }
     }
 
@@ -110,7 +133,7 @@ public final class Utils {
         }
     }
 
-    public static byte[] extractKeyDescriptorIdentity(Parcel parcel, int callingUid) {
+    public static ParsedKeyDescriptor extractKeyDescriptor(Parcel parcel, int callingUid) {
         if (parcel == null || parcel.dataAvail() < Integer.BYTES) {
             return null;
         }
@@ -118,10 +141,20 @@ public final class Utils {
         if (presence != 1) {
             return null;
         }
-        return extractKeyDescriptorBodyIdentity(parcel, callingUid);
+        return extractKeyDescriptorBody(parcel, callingUid);
+    }
+
+    public static byte[] extractKeyDescriptorIdentity(Parcel parcel, int callingUid) {
+        ParsedKeyDescriptor parsed = extractKeyDescriptor(parcel, callingUid);
+        return parsed != null ? parsed.identity : null;
     }
 
     public static byte[] extractKeyDescriptorBodyIdentity(Parcel parcel, int callingUid) {
+        ParsedKeyDescriptor parsed = extractKeyDescriptorBody(parcel, callingUid);
+        return parsed != null ? parsed.identity : null;
+    }
+
+    public static ParsedKeyDescriptor extractKeyDescriptorBody(Parcel parcel, int callingUid) {
         if (parcel == null) return null;
         int parcelableEnd = readStableParcelableEnd(parcel, parcel.dataSize());
         if (parcelableEnd < 0) {
@@ -152,12 +185,37 @@ public final class Utils {
                 }
             }
 
-            return computeKeyDescriptorIdentity(callingUid, domain, nspace, alias, blob);
+            byte[] identity = computeKeyDescriptorIdentity(callingUid, domain, nspace, alias, blob);
+            KeyDescriptor descriptor = new KeyDescriptor();
+            descriptor.domain = domain;
+            descriptor.nspace = nspace;
+            descriptor.alias = alias;
+            descriptor.blob = blob;
+            return new ParsedKeyDescriptor(descriptor, identity);
         } catch (RuntimeException e) {
             return null;
         } finally {
             parcel.setDataPosition(parcelableEnd);
         }
+    }
+
+    public static void writeKeyDescriptorToParcel(Parcel parcel, KeyDescriptor descriptor) {
+        if (parcel == null) return;
+        if (descriptor == null) {
+            parcel.writeInt(0);
+            return;
+        }
+        parcel.writeInt(1);
+        int startPos = parcel.dataPosition();
+        parcel.writeInt(0);
+        parcel.writeInt(descriptor.domain);
+        parcel.writeLong(descriptor.nspace);
+        parcel.writeString(descriptor.alias);
+        parcel.writeByteArray(descriptor.blob);
+        int endPos = parcel.dataPosition();
+        parcel.setDataPosition(startPos);
+        parcel.writeInt(endPos - startPos);
+        parcel.setDataPosition(endPos);
     }
 
     public static GenerateKeyRequestInfo parseGenerateKeyRequest(Parcel request, int callingUid) {
@@ -172,15 +230,19 @@ public final class Utils {
             int attestationKeyPresence = request.readInt();
             boolean usesDefault = attestationKeyPresence == 0;
             byte[] parentKeyId = null;
+            KeyDescriptor parentKeyDescriptor = null;
             if (attestationKeyPresence == 1) {
-                parentKeyId = extractKeyDescriptorBodyIdentity(request, callingUid);
-                if (parentKeyId == null) return null;
+                ParsedKeyDescriptor parentParsed = extractKeyDescriptorBody(request, callingUid);
+                if (parentParsed == null) return null;
+                parentKeyId = parentParsed.identity;
+                parentKeyDescriptor = parentParsed.descriptor;
             } else if (attestationKeyPresence != 0) {
                 return null;
             }
 
             boolean isAttestKey = inspectParamsForAttestKeyPurpose(request);
-            return new GenerateKeyRequestInfo(usesDefault, isAttestKey, generatedKeyId, parentKeyId);
+            return new GenerateKeyRequestInfo(
+                    usesDefault, isAttestKey, generatedKeyId, parentKeyId, parentKeyDescriptor);
         } catch (RuntimeException invalidRequest) {
             return null;
         } finally {
@@ -254,7 +316,7 @@ public final class Utils {
                     if (first == KEY_PARAMETER_VALUE_KEY_PURPOSE && second == KEY_PURPOSE_ATTEST_KEY) {
                         return true;
                     }
-                    if (first == 1 && second == KEY_PARAMETER_VALUE_KEY_PURPOSE &&
+                    if (second == KEY_PARAMETER_VALUE_KEY_PURPOSE &&
                             hasBytes(request, parcelableEnd, Integer.BYTES)) {
                         int third = request.readInt();
                         if (third == KEY_PURPOSE_ATTEST_KEY) {
@@ -348,7 +410,7 @@ public final class Utils {
     }
 
 
-    static X509Certificate toCertificate(byte[] encoded) {
+    public static X509Certificate toCertificate(byte[] encoded) {
         if (encoded == null || encoded.length == 0 ||
                 encoded.length > MAX_CERTIFICATE_BYTES) {
             return null;
@@ -736,5 +798,124 @@ public final class Utils {
 
         metadata.certificate = leaf;
         metadata.certificateChain = encodeIssuerChain(chain);
+    }
+
+    public static final class UpdateSubcomponentRequestInfo {
+        public final KeyDescriptor descriptor;
+        public final byte[] keyId;
+        public final byte[] publicCert;
+        public final byte[] certificateChain;
+        public final int certOffset;
+        public final int certLength;
+        public final int chainOffset;
+        public final int chainLength;
+
+        public UpdateSubcomponentRequestInfo(
+                KeyDescriptor descriptor,
+                byte[] keyId,
+                byte[] publicCert,
+                byte[] certificateChain,
+                int certOffset,
+                int certLength,
+                int chainOffset,
+                int chainLength) {
+            this.descriptor = descriptor;
+            this.keyId = keyId;
+            this.publicCert = publicCert;
+            this.certificateChain = certificateChain;
+            this.certOffset = certOffset;
+            this.certLength = certLength;
+            this.chainOffset = chainOffset;
+            this.chainLength = chainLength;
+        }
+    }
+
+    public static UpdateSubcomponentRequestInfo parseUpdateSubcomponentRequest(
+            Parcel request, int callingUid) {
+        if (request == null) return null;
+        int position = request.dataPosition();
+        try {
+            request.enforceInterface(IKeystoreService.DESCRIPTOR);
+            ParsedKeyDescriptor parsedKey = extractKeyDescriptor(request, callingUid);
+            if (parsedKey == null) return null;
+
+            if (request.dataAvail() < Integer.BYTES) return null;
+            int certOffset = request.dataPosition();
+            int certLength = request.readInt();
+            byte[] publicCert = null;
+            if (certLength > 0) {
+                if (certLength > MAX_CERTIFICATE_BYTES) return null;
+                int paddedLen = paddedByteCount(certLength);
+                if (paddedLen < 0 || !hasBytes(request, request.dataSize(), paddedLen)) return null;
+                request.setDataPosition(certOffset);
+                publicCert = request.createByteArray();
+            } else if (certLength < -1) {
+                return null;
+            }
+
+            if (request.dataAvail() < Integer.BYTES) return null;
+            int chainOffset = request.dataPosition();
+            int chainLength = request.readInt();
+            byte[] certificateChain = null;
+            if (chainLength > 0) {
+                if (chainLength > MAX_CHAIN_BYTES) return null;
+                int paddedLen = paddedByteCount(chainLength);
+                if (paddedLen < 0 || !hasBytes(request, request.dataSize(), paddedLen)) return null;
+                request.setDataPosition(chainOffset);
+                certificateChain = request.createByteArray();
+            } else if (chainLength < -1) {
+                return null;
+            }
+
+            return new UpdateSubcomponentRequestInfo(
+                    parsedKey.descriptor,
+                    parsedKey.identity,
+                    publicCert,
+                    certificateChain,
+                    certOffset,
+                    certLength,
+                    chainOffset,
+                    chainLength
+            );
+        } catch (RuntimeException e) {
+            return null;
+        } finally {
+            request.setDataPosition(position);
+        }
+    }
+
+    public static Parcel createRewrittenUpdateSubcomponentParcel(
+            Parcel original, UpdateSubcomponentRequestInfo info, byte[] newPublicCert) {
+        if (original == null || info == null || newPublicCert == null ||
+                newPublicCert.length == 0 || newPublicCert.length > MAX_CERTIFICATE_BYTES) {
+            return null;
+        }
+        Parcel replacement = Parcel.obtain();
+        try {
+            replacement.appendFrom(original, 0, info.certOffset);
+            replacement.writeByteArray(newPublicCert);
+            replacement.writeByteArray(info.certificateChain);
+            int afterChainOffset = info.chainOffset + Integer.BYTES +
+                    (info.chainLength > 0 ? paddedByteCount(info.chainLength) : 0);
+            int remaining = original.dataSize() - afterChainOffset;
+            if (remaining > 0) {
+                replacement.appendFrom(original, afterChainOffset, remaining);
+            }
+            replacement.setDataPosition(0);
+            return replacement;
+        } catch (Throwable t) {
+            replacement.recycle();
+            return null;
+        }
+    }
+
+    public static boolean isAttestKeyCertificate(byte[] certBytes) {
+        if (certBytes == null || certBytes.length == 0 || certBytes.length > MAX_CERTIFICATE_BYTES) {
+            return false;
+        }
+        X509Certificate cert = toCertificate(certBytes);
+        if (cert == null) return false;
+        boolean[] keyUsage = cert.getKeyUsage();
+        return keyUsage != null && keyUsage.length > 5 && keyUsage[5];
     }
 }

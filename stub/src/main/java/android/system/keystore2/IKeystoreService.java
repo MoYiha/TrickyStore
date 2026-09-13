@@ -6,10 +6,13 @@ public interface IKeystoreService {
     String DESCRIPTOR = "android.system.keystore2.IKeystoreService";
 
     IKeystoreSecurityLevel getSecurityLevel(int securityLevel);
+    KeyEntryResponse getKeyEntry(KeyDescriptor key);
+    void updateSubcomponent(KeyDescriptor key, byte[] publicCert, byte[] certificateChain);
 
     class Stub {
         public static final int TRANSACTION_getSecurityLevel = 1;
         public static final int TRANSACTION_getKeyEntry = 2;
+        public static final int TRANSACTION_updateSubcomponent = 3;
 
         public static IKeystoreService asInterface(IBinder b) {
             throw new RuntimeException("");

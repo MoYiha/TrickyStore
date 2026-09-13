@@ -55,6 +55,63 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         parentKeyId: ByteArray,
         childKeyId: ByteArray?,
         platformSecurityLevel: Int,
+        parentDescriptor: android.system.keystore2.KeyDescriptor? = null,
+    ): Array<Certificate> {
+        val first =
+            rewriteChildWithParentRecoveryInternal(
+                original,
+                callingUid,
+                isAttestKey,
+                parentKeyId,
+                childKeyId,
+                platformSecurityLevel,
+            )
+        if (first !== original || parentDescriptor == null) {
+            return first
+        }
+
+        val parentCert = KeystoreInterceptor.queryParentCertificate(parentDescriptor, callingUid) ?: return first
+        val parentCertObj = Utils.toCertificate(parentCert) ?: return first
+        val parentChain = arrayOf<Certificate>(parentCertObj)
+        val parentRewritten =
+            CertHack.hackAttestKeyCertificateChain(
+                parentChain,
+                callingUid,
+                true,
+                parentKeyId,
+                platformSecurityLevel,
+            )
+        if (parentRewritten === parentChain || parentRewritten.isEmpty()) {
+            return first
+        }
+        val parentRewrittenDer = runCatching { parentRewritten[0].encoded }.getOrNull()
+        ManagedAttestKeyRegistry.remember(
+            callingUid,
+            parentKeyId,
+            null,
+            parentCert,
+            true,
+            platformSecurityLevel,
+            parentRewrittenDer,
+        )
+
+        return rewriteChildWithParentRecoveryInternal(
+            original,
+            callingUid,
+            isAttestKey,
+            parentKeyId,
+            childKeyId,
+            platformSecurityLevel,
+        )
+    }
+
+    private fun rewriteChildWithParentRecoveryInternal(
+        original: Array<Certificate>,
+        callingUid: Int,
+        isAttestKey: Boolean,
+        parentKeyId: ByteArray,
+        childKeyId: ByteArray?,
+        platformSecurityLevel: Int,
     ): Array<Certificate> {
         KeyboxActivation.lockPublishedSnapshot()
         return try {
@@ -160,6 +217,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                                 parentId,
                                 context.generatedKeyId,
                                 platformSecurityLevel,
+                                context.parentKeyDescriptor,
                             )
                         }
                     } else if (context.isAttestKeyPurpose) {
@@ -221,6 +279,16 @@ class SecurityLevelInterceptor : BinderInterceptor() {
 
             val metadata = reply.readTypedObject(KeyMetadata.CREATOR) ?: return Skip
             if (!Utils.isCertificateChainRewriteCandidate(metadata) && !Utils.hasRewritableLeafCertificate(metadata)) {
+                if (context.isAttestKeyPurpose && context.generatedKeyId != null) {
+                    ManagedAttestKeyRegistry.remember(
+                        callingUid,
+                        context.generatedKeyId,
+                        context.parentKeyId,
+                        null,
+                        true,
+                        metadata.keySecurityLevel,
+                    )
+                }
                 return Skip
             }
 
@@ -258,6 +326,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                             parentId,
                             context.generatedKeyId,
                             platformSecurityLevel,
+                            context.parentKeyDescriptor,
                         )
                     }
                 } else if (context.isAttestKeyPurpose) {

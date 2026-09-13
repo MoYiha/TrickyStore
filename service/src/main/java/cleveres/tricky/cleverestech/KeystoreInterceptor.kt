@@ -28,6 +28,9 @@ object KeystoreInterceptor : BinderInterceptor() {
     private val getKeyEntryTransaction =
         getTransactCode(IKeystoreService.Stub::class.java, "getKeyEntry") // 2
 
+    private val updateSubcomponentTransaction =
+        getTransactCode(IKeystoreService.Stub::class.java, "updateSubcomponent").takeIf { it > 0 } ?: 3
+
     private lateinit var keystore: IBinder
 
     private var teeInterceptor: SecurityLevelInterceptor? = null
@@ -170,7 +173,89 @@ object KeystoreInterceptor : BinderInterceptor() {
                 callingUid >= FIRST_APPLICATION_UID && CertHack.hasCachedCertificateChains()
             return if (targeted || mayReadGrantedChain) Continue else Skip
         }
+        if (code == updateSubcomponentTransaction) {
+            val targeted = Config.needHack(callingUid)
+            if (!targeted) return Skip
+            return handleUpdateSubcomponent(callingUid, data)
+        }
         return Skip
+    }
+
+    private fun handleUpdateSubcomponent(callingUid: Int, data: Parcel): Result {
+        val info = Utils.parseUpdateSubcomponentRequest(data, callingUid) ?: return Skip
+        val publicCert = info.publicCert ?: return Skip
+        val isAttestKey =
+            ManagedAttestKeyRegistry.isAttestKey(callingUid, info.keyId) ||
+                Utils.isAttestKeyCertificate(publicCert)
+        if (!isAttestKey) {
+            return Skip
+        }
+
+        val originalCert = Utils.toCertificate(publicCert) ?: return Skip
+        val originalChain = arrayOf<Certificate>(originalCert)
+        val platformSecurityLevel =
+            ManagedAttestKeyRegistry.getPlatformSecurityLevel(callingUid, info.keyId).let {
+                if (it == 1 || it == 2) it else 1
+            }
+
+        val rewritten =
+            CertHack.hackAttestKeyCertificateChain(
+                originalChain,
+                callingUid,
+                true,
+                info.keyId,
+                platformSecurityLevel,
+            )
+        if (rewritten === originalChain || rewritten.isEmpty()) {
+            return Skip
+        }
+
+        val newPublicCert = runCatching { rewritten[0].encoded }.getOrNull() ?: return Skip
+        ManagedAttestKeyRegistry.remember(
+            callingUid,
+            info.keyId,
+            null,
+            publicCert,
+            true,
+            platformSecurityLevel,
+            newPublicCert,
+        )
+
+        val replacement =
+            Utils.createRewrittenUpdateSubcomponentParcel(data, info, newPublicCert)
+                ?: return Skip
+        return OverrideData(replacement)
+    }
+
+    fun queryParentCertificate(parentDescriptor: android.system.keystore2.KeyDescriptor, callingUid: Int): ByteArray? {
+        val target = if (this::keystore.isInitialized) keystore else return null
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        return try {
+            data.writeInterfaceToken(IKeystoreService.DESCRIPTOR)
+            val queryDescriptor = android.system.keystore2.KeyDescriptor().apply {
+                domain = parentDescriptor.domain
+                nspace = if (parentDescriptor.domain == 0) callingUid.toLong() else parentDescriptor.nspace
+                alias = parentDescriptor.alias
+                blob = parentDescriptor.blob
+            }
+            Utils.writeKeyDescriptorToParcel(data, queryDescriptor)
+            val success = target.transact(getKeyEntryTransaction, data, reply, 0)
+            if (!success) return null
+            reply.readException()
+            val parsed = Utils.parseKeyEntryResponseParcel(reply)
+            if (parsed != null && parsed.leafEncoded != null && parsed.leafEncoded.isNotEmpty()) {
+                parsed.leafEncoded
+            } else {
+                val response = reply.readTypedObject(KeyEntryResponse.CREATOR)
+                response?.metadata?.certificate
+            }
+        } catch (_: Throwable) {
+            null
+        } finally {
+            data.recycle()
+            reply.recycle()
+        }
     }
 
     override fun onPostTransact(
@@ -603,7 +688,8 @@ object KeystoreInterceptor : BinderInterceptor() {
 
         // Root discovery is not intercepted. Both TEE and StrongBox children
         // are hooked for certificate compatibility.
-        val interceptedCodes = validTransactCodes(getKeyEntryTransaction)
+        val interceptedCodes =
+            validTransactCodes(getKeyEntryTransaction) + validTransactCodes(updateSubcomponentTransaction)
 
         val expectedEpoch = synchronized(this) { lifecycleEpoch }
 
