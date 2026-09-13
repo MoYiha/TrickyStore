@@ -246,14 +246,21 @@ public final class Utils {
             int parcelableEnd = readStableParcelableEnd(request, request.dataSize());
             if (parcelableEnd < 0) return false;
 
-            if (hasBytes(request, parcelableEnd, 3 * Integer.BYTES)) {
+            if (hasBytes(request, parcelableEnd, Integer.BYTES)) {
                 int tag = request.readInt();
-                int unionTag = request.readInt();
-                int unionValue = request.readInt();
-                if (tag == TAG_PURPOSE &&
-                        unionTag == KEY_PARAMETER_VALUE_KEY_PURPOSE &&
-                        unionValue == KEY_PURPOSE_ATTEST_KEY) {
-                    return true;
+                if (tag == TAG_PURPOSE && hasBytes(request, parcelableEnd, 2 * Integer.BYTES)) {
+                    int first = request.readInt();
+                    int second = request.readInt();
+                    if (first == KEY_PARAMETER_VALUE_KEY_PURPOSE && second == KEY_PURPOSE_ATTEST_KEY) {
+                        return true;
+                    }
+                    if (first == 1 && second == KEY_PARAMETER_VALUE_KEY_PURPOSE &&
+                            hasBytes(request, parcelableEnd, Integer.BYTES)) {
+                        int third = request.readInt();
+                        if (third == KEY_PURPOSE_ATTEST_KEY) {
+                            return true;
+                        }
+                    }
                 }
             }
             request.setDataPosition(parcelableEnd);

@@ -758,6 +758,90 @@ public class AttestationRequestContractTest {
         assertEquals(32, childInfo.parentKeyId.length);
     }
 
+    @Test
+    public void parseGenerateKeyRequestRecognizesAidlTypedObjectAttestKeyPurpose() {
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(128);
+        when(request.dataSize()).thenReturn(128);
+
+        // Android AIDL KeyParameter writeToParcel:
+        // KeyDescriptor: presence=1, size=16, domain=0
+        // attestationKey: presence=0
+        // params: count=1, presence=1, size=24, tag=536870913 (Tag.PURPOSE), valuePresence=1, unionTag=7 (keyPurpose), unionValue=7 (ATTEST_KEY)
+        java.util.Iterator<Integer> aidlTypedAttestInts = java.util.Arrays.asList(
+                1, 16, 0,
+                0,
+                1, 1, 24, 536870913, 1, 7, 7
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> aidlTypedAttestInts.hasNext() ? aidlTypedAttestInts.next() : 0);
+
+        Utils.GenerateKeyRequestInfo info = Utils.parseGenerateKeyRequest(request, 10001);
+        assertNotNull(info);
+        assertTrue(info.usesDefaultAttestationKey);
+        assertTrue(info.isAttestKeyPurpose);
+        assertNotNull(info.generatedKeyId);
+        assertEquals(32, info.generatedKeyId.length);
+        assertNull(info.parentKeyId);
+
+        // Also test hasAttestKeyPurpose
+        pos.set(28);
+        java.util.Iterator<Integer> hasAttestInts = java.util.Arrays.asList(
+                1, 16,
+                0,
+                1, 1, 24, 536870913, 1, 7, 7
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> hasAttestInts.hasNext() ? hasAttestInts.next() : 0);
+        assertTrue(Utils.hasAttestKeyPurpose(request));
+    }
+
+    @Test
+    public void parseGenerateKeyRequestFindsAttestKeyAmongMultipleParamsAndRejectsOtherPurposes() {
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(256);
+        when(request.dataSize()).thenReturn(256);
+
+        // Multiple params: param 1 is Tag.ALGORITHM (268435458), param 2 is Tag.PURPOSE with ATTEST_KEY.
+        // Non-matching parameters jump directly to parcelableEnd without reading inner fields.
+        java.util.Iterator<Integer> multiParamInts = java.util.Arrays.asList(
+                1, 16, 0,
+                0,
+                2,
+                1, 20, 268435458,
+                1, 24, 536870913, 1, 7, 7
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> multiParamInts.hasNext() ? multiParamInts.next() : 0);
+
+        Utils.GenerateKeyRequestInfo info = Utils.parseGenerateKeyRequest(request, 10001);
+        assertNotNull(info);
+        assertTrue(info.isAttestKeyPurpose);
+
+        // Other purpose: PURPOSE_SIGN (2)
+        pos.set(28);
+        java.util.Iterator<Integer> signParamInts = java.util.Arrays.asList(
+                1, 16, 0,
+                0,
+                1,
+                1, 24, 536870913, 1, 7, 2
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> signParamInts.hasNext() ? signParamInts.next() : 0);
+
+        Utils.GenerateKeyRequestInfo signInfo = Utils.parseGenerateKeyRequest(request, 10001);
+        assertNotNull(signInfo);
+        assertFalse(signInfo.isAttestKeyPurpose);
+    }
+
     static Parcel request(boolean explicitIssuer) {
         Parcel request = mock(Parcel.class);
         when(request.dataPosition()).thenReturn(28, 32);
