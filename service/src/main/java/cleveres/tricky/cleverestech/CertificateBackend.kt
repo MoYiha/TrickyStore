@@ -530,16 +530,20 @@ object CertificateBackend {
         }
         aliasAttestKeyOverride?.let { return it(callingUid, primaryKeyId, aliasKeyId) }
         val response =
-            NativeBackend.transact(
-                OP_ATTEST_KEY_ALIAS,
-                ATTEST_KEY_ALIAS_REQUEST_BYTES,
-                ATTEST_KEY_ALIAS_RESPONSE_BYTES,
-                propagateTransportFailure = false,
-            ) { output ->
-                output.write(REWRITE_WIRE_VERSION)
-                writeI32(output, callingUid)
-                output.write(primaryKeyId)
-                output.write(aliasKeyId)
+            try {
+                NativeBackend.transact(
+                    OP_ATTEST_KEY_ALIAS,
+                    ATTEST_KEY_ALIAS_REQUEST_BYTES,
+                    ATTEST_KEY_ALIAS_RESPONSE_BYTES,
+                    propagateTransportFailure = false,
+                ) { output ->
+                    output.write(REWRITE_WIRE_VERSION)
+                    writeI32(output, callingUid)
+                    output.write(primaryKeyId)
+                    output.write(aliasKeyId)
+                }
+            } catch (_: Throwable) {
+                null
             } ?: return AttestKeyAliasResult.UNAVAILABLE
         if (response.size != ATTEST_KEY_ALIAS_RESPONSE_BYTES) {
             return AttestKeyAliasResult.UNAVAILABLE

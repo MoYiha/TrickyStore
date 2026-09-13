@@ -1159,6 +1159,70 @@ public class AttestationInterceptorContractTest {
         }
     }
 
+    @Test
+    public void attestKeyAliasingExceptionRecordsCode43AndSkips() throws Exception {
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(10_001, new String[] {"com.test.app"});
+
+        CertHack.resetAttestFailureRingForTesting();
+        cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(
+                (uid, primary, alias) -> {
+                    sneakyThrow(new cleveres.tricky.cleverestech.RustBackendStateException(
+                            cleveres.tricky.cleverestech.BackendStatus.STATE_RESET));
+                    return cleveres.tricky.cleverestech.CertificateBackend.AttestKeyAliasResult.FAILED;
+                });
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(CertHack::attestFailureSnapshot).thenCallRealMethod();
+            backend.when(() -> CertHack.noteAttestFailure(anyInt(), anyInt())).thenCallRealMethod();
+            backend.when(() -> CertHack.noteAttestFailure(anyInt(), anyInt(), any())).thenCallRealMethod();
+
+            Parcel request = mock(Parcel.class);
+            java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+            when(request.dataPosition()).thenAnswer(inv -> pos.get());
+            org.mockito.Mockito.doAnswer(inv -> {
+                pos.set(inv.getArgument(0));
+                return null;
+            }).when(request).setDataPosition(anyInt());
+            when(request.dataAvail()).thenReturn(256);
+            when(request.dataSize()).thenReturn(256);
+
+            java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                    1, 32, 0,
+                    0,
+                    1, 1, 24, 536870913, 1, 7, 7
+            ).iterator();
+            when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+            when(request.readLong()).thenReturn(0L);
+            when(request.readString()).thenReturn("attest_alias");
+            when(request.createByteArray()).thenReturn(null);
+
+            KeyMetadata metadata = new KeyMetadata();
+            metadata.keySecurityLevel = SecurityLevel.TRUSTED_ENVIRONMENT;
+            metadata.certificate = null;
+            metadata.certificateChain = null;
+            metadata.key = new KeyDescriptor();
+            metadata.key.domain = 0;
+            metadata.key.nspace = 10001L;
+            metadata.key.alias = "attest_alias";
+            metadata.key.blob = new byte[] { 5, 6, 7, 8 };
+            Parcel reply = generatedReply(metadata);
+
+            BinderInterceptor.Result result = generate(request, reply);
+            assertTrue("Attest key aliasing exception must return Skip",
+                    result instanceof BinderInterceptor.Skip);
+            assertTrue("Attest failure ring must contain code 43 on exception",
+                    CertHack.attestFailureSnapshot().contains("10001:43"));
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.setAliasAttestKeyOverrideForTesting(null);
+            CertHack.resetAttestFailureRingForTesting();
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
     private static BinderInterceptor.Result generate(Parcel request, Parcel reply) throws Exception {
         return new SecurityLevelInterceptor().onPostTransact(new Binder(),
                 field(SecurityLevelInterceptor.class, "generateKeyTransaction").getInt(null),
@@ -1228,5 +1292,10 @@ public class AttestationInterceptorContractTest {
         return new JcaX509CertificateConverter().setProvider(provider).getCertificate(
                 builder.build(new JcaContentSignerBuilder(algorithm).setProvider(provider)
                         .build(issuer.getPrivate())));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <E extends Throwable> void sneakyThrow(Throwable e) throws E {
+        throw (E) e;
     }
 }

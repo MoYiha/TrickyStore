@@ -266,7 +266,12 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     ) {
                         if (context.isAttestKeyPurpose) {
                             val aliasResult =
-                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                                try {
+                                    CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                                } catch (_: Throwable) {
+                                    CertHack.noteAttestFailure(callingUid, 43)
+                                    return Skip
+                                }
                             if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
                                 CertHack.noteAttestFailure(callingUid, 43)
                                 return Skip
@@ -317,7 +322,12 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                         }
                     if (assignedKeyId != null && !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)) {
                         val aliasResult =
-                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            try {
+                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            } catch (_: Throwable) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
                         if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
                             CertHack.noteAttestFailure(callingUid, 43)
                             return Skip
@@ -423,7 +433,12 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 ) {
                     if (context.isAttestKeyPurpose) {
                         val aliasResult =
-                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            try {
+                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            } catch (_: Throwable) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
                         if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
                             CertHack.noteAttestFailure(callingUid, 43)
                             return Skip
