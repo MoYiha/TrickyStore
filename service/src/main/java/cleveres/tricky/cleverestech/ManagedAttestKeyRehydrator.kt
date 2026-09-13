@@ -63,7 +63,10 @@ internal object ManagedAttestKeyRehydrator {
                     .getOrElse { return false }
             if (confirmed != CertificateBackend.AttestKeyTouchResult.PRESENT) return false
             for (alias in entry.aliasKeyIds) {
-                CertificateBackend.aliasAttestKey(callingUid, entry.keyId, alias)
+                val aliased =
+                    runCatching { CertificateBackend.aliasAttestKey(callingUid, entry.keyId, alias) }
+                        .getOrElse { return false }
+                if (aliased != CertificateBackend.AttestKeyAliasResult.ALIASED) return false
             }
         }
         return true

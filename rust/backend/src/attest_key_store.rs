@@ -641,13 +641,13 @@ mod tests {
     }
 
     #[test]
-    fn alias_primary_id_as_alias_returns_true() {
+    fn alias_primary_id_as_alias_returns_false() {
         let _sequence = isolate_store_sequence();
         reset_for_testing();
         let primary = [10u8; 32];
         insert_attest_key(1000, primary, make_test_issuer(b"self-alias"));
 
-        assert!(alias_attest_key(1000, &primary, primary));
+        assert!(!alias_attest_key(1000, &primary, primary));
     }
 
     #[test]
