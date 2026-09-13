@@ -192,6 +192,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     return Skip
                 }
                 if (context.isAttestKeyPurpose || context.parentKeyId != null) {
+                    val rewrittenLeafDer = runCatching { rewritten[0].encoded }.getOrNull()
                     ManagedAttestKeyRegistry.remember(
                         callingUid,
                         context.generatedKeyId,
@@ -199,6 +200,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                         parsed.leafEncoded,
                         context.isAttestKeyPurpose,
                         platformSecurityLevel,
+                        rewrittenLeafDer,
                     )
                 }
 
@@ -288,6 +290,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 return Skip
             }
             if (context.isAttestKeyPurpose || context.parentKeyId != null) {
+                val rewrittenLeafDer = runCatching { rewritten[0].encoded }.getOrNull()
                 ManagedAttestKeyRegistry.remember(
                     callingUid,
                     context.generatedKeyId,
@@ -295,6 +298,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     metadata.certificate,
                     context.isAttestKeyPurpose,
                     platformSecurityLevel,
+                    rewrittenLeafDer,
                 )
             }
 

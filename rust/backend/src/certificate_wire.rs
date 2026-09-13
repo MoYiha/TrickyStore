@@ -159,17 +159,22 @@ pub fn rewrite_attest_key_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'
         }
         let parsed = parse_attest_key_rewrite_request(&request)?;
 
-        let keymint_security_level = match inspect_certificate(parsed.genuine_leaf_der) {
-            Ok(provenance) => {
-                validate_hardware_provenance(&provenance)?;
-                if provenance.keymint_security_level != parsed.keymint_security_level {
-                    return Err("platform security level does not match attestation provenance");
+        let (has_attest_ext, keymint_security_level) =
+            match inspect_certificate(parsed.genuine_leaf_der) {
+                Ok(provenance) => {
+                    validate_hardware_provenance(&provenance)?;
+                    if provenance.keymint_security_level != parsed.keymint_security_level {
+                        return Err(
+                            "platform security level does not match attestation provenance",
+                        );
+                    }
+                    (true, provenance.keymint_security_level)
                 }
-                provenance.keymint_security_level
-            }
-            Err(CertCoreError::MissingAttestationExtension) => parsed.keymint_security_level,
-            Err(_) => return Err("attest key rewrite provenance rejected"),
-        };
+                Err(CertCoreError::MissingAttestationExtension) => {
+                    (false, parsed.keymint_security_level)
+                }
+                Err(_) => return Err("attest key rewrite provenance rejected"),
+            };
 
         if !cleverestricky_certificate_core::is_ec_p256_certificate(parsed.genuine_leaf_der)
             .map_err(|_| "invalid attest key certificate")?
@@ -193,9 +198,14 @@ pub fn rewrite_attest_key_and_encode(mut request: Vec<u8>) -> Result<Vec<u8>, &'
                 &parsed.attest_key_id,
                 subject_der,
             )?;
+            let issuer_to_use: &PreparedIssuer = if has_attest_ext {
+                prepared_issuer
+            } else {
+                &prepared_for_children
+            };
             let rewritten = rewrite_certificate_prepared(&PreparedCertificateRewriteRequest {
                 genuine_leaf_der: parsed.genuine_leaf_der,
-                issuer: prepared_issuer,
+                issuer: issuer_to_use,
                 patch_levels: parsed.patch_levels,
                 id_overrides: &parsed.id_overrides,
                 module_hash: parsed.module_hash,

@@ -398,7 +398,7 @@ mod fixture {
             .expect("SPKI DER");
         assert_ne!(synthetic_spki, genuine_spki);
 
-        let missing_level = cleverestricky_certificate_core::rewrite_certificate_prepared(
+        let missing_spki = cleverestricky_certificate_core::rewrite_certificate_prepared(
             &cleverestricky_certificate_core::PreparedCertificateRewriteRequest {
                 genuine_leaf_der: &leaf_der,
                 issuer: &prepared,
@@ -407,12 +407,12 @@ mod fixture {
                 module_hash: None,
                 verified_boot_key: &BOOT_KEY,
                 verified_boot_hash: &BOOT_HASH,
-                subject_public_key_info: Some(&synthetic_spki),
+                subject_public_key_info: None,
                 keymint_security_level: None,
             },
         );
         assert!(matches!(
-            missing_level,
+            missing_spki,
             Err(cleverestricky_certificate_core::Error::MissingAttestationExtension)
         ));
 
@@ -450,11 +450,7 @@ mod fixture {
             .expect("rewritten SPKI");
         assert_eq!(rewritten_spki, synthetic_spki);
         assert_ne!(rewritten_spki, genuine_spki);
-        assert_synthesized_attestation(
-            &rewritten.leaf_der,
-            cleverestricky_certificate_core::SecurityLevel::TrustedEnvironment,
-            &prepared,
-        );
+        assert_extensionless_attest_leaf(&rewritten.leaf_der);
     }
 
     pub(super) fn synthetic_bare_leaf_without_extensions(
@@ -494,61 +490,31 @@ mod fixture {
         Certificate::from_der(&certificate).expect("synthetic bare certificate")
     }
 
-    /// Asserts a synthesized managed-attestation leaf carries a verifiable
-    /// attestation extension with the platform KeyMint level and the verified
-    /// boot digests, and that the output feeds back through the rewrite path
-    /// (the property the certificate cache and rehydration rely on).
-    pub(super) fn assert_synthesized_attestation(
-        leaf_der: &[u8],
-        keymint_level: cleverestricky_certificate_core::SecurityLevel,
-        issuer: &cleverestricky_certificate_core::PreparedIssuer,
-    ) {
-        use cleverestricky_certificate_core::SecurityLevel;
-
-        let output = Certificate::from_der(leaf_der).expect("synthesized DER");
+    /// Asserts that an extensionless attest key certificate remains extensionless
+    /// (no synthetic Android attestation extension injected) and that inspect_certificate
+    /// fails closed with MissingAttestationExtension.
+    pub(super) fn assert_extensionless_attest_leaf(leaf_der: &[u8]) {
+        let output = Certificate::from_der(leaf_der).expect("rewritten DER");
         let attestation = output
             .tbs_certificate()
             .extensions()
             .map(Vec::as_slice)
             .unwrap_or(&[])
             .iter()
-            .find(|extension| extension.extn_id == ANDROID_ATTESTATION_OID)
-            .expect("synthesized attestation extension");
+            .find(|extension| extension.extn_id == ANDROID_ATTESTATION_OID);
         assert!(
-            !attestation.critical,
-            "synthesized extension must be non-critical like genuine issuance"
+            attestation.is_none(),
+            "extensionless attest leaf must not carry an attestation extension"
         );
 
-        let inspection =
-            cleverestricky_certificate_core::inspect_certificate(leaf_der).expect("inspect");
-        assert_eq!(
-            inspection.attestation_security_level,
-            SecurityLevel::TrustedEnvironment
-        );
-        assert_eq!(inspection.keymint_security_level, keymint_level);
-        assert_eq!(inspection.original_boot_key, Some(BOOT_KEY));
-        assert_eq!(inspection.original_boot_hash, Some(BOOT_HASH));
-
-        let round_trip = cleverestricky_certificate_core::rewrite_certificate_prepared(
-            &cleverestricky_certificate_core::PreparedCertificateRewriteRequest {
-                genuine_leaf_der: leaf_der,
-                issuer,
-                patch_levels: PatchLevels::default(),
-                id_overrides: &[],
-                module_hash: None,
-                verified_boot_key: &BOOT_KEY,
-                verified_boot_hash: &BOOT_HASH,
-                subject_public_key_info: None,
-                keymint_security_level: None,
-            },
-        );
-        assert!(
-            round_trip.is_ok(),
-            "synthesized leaf must feed back through the rewrite path"
-        );
+        let inspect = cleverestricky_certificate_core::inspect_certificate(leaf_der);
+        assert!(matches!(
+            inspect,
+            Err(cleverestricky_certificate_core::Error::MissingAttestationExtension)
+        ));
     }
 
-    pub(super) fn run_prepared_attest_key_synthesizes_strongbox_and_bare_leaves(
+    pub(super) fn run_prepared_attest_key_preserves_extensionless_and_bare_leaves(
         xml: &[u8],
         algorithm: SigningAlgorithm,
     ) {
@@ -608,7 +574,7 @@ mod fixture {
                 keymint_security_level: Some(SecurityLevel::StrongBox),
             },
         )
-        .expect("strongbox synthesis succeeds");
+        .expect("strongbox rewrite succeeds");
         let sb_output = Certificate::from_der(&rewritten_sb.leaf_der).expect("strongbox DER");
         assert_eq!(
             sb_output
@@ -619,9 +585,9 @@ mod fixture {
             synthetic_spki
         );
         verify_signature(&sb_output, &issuer, algorithm);
-        assert_synthesized_attestation(&rewritten_sb.leaf_der, SecurityLevel::StrongBox, &prepared);
+        assert_extensionless_attest_leaf(&rewritten_sb.leaf_der);
 
-        // Bare leaf without any extensions field gains a created extension.
+        // Bare leaf without any extensions field remains extensionless.
         let bare = synthetic_bare_leaf_without_extensions(&issuer, &genuine_spki);
         let bare_der = bare.to_der().expect("bare DER");
         assert!(
@@ -658,14 +624,11 @@ mod fixture {
                 keymint_security_level: Some(SecurityLevel::TrustedEnvironment),
             },
         )
-        .expect("bare leaf synthesis succeeds");
+        .expect("bare leaf rewrite succeeds");
         let bare_output = Certificate::from_der(&rewritten_bare.leaf_der).expect("bare DER");
+        assert!(bare_output.tbs_certificate().extensions().is_none());
         verify_signature(&bare_output, &issuer, algorithm);
-        assert_synthesized_attestation(
-            &rewritten_bare.leaf_der,
-            SecurityLevel::TrustedEnvironment,
-            &prepared,
-        );
+        assert_extensionless_attest_leaf(&rewritten_bare.leaf_der);
     }
 
     pub(super) fn ec() -> &'static [u8] {
@@ -726,8 +689,8 @@ fn prepared_rewrite_attest_key_without_attestation_extension_succeeds() {
 }
 
 #[test]
-fn prepared_rewrite_synthesizes_strongbox_and_bare_leaf_attestation() {
-    fixture::run_prepared_attest_key_synthesizes_strongbox_and_bare_leaves(
+fn prepared_rewrite_preserves_extensionless_and_bare_leaf_attestation() {
+    fixture::run_prepared_attest_key_preserves_extensionless_and_bare_leaves(
         fixture::ec(),
         cleverestricky_certificate_core::SigningAlgorithm::EcP256Sha256,
     );

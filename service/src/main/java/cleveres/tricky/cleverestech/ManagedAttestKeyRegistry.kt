@@ -55,13 +55,15 @@ internal object ManagedAttestKeyRegistry {
     private class Entry(
         parentKeyId: ByteArray?,
         genuineLeafDer: ByteArray?,
+        rewrittenLeafDer: ByteArray?,
         val isAttestKey: Boolean,
         val platformSecurityLevel: Int = 0,
     ) {
         val parentKeyId = parentKeyId?.clone()
         var genuineLeafDer = genuineLeafDer?.clone()
+        var rewrittenLeafDer = rewrittenLeafDer?.clone()
 
-        fun proofBytes(): Int = genuineLeafDer?.size ?: 0
+        fun proofBytes(): Int = (genuineLeafDer?.size ?: 0) + (rewrittenLeafDer?.size ?: 0)
     }
 
     private val entries = LinkedHashMap<Identity, Entry>(64, 0.75f, true)
@@ -82,13 +84,16 @@ internal object ManagedAttestKeyRegistry {
         genuineLeafDer: ByteArray?,
         isAttestKey: Boolean = true,
         platformSecurityLevel: Int = 0,
+        rewrittenLeafDer: ByteArray? = null,
     ) {
         if (!isValid(callingUid, keyId)) return
         if (parentKeyId != null && !isValid(callingUid, parentKeyId)) return
         val nonNullKeyId = requireNotNull(keyId)
         if (parentKeyId != null && (Arrays.equals(nonNullKeyId, parentKeyId) || hasAncestor(callingUid, parentKeyId, nonNullKeyId))) return
         val effectiveLeafDer = if (isAttestKey) genuineLeafDer else null
+        val effectiveRewrittenDer = if (isAttestKey) rewrittenLeafDer else null
         if (effectiveLeafDer != null && (effectiveLeafDer.isEmpty() || effectiveLeafDer.size > MAX_LEAF_BYTES)) return
+        if (effectiveRewrittenDer != null && (effectiveRewrittenDer.isEmpty() || effectiveRewrittenDer.size > MAX_LEAF_BYTES)) return
 
         val lookup = Identity.lookup(callingUid, nonNullKeyId)
         val parentLookup = if (parentKeyId != null) Identity.lookup(callingUid, parentKeyId) else null
@@ -133,6 +138,7 @@ internal object ManagedAttestKeyRegistry {
             Entry(
                 parentKeyId,
                 effectiveLeafDer ?: (if (isAttestKey) old?.genuineLeafDer else null),
+                effectiveRewrittenDer ?: (if (isAttestKey) old?.rewrittenLeafDer else null),
                 isAttestKey,
                 effectiveLevel,
             )
@@ -158,6 +164,21 @@ internal object ManagedAttestKeyRegistry {
     fun getParentKeyId(callingUid: Int, keyId: ByteArray?): ByteArray? {
         if (!isValid(callingUid, keyId)) return null
         return entries[Identity.lookup(callingUid, requireNotNull(keyId))]?.parentKeyId?.clone()
+    }
+
+    @Synchronized
+    fun findAttestKeyIdByCertificate(callingUid: Int, certDer: ByteArray?): ByteArray? {
+        if (callingUid < 0 || certDer == null || certDer.isEmpty() || certDer.size > MAX_LEAF_BYTES) return null
+        for ((identity, entry) in entries) {
+            if (identity.uid == callingUid && entry.isAttestKey) {
+                if ((entry.genuineLeafDer != null && Arrays.equals(entry.genuineLeafDer, certDer)) ||
+                    (entry.rewrittenLeafDer != null && Arrays.equals(entry.rewrittenLeafDer, certDer))
+                ) {
+                    return identity.keyId.clone()
+                }
+            }
+        }
+        return null
     }
 
     @Synchronized
@@ -200,9 +221,16 @@ internal object ManagedAttestKeyRegistry {
         if (retainedProofBytes <= MAX_PROOF_BYTES) return
         for (entry in entries.values) {
             if (retainedProofBytes <= MAX_PROOF_BYTES) break
-            val leaf = entry.genuineLeafDer ?: continue
-            retainedProofBytes -= leaf.size
-            entry.genuineLeafDer = null
+            val leaf = entry.genuineLeafDer
+            if (leaf != null) {
+                retainedProofBytes -= leaf.size
+                entry.genuineLeafDer = null
+            }
+            val rewritten = entry.rewrittenLeafDer
+            if (rewritten != null) {
+                retainedProofBytes -= rewritten.size
+                entry.rewrittenLeafDer = null
+            }
         }
         if (retainedProofBytes < 0) retainedProofBytes = 0
     }

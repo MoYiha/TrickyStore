@@ -85,12 +85,13 @@ object KeystoreInterceptor : BinderInterceptor() {
         val originalLeafOnly = arrayOf<Certificate>(originalLeaf)
         val rewritten =
             rewriteManagedChildWithParentRecovery(
-                originalLeafOnly,
-                callingUid,
-                isAttestKey,
-                parentKeyId,
-                requestedKeyId,
-                metadata.keySecurityLevel,
+                original = originalLeafOnly,
+                callingUid = callingUid,
+                isAttestKey = isAttestKey,
+                leafOnlySafe = true,
+                parentKeyId = parentKeyId,
+                childKeyId = requestedKeyId,
+                platformSecurityLevel = metadata.keySecurityLevel,
             )
         if (rewritten === originalLeafOnly || rewritten.isEmpty()) return null
         return try {
@@ -104,6 +105,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         original: Array<Certificate>,
         callingUid: Int,
         isAttestKey: Boolean,
+        leafOnlySafe: Boolean = true,
         parentKeyId: ByteArray,
         childKeyId: ByteArray?,
         platformSecurityLevel: Int,
@@ -115,7 +117,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                     original,
                     callingUid,
                     isAttestKey,
-                    true,
+                    leafOnlySafe,
                     parentKeyId,
                     childKeyId,
                     platformSecurityLevel,
@@ -132,7 +134,7 @@ object KeystoreInterceptor : BinderInterceptor() {
                 original,
                 callingUid,
                 isAttestKey,
-                true,
+                leafOnlySafe,
                 parentKeyId,
                 childKeyId,
                 platformSecurityLevel,
@@ -235,7 +237,8 @@ object KeystoreInterceptor : BinderInterceptor() {
                 }
                 if (parsed.hasLeafOnlyCertificate() &&
                     (requestedKeyId == null ||
-                        ManagedAttestKeyRegistry.getParentKeyId(callingUid, requestedKeyId) == null)
+                        (!ManagedAttestKeyRegistry.isAttestKey(callingUid, requestedKeyId) &&
+                            ManagedAttestKeyRegistry.getParentKeyId(callingUid, requestedKeyId) == null))
                 ) {
                     return Skip
                 }
@@ -281,7 +284,9 @@ object KeystoreInterceptor : BinderInterceptor() {
                 }
             }
 
-            if (!targeted || !isFullChain) {
+            val originalLeaf = Utils.getLeafCertificate(metadata)
+            val isAttestKey = isAttestKeyEntry(metadata)
+            if (!targeted || (!isFullChain && (!isAttestKey || requestedKeyId == null))) {
                 if (targeted && isLeafOnly) {
                     val rewrittenLeaf =
                         tryRewriteManagedLeafOnlyChild(callingUid, requestedKeyId, metadata)
@@ -302,8 +307,6 @@ object KeystoreInterceptor : BinderInterceptor() {
             }
 
             // Cache miss fallback for full chains: verify attestation extension before invoking CertHack.
-            val originalLeaf = Utils.getLeafCertificate(metadata)
-            val isAttestKey = isAttestKeyEntry(metadata)
             if (
                 originalLeaf == null ||
                 (!Utils.hasAndroidAttestationExtension(originalLeaf) && !isAttestKey) ||
@@ -314,6 +317,7 @@ object KeystoreInterceptor : BinderInterceptor() {
 
             val attestKeyId = requestedKeyId?.takeIf { isAttestKey }
             val originalChain = Utils.getCertificateChain(response)
+            var resolvedParentKeyId: ByteArray? = null
             val newChain =
                 originalChain?.let { chain ->
                     val rewritten =
@@ -330,7 +334,30 @@ object KeystoreInterceptor : BinderInterceptor() {
                                 metadata.keySecurityLevel,
                             )
                         } else {
-                            CertHack.hackCertificateChain(chain, callingUid, false)
+                            val parentKeyId =
+                                (requestedKeyId?.let { ManagedAttestKeyRegistry.getParentKeyId(callingUid, it) })
+                                    ?: (if (chain.size > 1) {
+                                        val issuerDer = runCatching { chain[1].encoded }.getOrNull()
+                                        (CertHack.findAttestKeyIdByCertificate(callingUid, issuerDer)
+                                            ?: ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(callingUid, issuerDer))
+                                            ?.takeUnless { requestedKeyId != null && it.contentEquals(requestedKeyId) }
+                                    } else {
+                                        null
+                                    })
+                            resolvedParentKeyId = parentKeyId
+                            if (parentKeyId != null) {
+                                rewriteManagedChildWithParentRecovery(
+                                    original = chain,
+                                    callingUid = callingUid,
+                                    isAttestKey = false,
+                                    leafOnlySafe = false,
+                                    parentKeyId = parentKeyId,
+                                    childKeyId = requestedKeyId,
+                                    platformSecurityLevel = metadata.keySecurityLevel,
+                                )
+                            } else {
+                                CertHack.hackCertificateChain(chain, callingUid, false)
+                            }
                         }
                     rewritten.takeUnless { it === chain }
                 }
@@ -343,6 +370,17 @@ object KeystoreInterceptor : BinderInterceptor() {
                         metadata.certificate,
                         true,
                         metadata.keySecurityLevel,
+                        newChain.getOrNull(0)?.encoded,
+                    )
+                } else if (resolvedParentKeyId != null && requestedKeyId != null) {
+                    ManagedAttestKeyRegistry.remember(
+                        callingUid,
+                        requestedKeyId,
+                        resolvedParentKeyId,
+                        metadata.certificate,
+                        false,
+                        metadata.keySecurityLevel,
+                        newChain.getOrNull(0)?.encoded,
                     )
                 }
                 if (!CertHack.applyCachedCertificateChain(metadata)) {

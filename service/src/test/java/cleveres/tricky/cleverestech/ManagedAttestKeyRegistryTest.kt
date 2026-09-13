@@ -260,4 +260,27 @@ class ManagedAttestKeyRegistryTest {
         assertArrayEquals(parent, path[1].keyId)
         assertArrayEquals(child, path[2].keyId)
     }
+
+    @Test
+    fun `findAttestKeyIdByCertificate finds by genuine or rewritten certificate`() {
+        val uid = 10_123
+        val attestKeyId = ByteArray(32) { 0x7a.toByte() }
+        val genuineDer = byteArrayOf(1, 2, 3, 4)
+        val rewrittenDer = byteArrayOf(5, 6, 7, 8)
+
+        ManagedAttestKeyRegistry.remember(
+            callingUid = uid,
+            keyId = attestKeyId,
+            parentKeyId = null,
+            genuineLeafDer = genuineDer,
+            isAttestKey = true,
+            platformSecurityLevel = 1,
+            rewrittenLeafDer = rewrittenDer,
+        )
+
+        assertArrayEquals(attestKeyId, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, genuineDer))
+        assertArrayEquals(attestKeyId, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, rewrittenDer))
+        assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid + 1, genuineDer))
+        assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, byteArrayOf(9, 9, 9)))
+    }
 }
