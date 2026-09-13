@@ -167,6 +167,18 @@ internal object ManagedAttestKeyRegistry {
     }
 
     @Synchronized
+    fun getRewrittenLeafDer(callingUid: Int, keyId: ByteArray?): ByteArray? {
+        if (!isValid(callingUid, keyId)) return null
+        return entries[Identity.lookup(callingUid, requireNotNull(keyId))]?.rewrittenLeafDer?.clone()
+    }
+
+    @Synchronized
+    fun getGenuineLeafDer(callingUid: Int, keyId: ByteArray?): ByteArray? {
+        if (!isValid(callingUid, keyId)) return null
+        return entries[Identity.lookup(callingUid, requireNotNull(keyId))]?.genuineLeafDer?.clone()
+    }
+
+    @Synchronized
     fun findAttestKeyIdByCertificate(callingUid: Int, certDer: ByteArray?): ByteArray? {
         if (callingUid < 0 || certDer == null || certDer.isEmpty() || certDer.size > MAX_LEAF_BYTES) return null
         for ((identity, entry) in entries) {

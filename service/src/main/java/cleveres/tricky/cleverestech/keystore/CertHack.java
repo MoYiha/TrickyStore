@@ -32,6 +32,8 @@ import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.KeyboxActivation;
 import cleveres.tricky.cleverestech.KeyboxLoader;
 import cleveres.tricky.cleverestech.Logger;
+import cleveres.tricky.cleverestech.ManagedAttestKeyRegistry;
+import cleveres.tricky.cleverestech.ManagedAttestKeyRehydrator;
 import cleveres.tricky.cleverestech.PolicyState;
 import cleveres.tricky.cleverestech.UtilKt;
 import cleveres.tricky.cleverestech.util.FastByteArrayOutputStream;
@@ -1242,7 +1244,7 @@ public final class CertHack {
         if (cached != null && cached.attestKeyId != null && (uid < 0 || cached.attestKeyCallingUid == uid)) {
             return cached.attestKeyId.clone();
         }
-        return null;
+        return ManagedAttestKeyRegistry.INSTANCE.findAttestKeyIdByCertificate(uid, certDer);
     }
 
     public static Certificate[] getCachedCertificateChain(Certificate[] caList) {
@@ -1757,6 +1759,163 @@ public final class CertHack {
         }
     }
 
+    private static PreparedKeyBox findPreparedKeyboxForAttestKey(
+            State currentState,
+            int uid,
+            boolean isStrongbox,
+            CacheKey cacheKey) {
+        List<KeyBox> list;
+        var appConfig = Config.INSTANCE.getAppConfig(uid);
+        if (appConfig != null && appConfig.getKeyboxFilename() != null) {
+            List<KeyBox> candidates = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+            List<KeyBox> matchingLevel = filterKeyboxesBySecurityLevel(candidates, isStrongbox);
+            if (!matchingLevel.isEmpty()) {
+                candidates = matchingLevel;
+            } else if (isStrongbox) {
+                candidates = filterKeyboxesBySecurityLevel(candidates, false);
+            } else {
+                candidates = Collections.emptyList();
+            }
+            list = selectKeyboxPool(candidates, KeyProperties.KEY_ALGORITHM_EC);
+        } else {
+            if (isStrongbox) {
+                if (!currentState.globalStrongBoxEc.isEmpty()) {
+                    list = currentState.globalStrongBoxEc;
+                } else if (!currentState.globalStrongBoxRsa.isEmpty()) {
+                    list = currentState.globalStrongBoxRsa;
+                } else if (!currentState.globalTeeEc.isEmpty()) {
+                    list = currentState.globalTeeEc;
+                } else {
+                    list = currentState.globalTeeRsa;
+                }
+            } else {
+                if (!currentState.globalTeeEc.isEmpty()) {
+                    list = currentState.globalTeeEc;
+                } else {
+                    list = currentState.globalTeeRsa;
+                }
+            }
+        }
+        if (list == null || list.isEmpty()) {
+            return null;
+        }
+        KeyBox keybox = list.get(cacheKey.indexForPool(list.size()));
+        return currentState.preparedKeyboxes.get(keybox);
+    }
+
+    private static Certificate[] resolveRewrittenParentChain(
+            State.CertificateCache cache,
+            Certificate[] caList,
+            int uid,
+            byte[] parentKeyId,
+            int platformSecurityLevel) {
+        if (caList == null || caList.length <= 1 || caList[1] == null) {
+            return null;
+        }
+        try {
+            byte[] parentLeafEncoded = caList[1].getEncoded();
+            if (parentLeafEncoded == null || parentLeafEncoded.length == 0
+                    || parentLeafEncoded.length > MAX_LEAF_CERTIFICATE_BYTES) {
+                return null;
+            }
+
+            // 1. Check in-memory certificate cache by genuine parent leaf DER.
+            CachedCertificateChain parentCached;
+            synchronized (cache) {
+                parentCached = cache.get(new CacheKey(parentLeafEncoded));
+            }
+            if (parentCached != null && !parentCached.passthrough
+                    && parentCached.certificates != null && parentCached.certificates.length > 0) {
+                return parentCached.certificateCopy();
+            }
+
+            // 2. Resolve parentKeyId if missing or invalid length.
+            byte[] resolvedParentId = parentKeyId;
+            if (resolvedParentId == null || resolvedParentId.length != 32) {
+                resolvedParentId = findAttestKeyIdByCertificate(uid, parentLeafEncoded);
+            }
+
+            // 3. If parent key has a known rewritten leaf DER in ManagedAttestKeyRegistry:
+            if (resolvedParentId != null && resolvedParentId.length == 32) {
+                byte[] rewrittenLeafDer = ManagedAttestKeyRegistry.INSTANCE.getRewrittenLeafDer(uid, resolvedParentId);
+                if (rewrittenLeafDer != null && rewrittenLeafDer.length > 0) {
+                    Certificate rewrittenParentLeaf = new LazyX509Certificate(rewrittenLeafDer, false);
+                    boolean parentHasAttestExt = Utils.hasAndroidAttestationExtension(caList[1]);
+                    Certificate[] parentChain;
+                    byte[] encodedIssuerChain = null;
+                    if (!parentHasAttestExt) {
+                        parentChain = new Certificate[] { rewrittenParentLeaf };
+                    } else {
+                        State currentState = state;
+                        PreparedKeyBox prepared = null;
+                        try {
+                            boolean isStrongbox = platformSecurityLevel == CertificateBackend.SECURITY_LEVEL_STRONGBOX;
+                            prepared = findPreparedKeyboxForAttestKey(
+                                    currentState, uid, isStrongbox, new CacheKey(parentLeafEncoded));
+                        } catch (Throwable ignored) {
+                        }
+                        if (prepared != null && prepared.issuerChain != null && prepared.issuerChain.length > 0) {
+                            parentChain = new Certificate[prepared.issuerChain.length + 1];
+                            parentChain[0] = rewrittenParentLeaf;
+                            System.arraycopy(prepared.issuerChain, 0, parentChain, 1, prepared.issuerChain.length);
+                            encodedIssuerChain = currentState.encodedIssuerChain(prepared);
+                        } else {
+                            parentChain = new Certificate[] { rewrittenParentLeaf };
+                        }
+                    }
+                    CachedCertificateChain reconstructed = new CachedCertificateChain(
+                            parentChain,
+                            rewrittenLeafDer,
+                            encodedIssuerChain,
+                            false,
+                            true,
+                            uid,
+                            resolvedParentId,
+                            null
+                    );
+                    synchronized (cache) {
+                        cache.put(new CacheKey(parentLeafEncoded), reconstructed);
+                        cache.put(new CacheKey(rewrittenLeafDer), reconstructed);
+                    }
+                    return parentChain;
+                }
+            }
+
+            // 4. If parent key is not in cache or registry, try rehydration / restore.
+            if (resolvedParentId != null && resolvedParentId.length == 32) {
+                if (ManagedAttestKeyRegistry.INSTANCE.isKnown(uid, resolvedParentId)) {
+                    if (ManagedAttestKeyRehydrator.INSTANCE.restore(uid, resolvedParentId)) {
+                        synchronized (cache) {
+                            parentCached = cache.get(new CacheKey(parentLeafEncoded));
+                        }
+                        if (parentCached != null && !parentCached.passthrough
+                                && parentCached.certificates != null && parentCached.certificates.length > 0) {
+                            return parentCached.certificateCopy();
+                        }
+                    }
+                }
+            }
+
+            // 5. Fallback: attempt direct attest-key rewrite if parentKeyId is known.
+            if (resolvedParentId != null && resolvedParentId.length == 32) {
+                Certificate[] parentCaList = new Certificate[caList.length - 1];
+                System.arraycopy(caList, 1, parentCaList, 0, caList.length - 1);
+                Certificate[] parentRewritten = hackAttestKeyCertificateChain(
+                        parentCaList,
+                        uid,
+                        false,
+                        resolvedParentId,
+                        platformSecurityLevel
+                );
+                if (parentRewritten != null && parentRewritten.length > 0 && parentRewritten != parentCaList) {
+                    return parentRewritten;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
     public static Certificate[] hackChildKeyCertificate(
             Certificate[] caList, int uid, boolean isAttestKey) {
         return hackChildKeyCertificate(caList, uid, isAttestKey, false, null, null, 0);
@@ -1808,14 +1967,25 @@ public final class CertHack {
                         && hasCachedData
                         && caList.length > 1
                         && (cached.certificates == null || cached.certificates.length <= 1)) {
-                    Certificate[] fullResult = new Certificate[caList.length];
-                    fullResult[0] = cached.certificates != null && cached.certificates.length > 0
+                    Certificate childLeaf = cached.certificates != null && cached.certificates.length > 0
                             ? cached.certificates[0]
                             : new LazyX509Certificate(cached.leafEncoded, false);
-                    System.arraycopy(caList, 1, fullResult, 1, caList.length - 1);
+                    byte[] effectiveParentKeyId = parentKeyId != null ? parentKeyId : cached.parentKeyId;
+                    Certificate[] parentChain = resolveRewrittenParentChain(
+                            cache, caList, uid, effectiveParentKeyId, platformSecurityLevel);
+                    Certificate[] fullResult;
+                    if (parentChain != null && parentChain.length > 0) {
+                        fullResult = new Certificate[1 + parentChain.length];
+                        fullResult[0] = childLeaf;
+                        System.arraycopy(parentChain, 0, fullResult, 1, parentChain.length);
+                    } else {
+                        fullResult = new Certificate[caList.length];
+                        fullResult[0] = childLeaf;
+                        System.arraycopy(caList, 1, fullResult, 1, caList.length - 1);
+                    }
                     byte[] encodedIssuerChain = null;
                     try {
-                        encodedIssuerChain = Utils.encodeIssuerChain(caList);
+                        encodedIssuerChain = Utils.encodeIssuerChain(fullResult);
                     } catch (Throwable ignored) {
                     }
                     CachedCertificateChain fullCached = new CachedCertificateChain(
@@ -1826,13 +1996,15 @@ public final class CertHack {
                             false,
                             uid,
                             cached.attestKeyId,
-                            parentKeyId != null ? parentKeyId : cached.parentKeyId
+                            effectiveParentKeyId
                     );
-                    synchronized (cache) {
-                        if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
-                            cache.put(cacheKey, fullCached);
-                            if (cached.leafEncoded != null && !Arrays.equals(cacheKey.leafEncoded, cached.leafEncoded)) {
-                                cache.put(new CacheKey(cached.leafEncoded), fullCached);
+                    if (parentChain != null && parentChain.length > 0) {
+                        synchronized (cache) {
+                            if (state == currentState && currentState.certificateCacheEpoch == cacheEpoch) {
+                                cache.put(cacheKey, fullCached);
+                                if (cached.leafEncoded != null && !Arrays.equals(cacheKey.leafEncoded, cached.leafEncoded)) {
+                                    cache.put(new CacheKey(cached.leafEncoded), fullCached);
+                                }
                             }
                         }
                     }
@@ -2003,15 +2175,25 @@ public final class CertHack {
             }
 
             Certificate rewrittenLeaf = new LazyX509Certificate(rewrittenDer, false);
-            Certificate[] result = new Certificate[caList.length];
-            result[0] = rewrittenLeaf;
-            if (caList.length > 1) {
-                System.arraycopy(caList, 1, result, 1, caList.length - 1);
+            Certificate[] parentChain = (caList.length > 1)
+                    ? resolveRewrittenParentChain(cache, caList, uid, parentKeyId, childPlatformLevel)
+                    : null;
+            Certificate[] result;
+            if (parentChain != null && parentChain.length > 0) {
+                result = new Certificate[1 + parentChain.length];
+                result[0] = rewrittenLeaf;
+                System.arraycopy(parentChain, 0, result, 1, parentChain.length);
+            } else {
+                result = new Certificate[caList.length];
+                result[0] = rewrittenLeaf;
+                if (caList.length > 1) {
+                    System.arraycopy(caList, 1, result, 1, caList.length - 1);
+                }
             }
             byte[] encodedIssuerChain = null;
-            if (caList.length > 1) {
+            if (result.length > 1) {
                 try {
-                    encodedIssuerChain = Utils.encodeIssuerChain(caList);
+                    encodedIssuerChain = Utils.encodeIssuerChain(result);
                 } catch (Throwable ignored) {
                 }
             }

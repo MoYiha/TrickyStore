@@ -4,6 +4,7 @@ import cleveres.tricky.cleverestech.BackendKeyHandle
 import cleveres.tricky.cleverestech.CertificateBackend
 import cleveres.tricky.cleverestech.KeyboxActivation
 import cleveres.tricky.cleverestech.KeyboxLoader
+import cleveres.tricky.cleverestech.ManagedAttestKeyRegistry
 import cleveres.tricky.cleverestech.ManagedOpaqueKeyOracle
 import cleveres.tricky.cleverestech.NativeBackend
 import cleveres.tricky.cleverestech.TestKeyboxFixtures
@@ -450,6 +451,139 @@ class AttestSubtreeEvictionTest {
                 CertificateBackend.SECURITY_LEVEL_TEE,
             )
         assertSame("passthrough cached entry must return caList without attempting expansion", original, result)
+    }
+
+    @Test
+    fun `child expansion replaces genuine parent certificate with rewritten parent chain`() {
+        val parentKeyId = ByteArray(32) { (it + 80).toByte() }
+        val parentLeaf = attestedLeaf("parent-attest-key")
+        val rewrittenParentBytes = byteArrayOf(0x30, 0x15, 0x02, 0x01, 0x01)
+        CertificateBackend.rewriteAttestKeyOverride = { _, _, _ ->
+            rewrittenParentBytes
+        }
+        val parentChain =
+            CertHack.hackAttestKeyCertificateChain(
+                arrayOf(parentLeaf),
+                uid,
+                false,
+                parentKeyId,
+                CertificateBackend.SECURITY_LEVEL_TEE,
+            )
+        assertTrue("parent must be rewritten", parentChain !== arrayOf(parentLeaf))
+        assertEquals(rewrittenParentBytes.toList(), parentChain[0].encoded.toList())
+        assertTrue("parent chain must contain keybox certificates", parentChain.size > 1)
+
+        val childKeyId = ByteArray(32) { (it + 81).toByte() }
+        val childLeaf = attestedLeaf("child-sign-key")
+        val rewrittenChildBytes = byteArrayOf(0x30, 0x16, 0x02, 0x01, 0x02)
+        CertificateBackend.rewriteChildKeyOverride = { _, _, _, _, _, _, _, _ ->
+            rewrittenChildBytes
+        }
+
+        // Child key cached with leaf only
+        val childOriginal = arrayOf<Certificate>(childLeaf)
+        val childLeafRewritten =
+            CertHack.hackChildKeyCertificate(
+                childOriginal,
+                uid,
+                false,
+                true,
+                parentKeyId,
+                childKeyId,
+                CertificateBackend.SECURITY_LEVEL_TEE,
+            )
+        assertEquals(1, childLeafRewritten.size)
+        assertEquals(rewrittenChildBytes.toList(), childLeafRewritten[0].encoded.toList())
+
+        // Now getKeyEntry requests the full chain with genuine parent leaf as caList[1]
+        val childFullOriginal = arrayOf<Certificate>(childLeaf, parentLeaf)
+        val childExpanded =
+            CertHack.hackChildKeyCertificate(
+                childFullOriginal,
+                uid,
+                false,
+                false,
+                parentKeyId,
+                childKeyId,
+                CertificateBackend.SECURITY_LEVEL_TEE,
+            )
+
+        assertTrue("child full chain must be returned", childExpanded !== childFullOriginal)
+        assertEquals(
+            "child leaf must remain rewritten child",
+            rewrittenChildBytes.toList(),
+            childExpanded[0].encoded.toList(),
+        )
+        assertEquals(
+            "child parent cert must be REWRITTEN parent, NOT genuine parent",
+            rewrittenParentBytes.toList(),
+            childExpanded[1].encoded.toList(),
+        )
+        assertFalse(
+            "child parent cert must not equal genuine parent leaf",
+            childExpanded[1].encoded.contentEquals(parentLeaf.encoded),
+        )
+        assertEquals(
+            "child chain length must equal 1 + parent chain length",
+            1 + parentChain.size,
+            childExpanded.size,
+        )
+        for (i in 1 until parentChain.size) {
+            assertEquals(
+                "keybox issuer certificates must be propagated into child chain",
+                parentChain[i].encoded.toList(),
+                childExpanded[1 + i].encoded.toList(),
+            )
+        }
+    }
+
+    @Test
+    fun `child expansion recovers rewritten parent from registry when cache is cleared`() {
+        val parentKeyId = ByteArray(32) { (it + 90).toByte() }
+        val parentLeaf = attestedLeaf("registry-parent-key")
+        val rewrittenParentBytes = byteArrayOf(0x30, 0x17, 0x02, 0x01, 0x03)
+
+        // Parent remembered in ManagedAttestKeyRegistry with its rewritten leaf
+        ManagedAttestKeyRegistry.remember(
+            uid,
+            parentKeyId,
+            null,
+            parentLeaf.encoded,
+            true,
+            CertificateBackend.SECURITY_LEVEL_TEE,
+            rewrittenParentBytes,
+        )
+
+        val childKeyId = ByteArray(32) { (it + 91).toByte() }
+        val childLeaf = attestedLeaf("registry-child-key")
+        val rewrittenChildBytes = byteArrayOf(0x30, 0x18, 0x02, 0x01, 0x04)
+        CertificateBackend.rewriteChildKeyOverride = { _, _, _, _, _, _, _, _ ->
+            rewrittenChildBytes
+        }
+
+        // Cache is completely empty
+        clearCertificateCache()
+
+        val childFullOriginal = arrayOf<Certificate>(childLeaf, parentLeaf)
+        val childResult =
+            CertHack.hackChildKeyCertificate(
+                childFullOriginal,
+                uid,
+                false,
+                false,
+                parentKeyId,
+                childKeyId,
+                CertificateBackend.SECURITY_LEVEL_TEE,
+            )
+
+        assertTrue(childResult !== childFullOriginal)
+        assertEquals(rewrittenChildBytes.toList(), childResult[0].encoded.toList())
+        assertEquals(
+            "parent certificate must be recovered from registry rewritten leaf",
+            rewrittenParentBytes.toList(),
+            childResult[1].encoded.toList(),
+        )
+        assertTrue(childResult.size > 2)
     }
 
     private fun cacheKey(leafBytes: ByteArray): Any {
