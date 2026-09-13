@@ -231,13 +231,14 @@ object KeystoreInterceptor : BinderInterceptor() {
         val reply = Parcel.obtain()
         return try {
             data.writeInterfaceToken(IKeystoreService.DESCRIPTOR)
-            val queryDescriptor = android.system.keystore2.KeyDescriptor().apply {
-                domain = parentDescriptor.domain
-                nspace = if (parentDescriptor.domain == 0) callingUid.toLong() else parentDescriptor.nspace
-                alias = parentDescriptor.alias
-                blob = parentDescriptor.blob
-            }
-            Utils.writeKeyDescriptorToParcel(data, queryDescriptor)
+            val queryNspace = if (parentDescriptor.domain == 0) callingUid.toLong() else parentDescriptor.nspace
+            Utils.writeKeyDescriptorToParcel(
+                data,
+                parentDescriptor.domain,
+                queryNspace,
+                parentDescriptor.alias,
+                parentDescriptor.blob,
+            )
             val success = target.transact(getKeyEntryTransaction, data, reply, 0)
             if (!success) return null
             reply.readException()
