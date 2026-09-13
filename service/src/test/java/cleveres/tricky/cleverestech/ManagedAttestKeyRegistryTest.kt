@@ -116,4 +116,219 @@ class ManagedAttestKeyRegistryTest {
         ManagedAttestKeyRegistry.remember(uid, child, missingParent, byteArrayOf(9))
         assertNull(ManagedAttestKeyRegistry.rehydrationPath(uid, child))
     }
+
+    @Test
+    fun `child key records parent relation but is not an attest key and cannot be rehydrated`() {
+        val uid = 10_123
+        val parent = ByteArray(32) { 0x71 }
+        val child = ByteArray(32) { 0x72 }
+        val childLeaf = byteArrayOf(1, 2, 3)
+
+        ManagedAttestKeyRegistry.remember(uid, parent, null, byteArrayOf(9), true)
+        ManagedAttestKeyRegistry.remember(uid, child, parent, childLeaf, false)
+
+        assertTrue(ManagedAttestKeyRegistry.isKnown(uid, child))
+        assertTrue(ManagedAttestKeyRegistry.isAttestKey(uid, parent))
+        assertFalse(ManagedAttestKeyRegistry.isAttestKey(uid, child))
+        assertFalse(ManagedAttestKeyRegistry.isAttestKey(uid, ByteArray(32) { 0x99.toByte() }))
+        assertArrayEquals(parent, ManagedAttestKeyRegistry.getParentKeyId(uid, child))
+        assertNull(ManagedAttestKeyRegistry.getParentKeyId(uid, parent))
+        assertNull(ManagedAttestKeyRegistry.rehydrationPath(uid, child))
+    }
+
+    @Test
+    fun `platform security level survives remember and rehydration`() {
+        val uid = 10_123
+        val root = ByteArray(32) { 0x31 }
+        val child = ByteArray(32) { 0x32 }
+        ManagedAttestKeyRegistry.remember(uid, root, null, byteArrayOf(1), true, 2)
+        ManagedAttestKeyRegistry.remember(uid, child, root, byteArrayOf(2), true, 2)
+
+        assertEquals(2, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, root))
+        assertEquals(2, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, child))
+        assertEquals(0, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, ByteArray(32) { 0x33 }))
+
+        val path = requireNotNull(ManagedAttestKeyRegistry.rehydrationPath(uid, child))
+        assertEquals(2, path.size)
+        assertEquals(2, path[0].platformSecurityLevel)
+        assertEquals(2, path[1].platformSecurityLevel)
+
+        // Unknown levels never overwrite a known level on compatible re-remember.
+        ManagedAttestKeyRegistry.remember(uid, child, root, byteArrayOf(2), true, 0)
+        assertEquals(2, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, child))
+    }
+
+    @Test
+    fun `registry saturation retains parent key id and admits new children`() {
+        val uid = 10_123
+        fun descriptor(index: Int): ByteArray =
+            ByteArray(32).also {
+                it[0] = ((index ushr 8) and 0xff).toByte()
+                it[1] = (index and 0xff).toByte()
+                it[2] = 2
+            }
+
+        val parentBefore = descriptor(10)
+        val childBefore = descriptor(11)
+        ManagedAttestKeyRegistry.remember(uid, parentBefore, null, byteArrayOf(1), true)
+        ManagedAttestKeyRegistry.remember(uid, childBefore, parentBefore, byteArrayOf(2), false)
+
+        for (index in 100..360) {
+            ManagedAttestKeyRegistry.remember(uid, descriptor(index))
+        }
+
+        val newParent = descriptor(400)
+        val newChild = descriptor(401)
+        ManagedAttestKeyRegistry.remember(uid, newParent, null, byteArrayOf(3), true)
+        ManagedAttestKeyRegistry.remember(uid, newChild, newParent, byteArrayOf(4), false)
+
+        assertArrayEquals(newParent, ManagedAttestKeyRegistry.getParentKeyId(uid, newChild))
+    }
+
+    @Test
+    fun `subtree eviction removes descendants when oldest parent is evicted`() {
+        val uid = 10_123
+        fun descriptor(index: Int): ByteArray =
+            ByteArray(32).also {
+                it[0] = ((index ushr 8) and 0xff).toByte()
+                it[1] = (index and 0xff).toByte()
+                it[2] = 3
+            }
+
+        val root = descriptor(1)
+        val child = descriptor(2)
+        val grandchild = descriptor(3)
+
+        ManagedAttestKeyRegistry.remember(uid, root, null, byteArrayOf(1), true)
+        ManagedAttestKeyRegistry.remember(uid, child, root, byteArrayOf(2), true)
+        ManagedAttestKeyRegistry.remember(uid, grandchild, child, byteArrayOf(3), false)
+
+        for (index in 10..265) {
+            ManagedAttestKeyRegistry.remember(uid, descriptor(index))
+        }
+
+        assertNull(ManagedAttestKeyRegistry.getParentKeyId(uid, grandchild))
+        assertNull(ManagedAttestKeyRegistry.rehydrationPath(uid, child))
+    }
+
+    @Test
+    fun `ancestor cycle is rejected`() {
+        val uid = 10_123
+        val a = ByteArray(32) { 0x1a }
+        val b = ByteArray(32) { 0x1b }
+        val c = ByteArray(32) { 0x1c }
+
+        ManagedAttestKeyRegistry.remember(uid, a, null, byteArrayOf(1), true)
+        ManagedAttestKeyRegistry.remember(uid, b, a, byteArrayOf(2), true)
+        ManagedAttestKeyRegistry.remember(uid, c, b, byteArrayOf(3), true)
+
+        ManagedAttestKeyRegistry.remember(uid, a, c, byteArrayOf(4), true)
+
+        assertNull(ManagedAttestKeyRegistry.getParentKeyId(uid, a))
+        val path = requireNotNull(ManagedAttestKeyRegistry.rehydrationPath(uid, c))
+        assertEquals(3, path.size)
+        assertArrayEquals(a, path[0].keyId)
+    }
+
+    @Test
+    fun `saturation evicts unrelated subtrees while protecting complete parent ancestry`() {
+        val uid = 10_123
+        fun descriptor(index: Int): ByteArray =
+            ByteArray(32).also {
+                it[0] = ((index ushr 8) and 0xff).toByte()
+                it[1] = (index and 0xff).toByte()
+                it[2] = 2
+            }
+
+        val root = descriptor(1)
+        val parent = descriptor(2)
+        ManagedAttestKeyRegistry.remember(uid, root, null, byteArrayOf(1), true)
+        ManagedAttestKeyRegistry.remember(uid, parent, root, byteArrayOf(2), true)
+
+        for (index in 3..256) {
+            ManagedAttestKeyRegistry.remember(uid, descriptor(index))
+        }
+
+        val child = descriptor(999)
+        ManagedAttestKeyRegistry.remember(uid, child, parent, byteArrayOf(3), true)
+
+        assertArrayEquals(root, ManagedAttestKeyRegistry.getParentKeyId(uid, parent))
+        assertArrayEquals(parent, ManagedAttestKeyRegistry.getParentKeyId(uid, child))
+        val path = requireNotNull(ManagedAttestKeyRegistry.rehydrationPath(uid, child))
+        assertEquals(3, path.size)
+        assertArrayEquals(root, path[0].keyId)
+        assertArrayEquals(parent, path[1].keyId)
+        assertArrayEquals(child, path[2].keyId)
+    }
+
+    @Test
+    fun `findAttestKeyIdByCertificate finds by genuine or rewritten certificate`() {
+        val uid = 10_123
+        val attestKeyId = ByteArray(32) { 0x7a.toByte() }
+        val genuineDer = byteArrayOf(1, 2, 3, 4)
+        val rewrittenDer = byteArrayOf(5, 6, 7, 8)
+
+        ManagedAttestKeyRegistry.remember(
+            callingUid = uid,
+            keyId = attestKeyId,
+            parentKeyId = null,
+            genuineLeafDer = genuineDer,
+            isAttestKey = true,
+            platformSecurityLevel = 1,
+            rewrittenLeafDer = rewrittenDer,
+        )
+
+        assertArrayEquals(attestKeyId, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, genuineDer))
+        assertArrayEquals(attestKeyId, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, rewrittenDer))
+        assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid + 1, genuineDer))
+        assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, byteArrayOf(9, 9, 9)))
+    }
+
+    @Test
+    fun `rememberAlias links alias key id to primary entry and resolves ancestry`() {
+        val uid = 10_123
+        val primary = ByteArray(32) { 0x11 }
+        val alias = ByteArray(32) { 0x22 }
+        val genuineDer = byteArrayOf(1, 2, 3)
+        val rewrittenDer = byteArrayOf(4, 5, 6)
+
+        ManagedAttestKeyRegistry.remember(
+            callingUid = uid,
+            keyId = primary,
+            parentKeyId = null,
+            genuineLeafDer = genuineDer,
+            isAttestKey = true,
+            platformSecurityLevel = 2,
+            rewrittenLeafDer = rewrittenDer,
+        )
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, alias)
+
+        assertTrue(ManagedAttestKeyRegistry.isKnown(uid, alias))
+        assertTrue(ManagedAttestKeyRegistry.isAttestKey(uid, alias))
+        assertEquals(2, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, alias))
+        assertArrayEquals(primary, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, genuineDer))
+
+        val path = requireNotNull(ManagedAttestKeyRegistry.rehydrationPath(uid, alias))
+        assertEquals(1, path.size)
+        assertArrayEquals(primary, path[0].keyId)
+        assertEquals(1, path[0].aliasKeyIds.size)
+        assertArrayEquals(alias, path[0].aliasKeyIds[0])
+    }
+
+    @Test
+    fun `rememberAlias rejects invalid arguments and missing primary`() {
+        val uid = 10_123
+        val primary = ByteArray(32) { 0x11 }
+        val alias = ByteArray(32) { 0x22 }
+
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, alias)
+        assertFalse(ManagedAttestKeyRegistry.isKnown(uid, alias))
+
+        ManagedAttestKeyRegistry.remember(uid, primary)
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, primary)
+        ManagedAttestKeyRegistry.rememberAlias(-1, primary, alias)
+        ManagedAttestKeyRegistry.rememberAlias(uid, ByteArray(16), alias)
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, ByteArray(31))
+        assertFalse(ManagedAttestKeyRegistry.isKnown(uid, alias))
+    }
 }

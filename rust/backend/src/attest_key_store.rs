@@ -10,9 +10,17 @@ pub type KeyId = [u8; 32];
 struct AttestKeyEntry {
     calling_uid: u32,
     key_id: KeyId,
+    alias_key_ids: Vec<KeyId>,
     #[allow(dead_code)]
     parent_key_id: Option<KeyId>,
     issuer: Arc<PreparedIssuer>,
+}
+
+impl AttestKeyEntry {
+    fn matches(&self, calling_uid: u32, target: &KeyId) -> bool {
+        self.calling_uid == calling_uid
+            && (&self.key_id == target || self.alias_key_ids.contains(target))
+    }
 }
 
 #[derive(Default)]
@@ -27,12 +35,28 @@ impl AttestKeyStore {
             if &target == key_id {
                 return true;
             }
+            let matching_aliases: Vec<KeyId> = self
+                .entries
+                .iter()
+                .filter(|entry| entry.matches(calling_uid, &target))
+                .flat_map(|entry| {
+                    let mut ids = vec![entry.key_id];
+                    ids.extend(entry.alias_key_ids.iter().copied());
+                    ids
+                })
+                .collect();
+            if matching_aliases.contains(key_id) {
+                return true;
+            }
             to_visit.extend(
                 self.entries
                     .iter()
                     .filter(|entry| {
                         entry.calling_uid == calling_uid
-                            && entry.parent_key_id.as_ref() == Some(&target)
+                            && entry
+                                .parent_key_id
+                                .as_ref()
+                                .is_some_and(|parent| matching_aliases.contains(parent))
                     })
                     .map(|entry| entry.key_id),
             );
@@ -44,19 +68,28 @@ impl AttestKeyStore {
         let mut to_remove = vec![*key_id];
         let mut any_removed = false;
         while let Some(target) = to_remove.pop() {
+            let mut removed_entry_ids = Vec::new();
+            for entry in &self.entries {
+                if entry.matches(calling_uid, &target) {
+                    removed_entry_ids.push(entry.key_id);
+                    removed_entry_ids.extend(entry.alias_key_ids.iter().copied());
+                }
+            }
             let children: Vec<KeyId> = self
                 .entries
                 .iter()
                 .filter(|entry| {
                     entry.calling_uid == calling_uid
-                        && entry.parent_key_id.as_ref() == Some(&target)
+                        && entry.parent_key_id.as_ref().is_some_and(|parent| {
+                            removed_entry_ids.contains(parent) || parent == &target
+                        })
                 })
                 .map(|entry| entry.key_id)
                 .collect();
             to_remove.extend(children);
             let original_len = self.entries.len();
             self.entries
-                .retain(|entry| entry.calling_uid != calling_uid || entry.key_id != target);
+                .retain(|entry| !entry.matches(calling_uid, &target));
             any_removed |= self.entries.len() != original_len;
         }
         any_removed
@@ -106,9 +139,53 @@ pub fn insert_attest_key(calling_uid: u32, key_id: KeyId, issuer: Arc<PreparedIs
     guard.entries.push_back(AttestKeyEntry {
         calling_uid,
         key_id,
+        alias_key_ids: Vec::new(),
         parent_key_id: None,
         issuer,
     });
+}
+
+#[allow(dead_code)]
+pub fn alias_attest_key(calling_uid: u32, primary_key_id: &KeyId, alias_key_id: KeyId) -> bool {
+    if primary_key_id == &alias_key_id || alias_key_id.iter().all(|b| *b == 0) {
+        return false;
+    }
+    let store = STORE.get_or_init(|| Mutex::new(AttestKeyStore::default()));
+    let mut guard = match store.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let pos = match guard
+        .entries
+        .iter()
+        .position(|e| e.matches(calling_uid, primary_key_id))
+    {
+        Some(pos) => pos,
+        None => return false,
+    };
+
+    if guard.entries[pos].key_id == alias_key_id
+        || guard.entries[pos].alias_key_ids.contains(&alias_key_id)
+    {
+        return true;
+    }
+
+    if guard
+        .entries
+        .iter()
+        .enumerate()
+        .any(|(i, e)| i != pos && e.matches(calling_uid, &alias_key_id))
+    {
+        return false;
+    }
+
+    if guard.entries[pos].alias_key_ids.len() >= 4 {
+        return false;
+    }
+
+    guard.entries[pos].alias_key_ids.push(alias_key_id);
+    true
 }
 
 pub fn insert_child_attest_key(
@@ -129,11 +206,12 @@ pub fn insert_child_attest_key(
     let parent_pos = guard
         .entries
         .iter()
-        .position(|e| e.calling_uid == calling_uid && &e.key_id == parent_key_id);
+        .position(|e| e.matches(calling_uid, parent_key_id));
     let Some(parent_pos) = parent_pos else {
         return false;
     };
-    if guard.subtree_contains(calling_uid, &child_key_id, parent_key_id) {
+    let canonical_parent_id = guard.entries[parent_pos].key_id;
+    if guard.subtree_contains(calling_uid, &child_key_id, &canonical_parent_id) {
         return false;
     }
 
@@ -148,7 +226,7 @@ pub fn insert_child_attest_key(
     if !guard
         .entries
         .iter()
-        .any(|entry| entry.calling_uid == calling_uid && &entry.key_id == parent_key_id)
+        .any(|entry| entry.key_id == canonical_parent_id && entry.calling_uid == calling_uid)
     {
         return false;
     }
@@ -156,7 +234,8 @@ pub fn insert_child_attest_key(
     guard.entries.push_back(AttestKeyEntry {
         calling_uid,
         key_id: child_key_id,
-        parent_key_id: Some(*parent_key_id),
+        alias_key_ids: Vec::new(),
+        parent_key_id: Some(canonical_parent_id),
         issuer,
     });
     true
@@ -172,7 +251,7 @@ pub fn get_attest_key(calling_uid: u32, key_id: &KeyId) -> Option<Arc<PreparedIs
     let pos = guard
         .entries
         .iter()
-        .position(|e| e.calling_uid == calling_uid && &e.key_id == key_id)?;
+        .position(|e| e.matches(calling_uid, key_id))?;
 
     let entry = guard.entries.remove(pos)?;
     let issuer = Arc::clone(&entry.issuer);
@@ -191,7 +270,7 @@ pub fn touch_attest_key(calling_uid: u32, key_id: &KeyId) -> bool {
     let pos = match guard
         .entries
         .iter()
-        .position(|e| e.calling_uid == calling_uid && &e.key_id == key_id)
+        .position(|e| e.matches(calling_uid, key_id))
     {
         Some(pos) => pos,
         None => return false,
@@ -537,5 +616,168 @@ mod tests {
         assert!(get_attest_key(1000, &parent).is_none());
         assert!(get_attest_key(1000, &child).is_none());
         assert!(get_attest_key(1000, &grandchild).is_none());
+    }
+
+    #[test]
+    fn alias_attest_key_basic_lookup() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        let alias = [11u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"aliased"));
+
+        assert!(alias_attest_key(1000, &primary, alias));
+
+        let by_primary = get_attest_key(1000, &primary).expect("by primary");
+        assert_eq!(by_primary.issuer_name_der(), b"aliased");
+        let by_alias = get_attest_key(1000, &alias).expect("by alias");
+        assert_eq!(by_alias.issuer_name_der(), b"aliased");
+    }
+
+    #[test]
+    fn alias_dedup_returns_true_without_adding() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        let alias = [11u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"dedup"));
+
+        assert!(alias_attest_key(1000, &primary, alias));
+        assert!(alias_attest_key(1000, &primary, alias));
+
+        let by_alias = get_attest_key(1000, &alias).expect("by alias");
+        assert_eq!(by_alias.issuer_name_der(), b"dedup");
+    }
+
+    #[test]
+    fn alias_primary_id_as_alias_returns_false() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"self-alias"));
+
+        assert!(!alias_attest_key(1000, &primary, primary));
+    }
+
+    #[test]
+    fn alias_max_four_aliases() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"max-alias"));
+
+        for i in 1..=4 {
+            let mut alias = [0u8; 32];
+            alias[0] = i;
+            assert!(alias_attest_key(1000, &primary, alias));
+        }
+
+        let mut fifth = [0u8; 32];
+        fifth[0] = 5;
+        assert!(!alias_attest_key(1000, &primary, fifth));
+
+        assert!(get_attest_key(1000, &primary).is_some());
+        for i in 1..=4 {
+            let mut alias = [0u8; 32];
+            alias[0] = i;
+            assert!(get_attest_key(1000, &alias).is_some());
+        }
+        assert!(get_attest_key(1000, &fifth).is_none());
+    }
+
+    #[test]
+    fn alias_zero_key_rejected() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"no-zero"));
+
+        assert!(!alias_attest_key(1000, &primary, [0u8; 32]));
+    }
+
+    #[test]
+    fn alias_already_owned_by_another_entry_is_rejected() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let key_a = [10u8; 32];
+        let key_b = [20u8; 32];
+        insert_attest_key(1000, key_a, make_test_issuer(b"key-a"));
+        insert_attest_key(1000, key_b, make_test_issuer(b"key-b"));
+
+        assert!(!alias_attest_key(1000, &key_a, key_b));
+    }
+
+    #[test]
+    fn alias_absent_primary_returns_false() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let missing = [99u8; 32];
+        let alias = [98u8; 32];
+
+        assert!(!alias_attest_key(1000, &missing, alias));
+    }
+
+    #[test]
+    fn alias_cross_uid_isolation() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        let alias = [11u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"uid-1000"));
+
+        assert!(alias_attest_key(1000, &primary, alias));
+
+        assert!(get_attest_key(1000, &alias).is_some());
+        assert!(get_attest_key(1001, &alias).is_none());
+    }
+
+    #[test]
+    fn alias_touch_by_alias_id() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        let alias = [11u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"touch-alias"));
+        assert!(alias_attest_key(1000, &primary, alias));
+
+        assert!(touch_attest_key(1000, &alias));
+        assert!(!touch_attest_key(1001, &alias));
+    }
+
+    #[test]
+    fn alias_remove_by_alias_id() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let primary = [10u8; 32];
+        let alias = [11u8; 32];
+        insert_attest_key(1000, primary, make_test_issuer(b"remove-alias"));
+        assert!(alias_attest_key(1000, &primary, alias));
+
+        assert!(remove_attest_key(1000, &alias));
+        assert!(get_attest_key(1000, &primary).is_none());
+        assert!(get_attest_key(1000, &alias).is_none());
+    }
+
+    #[test]
+    fn child_key_lookup_via_aliased_parent() {
+        let _sequence = isolate_store_sequence();
+        reset_for_testing();
+        let parent = [10u8; 32];
+        let parent_alias = [11u8; 32];
+        let child = [12u8; 32];
+        insert_attest_key(1000, parent, make_test_issuer(b"parent"));
+        assert!(alias_attest_key(1000, &parent, parent_alias));
+
+        assert!(insert_child_attest_key(
+            1000,
+            &parent_alias,
+            child,
+            make_test_issuer(b"child-via-alias")
+        ));
+        let child_issuer = get_attest_key(1000, &child).expect("child");
+        assert_eq!(child_issuer.issuer_name_der(), b"child-via-alias");
+
+        assert!(remove_attest_key(1000, &parent_alias));
+        assert!(get_attest_key(1000, &child).is_none());
     }
 }

@@ -715,15 +715,55 @@ class WebServer(
         val array = JSONArray()
         StoredKeyboxInventory.list(configDir).forEach { source ->
             val targetId = source.id.ifEmpty { source.filename }
+            var certSerial = CertHack.getDeviceCertificateSerial(targetId) ?: ""
+            var secLevel = CertHack.getKeyboxSecurityLevel(targetId)
+            var isRkp = CertHack.isRkpKeybox(targetId)
+
+            if (secLevel == "Unknown" || certSerial.isEmpty()) {
+                val fileScope = source.scope.fileScope
+                if (fileScope != null) {
+                    val parsed =
+                        runCatching {
+                            KeyboxLoader.parseFileSnapshot(fileScope, source.filename, source.id)
+                        }.getOrNull()
+                    if (parsed != null && parsed.keyboxes.isNotEmpty()) {
+                        if (secLevel == "Unknown") {
+                            var hasTee = false
+                            var hasStrongBox = false
+                            for (box in parsed.keyboxes) {
+                                when (CertHack.classifyKeyboxSecurityLevel(box)) {
+                                    CertHack.KeyboxSecurityLevel.STRONGBOX -> {
+                                        hasStrongBox = true
+                                        break
+                                    }
+                                    CertHack.KeyboxSecurityLevel.TEE -> hasTee = true
+                                    CertHack.KeyboxSecurityLevel.UNKNOWN -> {}
+                                }
+                            }
+                            secLevel = if (hasStrongBox) "StrongBox" else if (hasTee) "TEE" else "Unknown"
+                        }
+                        if (certSerial.isEmpty()) {
+                            certSerial =
+                                parsed.keyboxes.asSequence()
+                                    .mapNotNull(CertHack::getDeviceCertificateSerial)
+                                    .firstOrNull() ?: ""
+                        }
+                        if (!isRkp) {
+                            isRkp = parsed.keyboxes.any(CertHack::isRkpKeybox)
+                        }
+                    }
+                }
+            }
+
             array.put(
                 JSONObject()
                     .put("id", source.id)
                     .put("scope", source.scope.apiValue)
                     .put("filename", source.filename)
                     .put("type", if (source.isCbox) "cbox" else "xml")
-                    .put("certificate_serial", CertHack.getDeviceCertificateSerial(targetId) ?: "")
-                    .put("security_level", CertHack.getKeyboxSecurityLevel(targetId))
-                    .put("is_rkp", CertHack.isRkpKeybox(targetId)),
+                    .put("certificate_serial", certSerial)
+                    .put("security_level", secLevel)
+                    .put("is_rkp", isRkp),
             )
         }
         return array.toString()
@@ -850,8 +890,31 @@ class WebServer(
         }
     }
 
+    private fun resolveLogcatBinary(): String {
+        val candidates = arrayOf("/system/bin/logcat", "/bin/logcat", "logcat")
+        for (candidate in candidates) {
+            val f = File(candidate)
+            if (f.isAbsolute && f.canExecute()) return candidate
+        }
+        return "logcat"
+    }
+
     private fun readCommandOutput(command: Array<String>): String {
-        val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+        val resolvedCommand =
+            if (command.isNotEmpty() && command[0] == "logcat") {
+                val copy = command.clone()
+                copy[0] = resolveLogcatBinary()
+                copy
+            } else {
+                command
+            }
+        val pb = ProcessBuilder(*resolvedCommand).redirectErrorStream(true)
+        val env = pb.environment()
+        val path = env["PATH"] ?: ""
+        if (!path.contains("/system/bin")) {
+            env["PATH"] = if (path.isEmpty()) "/system/bin:/system/xbin" else "/system/bin:/system/xbin:$path"
+        }
+        val process = pb.start()
         val reader =
             FutureTask<String> {
                 process.inputStream.use { readTextLimited(it, MAX_LOG_BYTES) }
@@ -2304,6 +2367,7 @@ class WebServer(
             json.put("native_runtime", readNativeRuntimeStatus())
             json.put("keystore_interceptor_running", KeystoreInterceptor.isRunning())
             json.put("telephony_interceptor_running", TelephonyInterceptor.isRunning())
+            json.put("attest_fail_ring", CertHack.attestFailureSnapshot())
             return secureResponse(Response.Status.OK, "application/json", json.toString())
         }
 

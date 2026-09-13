@@ -43,6 +43,7 @@ internal object ManagedAttestKeyRehydrator {
                         callingUid,
                         false,
                         entry.keyId,
+                        entry.platformSecurityLevel,
                     )
                 } else {
                     CertHack.hackChildKeyCertificate(
@@ -52,6 +53,7 @@ internal object ManagedAttestKeyRehydrator {
                         true,
                         entry.parentKeyId,
                         entry.keyId,
+                        entry.platformSecurityLevel,
                     )
                 }
             if (rewritten === original) return false
@@ -60,6 +62,12 @@ internal object ManagedAttestKeyRehydrator {
                 runCatching { CertificateBackend.touchAttestKey(callingUid, entry.keyId) }
                     .getOrElse { return false }
             if (confirmed != CertificateBackend.AttestKeyTouchResult.PRESENT) return false
+            for (alias in entry.aliasKeyIds) {
+                val aliased =
+                    runCatching { CertificateBackend.aliasAttestKey(callingUid, entry.keyId, alias) }
+                        .getOrElse { return false }
+                if (aliased != CertificateBackend.AttestKeyAliasResult.ALIASED) return false
+            }
         }
         return true
     }

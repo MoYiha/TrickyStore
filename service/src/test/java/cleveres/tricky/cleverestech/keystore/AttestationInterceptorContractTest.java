@@ -33,15 +33,18 @@ import java.util.Date;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,6 +71,9 @@ public class AttestationInterceptorContractTest {
                     .thenReturn(rewrittenChain);
             backend.when(() -> CertHack.hackChildKeyCertificate(any(), anyInt(), anyBoolean(), anyBoolean()))
                     .thenReturn(rewrittenChain);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                            any(), anyInt(), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenReturn(rewrittenChain);
 
             // Test both default RKP request (false) and custom AttestKey request (true)
             for (boolean explicitAttestKey : new boolean[] {false, true}) {
@@ -85,9 +91,370 @@ public class AttestationInterceptorContractTest {
             backend.verify(CertHack::canHack, org.mockito.Mockito.times(2));
             backend.verify(() -> CertHack.hackCertificateChain(any(), anyInt(), anyBoolean()),
                     org.mockito.Mockito.times(1));
-            backend.verify(() -> CertHack.hackChildKeyCertificate(any(), anyInt(), anyBoolean(), anyBoolean()),
+            backend.verify(
+                    () -> CertHack.hackChildKeyCertificate(
+                            any(), anyInt(), anyBoolean(), anyBoolean(), any(), any(), anyInt()),
                     org.mockito.Mockito.times(1));
         } finally {
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void getKeyEntryPostReparsesRetainedRequestWithoutPreThreadLocal() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(44_501, new String[] {"com.test.postreparse"});
+        byte[] expectedKeyId = Utils.computeKeyDescriptorIdentity(44_501, 0, -1L, "post-reparse-k1", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate leaf = certificate(subject, parent, "postreparse", "parent");
+        X509Certificate replacement = certificate(subject, parent, "replacement", "parent");
+        Certificate[] rewrittenChain = new Certificate[] {replacement, replacement};
+        java.util.concurrent.atomic.AtomicReference<byte[]> touchedKeyId =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        cleveres.tricky.cleverestech.CertificateBackend.setTouchAttestKeyOverrideForTesting((uid, id) -> {
+            touchedKeyId.set(id.clone());
+            return cleveres.tricky.cleverestech.CertificateBackend.AttestKeyTouchResult.PRESENT;
+        });
+        cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(
+                44_501, expectedKeyId, null, leaf.getEncoded());
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.hackCertificateChain(any(), anyInt(), anyBoolean()))
+                    .thenReturn(rewrittenChain);
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(leaf, leaf.getEncoded());
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, 44_501, 42, descriptorRequest("post-reparse-k1"), reply, 0);
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertNotNull(touchedKeyId.get());
+            assertArrayEquals(expectedKeyId, touchedKeyId.get());
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void leafOnlyManagedChildReadbackRewritesAgainstRegistryParent() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(44_502, new String[] {"com.test.managedchild"});
+        byte[] parentId = new byte[32];
+        parentId[0] = 3;
+        parentId[1] = 7;
+        byte[] childId = Utils.computeKeyDescriptorIdentity(44_502, 0, -1L, "managed-child", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate childLeaf = certificate(subject, parent, "managed-child", "parent");
+        X509Certificate replacement = certificate(subject, parent, "replacement", "parent");
+        cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(
+                44_502, childId, parentId, null, false);
+        cleveres.tricky.cleverestech.CertificateBackend.setTouchAttestKeyOverrideForTesting(
+                (uid, id) -> cleveres.tricky.cleverestech.CertificateBackend.AttestKeyTouchResult.PRESENT);
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any()))
+                    .thenReturn(new Certificate[] {replacement});
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenReturn(new Certificate[] {replacement});
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(childLeaf, null);
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, 44_502, 42, descriptorRequest("managed-child"), reply, 0);
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertArrayEquals(replacement.getEncoded(), metadata.certificate);
+
+            KeyMetadata ordinaryMetadata = metadata(childLeaf, null);
+            KeyEntryResponse ordinaryResponse = new KeyEntryResponse();
+            ordinaryResponse.metadata = ordinaryMetadata;
+            Parcel ordinaryReply = mock(Parcel.class);
+            when(ordinaryReply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(ordinaryResponse);
+            byte[] before = ordinaryMetadata.certificate;
+            BinderInterceptor.Result ordinaryResult = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, 44_502, 42, descriptorRequest("unknown-child"), ordinaryReply, 0);
+            assertSame(BinderInterceptor.Skip.INSTANCE, ordinaryResult);
+            assertSame(before, ordinaryMetadata.certificate);
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void leafOnlyManagedChildReadbackRewritesEvenWhenRegistryIsSaturated() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        int uid = 44_508;
+        Config.INSTANCE.setPackagesForTesting(uid, new String[] {"com.test.saturated"});
+        byte[] parentId = new byte[32];
+        parentId[0] = 7;
+        parentId[1] = 8;
+        byte[] childId = Utils.computeKeyDescriptorIdentity(uid, 0, -1L, "saturated-child", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate childLeaf = certificate(subject, parent, "saturated-child", "parent");
+        X509Certificate replacement = certificate(subject, parent, "replacement", "parent");
+
+        for (int i = 1; i <= 260; i++) {
+            byte[] dummy = new byte[32];
+            dummy[0] = (byte) (i >> 8);
+            dummy[1] = (byte) i;
+            dummy[2] = 5;
+            cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(uid, dummy);
+        }
+
+        cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(
+                uid, childId, parentId, null, false);
+        cleveres.tricky.cleverestech.CertificateBackend.setTouchAttestKeyOverrideForTesting(
+                (u, id) -> cleveres.tricky.cleverestech.CertificateBackend.AttestKeyTouchResult.PRESENT);
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any()))
+                    .thenReturn(new Certificate[] {replacement});
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenReturn(new Certificate[] {replacement});
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(childLeaf, null);
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, uid, 42, descriptorRequest("saturated-child"), reply, 0);
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertArrayEquals(replacement.getEncoded(), metadata.certificate);
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.resetForTesting();
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void childKeyReadbackDoesNotTouchRustBackendAndRewritesUsingRegistryParent() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(44_503, new String[] {"com.test.childnotouch"});
+        byte[] parentId = new byte[32];
+        parentId[0] = 5;
+        parentId[1] = 9;
+        byte[] childId = Utils.computeKeyDescriptorIdentity(44_503, 0, -1L, "child-no-touch", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate childLeaf = certificate(subject, parent, "child-no-touch", "parent");
+        X509Certificate replacement = certificate(subject, parent, "replacement", "parent");
+
+        cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(
+                44_503, childId, parentId, null, false);
+
+        java.util.concurrent.atomic.AtomicBoolean childTouched = new java.util.concurrent.atomic.AtomicBoolean(false);
+        cleveres.tricky.cleverestech.CertificateBackend.setTouchAttestKeyOverrideForTesting((uid, id) -> {
+            if (java.util.Arrays.equals(id, childId)) {
+                childTouched.set(true);
+                return cleveres.tricky.cleverestech.CertificateBackend.AttestKeyTouchResult.ABSENT;
+            }
+            return cleveres.tricky.cleverestech.CertificateBackend.AttestKeyTouchResult.PRESENT;
+        });
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any()))
+                    .thenReturn(new Certificate[] {replacement});
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), anyInt(), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenReturn(new Certificate[] {replacement});
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(childLeaf, null);
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, 44_503, 42, descriptorRequest("child-no-touch"), reply, 0);
+
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertArrayEquals(replacement.getEncoded(), metadata.certificate);
+            assertFalse("Child key must NOT trigger touchAttestKey on getKeyEntry", childTouched.get());
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void fullChainChildKeyReadbackRoutesToChildKeyRewritePreservingParentCert() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        int uid = 44_509;
+        Config.INSTANCE.setPackagesForTesting(uid, new String[] {"com.test.fullchainchild"});
+        byte[] parentId = new byte[32];
+        parentId[0] = 9;
+        parentId[1] = 4;
+        byte[] childId = Utils.computeKeyDescriptorIdentity(uid, 0, -1L, "full-chain-child", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate parentCert = certificate(parent, parent, "attest-parent", "attest-parent", false);
+        X509Certificate childLeaf = certificate(subject, parent, "full-chain-child", "attest-parent", true);
+        X509Certificate replacementLeaf = certificate(subject, parent, "replacement-child", "attest-parent", true);
+
+        cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.remember(
+                uid, childId, parentId, null, false);
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.applyCachedCertificateChain(any())).thenReturn(false);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(uid), eq(false), eq(false), eq(parentId), eq(childId), anyInt()))
+                    .thenReturn(new Certificate[] {replacementLeaf, parentCert});
+
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(childLeaf, parentCert.getEncoded());
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, uid, 42, descriptorRequest("full-chain-child"), reply, 0);
+
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertArrayEquals(replacementLeaf.getEncoded(), metadata.certificate);
+            assertArrayEquals(parentCert.getEncoded(), metadata.certificateChain);
+
+            backend.verify(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(uid), eq(false), eq(false), eq(parentId), eq(childId), anyInt()), times(1));
+            backend.verify(() -> CertHack.hackCertificateChain(any(), anyInt(), anyBoolean()), never());
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.resetForTesting();
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void fullChainChildKeyDiscoversParentFromIssuerCertificate() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        int uid = 44_510;
+        Config.INSTANCE.setPackagesForTesting(uid, new String[] {"com.test.discoverparent"});
+        byte[] parentId = new byte[32];
+        parentId[0] = 6;
+        parentId[1] = 2;
+        byte[] childId = Utils.computeKeyDescriptorIdentity(uid, 0, -1L, "discovered-child", null);
+        KeyPair parent = keyPair("EC");
+        KeyPair subject = keyPair("EC");
+        X509Certificate parentCert = certificate(parent, parent, "discovered-parent", "discovered-parent", false);
+        X509Certificate childLeaf = certificate(subject, parent, "discovered-child", "discovered-parent", true);
+        X509Certificate replacementLeaf = certificate(subject, parent, "replacement-discovered", "discovered-parent", true);
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class);
+             MockedStatic<Parcel> parcels = mockStatic(Parcel.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.applyCachedCertificateChain(any())).thenReturn(false);
+            backend.when(() -> CertHack.findAttestKeyIdByCertificate(eq(uid), eq(parentCert.getEncoded())))
+                    .thenReturn(parentId);
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(uid), eq(false), eq(false), eq(parentId), eq(childId), anyInt()))
+                    .thenReturn(new Certificate[] {replacementLeaf, parentCert});
+
+            Parcel obtained = mock(Parcel.class);
+            parcels.when(Parcel::obtain).thenReturn(obtained);
+
+            KeyMetadata metadata = metadata(childLeaf, parentCert.getEncoded());
+            KeyEntryResponse response = new KeyEntryResponse();
+            response.metadata = metadata;
+            Parcel reply = mock(Parcel.class);
+            when(reply.readTypedObject(KeyEntryResponse.CREATOR)).thenReturn(response);
+
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPostTransact(target,
+                    field(KeystoreInterceptor.class, "getKeyEntryTransaction").getInt(null),
+                    0, uid, 42, descriptorRequest("discovered-child"), reply, 0);
+
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            assertArrayEquals(replacementLeaf.getEncoded(), metadata.certificate);
+            assertArrayEquals(parentCert.getEncoded(), metadata.certificateChain);
+
+            backend.verify(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(uid), eq(false), eq(false), eq(parentId), eq(childId), anyInt()), times(1));
+            backend.verify(() -> CertHack.hackCertificateChain(any(), anyInt(), anyBoolean()), never());
+            assertArrayEquals(parentId, cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.getParentKeyId(uid, childId));
+        } finally {
+            cleveres.tricky.cleverestech.CertificateBackend.resetForTesting();
+            cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.resetForTesting();
+            keystore.set(null, previous);
             globalModeField.set(Config.INSTANCE, prevGlobalMode);
         }
     }
@@ -114,6 +481,8 @@ public class AttestationInterceptorContractTest {
                     .thenReturn(rewrittenChain);
             backend.when(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any()))
                     .thenReturn(rewrittenChain);
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any(), anyInt()))
+                    .thenReturn(rewrittenChain);
 
             Parcel request = mock(Parcel.class);
             java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
@@ -139,7 +508,7 @@ public class AttestationInterceptorContractTest {
             BinderInterceptor.Result postResult = generate(request, reply);
             assertTrue(postResult instanceof BinderInterceptor.OverrideReply);
 
-            backend.verify(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any()),
+            backend.verify(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any(), anyInt()),
                     org.mockito.Mockito.times(1));
             backend.verify(() -> CertHack.hackCertificateChain(any(), anyInt(), anyBoolean()), never());
             backend.verify(() -> CertHack.hackChildKeyCertificate(any(), anyInt(), anyBoolean(), anyBoolean()), never());
@@ -329,6 +698,49 @@ public class AttestationInterceptorContractTest {
     }
 
     @Test
+    public void attestKeyGenerationWithoutAttestationExtensionIsRewrittenAndRegistered() throws Exception {
+        byte[] expectedKeyId = Utils.computeKeyDescriptorIdentity(10_001, 0, 0L, null, null);
+        KeyPair c = keyPair("EC");
+        X509Certificate nonAttested = certificate(c, c, "attest-leaf", "attest-issuer", false);
+        KeyMetadata metadata = metadata(nonAttested, null);
+
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(128);
+        when(request.dataSize()).thenReturn(128);
+
+        java.util.Iterator<Integer> attestInts = java.util.Arrays.asList(
+                1, 16, 0,
+                0,
+                1, 1, 20, 536870913, 7, 7
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> attestInts.hasNext() ? attestInts.next() : 0);
+
+        Parcel reply = generatedReply(metadata);
+        Certificate[] replacement = new Certificate[] {nonAttested, nonAttested};
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any()))
+                    .thenReturn(replacement);
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any(), anyInt()))
+                    .thenReturn(replacement);
+
+            BinderInterceptor.Result result = generate(request, reply);
+            assertTrue(result instanceof BinderInterceptor.OverrideReply);
+            backend.verify(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any(), anyInt()));
+            assertTrue(cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.isAttestKey(10_001, expectedKeyId));
+            ((BinderInterceptor.OverrideReply) result).getReply().recycle();
+        } finally {
+            cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.resetForTesting();
+        }
+    }
+
+    @Test
     public void strongBoxKeyGenerationRewritesNormallyWhenStrongBoxKeyboxAvailable() throws Exception {
         KeyPair issuer = keyPair("EC");
         X509Certificate child = certificate(keyPair("EC"), issuer, "strongbox_child", "issuer");
@@ -366,10 +778,200 @@ public class AttestationInterceptorContractTest {
         }
     }
 
+    @Test
+    public void updateSubcomponentRewritesAttestKeyAndRegistersIntoManagedRegistry() throws Exception {
+        Binder target = new Binder();
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+        keystore.set(null, target);
+
+        Field updateSubcomponentTxField = field(KeystoreInterceptor.class, "updateSubcomponentTransaction");
+        int updateSubcomponentTx = updateSubcomponentTxField.getInt(null);
+
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(10_001, new String[] {"com.test.app"});
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+
+            KeyPair key = keyPair("EC");
+            BouncyCastleProvider provider = new BouncyCastleProvider();
+            JcaX509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
+                    new X500Name("CN=TrustAttestor_persistent"), BigInteger.ONE,
+                    new Date(0), new Date(4_102_444_800_000L),
+                    new X500Name("CN=TrustAttestor_persistent"), key.getPublic());
+            builder.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage, true,
+                    new org.bouncycastle.asn1.x509.KeyUsage(org.bouncycastle.asn1.x509.KeyUsage.keyCertSign));
+            X509Certificate selfSignedAttestCert = new JcaX509CertificateConverter().setProvider(provider)
+                    .getCertificate(builder.build(new JcaContentSignerBuilder("SHA256withECDSA").setProvider(provider)
+                            .build(key.getPrivate())));
+
+            X509Certificate syntheticCert = certificate(key, key, "TrustAttestor_persistent_rewritten", "keybox");
+            Certificate[] rewrittenResult = new Certificate[] {syntheticCert};
+
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(any(), anyInt(), anyBoolean(), any(), anyInt()))
+                    .thenReturn(rewrittenResult);
+
+            Parcel request = mock(Parcel.class);
+            java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(0);
+            when(request.dataPosition()).thenAnswer(inv -> pos.get());
+            org.mockito.Mockito.doAnswer(inv -> {
+                pos.set(inv.getArgument(0));
+                return null;
+            }).when(request).setDataPosition(anyInt());
+            when(request.dataAvail()).thenReturn(65536);
+            when(request.dataSize()).thenReturn(65536);
+
+            byte[] certBytes = selfSignedAttestCert.getEncoded();
+            java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                    1, 32, 0,
+                    certBytes.length,
+                    -1
+            ).iterator();
+            when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+            when(request.readLong()).thenReturn(10001L);
+            when(request.readString()).thenReturn("TrustAttestor_persistent");
+
+            java.util.concurrent.atomic.AtomicInteger createByteCall = new java.util.concurrent.atomic.AtomicInteger(0);
+            when(request.createByteArray()).thenAnswer(inv -> {
+                int call = createByteCall.getAndIncrement();
+                if (call == 1) {
+                    pos.addAndGet(4 + ((certBytes.length + 3) & ~3));
+                    return certBytes;
+                }
+                return null;
+            });
+
+            BinderInterceptor.Result result = KeystoreInterceptor.INSTANCE.onPreTransact(
+                    target, updateSubcomponentTx, 0, 10_001, 1234, request);
+            assertTrue("updateSubcomponent for attest key must return OverrideData",
+                    result instanceof BinderInterceptor.OverrideData);
+
+            backend.verify(() -> CertHack.hackAttestKeyCertificateChain(
+                    any(), eq(10_001), eq(true), any(), anyInt()), times(1));
+
+            byte[] keyId = Utils.computeKeyDescriptorIdentity(10_001, 0, 10001L, "TrustAttestor_persistent", null);
+            assertTrue(cleveres.tricky.cleverestech.ManagedAttestKeyRegistry.INSTANCE.isAttestKey(10_001, keyId));
+
+            Parcel rewrittenData = ((BinderInterceptor.OverrideData) result).getData();
+            rewrittenData.recycle();
+        } finally {
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
+    @Test
+    public void childKeyRecoveryRehydratesParentFromKeystoreWhenNotPreloaded() throws Exception {
+        Field keystore = field(KeystoreInterceptor.class, "keystore");
+        Object previous = keystore.get(null);
+
+        android.os.IBinder mockKeystore = mock(android.os.IBinder.class);
+        keystore.set(null, mockKeystore);
+
+        KeyPair parentKey = keyPair("EC");
+        KeyPair childKey = keyPair("EC");
+        X509Certificate parentCert = certificate(parentKey, parentKey, "parent", "parent", false);
+        X509Certificate childCert = certificate(childKey, parentKey, "child", "parent", true);
+        X509Certificate childRewritten = certificate(childKey, parentKey, "child_rewritten", "parent", true);
+        Certificate[] childChain = new Certificate[] {childRewritten};
+        Certificate[] parentChain = new Certificate[] {parentCert};
+
+        KeyEntryResponse parentResponse = new KeyEntryResponse();
+        parentResponse.metadata = new KeyMetadata();
+        parentResponse.metadata.keySecurityLevel = SecurityLevel.TRUSTED_ENVIRONMENT;
+        parentResponse.metadata.certificate = parentCert.getEncoded();
+
+        when(mockKeystore.transact(eq(2), any(), any(), eq(0))).thenAnswer(inv -> {
+            Parcel reply = inv.getArgument(2);
+            reply.writeNoException();
+            reply.writeTypedObject(parentResponse, 0);
+            return true;
+        });
+
+        Field globalModeField = field(Config.class, "isGlobalMode");
+        boolean prevGlobalMode = (boolean) globalModeField.get(Config.INSTANCE);
+        globalModeField.set(Config.INSTANCE, true);
+        Config.INSTANCE.setPackagesForTesting(10_001, new String[] {"com.test.app"});
+
+        try (MockedStatic<CertHack> backend = mockStatic(CertHack.class)) {
+            backend.when(CertHack::canHack).thenReturn(true);
+            backend.when(() -> CertHack.applyCachedCertificateChain(any())).thenReturn(false);
+
+            backend.when(() -> CertHack.hackChildKeyCertificate(
+                    any(), eq(10_001), anyBoolean(), anyBoolean(), any(), any(), anyInt()))
+                    .thenAnswer(new org.mockito.stubbing.Answer<Certificate[]>() {
+                        private int count = 0;
+                        @Override
+                        public Certificate[] answer(org.mockito.invocation.InvocationOnMock invocation) {
+                            count++;
+                            if (count == 1) {
+                                return invocation.getArgument(0);
+                            }
+                            return childChain;
+                        }
+                    });
+
+            backend.when(() -> CertHack.hackAttestKeyCertificateChain(
+                    any(), eq(10_001), eq(true), any(), anyInt())).thenReturn(parentChain);
+
+            Parcel request = mock(Parcel.class);
+            java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(28);
+            when(request.dataPosition()).thenAnswer(inv -> pos.get());
+            org.mockito.Mockito.doAnswer(inv -> {
+                pos.set(inv.getArgument(0));
+                return null;
+            }).when(request).setDataPosition(anyInt());
+            when(request.dataAvail()).thenReturn(256);
+            when(request.dataSize()).thenReturn(256);
+
+            java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                    1, 32, 0,
+                    1,
+                    32, 0,
+                    0
+            ).iterator();
+            when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+            when(request.readLong()).thenReturn(0L);
+            java.util.Iterator<String> aliases = java.util.Arrays.asList("child_alias", "parent_alias").iterator();
+            when(request.readString()).thenAnswer(inv -> aliases.hasNext() ? aliases.next() : null);
+            when(request.createByteArray()).thenReturn(null);
+
+            KeyMetadata childMetadata = metadata(childCert, childCert.getEncoded());
+            Parcel reply = generatedReply(childMetadata);
+
+            BinderInterceptor.Result result = generate(request, reply);
+            assertTrue("Child key rewrite must succeed after parent rehydration",
+                    result instanceof BinderInterceptor.OverrideReply);
+
+            verify(mockKeystore, times(1)).transact(eq(2), any(), any(), eq(0));
+            backend.verify(() -> CertHack.hackAttestKeyCertificateChain(
+                    any(), eq(10_001), eq(true), any(), anyInt()), times(1));
+            ((BinderInterceptor.OverrideReply) result).getReply().recycle();
+        } finally {
+            keystore.set(null, previous);
+            globalModeField.set(Config.INSTANCE, prevGlobalMode);
+        }
+    }
+
     private static BinderInterceptor.Result generate(Parcel request, Parcel reply) throws Exception {
         return new SecurityLevelInterceptor().onPostTransact(new Binder(),
                 field(SecurityLevelInterceptor.class, "generateKeyTransaction").getInt(null),
                 0, 10_001, 42, request, reply, 0);
+    }
+
+    private static Parcel descriptorRequest(String alias) {
+        Parcel request = mock(Parcel.class);
+        when(request.dataPosition()).thenReturn(28);
+        when(request.dataAvail()).thenReturn(128);
+        when(request.dataSize()).thenReturn(128);
+        when(request.readInt()).thenReturn(1, 64, 0);
+        when(request.readLong()).thenReturn(-1L);
+        when(request.readString()).thenReturn(alias);
+        when(request.createByteArray()).thenReturn(null);
+        return request;
     }
 
     private static Parcel generatedReply(KeyMetadata metadata) {

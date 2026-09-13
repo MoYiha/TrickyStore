@@ -53,6 +53,7 @@ const MAX_CBOX_RESPONSE_BYTES: usize =
 const MAX_CBOX_UNLOCK_RESPONSE_BYTES: usize = RECOVERY_KEY_BYTES + MAX_CBOX_RESPONSE_BYTES;
 const MAX_ERROR_BYTES: usize = 256;
 const BACKEND_STATUS_REJECTED: u8 = 1;
+const BACKEND_STATUS_UNKNOWN_KEY_ID: u8 = 2;
 const BACKEND_BROKER_FD: RawFd = 9;
 const OP_KEYBOX_FILE_PARSE: u16 = 24;
 const OP_CERTIFICATE_INSPECT: u16 = 25;
@@ -72,6 +73,9 @@ const ATTEST_KEY_TOUCH_RESPONSE_BYTES: usize = 1;
 const OP_ATTEST_KEY_REMOVE: u16 = 36;
 const ATTEST_KEY_REMOVE_REQUEST_BYTES: usize = 37;
 const ATTEST_KEY_REMOVE_RESPONSE_BYTES: usize = 1;
+const OP_ATTEST_KEY_ALIAS: u16 = 37;
+const ATTEST_KEY_ALIAS_REQUEST_BYTES: usize = 69;
+const ATTEST_KEY_ALIAS_RESPONSE_BYTES: usize = 1;
 const SCOPE_CONFIG_ROOT: u8 = 0;
 const SCOPE_KEYBOX_DIRECTORY: u8 = 1;
 
@@ -385,6 +389,7 @@ fn opcode_request_limit(opcode: u16) -> Option<usize> {
         OP_ATTEST_KEY_CLEAR => Some(ATTEST_KEY_CLEAR_REQUEST_BYTES),
         OP_ATTEST_KEY_TOUCH => Some(ATTEST_KEY_TOUCH_REQUEST_BYTES),
         OP_ATTEST_KEY_REMOVE => Some(ATTEST_KEY_REMOVE_REQUEST_BYTES),
+        OP_ATTEST_KEY_ALIAS => Some(ATTEST_KEY_ALIAS_REQUEST_BYTES),
         OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_REQUEST_BYTES),
         backend_instance::OP_BACKEND_PING => Some(backend_instance::REQUEST_BYTES),
         _ => None,
@@ -404,6 +409,7 @@ fn opcode_response_limit(opcode: u16) -> Option<usize> {
         OP_ATTEST_KEY_CLEAR => Some(ATTEST_KEY_CLEAR_RESPONSE_BYTES),
         OP_ATTEST_KEY_TOUCH => Some(ATTEST_KEY_TOUCH_RESPONSE_BYTES),
         OP_ATTEST_KEY_REMOVE => Some(ATTEST_KEY_REMOVE_RESPONSE_BYTES),
+        OP_ATTEST_KEY_ALIAS => Some(ATTEST_KEY_ALIAS_RESPONSE_BYTES),
         OP_CRL_CHECK_BATCH => Some(crl_wire::MAX_RESPONSE_BYTES),
         backend_instance::OP_BACKEND_PING => Some(backend_instance::RESPONSE_BYTES),
         _ => None,
@@ -519,6 +525,19 @@ fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static
             let key_id: [u8; 32] = request[5..37].try_into().unwrap();
             let removed = attest_key_store::remove_attest_key(calling_uid, &key_id);
             Ok(vec![if removed { 1 } else { 0 }])
+        }
+        OP_ATTEST_KEY_ALIAS => {
+            if request.len() != ATTEST_KEY_ALIAS_REQUEST_BYTES
+                || request[0] != certificate_wire::REWRITE_WIRE_VERSION
+            {
+                return Err("invalid attest key alias request");
+            }
+            let calling_uid = u32::from_be_bytes(request[1..5].try_into().unwrap());
+            let primary_key_id: [u8; 32] = request[5..37].try_into().unwrap();
+            let alias_key_id: [u8; 32] = request[37..69].try_into().unwrap();
+            let aliased =
+                attest_key_store::alias_attest_key(calling_uid, &primary_key_id, alias_key_id);
+            Ok(vec![if aliased { 1 } else { 0 }])
         }
         OP_CRL_CHECK_BATCH => crl_wire::handle(request),
         backend_instance::OP_BACKEND_PING => backend_instance::handle(request),
@@ -814,8 +833,13 @@ fn read_u16(input: &[u8], offset: usize) -> Result<usize, &'static str> {
     Ok(u16::from_be_bytes(bytes) as usize)
 }
 
-fn reply_error(stream: &mut UnixStream, opcode: u16, _message: &str) -> io::Result<()> {
-    let status = [BACKEND_STATUS_REJECTED];
+fn reply_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::Result<()> {
+    let status_byte = if message.contains("attest issuer not found in managed store") {
+        BACKEND_STATUS_UNKNOWN_KEY_ID
+    } else {
+        BACKEND_STATUS_REJECTED
+    };
+    let status = [status_byte];
     write_frame_bounded(stream, opcode.max(1), FLAG_ERROR, &status, status.len())?;
     stream.flush()
 }
