@@ -184,7 +184,7 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         return try {
             reply.readException()
 
-            val parsed = Utils.parseKeyMetadataParcel(reply, callingUid)
+            val parsed = Utils.parseKeyMetadataParcel(reply)
             if (parsed != null) {
                 val originalLeaf = cleveres.tricky.cleverestech.keystore.LazyX509Certificate(parsed.leafEncoded, false)
                 if (!Utils.hasAndroidAttestationExtension(originalLeaf) && !context.isAttestKeyPurpose) {

@@ -167,16 +167,6 @@ public final class Utils {
             ctor.setAccessible(true);
             return ctor.newInstance();
         } catch (Throwable ignored) {
-        }
-        try {
-            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-            java.lang.reflect.Field field = unsafeClass.getDeclaredField("theUnsafe");
-            field.setAccessible(true);
-            Object unsafe = field.get(null);
-            java.lang.reflect.Method allocateInstance =
-                    unsafeClass.getMethod("allocateInstance", Class.class);
-            return (KeyDescriptor) allocateInstance.invoke(unsafe, KeyDescriptor.class);
-        } catch (Throwable ignored) {
             return null;
         }
     }
@@ -226,7 +216,25 @@ public final class Utils {
         }
     }
 
-    public static byte[] extractRawKeyDescriptorIdentity(Parcel parcel, int enclosingEnd, int callingUid) {
+    public static final class RawKeyDescriptor {
+        public final int domain;
+        public final long nspace;
+        public final String alias;
+        public final byte[] blob;
+
+        public RawKeyDescriptor(int domain, long nspace, String alias, byte[] blob) {
+            this.domain = domain;
+            this.nspace = nspace;
+            this.alias = alias;
+            this.blob = blob;
+        }
+
+        public byte[] computeIdentity(int callingUid) {
+            return computeKeyDescriptorIdentity(callingUid, domain, nspace, alias, blob);
+        }
+    }
+
+    public static RawKeyDescriptor extractRawKeyDescriptor(Parcel parcel, int enclosingEnd) {
         if (parcel == null) return null;
         int parcelableEnd = readStableParcelableEnd(parcel, enclosingEnd);
         if (parcelableEnd < 0) {
@@ -257,12 +265,17 @@ public final class Utils {
                 }
             }
 
-            return computeKeyDescriptorIdentity(callingUid, domain, nspace, alias, blob);
+            return new RawKeyDescriptor(domain, nspace, alias, blob);
         } catch (RuntimeException e) {
             return null;
         } finally {
             parcel.setDataPosition(parcelableEnd);
         }
+    }
+
+    public static byte[] extractRawKeyDescriptorIdentity(Parcel parcel, int enclosingEnd, int callingUid) {
+        RawKeyDescriptor raw = extractRawKeyDescriptor(parcel, enclosingEnd);
+        return raw != null ? raw.computeIdentity(callingUid) : null;
     }
 
     public static KeyDescriptor extractRawKeyDescriptorBody(Parcel parcel, int enclosingEnd) {
@@ -564,6 +577,7 @@ public final class Utils {
         public final int oldChainPaddedLen;
         public final KeyDescriptor assignedDescriptor;
         public final byte[] assignedKeyId;
+        public final RawKeyDescriptor assignedDescriptorRaw;
 
         private ParcelParseResult(
                 byte[] leafEncoded,
@@ -580,7 +594,8 @@ public final class Utils {
                 int oldCertPaddedLen,
                 int oldChainPaddedLen,
                 KeyDescriptor assignedDescriptor,
-                byte[] assignedKeyId
+                byte[] assignedKeyId,
+                RawKeyDescriptor assignedDescriptorRaw
         ) {
             this.leafEncoded = leafEncoded;
             this.keySecurityLevel = keySecurityLevel;
@@ -597,10 +612,14 @@ public final class Utils {
             this.oldChainPaddedLen = oldChainPaddedLen;
             this.assignedDescriptor = assignedDescriptor;
             this.assignedKeyId = assignedKeyId;
+            this.assignedDescriptorRaw = assignedDescriptorRaw;
         }
 
         public byte[] getAssignedKeyId(int callingUid) {
             if (assignedKeyId != null) return assignedKeyId;
+            if (assignedDescriptorRaw != null) {
+                return assignedDescriptorRaw.computeIdentity(callingUid);
+            }
             if (assignedDescriptor == null) return null;
             return computeKeyDescriptorIdentity(
                     callingUid,
@@ -621,19 +640,19 @@ public final class Utils {
     }
 
     public static ParcelParseResult parseKeyMetadataParcel(Parcel reply) {
-        return parseKeyMetadataParcel(reply, -1);
-    }
-
-    public static ParcelParseResult parseKeyMetadataParcel(Parcel reply, int callingUid) {
         if (reply == null) return null;
         int posBefore = reply.dataPosition();
         try {
-            return parseKeyMetadataParcel(reply, reply.dataSize(), -1, 0, callingUid);
+            return parseKeyMetadataParcel(reply, reply.dataSize(), -1, 0, false);
         } catch (RuntimeException e) {
             return null;
         } finally {
             reply.setDataPosition(posBefore);
         }
+    }
+
+    public static ParcelParseResult parseKeyMetadataParcel(Parcel reply, int callingUid) {
+        return parseKeyMetadataParcel(reply);
     }
 
     /** Parses KeyEntryResponse's stable-AIDL envelope without constructing its object graph. */
@@ -657,7 +676,7 @@ public final class Utils {
                     responseEnd,
                     responseStart,
                     responseEnd - responseStart,
-                    -1
+                    true
             );
         } catch (RuntimeException e) {
             return null;
@@ -671,7 +690,7 @@ public final class Utils {
             int enclosingEnd,
             int outerParcelableStart,
             int outerParcelableSize,
-            int callingUid
+            boolean skipDescriptor
     ) {
         if (!hasBytes(reply, enclosingEnd, Integer.BYTES) || reply.readInt() != 1) {
             return null;
@@ -684,12 +703,13 @@ public final class Utils {
         int keyPresence = reply.readInt();
         byte[] assignedKeyId = null;
         KeyDescriptor assignedDescriptor = null;
+        RawKeyDescriptor assignedDescriptorRaw = null;
         if (keyPresence == 1) {
-            if (callingUid >= 0) {
-                assignedKeyId = extractRawKeyDescriptorIdentity(reply, metadataEnd, callingUid);
-                if (assignedKeyId == null) return null;
-            } else {
+            if (skipDescriptor) {
                 if (!skipStableParcelableBody(reply, metadataEnd)) return null;
+            } else {
+                assignedDescriptorRaw = extractRawKeyDescriptor(reply, metadataEnd);
+                if (assignedDescriptorRaw == null) return null;
             }
         } else if (keyPresence != 0) {
             return null;
@@ -753,7 +773,8 @@ public final class Utils {
                 afterLeafOffset - certOffset,
                 afterChainOffset - chainOffset,
                 assignedDescriptor,
-                assignedKeyId
+                assignedKeyId,
+                assignedDescriptorRaw
         );
     }
 
