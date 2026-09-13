@@ -295,7 +295,7 @@ class BackendRestartRecoveryTest {
         }
         NativeBackend.reconnectOverrideForTesting = {
             reconnectAttempts++
-            null
+            throw IOException("Simulated reconnect failure")
         }
 
         assertThrows(RustBackendUnavailableException::class.java) {
