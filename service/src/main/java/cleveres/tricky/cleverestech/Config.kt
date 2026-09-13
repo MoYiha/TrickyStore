@@ -520,7 +520,10 @@ object Config {
     fun ensureFreshKeyboxes(): Boolean =
         try {
             val currentFp = computeKeyboxInventoryFingerprint()
-            if (currentFp != 0L && currentFp != lastKeyboxInventoryFingerprint) {
+            val needsRefresh =
+                (currentFp != 0L && currentFp != lastKeyboxInventoryFingerprint) ||
+                    (!CertHack.canHack() && currentFp != 0L)
+            if (needsRefresh) {
                 updateKeyBoxesSync()
             } else {
                 true
@@ -603,7 +606,7 @@ object Config {
                 }
 
                 val storedSources = StoredKeyboxInventory.runtimeXmlSources(root)
-                Logger.d("updateKeyBoxes: scanning ${storedSources.size} stored XML sources")
+                Logger.i("updateKeyBoxes: scanning ${storedSources.size} stored XML source(s)")
                 val currentFiles = HashSet<String>()
                 storedSources.forEach { source ->
                     currentFiles.add(source.id)
@@ -647,6 +650,7 @@ object Config {
 
                 val verifiedKeyboxes: List<CertHack.KeyBox> =
                     if (allKeyboxes.isEmpty()) {
+                        Logger.w("updateKeyBoxes: no keyboxes found in configDir (${root.absolutePath}) or external sources")
                         emptyList()
                     } else if (!enforceRevocationCheck) {
                         Logger.i(
@@ -662,10 +666,21 @@ object Config {
                             allKeyboxes.toList()
                         } else {
                             val statuses = allKeyboxes.map { keybox -> verifier(keybox, revocation) }
-                            if (statuses.all { it == KeyboxVerifier.Status.VALID }) {
+                            val invalidEntries = allKeyboxes.zip(statuses).filter { it.second != KeyboxVerifier.Status.VALID }
+                            if (invalidEntries.isEmpty()) {
                                 allKeyboxes.toList()
                             } else {
-                                Logger.e("Keybox pool rejected because it contains an invalid or revoked entry")
+                                for ((keybox, status) in invalidEntries) {
+                                    val serial =
+                                        keybox.certificates()?.firstOrNull()?.let {
+                                            (it as? java.security.cert.X509Certificate)?.serialNumber?.toString(16)
+                                        } ?: "unknown"
+                                    Logger.e("Keybox entry rejected: file=${keybox.filename()}, serial=$serial, status=$status")
+                                }
+                                Logger.e(
+                                    "Keybox pool rejected: ${invalidEntries.size}/${allKeyboxes.size} entry(ies) invalid or revoked. " +
+                                        "If you wish to use revoked keyboxes, disable 'Automatic Keybox Check' in Settings.",
+                                )
                                 emptyList()
                             }
                         }
@@ -678,7 +693,11 @@ object Config {
 
                 when (KeyboxActivation.commitAndPublish(refreshTicket, verifiedKeyboxes)) {
                     KeyboxActivation.PublicationResult.COMMITTED -> {
-                        lastKeyboxInventoryFingerprint = observedInventoryFingerprint
+                        if (verifiedKeyboxes.isNotEmpty() || allKeyboxes.isEmpty()) {
+                            lastKeyboxInventoryFingerprint = observedInventoryFingerprint
+                        } else {
+                            lastKeyboxInventoryFingerprint = 0L
+                        }
                         Logger.i(
                             "updateKeyBoxes: ${verifiedKeyboxes.size}/${allKeyboxes.size} verified keyboxes active",
                         )

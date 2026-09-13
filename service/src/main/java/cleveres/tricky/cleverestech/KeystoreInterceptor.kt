@@ -165,6 +165,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         // unavailable result for hardware that is actually present.
         if (!CertHack.canHack()) {
             CertHack.noteAttestFailure(callingUid, 42)
+            logAttestSkipThrottled(callingUid, 42, "no active keyboxes in memory (keybox_count=0)")
             return Skip
         }
         if (code == getKeyEntryTransaction) {
@@ -179,6 +180,17 @@ object KeystoreInterceptor : BinderInterceptor() {
             return handleUpdateSubcomponent(callingUid, data)
         }
         return Skip
+    }
+
+    private var lastAttestSkipLogNanos = 0L
+    private const val ATTEST_SKIP_LOG_INTERVAL_NANOS = 5_000_000_000L
+
+    private fun logAttestSkipThrottled(callingUid: Int, code: Int, reason: String) {
+        val now = System.nanoTime()
+        if (now - lastAttestSkipLogNanos >= ATTEST_SKIP_LOG_INTERVAL_NANOS) {
+            lastAttestSkipLogNanos = now
+            Logger.w("Attestation skipped for UID $callingUid (code $code): $reason")
+        }
     }
 
     private fun handleUpdateSubcomponent(callingUid: Int, data: Parcel): Result {

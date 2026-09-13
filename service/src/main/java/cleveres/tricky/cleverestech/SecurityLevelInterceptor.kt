@@ -264,7 +264,11 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     if (context.generatedKeyId != null && assignedKeyId != null &&
                         !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                     ) {
-                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        val aliasResult =
+                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            return Skip
+                        }
                         ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                     }
                 }
@@ -309,8 +313,11 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                             null
                         }
                     if (assignedKeyId != null && !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)) {
-                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                        ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                        val aliasResult =
+                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        if (aliasResult == CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                        }
                     }
                 }
                 return Skip
@@ -409,7 +416,11 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 if (context.generatedKeyId != null && assignedKeyId != null &&
                     !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                 ) {
-                    CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                    val aliasResult =
+                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                    if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                        return Skip
+                    }
                     ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                 }
             }
