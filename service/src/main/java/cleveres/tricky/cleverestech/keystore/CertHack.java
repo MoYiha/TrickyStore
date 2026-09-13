@@ -67,7 +67,8 @@ public final class CertHack {
      * 36 backend preconditions rejected pre-eviction (16 on attest path).
      * 40 stale managed entry kept genuine when the backend clear failed.
      * 41 generateKey skipped while the service cannot hack, 42 getKeyEntry
-     * skipped while the service cannot hack.
+     * skipped while the service cannot hack, 43 attest-key native backend aliasing
+     * failed.
      */
 
     /**
