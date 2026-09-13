@@ -400,6 +400,58 @@ class AttestSubtreeEvictionTest {
         )
     }
 
+    @Test
+    fun `attest key rewrite fails closed if descendant removal returns unavailable`() {
+        val rootKeyId = ByteArray(32) { (it + 50).toByte() }
+        val descendantKeyId = ByteArray(32) { (it + 51).toByte() }
+        val descendantKey = cacheKey(byteArrayOf(51, 52, 53))
+        putCacheEntry(
+            descendantKey,
+            byteArrayOf(71, 72),
+            uid = uid,
+            attestKeyId = descendantKeyId,
+            parentKeyId = rootKeyId,
+        )
+        CertificateBackend.removeAttestKeyOverride = { _, keyId ->
+            if (keyId.contentEquals(descendantKeyId)) {
+                CertificateBackend.AttestKeyRemoveResult.UNAVAILABLE
+            } else {
+                CertificateBackend.AttestKeyRemoveResult.REMOVED
+            }
+        }
+        val leaf = attestedLeaf("descendant-unavailable-attest-key")
+        val original = arrayOf<Certificate>(leaf)
+        val result = CertHack.hackAttestKeyCertificateChain(original, uid, true, rootKeyId)
+
+        assertSame("attest-key rewrite must fail closed when descendant removal is unavailable", original, result)
+        assertTrue(CertHack.isGraphStateUnhealthyForTesting())
+        assertFalse("rewrite must not be executed when descendant eviction failed", events.contains("rewrite"))
+    }
+
+    @Test
+    fun `child key rewrite does not expand passthrough cache entry`() {
+        val leaf = attestedLeaf("passthrough-cached-child")
+        val original = arrayOf<Certificate>(leaf, leaf)
+        val key = cacheKey(leaf.encoded)
+        val passthroughMethod =
+            Class.forName("cleveres.tricky.cleverestech.keystore.CertHack\$CachedCertificateChain")
+                .getDeclaredMethod("passthrough")
+        passthroughMethod.isAccessible = true
+        certificateCache()[key] = passthroughMethod.invoke(null)!!
+
+        val result =
+            CertHack.hackChildKeyCertificate(
+                original,
+                uid,
+                false,
+                false,
+                ByteArray(32) { 0x01 },
+                ByteArray(32) { 0x02 },
+                CertificateBackend.SECURITY_LEVEL_TEE,
+            )
+        assertSame("passthrough cached entry must return caList without attempting expansion", original, result)
+    }
+
     private fun cacheKey(leafBytes: ByteArray): Any {
         val keyClass = Class.forName("cleveres.tricky.cleverestech.keystore.CertHack\$CacheKey")
         val ctor = keyClass.getDeclaredConstructor(ByteArray::class.java)

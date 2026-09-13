@@ -1670,6 +1670,10 @@ public final class CertHack {
             keyId = prepared.keyId.clone();
 
             evictDescendants(cache, uid, attestKeyId);
+            if (graphStateUnhealthy) {
+                noteAttestFailure(uid, 12);
+                return caList;
+            }
             CertificateBackend.AttestKeyRemoveResult subtreeRemoved =
                     CertificateBackend.removeAttestKey(uid, attestKeyId);
             if (subtreeRemoved == CertificateBackend.AttestKeyRemoveResult.UNAVAILABLE) {
@@ -1798,7 +1802,12 @@ public final class CertHack {
             }
             cached = validateAndTouchAttestGraph(cache, cacheKey, cached);
             if (cached != null) {
-                if (caList.length > 1 && (cached.certificates == null || cached.certificates.length <= 1)) {
+                boolean hasCachedData = (cached.certificates != null && cached.certificates.length > 0)
+                        || cached.leafEncoded != null;
+                if (!cached.passthrough
+                        && hasCachedData
+                        && caList.length > 1
+                        && (cached.certificates == null || cached.certificates.length <= 1)) {
                     Certificate[] fullResult = new Certificate[caList.length];
                     fullResult[0] = cached.certificates != null && cached.certificates.length > 0
                             ? cached.certificates[0]
