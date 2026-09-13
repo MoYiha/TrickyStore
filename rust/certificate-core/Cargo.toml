@@ -26,6 +26,11 @@ getrandom = { workspace = true }
 [dev-dependencies]
 cleverestricky-keybox-core = { path = "../keybox-core" }
 cleverestricky-xml-core = { path = "../xml-core" }
+criterion = { workspace = true }
+
+[[bench]]
+name = "certificate_bench"
+harness = false
 
 [lints.rust]
 unsafe_code = "forbid"

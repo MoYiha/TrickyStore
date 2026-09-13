@@ -963,6 +963,7 @@ object Config {
         if (global != null) return global
         val value = getBuildVar(tag, uid) ?: return null
         return stringToBytesCache.getOrPut(value) { value.toByteArray(Charsets.UTF_8) }
+            .also { if (stringToBytesCache.size > MAX_BUILD_VAR_ENTRIES) stringToBytesCache.clear() }
     }
 
     @Volatile
@@ -1553,6 +1554,7 @@ object Config {
                     .replace("DD", String.format(Locale.ROOT, "%02d", now.dayOfMonth))
         val result = effectiveDate.convertPatchLevel(long)
         dynamicPatchCache[cacheKey] = nowMs to result
+        if (dynamicPatchCache.size > MAX_SECURITY_PATCH_RULES) dynamicPatchCache.clear()
         return result
     }
 

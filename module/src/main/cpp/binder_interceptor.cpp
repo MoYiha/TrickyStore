@@ -220,6 +220,8 @@ private:
   };
   enum Capabilities : uint32_t {
     CAP_NONE = 0,
+    // Audit: Omits request payload in POST_TRANSACT to reduce memory pressure
+    // and IPC overhead when the payload is no longer needed.
     CAP_OMIT_POST_REQUEST_PAYLOAD = 1 << 0,
   };
 
@@ -599,6 +601,15 @@ class BinderStub : public BBinder {
 static sp<BinderStub> gBinderStub = nullptr;
 static int (*old_ioctl)(int fd, unsigned long request, ...) = nullptr;
 
+static thread_local bool tls_forwarding = false;
+
+struct ForwardGuard {
+  ForwardGuard() { tls_forwarding = true; }
+  ~ForwardGuard() { tls_forwarding = false; }
+  ForwardGuard(const ForwardGuard&) = delete;
+  ForwardGuard& operator=(const ForwardGuard&) = delete;
+};
+
 int new_ioctl(int fd, unsigned long request, ...) {
   va_list list;
   va_start(list, request);
@@ -619,6 +630,10 @@ int new_ioctl(int fd, unsigned long request, ...) {
       return result;
     }
     if (gHookPaused.load(std::memory_order_acquire)) {
+      return result;
+    }
+
+    if (tls_forwarding) {
       return result;
     }
 
@@ -933,6 +948,7 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   CHECK(tmpData.writeInt32(static_cast<int32_t>(calling_pid)));
   CHECK(tmpData.writeUint64(data.dataSize()));
   CHECK(tmpData.appendFrom(&data, 0, data.dataSize()));
+  ForwardGuard forward_guard;
   CHECK(interceptor->transact(PRE_TRANSACT, tmpData, &tmpReply));
   int32_t preType;
   CHECK(tmpReply.readInt32(&preType));

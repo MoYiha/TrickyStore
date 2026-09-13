@@ -113,9 +113,9 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         childKeyId: ByteArray?,
         platformSecurityLevel: Int,
     ): Array<Certificate> {
-        KeyboxActivation.lockPublishedSnapshot()
-        return try {
-            val first =
+        val first = run {
+            KeyboxActivation.lockPublishedSnapshot()
+            try {
                 CertHack.hackChildKeyCertificate(
                     original,
                     callingUid,
@@ -125,16 +125,22 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     childKeyId,
                     platformSecurityLevel,
                 )
-            if (first !== original || !ManagedAttestKeyRegistry.isKnown(callingUid, parentKeyId)) {
-                return first
+            } finally {
+                KeyboxActivation.unlockPublishedSnapshot()
             }
+        }
+        if (first !== original || !ManagedAttestKeyRegistry.isKnown(callingUid, parentKeyId)) {
+            return first
+        }
 
-            val presence =
-                runCatching { CertificateBackend.touchAttestKey(callingUid, parentKeyId) }
-                    .getOrElse { return first }
-            if (presence != CertificateBackend.AttestKeyTouchResult.ABSENT) return first
-            if (!ManagedAttestKeyRehydrator.restore(callingUid, parentKeyId)) return first
+        val presence =
+            runCatching { CertificateBackend.touchAttestKey(callingUid, parentKeyId) }
+                .getOrElse { return first }
+        if (presence != CertificateBackend.AttestKeyTouchResult.ABSENT) return first
+        if (!ManagedAttestKeyRehydrator.restore(callingUid, parentKeyId)) return first
 
+        KeyboxActivation.lockPublishedSnapshot()
+        return try {
             CertHack.hackChildKeyCertificate(
                 original,
                 callingUid,

@@ -11,3 +11,10 @@ der = { version = "=0.8.1", features = ["alloc"] }
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "attestation_bench"
+harness = false
