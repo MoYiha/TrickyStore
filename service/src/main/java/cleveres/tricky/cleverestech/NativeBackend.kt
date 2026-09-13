@@ -149,6 +149,12 @@ object NativeBackend {
         return changed
     }
 
+    @androidx.annotation.VisibleForTesting
+    internal var transactOnceOverrideForTesting: ((Int, Int, Int, (OutputStream) -> Unit) -> ByteArray?)? = null
+
+    @androidx.annotation.VisibleForTesting
+    internal var reconnectOverrideForTesting: (() -> BackendIdentity?)? = null
+
     @Synchronized
     @androidx.annotation.VisibleForTesting
     internal fun observeBackendIdentityForTesting(identity: BackendIdentity) {
@@ -161,6 +167,8 @@ object NativeBackend {
         closeSocket()
         backendIdentity = null
         backendStateResetPending = false
+        transactOnceOverrideForTesting = null
+        reconnectOverrideForTesting = null
     }
 
     @Synchronized
@@ -222,18 +230,17 @@ object NativeBackend {
                 }
                 throw error
             } catch (error: Exception) {
-                val changedIdentity =
+                val candidateIdentity =
                     synchronized(this) {
                         closeSocket()
-                        if (!automaticRetryUsed &&
-                            !BackendStateRecovery.isRecovering() &&
-                            identityBeforeAttempt != null
-                        ) {
+                        if (!automaticRetryUsed && !BackendStateRecovery.isRecovering()) {
                             var candidate: BackendIdentity? = null
                             for (attempt in 0..2) {
                                 candidate = runCatching {
-                                    connectedSocket()
-                                    backendIdentity?.takeIf { it != identityBeforeAttempt }
+                                    reconnectOverrideForTesting?.invoke() ?: run {
+                                        connectedSocket()
+                                        backendIdentity
+                                    }
                                 }.getOrNull()
                                 if (candidate != null || attempt == 2) break
                                 try {
@@ -248,9 +255,15 @@ object NativeBackend {
                             null
                         }
                     }
-                if (changedIdentity != null && recoverBackendOutsideIoLock(changedIdentity)) {
-                    automaticRetryUsed = true
-                    continue
+                if (candidateIdentity != null) {
+                    if (identityBeforeAttempt != null && candidateIdentity == identityBeforeAttempt) {
+                        automaticRetryUsed = true
+                        continue
+                    }
+                    if (recoverBackendOutsideIoLock(candidateIdentity)) {
+                        automaticRetryUsed = true
+                        continue
+                    }
                 }
                 synchronized(this) { closeSocket() }
                 Logger.i("Rust backend operation $opcode failed: ${error.javaClass.simpleName}")
@@ -271,6 +284,7 @@ object NativeBackend {
         responseLimit: Int,
         writePayload: (OutputStream) -> Unit,
     ): ByteArray? {
+        transactOnceOverrideForTesting?.let { return it(opcode, payloadLength, responseLimit, writePayload) }
         val active = connectedSocket()
         if (backendStateResetPending && opcode != OP_BACKEND_PING) {
             throw RustBackendStateException(BackendStatus.STATE_RESET)

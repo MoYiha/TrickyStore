@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.keystore.CertHack
+import java.io.IOException
 import java.security.KeyPair
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -180,6 +181,95 @@ class BackendRestartRecoveryTest {
         assertTrue(requireNotNull(firstResult.get()))
         assertFalse(first.isAlive)
         assertFalse(second.isAlive)
+    }
+
+    @Test
+    fun `transient socket failure reconnects and retries on same backend identity without full state recovery`() {
+        NativeBackend.observeBackendIdentityForTesting(identityA)
+        var attempts = 0
+        var recoveryCalls = 0
+        BackendStateRecovery.recoveryOverride = {
+            recoveryCalls++
+            true
+        }
+
+        NativeBackend.transactOnceOverrideForTesting = { _, _, _, _ ->
+            attempts++
+            if (attempts == 1) {
+                throw IOException("Broken pipe")
+            }
+            byteArrayOf(0x01, 0x02, 0x03)
+        }
+        NativeBackend.reconnectOverrideForTesting = { identityA }
+
+        val result =
+            NativeBackend.transact(
+                opcode = 1,
+                payloadLength = 4,
+                responseLimit = 16,
+                propagateTransportFailure = true,
+            ) { it.write(byteArrayOf(1, 2, 3, 4)) }
+
+        assertArrayEquals(byteArrayOf(0x01, 0x02, 0x03), result)
+        assertEquals(2, attempts)
+        assertEquals(0, recoveryCalls)
+    }
+
+    @Test
+    fun `transient socket failure with new backend identity recovers state and retries`() {
+        NativeBackend.observeBackendIdentityForTesting(identityA)
+        var attempts = 0
+        var recoveryCalls = 0
+        BackendStateRecovery.recoveryOverride = { identity ->
+            recoveryCalls++
+            assertEquals(identityB, identity)
+            true
+        }
+
+        NativeBackend.transactOnceOverrideForTesting = { _, _, _, _ ->
+            attempts++
+            if (attempts == 1) {
+                throw IOException("Connection reset by peer")
+            }
+            byteArrayOf(0x04, 0x05, 0x06)
+        }
+        NativeBackend.reconnectOverrideForTesting = {
+            NativeBackend.observeBackendIdentityForTesting(identityB)
+            identityB
+        }
+
+        val result =
+            NativeBackend.transact(
+                opcode = 1,
+                payloadLength = 4,
+                responseLimit = 16,
+                propagateTransportFailure = true,
+            ) { it.write(byteArrayOf(1, 2, 3, 4)) }
+
+        assertArrayEquals(byteArrayOf(0x04, 0x05, 0x06), result)
+        assertEquals(2, attempts)
+        assertEquals(1, recoveryCalls)
+    }
+
+    @Test
+    fun `reconnect failure propagates transport failure`() {
+        NativeBackend.observeBackendIdentityForTesting(identityA)
+        var attempts = 0
+        NativeBackend.transactOnceOverrideForTesting = { _, _, _, _ ->
+            attempts++
+            throw IOException("Socket timeout")
+        }
+        NativeBackend.reconnectOverrideForTesting = { null }
+
+        assertThrows(RustBackendUnavailableException::class.java) {
+            NativeBackend.transact(
+                opcode = 1,
+                payloadLength = 4,
+                responseLimit = 16,
+                propagateTransportFailure = true,
+            ) { it.write(byteArrayOf(1, 2, 3, 4)) }
+        }
+        assertEquals(1, attempts)
     }
 
     private fun keyboxForCurrentIdentity(filename: String): CertHack.KeyBox {
