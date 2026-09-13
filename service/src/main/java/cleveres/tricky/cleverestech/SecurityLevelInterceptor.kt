@@ -318,9 +318,11 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     if (assignedKeyId != null && !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)) {
                         val aliasResult =
                             CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                        if (aliasResult == CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                            ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            CertHack.noteAttestFailure(callingUid, 43)
+                            return Skip
                         }
+                        ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                     }
                 }
                 return Skip
