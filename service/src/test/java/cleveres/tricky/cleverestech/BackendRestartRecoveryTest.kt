@@ -252,6 +252,39 @@ class BackendRestartRecoveryTest {
     }
 
     @Test
+    fun `initial connection established by transactOnce retries on transient transport failure without recovery`() {
+        NativeBackend.resetIdentityForTesting()
+        var attempts = 0
+        var recoveryCalls = 0
+        BackendStateRecovery.recoveryOverride = {
+            recoveryCalls++
+            true
+        }
+
+        NativeBackend.transactOnceOverrideForTesting = { _, _, _, _ ->
+            attempts++
+            NativeBackend.observeBackendIdentityForTesting(identityA)
+            if (attempts == 1) {
+                throw IOException("Broken pipe during initial transaction")
+            }
+            byteArrayOf(0x07, 0x08, 0x09)
+        }
+        NativeBackend.reconnectOverrideForTesting = { identityA }
+
+        val result =
+            NativeBackend.transact(
+                opcode = 1,
+                payloadLength = 4,
+                responseLimit = 16,
+                propagateTransportFailure = true,
+            ) { it.write(byteArrayOf(1, 2, 3, 4)) }
+
+        assertArrayEquals(byteArrayOf(0x07, 0x08, 0x09), result)
+        assertEquals(2, attempts)
+        assertEquals(0, recoveryCalls)
+    }
+
+    @Test
     fun `reconnect failure propagates transport failure`() {
         NativeBackend.observeBackendIdentityForTesting(identityA)
         var attempts = 0

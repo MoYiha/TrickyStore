@@ -212,6 +212,8 @@ object NativeBackend {
         var automaticRetryUsed = false
         while (true) {
             var identityBeforeAttempt: BackendIdentity? = null
+            var identityAtFailure: BackendIdentity? = null
+            var resetPendingAtFailure = false
             try {
                 return synchronized(this) {
                     identityBeforeAttempt = backendIdentity
@@ -232,6 +234,8 @@ object NativeBackend {
             } catch (error: Exception) {
                 val candidateIdentity =
                     synchronized(this) {
+                        identityAtFailure = backendIdentity ?: identityBeforeAttempt
+                        resetPendingAtFailure = backendStateResetPending
                         closeSocket()
                         if (!automaticRetryUsed && !BackendStateRecovery.isRecovering()) {
                             var candidate: BackendIdentity? = null
@@ -256,7 +260,7 @@ object NativeBackend {
                         }
                     }
                 if (candidateIdentity != null) {
-                    if (identityBeforeAttempt != null && candidateIdentity == identityBeforeAttempt) {
+                    if (!resetPendingAtFailure && identityAtFailure != null && candidateIdentity == identityAtFailure) {
                         automaticRetryUsed = true
                         continue
                     }
