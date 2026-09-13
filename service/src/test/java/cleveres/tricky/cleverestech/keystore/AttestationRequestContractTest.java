@@ -952,6 +952,37 @@ public class AttestationRequestContractTest {
     }
 
     @Test
+    public void parseUpdateSubcomponentRequestHandlesZeroLengthChainAsEmptyArray() {
+        Parcel request = mock(Parcel.class);
+        java.util.concurrent.atomic.AtomicInteger pos = new java.util.concurrent.atomic.AtomicInteger(0);
+        when(request.dataPosition()).thenAnswer(inv -> pos.get());
+        org.mockito.Mockito.doAnswer(inv -> {
+            pos.set(inv.getArgument(0));
+            return null;
+        }).when(request).setDataPosition(anyInt());
+        when(request.dataAvail()).thenReturn(256);
+        when(request.dataSize()).thenReturn(256);
+
+        byte[] originalPublicCert = new byte[] {0x30, 0x10, 0x01, 0x02};
+
+        java.util.Iterator<Integer> ints = java.util.Arrays.asList(
+                1, 32, 0,
+                originalPublicCert.length,
+                0 // chainLength == 0
+        ).iterator();
+        when(request.readInt()).thenAnswer(inv -> ints.hasNext() ? ints.next() : 0);
+        when(request.readLong()).thenReturn(10001L);
+        when(request.readString()).thenReturn("unattested_parent");
+        when(request.createByteArray()).thenReturn(null, originalPublicCert);
+
+        Utils.UpdateSubcomponentRequestInfo info =
+                Utils.parseUpdateSubcomponentRequest(request, 10001);
+        assertNotNull(info);
+        assertNotNull(info.certificateChain);
+        assertEquals(0, info.certificateChain.length);
+    }
+
+    @Test
     public void createRewrittenUpdateSubcomponentParcelRewritesCertificate() {
         KeyDescriptor descriptor = new KeyDescriptor();
         descriptor.domain = 0;

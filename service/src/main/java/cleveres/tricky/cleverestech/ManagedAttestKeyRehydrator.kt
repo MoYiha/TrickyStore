@@ -62,6 +62,9 @@ internal object ManagedAttestKeyRehydrator {
                 runCatching { CertificateBackend.touchAttestKey(callingUid, entry.keyId) }
                     .getOrElse { return false }
             if (confirmed != CertificateBackend.AttestKeyTouchResult.PRESENT) return false
+            for (alias in entry.aliasKeyIds) {
+                CertificateBackend.aliasAttestKey(callingUid, entry.keyId, alias)
+            }
         }
         return true
     }

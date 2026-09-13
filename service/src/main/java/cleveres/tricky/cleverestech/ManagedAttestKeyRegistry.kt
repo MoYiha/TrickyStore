@@ -31,6 +31,7 @@ internal object ManagedAttestKeyRegistry {
         val parentKeyId: ByteArray?,
         val genuineLeafDer: ByteArray,
         val platformSecurityLevel: Int = 0,
+        val aliasKeyIds: List<ByteArray> = emptyList(),
     )
 
     private class Identity private constructor(
@@ -58,10 +59,13 @@ internal object ManagedAttestKeyRegistry {
         rewrittenLeafDer: ByteArray?,
         val isAttestKey: Boolean,
         val platformSecurityLevel: Int = 0,
+        canonicalKeyId: ByteArray? = null,
     ) {
         val parentKeyId = parentKeyId?.clone()
         var genuineLeafDer = genuineLeafDer?.clone()
         var rewrittenLeafDer = rewrittenLeafDer?.clone()
+        val canonicalKeyId = canonicalKeyId?.clone()
+        val aliasKeyIds = ArrayList<ByteArray>()
 
         fun proofBytes(): Int = (genuineLeafDer?.size ?: 0) + (rewrittenLeafDer?.size ?: 0)
     }
@@ -148,6 +152,35 @@ internal object ManagedAttestKeyRegistry {
     }
 
     @Synchronized
+    fun rememberAlias(callingUid: Int, primaryKeyId: ByteArray?, aliasKeyId: ByteArray?) {
+        if (!isValid(callingUid, primaryKeyId) || !isValid(callingUid, aliasKeyId)) return
+        val primary = requireNotNull(primaryKeyId)
+        val alias = requireNotNull(aliasKeyId)
+        if (Arrays.equals(primary, alias)) return
+        val primaryEntry = entries[Identity.lookup(callingUid, primary)] ?: return
+        val aliasLookup = Identity.lookup(callingUid, alias)
+        if (entries.containsKey(aliasLookup)) return
+        if (entries.size >= MAX_ENTRIES) {
+            conservativeMode = true
+            return
+        }
+        if (!primaryEntry.aliasKeyIds.any { Arrays.equals(it, alias) }) {
+            primaryEntry.aliasKeyIds.add(alias.clone())
+        }
+        val stored = Entry(
+            primaryEntry.parentKeyId,
+            primaryEntry.genuineLeafDer,
+            primaryEntry.rewrittenLeafDer,
+            primaryEntry.isAttestKey,
+            primaryEntry.platformSecurityLevel,
+            primary.clone(),
+        )
+        entries[Identity.stored(callingUid, alias)] = stored
+        retainedProofBytes += stored.proofBytes()
+        trimProofBytesLocked()
+    }
+
+    @Synchronized
     fun isKnown(callingUid: Int, keyId: ByteArray?): Boolean {
         if (!isValid(callingUid, keyId)) return false
         return conservativeMode || entries[Identity.lookup(callingUid, requireNotNull(keyId))] != null
@@ -186,7 +219,7 @@ internal object ManagedAttestKeyRegistry {
                 if ((entry.genuineLeafDer != null && Arrays.equals(entry.genuineLeafDer, certDer)) ||
                     (entry.rewrittenLeafDer != null && Arrays.equals(entry.rewrittenLeafDer, certDer))
                 ) {
-                    return identity.keyId.clone()
+                    return (entry.canonicalKeyId ?: identity.keyId).clone()
                 }
             }
         }
@@ -203,6 +236,11 @@ internal object ManagedAttestKeyRegistry {
     fun rehydrationPath(callingUid: Int, keyId: ByteArray?): List<RehydrationEntry>? {
         if (!isValid(callingUid, keyId)) return null
         var current = requireNotNull(keyId).clone()
+        val initialLookup = Identity.lookup(callingUid, current)
+        val initialEntry = entries[initialLookup] ?: return null
+        if (initialEntry.canonicalKeyId != null) {
+            current = initialEntry.canonicalKeyId.clone()
+        }
         val seen = HashSet<Identity>()
         val reversed = ArrayList<RehydrationEntry>()
 
@@ -219,6 +257,7 @@ internal object ManagedAttestKeyRegistry {
                     parentKeyId = entry.parentKeyId?.clone(),
                     genuineLeafDer = leaf.clone(),
                     platformSecurityLevel = entry.platformSecurityLevel,
+                    aliasKeyIds = entry.aliasKeyIds.map { it.clone() },
                 ),
             )
             val parent = entry.parentKeyId ?: break

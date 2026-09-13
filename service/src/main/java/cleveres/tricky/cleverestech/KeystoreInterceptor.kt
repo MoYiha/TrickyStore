@@ -194,9 +194,7 @@ object KeystoreInterceptor : BinderInterceptor() {
         val originalCert = Utils.toCertificate(publicCert) ?: return Skip
         val originalChain = arrayOf<Certificate>(originalCert)
         val platformSecurityLevel =
-            ManagedAttestKeyRegistry.getPlatformSecurityLevel(callingUid, info.keyId).let {
-                if (it == 1 || it == 2) it else 1
-            }
+            ManagedAttestKeyRegistry.getPlatformSecurityLevel(callingUid, info.keyId)
 
         val rewritten =
             CertHack.hackAttestKeyCertificateChain(

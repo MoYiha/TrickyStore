@@ -80,7 +80,7 @@ public class Parcel {
     public void writeInterfaceToken(String interfaceName) {}
     public byte[] createByteArray() {
         Object o = queue.poll();
-        return (o instanceof byte[]) ? (byte[]) o : new byte[0];
+        return (o instanceof byte[]) ? (byte[]) o : null;
     }
     public void readByteArray(byte[] val) {
         byte[] bytes = createByteArray();

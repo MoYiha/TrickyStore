@@ -260,6 +260,13 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                         platformSecurityLevel,
                         rewrittenLeafDer,
                     )
+                    val assignedKeyId = parsed.getAssignedKeyId(callingUid)
+                    if (context.generatedKeyId != null && assignedKeyId != null &&
+                        !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
+                    ) {
+                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                    }
                 }
 
                 if (
@@ -288,6 +295,23 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                         true,
                         metadata.keySecurityLevel,
                     )
+                    val assignedDescriptor = metadata.key
+                    val assignedKeyId =
+                        if (assignedDescriptor != null) {
+                            Utils.computeKeyDescriptorIdentity(
+                                callingUid,
+                                assignedDescriptor.domain,
+                                assignedDescriptor.nspace,
+                                assignedDescriptor.alias,
+                                assignedDescriptor.blob,
+                            )
+                        } else {
+                            null
+                        }
+                    if (assignedKeyId != null && !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)) {
+                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                        ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                    }
                 }
                 return Skip
             }
@@ -369,6 +393,25 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     platformSecurityLevel,
                     rewrittenLeafDer,
                 )
+                val assignedDescriptor = metadata.key
+                val assignedKeyId =
+                    if (assignedDescriptor != null) {
+                        Utils.computeKeyDescriptorIdentity(
+                            callingUid,
+                            assignedDescriptor.domain,
+                            assignedDescriptor.nspace,
+                            assignedDescriptor.alias,
+                            assignedDescriptor.blob,
+                        )
+                    } else {
+                        null
+                    }
+                if (context.generatedKeyId != null && assignedKeyId != null &&
+                    !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
+                ) {
+                    CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                    ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                }
             }
 
             if (!CertHack.applyCachedCertificateChain(metadata)) {

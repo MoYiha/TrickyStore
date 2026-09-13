@@ -72,6 +72,9 @@ object CertificateBackend {
     internal var removeAttestKeyOverride: ((Int, ByteArray) -> AttestKeyRemoveResult)? = null
 
     @VisibleForTesting
+    internal var aliasAttestKeyOverride: ((Int, ByteArray, ByteArray) -> AttestKeyAliasResult)? = null
+
+    @VisibleForTesting
     internal var rewriteTransportOverride: ((Int, (OutputStream) -> Unit) -> ByteArray?)? = null
 
     @JvmStatic
@@ -509,12 +512,55 @@ object CertificateBackend {
         }
     }
 
+    enum class AttestKeyAliasResult {
+        ALIASED,
+        FAILED,
+        UNAVAILABLE,
+    }
+
+    @JvmStatic
+    fun aliasAttestKey(callingUid: Int, primaryKeyId: ByteArray, aliasKeyId: ByteArray): AttestKeyAliasResult {
+        if (callingUid < 0 ||
+            primaryKeyId.size != ATTEST_DESCRIPTOR_KEY_ID_BYTES ||
+            aliasKeyId.size != ATTEST_DESCRIPTOR_KEY_ID_BYTES ||
+            primaryKeyId.all { it == 0.toByte() } ||
+            aliasKeyId.all { it == 0.toByte() }
+        ) {
+            return AttestKeyAliasResult.FAILED
+        }
+        aliasAttestKeyOverride?.let { return it(callingUid, primaryKeyId, aliasKeyId) }
+        val response =
+            NativeBackend.transact(
+                OP_ATTEST_KEY_ALIAS,
+                ATTEST_KEY_ALIAS_REQUEST_BYTES,
+                ATTEST_KEY_ALIAS_RESPONSE_BYTES,
+                propagateTransportFailure = false,
+            ) { output ->
+                output.write(REWRITE_WIRE_VERSION)
+                writeI32(output, callingUid)
+                output.write(primaryKeyId)
+                output.write(aliasKeyId)
+            } ?: return AttestKeyAliasResult.UNAVAILABLE
+        if (response.size != ATTEST_KEY_ALIAS_RESPONSE_BYTES) {
+            return AttestKeyAliasResult.UNAVAILABLE
+        }
+        return if (response[0] == 1.toByte()) {
+            AttestKeyAliasResult.ALIASED
+        } else {
+            AttestKeyAliasResult.FAILED
+        }
+    }
+
     fun interface AttestKeyTouchHandler {
         fun touch(callingUid: Int, keyId: ByteArray): AttestKeyTouchResult
     }
 
     fun interface AttestKeyRemoveHandler {
         fun remove(callingUid: Int, keyId: ByteArray): AttestKeyRemoveResult
+    }
+
+    fun interface AttestKeyAliasHandler {
+        fun alias(callingUid: Int, primaryKeyId: ByteArray, aliasKeyId: ByteArray): AttestKeyAliasResult
     }
 
     fun interface ClearAttestKeyStoreHandler {
@@ -541,6 +587,12 @@ object CertificateBackend {
 
     @VisibleForTesting
     @JvmStatic
+    fun setAliasAttestKeyOverrideForTesting(override: AttestKeyAliasHandler?) {
+        aliasAttestKeyOverride = if (override != null) { { uid, primary, alias -> override.alias(uid, primary, alias) } } else null
+    }
+
+    @VisibleForTesting
+    @JvmStatic
     fun resetForTesting() {
         inspectionOverride = null
         rewriteOverride = null
@@ -550,6 +602,7 @@ object CertificateBackend {
         clearAttestKeyStoreOverride = null
         touchAttestKeyOverride = null
         removeAttestKeyOverride = null
+        aliasAttestKeyOverride = null
     }
 
     internal fun decodeInspection(response: ByteArray): Inspection {
@@ -726,6 +779,9 @@ object CertificateBackend {
     private const val ATTEST_KEY_TOUCH_RESPONSE_BYTES = 1
     private const val ATTEST_KEY_REMOVE_REQUEST_BYTES = 37
     private const val ATTEST_KEY_REMOVE_RESPONSE_BYTES = 1
+    private const val OP_ATTEST_KEY_ALIAS = 37
+    private const val ATTEST_KEY_ALIAS_REQUEST_BYTES = 69
+    private const val ATTEST_KEY_ALIAS_RESPONSE_BYTES = 1
     private const val FLAG_MODULE_HASH_SUPPORTED = 1
     private const val FLAG_BOOT_KEY_PRESENT = 1 shl 1
     private const val FLAG_BOOT_HASH_PRESENT = 1 shl 2

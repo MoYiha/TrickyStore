@@ -73,6 +73,9 @@ const ATTEST_KEY_TOUCH_RESPONSE_BYTES: usize = 1;
 const OP_ATTEST_KEY_REMOVE: u16 = 36;
 const ATTEST_KEY_REMOVE_REQUEST_BYTES: usize = 37;
 const ATTEST_KEY_REMOVE_RESPONSE_BYTES: usize = 1;
+const OP_ATTEST_KEY_ALIAS: u16 = 37;
+const ATTEST_KEY_ALIAS_REQUEST_BYTES: usize = 69;
+const ATTEST_KEY_ALIAS_RESPONSE_BYTES: usize = 1;
 const SCOPE_CONFIG_ROOT: u8 = 0;
 const SCOPE_KEYBOX_DIRECTORY: u8 = 1;
 
@@ -520,6 +523,19 @@ fn handle_request(opcode: u16, mut request: Vec<u8>) -> Result<Vec<u8>, &'static
             let key_id: [u8; 32] = request[5..37].try_into().unwrap();
             let removed = attest_key_store::remove_attest_key(calling_uid, &key_id);
             Ok(vec![if removed { 1 } else { 0 }])
+        }
+        OP_ATTEST_KEY_ALIAS => {
+            if request.len() != ATTEST_KEY_ALIAS_REQUEST_BYTES
+                || request[0] != certificate_wire::REWRITE_WIRE_VERSION
+            {
+                return Err("invalid attest key alias request");
+            }
+            let calling_uid = u32::from_be_bytes(request[1..5].try_into().unwrap());
+            let primary_key_id: [u8; 32] = request[5..37].try_into().unwrap();
+            let alias_key_id: [u8; 32] = request[37..69].try_into().unwrap();
+            let aliased =
+                attest_key_store::alias_attest_key(calling_uid, &primary_key_id, alias_key_id);
+            Ok(vec![if aliased { 1 } else { 0 }])
         }
         OP_CRL_CHECK_BATCH => crl_wire::handle(request),
         backend_instance::OP_BACKEND_PING => backend_instance::handle(request),

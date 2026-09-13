@@ -283,4 +283,52 @@ class ManagedAttestKeyRegistryTest {
         assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid + 1, genuineDer))
         assertNull(ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, byteArrayOf(9, 9, 9)))
     }
+
+    @Test
+    fun `rememberAlias links alias key id to primary entry and resolves ancestry`() {
+        val uid = 10_123
+        val primary = ByteArray(32) { 0x11 }
+        val alias = ByteArray(32) { 0x22 }
+        val genuineDer = byteArrayOf(1, 2, 3)
+        val rewrittenDer = byteArrayOf(4, 5, 6)
+
+        ManagedAttestKeyRegistry.remember(
+            callingUid = uid,
+            keyId = primary,
+            parentKeyId = null,
+            genuineLeafDer = genuineDer,
+            isAttestKey = true,
+            platformSecurityLevel = 2,
+            rewrittenLeafDer = rewrittenDer,
+        )
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, alias)
+
+        assertTrue(ManagedAttestKeyRegistry.isKnown(uid, alias))
+        assertTrue(ManagedAttestKeyRegistry.isAttestKey(uid, alias))
+        assertEquals(2, ManagedAttestKeyRegistry.getPlatformSecurityLevel(uid, alias))
+        assertArrayEquals(primary, ManagedAttestKeyRegistry.findAttestKeyIdByCertificate(uid, genuineDer))
+
+        val path = requireNotNull(ManagedAttestKeyRegistry.rehydrationPath(uid, alias))
+        assertEquals(1, path.size)
+        assertArrayEquals(primary, path[0].keyId)
+        assertEquals(1, path[0].aliasKeyIds.size)
+        assertArrayEquals(alias, path[0].aliasKeyIds[0])
+    }
+
+    @Test
+    fun `rememberAlias rejects invalid arguments and missing primary`() {
+        val uid = 10_123
+        val primary = ByteArray(32) { 0x11 }
+        val alias = ByteArray(32) { 0x22 }
+
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, alias)
+        assertFalse(ManagedAttestKeyRegistry.isKnown(uid, alias))
+
+        ManagedAttestKeyRegistry.remember(uid, primary)
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, primary)
+        ManagedAttestKeyRegistry.rememberAlias(-1, primary, alias)
+        ManagedAttestKeyRegistry.rememberAlias(uid, ByteArray(16), alias)
+        ManagedAttestKeyRegistry.rememberAlias(uid, primary, ByteArray(31))
+        assertFalse(ManagedAttestKeyRegistry.isKnown(uid, alias))
+    }
 }

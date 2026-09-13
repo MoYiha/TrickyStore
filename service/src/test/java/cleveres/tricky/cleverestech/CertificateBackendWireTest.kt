@@ -320,6 +320,48 @@ class CertificateBackendWireTest {
         assertEquals(CertificateBackend.SECURITY_LEVEL_TEE, inspection.keymintSecurityLevel)
     }
 
+    @Test
+    fun `aliasAttestKey validates arguments and invokes backend`() {
+        val uid = 10_001
+        val primary = ByteArray(32) { 0x11 }
+        val alias = ByteArray(32) { 0x22 }
+
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.FAILED,
+            CertificateBackend.aliasAttestKey(-1, primary, alias),
+        )
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.FAILED,
+            CertificateBackend.aliasAttestKey(uid, ByteArray(31), alias),
+        )
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.FAILED,
+            CertificateBackend.aliasAttestKey(uid, primary, ByteArray(31)),
+        )
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.FAILED,
+            CertificateBackend.aliasAttestKey(uid, ByteArray(32), alias),
+        )
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.FAILED,
+            CertificateBackend.aliasAttestKey(uid, primary, ByteArray(32)),
+        )
+
+        var invoked = false
+        CertificateBackend.setAliasAttestKeyOverrideForTesting { u, p, a ->
+            assertEquals(uid, u)
+            assertArrayEquals(primary, p)
+            assertArrayEquals(alias, a)
+            invoked = true
+            CertificateBackend.AttestKeyAliasResult.ALIASED
+        }
+        assertEquals(
+            CertificateBackend.AttestKeyAliasResult.ALIASED,
+            CertificateBackend.aliasAttestKey(uid, primary, alias),
+        )
+        assertTrue(invoked)
+    }
+
     private fun canonicalResponse(): ByteArray =
         ByteArray(85).also {
             it[0] = 2

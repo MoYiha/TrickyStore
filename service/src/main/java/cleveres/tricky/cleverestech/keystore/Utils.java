@@ -101,6 +101,8 @@ public final class Utils {
             // Canonicalize namespace to 0L for Domain.APP so generated parent keys and child
             // parent references produce identical identifiers.
             long effectiveNspace = (domain == 0) ? 0L : nspace;
+            String effectiveAlias = (domain == 4) ? null : alias;
+            byte[] effectiveBlob = (domain == 4) ? null : blob;
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             ByteBuffer buffer = ByteBuffer.allocate(4 + 4 + 8).order(ByteOrder.BIG_ENDIAN);
             buffer.putInt(callingUid);
@@ -108,23 +110,23 @@ public final class Utils {
             buffer.putLong(effectiveNspace);
             digest.update(buffer.array());
 
-            if (alias == null) {
+            if (effectiveAlias == null) {
                 digest.update(new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
             } else {
-                byte[] aliasBytes = alias.getBytes(StandardCharsets.UTF_8);
+                byte[] aliasBytes = effectiveAlias.getBytes(StandardCharsets.UTF_8);
                 ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
                 lenBuf.putInt(aliasBytes.length);
                 digest.update(lenBuf.array());
                 digest.update(aliasBytes);
             }
 
-            if (blob == null) {
+            if (effectiveBlob == null) {
                 digest.update(new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
             } else {
                 ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
-                lenBuf.putInt(blob.length);
+                lenBuf.putInt(effectiveBlob.length);
                 digest.update(lenBuf.array());
-                digest.update(blob);
+                digest.update(effectiveBlob);
             }
 
             return digest.digest();
@@ -156,7 +158,16 @@ public final class Utils {
 
     public static ParsedKeyDescriptor extractKeyDescriptorBody(Parcel parcel, int callingUid) {
         if (parcel == null) return null;
-        int parcelableEnd = readStableParcelableEnd(parcel, parcel.dataSize());
+        KeyDescriptor descriptor = extractRawKeyDescriptorBody(parcel, parcel.dataSize());
+        if (descriptor == null) return null;
+        byte[] identity = computeKeyDescriptorIdentity(
+                callingUid, descriptor.domain, descriptor.nspace, descriptor.alias, descriptor.blob);
+        return new ParsedKeyDescriptor(descriptor, identity);
+    }
+
+    public static KeyDescriptor extractRawKeyDescriptorBody(Parcel parcel, int enclosingEnd) {
+        if (parcel == null) return null;
+        int parcelableEnd = readStableParcelableEnd(parcel, enclosingEnd);
         if (parcelableEnd < 0) {
             return null;
         }
@@ -185,13 +196,12 @@ public final class Utils {
                 }
             }
 
-            byte[] identity = computeKeyDescriptorIdentity(callingUid, domain, nspace, alias, blob);
             KeyDescriptor descriptor = new KeyDescriptor();
             descriptor.domain = domain;
             descriptor.nspace = nspace;
             descriptor.alias = alias;
             descriptor.blob = blob;
-            return new ParsedKeyDescriptor(descriptor, identity);
+            return descriptor;
         } catch (RuntimeException e) {
             return null;
         } finally {
@@ -439,6 +449,7 @@ public final class Utils {
         public final int sourceDataSize;
         public final int oldCertPaddedLen;
         public final int oldChainPaddedLen;
+        public final KeyDescriptor assignedDescriptor;
 
         private ParcelParseResult(
                 byte[] leafEncoded,
@@ -453,7 +464,8 @@ public final class Utils {
                 int outerParcelableSize,
                 int sourceDataSize,
                 int oldCertPaddedLen,
-                int oldChainPaddedLen
+                int oldChainPaddedLen,
+                KeyDescriptor assignedDescriptor
         ) {
             this.leafEncoded = leafEncoded;
             this.keySecurityLevel = keySecurityLevel;
@@ -468,6 +480,18 @@ public final class Utils {
             this.sourceDataSize = sourceDataSize;
             this.oldCertPaddedLen = oldCertPaddedLen;
             this.oldChainPaddedLen = oldChainPaddedLen;
+            this.assignedDescriptor = assignedDescriptor;
+        }
+
+        public byte[] getAssignedKeyId(int callingUid) {
+            if (assignedDescriptor == null) return null;
+            return computeKeyDescriptorIdentity(
+                    callingUid,
+                    assignedDescriptor.domain,
+                    assignedDescriptor.nspace,
+                    assignedDescriptor.alias,
+                    assignedDescriptor.blob
+            );
         }
 
         public boolean hasFullCertificateChain() {
@@ -535,8 +559,10 @@ public final class Utils {
 
         if (!hasBytes(reply, metadataEnd, Integer.BYTES)) return null;
         int keyPresence = reply.readInt();
+        KeyDescriptor assignedDescriptor = null;
         if (keyPresence == 1) {
-            if (!skipStableParcelableBody(reply, metadataEnd)) return null;
+            assignedDescriptor = extractRawKeyDescriptorBody(reply, metadataEnd);
+            if (assignedDescriptor == null) return null;
         } else if (keyPresence != 0) {
             return null;
         }
@@ -597,7 +623,8 @@ public final class Utils {
                 outerParcelableSize,
                 reply.dataSize(),
                 afterLeafOffset - certOffset,
-                afterChainOffset - chainOffset
+                afterChainOffset - chainOffset,
+                assignedDescriptor
         );
     }
 
@@ -863,6 +890,8 @@ public final class Utils {
                 if (paddedLen < 0 || !hasBytes(request, request.dataSize(), paddedLen)) return null;
                 request.setDataPosition(chainOffset);
                 certificateChain = request.createByteArray();
+            } else if (chainLength == 0) {
+                certificateChain = new byte[0];
             } else if (chainLength < -1) {
                 return null;
             }
