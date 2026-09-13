@@ -145,6 +145,7 @@ pub fn insert_attest_key(calling_uid: u32, key_id: KeyId, issuer: Arc<PreparedIs
     });
 }
 
+#[allow(dead_code)]
 pub fn alias_attest_key(calling_uid: u32, primary_key_id: &KeyId, alias_key_id: KeyId) -> bool {
     if primary_key_id == &alias_key_id || alias_key_id.iter().all(|b| *b == 0) {
         return false;
