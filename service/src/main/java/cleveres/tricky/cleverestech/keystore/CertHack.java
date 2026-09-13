@@ -67,7 +67,8 @@ public final class CertHack {
      * 36 backend preconditions rejected pre-eviction (16 on attest path).
      * 40 stale managed entry kept genuine when the backend clear failed.
      * 41 generateKey skipped while the service cannot hack, 42 getKeyEntry
-     * skipped while the service cannot hack.
+     * skipped while the service cannot hack, 43 attest-key native backend aliasing
+     * failed.
      */
 
     /**
@@ -122,10 +123,19 @@ public final class CertHack {
 
     /** Cold failure paths only; safe to call from interceptors. */
     public static void noteAttestFailure(int callingUid, int code) {
+        noteAttestFailure(callingUid, code, null);
+    }
+
+    public static void noteAttestFailure(int callingUid, int code, Throwable t) {
         synchronized (attestFailureLock) {
             long packed = ((long) callingUid << 32) | (code & 0xffffffffL);
             attestFailureRing[Math.floorMod(attestFailureTotal, ATTEST_FAILURE_RING_SIZE)] = packed;
             attestFailureTotal++;
+        }
+        if (t != null) {
+            Logger.w("Attest failure recorded: uid=" + callingUid + ", code=" + code + ": " + t.getMessage(), t);
+        } else {
+            Logger.w("Attest failure recorded: uid=" + callingUid + ", code=" + code);
         }
     }
 
@@ -1451,6 +1461,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
+            noteAttestFailure(uid, 1, t);
             return caList;
         } finally {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
@@ -1758,7 +1769,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
-            noteAttestFailure(uid, 15);
+            noteAttestFailure(uid, 15, t);
             return caList;
         } finally {
             if (keyId != null) Arrays.fill(keyId, (byte) 0);
@@ -2231,7 +2242,7 @@ public final class CertHack {
             }
             return result;
         } catch (Throwable t) {
-            noteAttestFailure(uid, 35);
+            noteAttestFailure(uid, 35, t);
             return caList;
         } finally {
             if (childInspection != null) childInspection.wipe();

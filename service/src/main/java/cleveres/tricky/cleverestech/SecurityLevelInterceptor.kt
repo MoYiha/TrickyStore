@@ -264,10 +264,18 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                     if (context.generatedKeyId != null && assignedKeyId != null &&
                         !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                     ) {
-                        val aliasResult =
-                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                            return Skip
+                        if (context.isAttestKeyPurpose) {
+                            val aliasResult =
+                                try {
+                                    CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                                } catch (_: Throwable) {
+                                    CertHack.noteAttestFailure(callingUid, 43)
+                                    return Skip
+                                }
+                            if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
                         }
                         ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                     }
@@ -314,10 +322,17 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                         }
                     if (assignedKeyId != null && !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)) {
                         val aliasResult =
-                            CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                        if (aliasResult == CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                            ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
+                            try {
+                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            } catch (_: Throwable) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
+                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            CertHack.noteAttestFailure(callingUid, 43)
+                            return Skip
                         }
+                        ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                     }
                 }
                 return Skip
@@ -416,10 +431,18 @@ class SecurityLevelInterceptor : BinderInterceptor() {
                 if (context.generatedKeyId != null && assignedKeyId != null &&
                     !java.util.Arrays.equals(context.generatedKeyId, assignedKeyId)
                 ) {
-                    val aliasResult =
-                        CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
-                    if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
-                        return Skip
+                    if (context.isAttestKeyPurpose) {
+                        val aliasResult =
+                            try {
+                                CertificateBackend.aliasAttestKey(callingUid, context.generatedKeyId, assignedKeyId)
+                            } catch (_: Throwable) {
+                                CertHack.noteAttestFailure(callingUid, 43)
+                                return Skip
+                            }
+                        if (aliasResult != CertificateBackend.AttestKeyAliasResult.ALIASED) {
+                            CertHack.noteAttestFailure(callingUid, 43)
+                            return Skip
+                        }
                     }
                     ManagedAttestKeyRegistry.rememberAlias(callingUid, context.generatedKeyId, assignedKeyId)
                 }
