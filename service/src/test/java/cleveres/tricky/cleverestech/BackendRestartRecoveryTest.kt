@@ -288,11 +288,15 @@ class BackendRestartRecoveryTest {
     fun `reconnect failure propagates transport failure`() {
         NativeBackend.observeBackendIdentityForTesting(identityA)
         var attempts = 0
+        var reconnectAttempts = 0
         NativeBackend.transactOnceOverrideForTesting = { _, _, _, _ ->
             attempts++
             throw IOException("Socket timeout")
         }
-        NativeBackend.reconnectOverrideForTesting = { null }
+        NativeBackend.reconnectOverrideForTesting = {
+            reconnectAttempts++
+            null
+        }
 
         assertThrows(RustBackendUnavailableException::class.java) {
             NativeBackend.transact(
@@ -303,6 +307,7 @@ class BackendRestartRecoveryTest {
             ) { it.write(byteArrayOf(1, 2, 3, 4)) }
         }
         assertEquals(1, attempts)
+        assertEquals(3, reconnectAttempts)
     }
 
     private fun keyboxForCurrentIdentity(filename: String): CertHack.KeyBox {
