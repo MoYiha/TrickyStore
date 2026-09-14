@@ -3,7 +3,8 @@ updates:
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "cron"
+      cronjob: "0 * * * *"
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
@@ -20,7 +21,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "cron"
+      cronjob: "0 * * * *"
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
@@ -28,7 +30,8 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/rust"
     schedule:
-      interval: "daily"
+      interval: "cron"
+      cronjob: "0 * * * *"
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
