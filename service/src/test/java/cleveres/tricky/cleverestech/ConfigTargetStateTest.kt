@@ -1,6 +1,7 @@
 package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.PackageTrie
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -126,6 +127,54 @@ class ConfigTargetStateTest {
         assertNull("System UID must never receive spoofed attestation ID", systemBrand)
         val rootBrand = Config.getAttestationId("BRAND", 0)
         assertNull("Root UID 0 must never receive spoofed attestation ID", rootBrand)
+    }
+
+    @Test
+    fun `getAttestationId unconditionally rejects protected RKP infrastructure even in V2 mode`() {
+        val rkpUid = 10_030
+        val targetUid = 10_031
+        mockPackage(rkpUid, arrayOf("com.android.rkpdapp"))
+        mockPackage(targetUid, arrayOf("com.android.vending"))
+
+        setPrivateField(Config, "attestationIds", mapOf("BRAND" to "google".toByteArray(Charsets.UTF_8)))
+
+        val v2PolicyJson =
+            JSONObject()
+                .put("version", PolicyState.SCHEMA_VERSION)
+                .put(
+                    "features",
+                    JSONObject()
+                        .put("buildIdentity", false)
+                        .put("attestationIdentity", true)
+                        .put("telephonyIdentity", false)
+                        .put("regionIdentity", false)
+                        .put("identityRefresh", false)
+                        .put("securityPatch", false),
+                )
+                .put(
+                    "securityPatch",
+                    JSONObject()
+                        .put("automaticThresholdMonths", 6)
+                        .put("system", JSONObject().put("mode", "device_default"))
+                        .put("vendor", JSONObject().put("mode", "device_default"))
+                        .put("boot", JSONObject().put("mode", "device_default")),
+                )
+                .put("profiles", org.json.JSONArray())
+                .put("activeProfile", JSONObject.NULL)
+                .toString()
+
+        PolicyState.installStateForTesting(v2PolicyJson)
+        assertTrue("V2 policy must be active", PolicyState.usesV2())
+        assertTrue("ATTESTATION_IDENTITY feature must be enabled for RKP UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, rkpUid))
+        assertTrue("ATTESTATION_IDENTITY feature must be enabled for target UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, targetUid))
+
+        // RKP infrastructure must be rejected unconditionally even though V2 attestation identity is enabled
+        assertNull("RKP infrastructure must never receive spoofed attestation ID", Config.getAttestationId("BRAND", rkpUid))
+
+        // Normal app must receive spoofed attestation ID under V2
+        val targetBrand = Config.getAttestationId("BRAND", targetUid)
+        assertNotNull("Normal app under V2 attestation identity must receive attestation ID", targetBrand)
+        assertEquals("google", String(requireNotNull(targetBrand)))
     }
 
     private fun createIdentityTargetState(packages: PackageTrie<Boolean>): Any {
