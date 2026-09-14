@@ -6,4 +6,4 @@
 - Enhanced backend connection resilience to prevent service interruptions during system state changes.
 - Optimized memory management and background resource efficiency.
 - Resolved edge cases in keystore handling for improved overall system compatibility.
-- General performance optimizations, bug fixes, and stability improvements across Android 12–17.
+- General performance optimizations, bug fixes, and stability improvements across Android 12-17.

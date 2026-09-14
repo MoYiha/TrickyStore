@@ -35,7 +35,7 @@ If your official firmware has not received monthly security updates and has a ve
 
 * **Step 1:** In the CleveresTricky WebUI, open the **Dashboard**.
 * **Step 2:** Enable **Identity** (Spoof Engine).
-* **Step 3:** Spoof your device fingerprint — you can select **Auto Pixel Identity** or pick a certified device model template.
+* **Step 3:** Spoof your device fingerprint - you can select **Auto Pixel Identity** or pick a certified device model template.
 
 > [!WARNING]
 > **Memory notice:** Enabling Identity and automatic fingerprint spoofing may slightly increase RAM usage due to dynamic runtime property evaluation.
