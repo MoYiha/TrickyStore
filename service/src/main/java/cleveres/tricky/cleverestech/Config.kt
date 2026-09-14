@@ -1621,6 +1621,7 @@ object Config {
         }
 
     private fun findComponentRules(state: SecurityPatchState, callingUid: Int): PatchRules? {
+        if (state.packageRules.isEmpty()) return null
         val packages = getPackages(callingUid)
         for (packageName in packages) state.packageRules.get(packageName)?.let { return it }
         return null
