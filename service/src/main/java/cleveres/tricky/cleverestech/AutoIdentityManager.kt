@@ -3,7 +3,6 @@ package cleveres.tricky.cleverestech
 import cleveres.tricky.cleverestech.util.RandomUtils
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.URI
 import java.net.URLEncoder
