@@ -24,6 +24,7 @@ class ConfigTargetStateTest {
 
     private fun resetConfig() {
         Config.reset()
+        PolicyState.resetForTesting()
     }
 
     @Test
@@ -163,18 +164,22 @@ class ConfigTargetStateTest {
                 .put("activeProfile", JSONObject.NULL)
                 .toString()
 
-        PolicyState.installStateForTesting(v2PolicyJson)
-        assertTrue("V2 policy must be active", PolicyState.usesV2())
-        assertTrue("ATTESTATION_IDENTITY feature must be enabled for RKP UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, rkpUid))
-        assertTrue("ATTESTATION_IDENTITY feature must be enabled for target UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, targetUid))
+        try {
+            PolicyState.installStateForTesting(v2PolicyJson)
+            assertTrue("V2 policy must be active", PolicyState.usesV2())
+            assertTrue("ATTESTATION_IDENTITY feature must be enabled for RKP UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, rkpUid))
+            assertTrue("ATTESTATION_IDENTITY feature must be enabled for target UID", PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, targetUid))
 
-        // RKP infrastructure must be rejected unconditionally even though V2 attestation identity is enabled
-        assertNull("RKP infrastructure must never receive spoofed attestation ID", Config.getAttestationId("BRAND", rkpUid))
+            // RKP infrastructure must be rejected unconditionally even though V2 attestation identity is enabled
+            assertNull("RKP infrastructure must never receive spoofed attestation ID", Config.getAttestationId("BRAND", rkpUid))
 
-        // Normal app must receive spoofed attestation ID under V2
-        val targetBrand = Config.getAttestationId("BRAND", targetUid)
-        assertNotNull("Normal app under V2 attestation identity must receive attestation ID", targetBrand)
-        assertEquals("google", String(requireNotNull(targetBrand)))
+            // Normal app must receive spoofed attestation ID under V2
+            val targetBrand = Config.getAttestationId("BRAND", targetUid)
+            assertNotNull("Normal app under V2 attestation identity must receive attestation ID", targetBrand)
+            assertEquals("google", String(requireNotNull(targetBrand)))
+        } finally {
+            PolicyState.resetForTesting()
+        }
     }
 
     private fun createIdentityTargetState(packages: PackageTrie<Boolean>): Any {
