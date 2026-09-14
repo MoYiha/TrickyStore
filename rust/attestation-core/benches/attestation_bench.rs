@@ -11,6 +11,7 @@ const ROOT_OF_TRUST_TAG: u32 = 704;
 const BOOT_KEY: [u8; 32] = [0x11; 32];
 const BOOT_HASH: [u8; 32] = [0x22; 32];
 
+/// Encodes an array of DER-encoded fields into an ASN.1 SEQUENCE payload.
 fn sequence<const N: usize>(fields: [Vec<u8>; N]) -> Vec<u8> {
     let mut value = Vec::new();
     for field in fields {
@@ -19,6 +20,7 @@ fn sequence<const N: usize>(fields: [Vec<u8>; N]) -> Vec<u8> {
     Any::new(Tag::Sequence, value).unwrap().to_der().unwrap()
 }
 
+/// Wraps a DER payload in an explicit context-specific tag.
 fn explicit_tag(tag: u32, inner: &[u8]) -> Vec<u8> {
     Any::new(
         Tag::ContextSpecific {
@@ -32,6 +34,7 @@ fn explicit_tag(tag: u32, inner: &[u8]) -> Vec<u8> {
     .unwrap()
 }
 
+/// Constructs a valid sample KeyDescription DER fixture containing a genuine RootOfTrust.
 fn sample_key_description() -> Vec<u8> {
     let raw_key = [0x33u8; 32];
     let raw_hash = [0x44u8; 32];

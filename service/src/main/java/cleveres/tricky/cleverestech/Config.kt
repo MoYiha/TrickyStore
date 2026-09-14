@@ -935,8 +935,9 @@ object Config {
     private const val MAX_BUILD_VAR_ENTRIES = 512
     private const val MAX_BUILD_VAR_VALUE_LENGTH = 512
 
-    private val stringToBytesCache = ConcurrentHashMap<String, ByteArray>()
-
+    /**
+     * Returns the global attestation ID byte array for a given tag.
+     */
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
 
     /**

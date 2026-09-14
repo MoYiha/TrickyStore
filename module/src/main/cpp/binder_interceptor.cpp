@@ -608,12 +608,23 @@ static thread_local bool tls_forwarding = false;
  * Prevents recursive ioctl interception during outgoing Binder transactions.
  */
 struct ForwardGuard {
+  /**
+   * Constructs the guard and marks the current thread as actively forwarding.
+   */
   ForwardGuard() { tls_forwarding = true; }
+
+  /**
+   * Destructs the guard and resets the thread-local forwarding state.
+   */
   ~ForwardGuard() { tls_forwarding = false; }
   ForwardGuard(const ForwardGuard&) = delete;
   ForwardGuard& operator=(const ForwardGuard&) = delete;
 };
 
+/**
+ * Trampoline hook for the libbinder ioctl system call.
+ * Intercepts BINDER_WRITE_READ commands while avoiding recursive interception.
+ */
 int new_ioctl(int fd, unsigned long request, ...) {
   va_list list;
   va_start(list, request);
@@ -907,6 +918,9 @@ status_t BinderInterceptor::onTransact(uint32_t code,
   return UNKNOWN_TRANSACTION;
 }
 
+/**
+ * Dispatches intercepted Binder transactions to the registered interceptor with forward protection.
+ */
 bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
                                         const Parcel &data, Parcel *reply,
                                         uint32_t flags, status_t &result) {
