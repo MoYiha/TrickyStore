@@ -5,8 +5,8 @@ mod service_guard;
 
 use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
-    read_header, read_header_bounded, relay_exact, write_frame, write_header, FrameHeader,
-    FLAG_ERROR, MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_INTEGRITY_DELETE_MODULE,
+    read_header, read_header_bounded, write_frame, write_header, FrameHeader, FLAG_ERROR,
+    MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_INTEGRITY_DELETE_MODULE,
     OP_INTEGRITY_VERIFY_FILE, OP_INTEGRITY_VERIFY_FULL, OP_PING, OP_WEB_REQUEST, STREAM_COPY_BYTES,
 };
 use cleverestricky_service_core::secure_fs::TrustedDir;
@@ -17,7 +17,7 @@ use sha2::{Digest, Sha256};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
@@ -28,6 +28,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+const WEB_REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_ERROR_BYTES: usize = 512;
 const BACKEND_CIRCUIT_FAILURES: u32 = 5;
 const BACKEND_STABLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -836,15 +837,24 @@ fn serve_web(
                 let _ = write_frame(&mut client, OP_PING, 0, b"pong");
             }
             OP_WEB_REQUEST if header.flags == 0 && header.payload_len <= MAX_FRAME_BYTES => {
-                if let Err(error) = forward_web_request_with_timeout(
+                match forward_web_request_with_timeout(
                     &mut client,
                     header,
                     &mut adapter,
                     &mut relay_buffer,
-                    CLIENT_TIMEOUT,
+                    WEB_REQUEST_TIMEOUT,
                 ) {
-                    adapter = None;
-                    let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
+                    Ok(()) => {}
+                    Err(ForwardError::AdapterFailed(error)) => {
+                        adapter = None;
+                        let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
+                    }
+                    Err(ForwardError::AdapterUnavailable(error)) => {
+                        let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
+                    }
+                    Err(ForwardError::ClientFailed) => {
+                        // Client disconnected or encountered I/O failure; preserve the healthy adapter.
+                    }
                 }
             }
             OP_INTEGRITY_VERIFY_FULL
@@ -1292,6 +1302,29 @@ fn delete_dir_contents_safe(dir: &Path) -> io::Result<()> {
     fs::remove_dir(dir)
 }
 
+#[derive(Debug)]
+enum ForwardError {
+    AdapterUnavailable(io::Error),
+    AdapterFailed(io::Error),
+    ClientFailed,
+}
+
+fn drain_exact(
+    stream: &mut UnixStream,
+    mut remaining: usize,
+    scratch: &mut [u8],
+) -> io::Result<()> {
+    while remaining > 0 {
+        let chunk = remaining.min(scratch.len());
+        let read = stream.read(&mut scratch[..chunk])?;
+        if read == 0 {
+            break;
+        }
+        remaining -= read;
+    }
+    Ok(())
+}
+
 /// Forwards a web request to the registered adapter and relays the response back to the client.
 fn forward_web_request_with_timeout(
     client: &mut UnixStream,
@@ -1299,30 +1332,59 @@ fn forward_web_request_with_timeout(
     adapter: &mut Option<RegisteredAdapter>,
     scratch: &mut [u8],
     timeout: Duration,
-) -> io::Result<()> {
-    let target = &mut adapter
-        .as_mut()
-        .ok_or_else(|| {
-            io::Error::new(
+) -> Result<(), ForwardError> {
+    let target = match adapter.as_mut() {
+        Some(registered) => &mut registered.stream,
+        None => {
+            let _ = drain_exact(client, request.payload_len, scratch);
+            return Err(ForwardError::AdapterUnavailable(io::Error::new(
                 io::ErrorKind::NotConnected,
                 "Android adapter is unavailable",
-            )
-        })?
-        .stream;
-    target.set_read_timeout(Some(timeout))?;
-    target.set_write_timeout(Some(timeout))?;
-    write_header(target, request)?;
-    relay_exact(client, target, request.payload_len, scratch)?;
+            )));
+        }
+    };
+    target
+        .set_read_timeout(Some(timeout))
+        .map_err(ForwardError::AdapterFailed)?;
+    target
+        .set_write_timeout(Some(timeout))
+        .map_err(ForwardError::AdapterFailed)?;
+    write_header(target, request).map_err(ForwardError::AdapterFailed)?;
 
-    let response = read_header_bounded(target, MAX_FRAME_BYTES)?;
+    let mut remaining = request.payload_len;
+    while remaining != 0 {
+        let chunk_len = remaining.min(scratch.len());
+        client
+            .read_exact(&mut scratch[..chunk_len])
+            .map_err(|_| ForwardError::ClientFailed)?;
+        target
+            .write_all(&scratch[..chunk_len])
+            .map_err(ForwardError::AdapterFailed)?;
+        remaining -= chunk_len;
+    }
+
+    let response =
+        read_header_bounded(target, MAX_FRAME_BYTES).map_err(ForwardError::AdapterFailed)?;
     if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
-        return Err(io::Error::new(
+        return Err(ForwardError::AdapterFailed(io::Error::new(
             io::ErrorKind::InvalidData,
             "adapter returned an invalid response header",
-        ));
+        )));
     }
-    write_header(client, response)?;
-    relay_exact(target, client, response.payload_len, scratch)
+    write_header(client, response).map_err(|_| ForwardError::ClientFailed)?;
+
+    let mut remaining_resp = response.payload_len;
+    while remaining_resp != 0 {
+        let chunk_len = remaining_resp.min(scratch.len());
+        target
+            .read_exact(&mut scratch[..chunk_len])
+            .map_err(ForwardError::AdapterFailed)?;
+        client
+            .write_all(&scratch[..chunk_len])
+            .map_err(|_| ForwardError::ClientFailed)?;
+        remaining_resp -= chunk_len;
+    }
+    Ok(())
 }
 
 /// Replies to a request with an error frame derived from an IO error.
@@ -1792,6 +1854,28 @@ mod tests {
             Duration::from_millis(25),
         )
         .is_err());
+    }
+
+    #[test]
+    fn web_relay_drains_client_payload_when_adapter_unavailable() {
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let payload = b"large-client-payload-that-would-cause-broken-pipe-if-not-drained";
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, payload).unwrap();
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = None;
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        let err = forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_millis(100),
+        )
+        .unwrap_err();
+        match err {
+            ForwardError::AdapterUnavailable(_) => {}
+            other => panic!("expected AdapterUnavailable, got {other:?}"),
+        }
     }
 
     #[test]
