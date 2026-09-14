@@ -10,7 +10,6 @@ import cleveres.tricky.cleverestech.RustBackendUnavailableException
 import cleveres.tricky.cleverestech.StoredKeyboxInventory
 import cleveres.tricky.cleverestech.getModuleDir
 import cleveres.tricky.cleverestech.keystore.CertHack
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
