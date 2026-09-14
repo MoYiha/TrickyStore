@@ -30,20 +30,20 @@ gradle.rootProject {
     allprojects {
         buildscript.configurations.all {
             resolutionStrategy {
-                force("io.netty:netty-codec-http:4.2.17.Final")
-                force("io.netty:netty-codec-http2:4.2.17.Final")
-                force("io.netty:netty-codec:4.2.17.Final")
-                force("io.netty:netty-handler-proxy:4.2.17.Final")
+                force("io.netty:netty-codec-http:4.2.18.Final")
+                force("io.netty:netty-codec-http2:4.2.18.Final")
+                force("io.netty:netty-codec:4.2.18.Final")
+                force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
             }
         }
         configurations.all {
             resolutionStrategy {
-                force("io.netty:netty-codec-http:4.2.17.Final")
-                force("io.netty:netty-codec-http2:4.2.17.Final")
-                force("io.netty:netty-codec:4.2.17.Final")
-                force("io.netty:netty-handler-proxy:4.2.17.Final")
+                force("io.netty:netty-codec-http:4.2.18.Final")
+                force("io.netty:netty-codec-http2:4.2.18.Final")
+                force("io.netty:netty-codec:4.2.18.Final")
+                force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
             }
