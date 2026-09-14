@@ -47,6 +47,7 @@ Magisk والتثبيت من recovery غير مدعومين.
 
 ## المزيد من المعلومات
 
+- [دليل Strong Integrity](docs/StrongIntegrityGuide.md) - دليل البدء السريع لاجتياز Google Play Integrity (MEETS_STRONG_INTEGRITY) على الرومات الرسمية وAOSP والمعدلة.
 - [Keybox Manager](docs/KeyboxManager.md) - تحميل Keybox/CBOX والتحقق منها واختيارها وفحص الإلغاء.
 - [Application Scope](docs/ApplicationScope.md) و [Application Rules](docs/ApplicationRules.md) - تحديد التطبيقات التي تنطبق عليها الميزات.
 - [Build Identity](docs/BuildIdentity.md) و [Telephony Identity](docs/TelephonyIdentity.md) و [Patch Levels](docs/PatchLevels.md) - خيارات الهوية الاختيارية.

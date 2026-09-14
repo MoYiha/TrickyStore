@@ -47,6 +47,7 @@ Gunakan hanya konfigurasi dan kredensial yang memang Anda berhak gunakan.
 
 ## Pelajari lebih lanjut
 
+- [Panduan Strong Integrity](docs/StrongIntegrityGuide.md) - panduan cepat untuk memenuhi Google Play Integrity (MEETS_STRONG_INTEGRITY) di ROM Resmi, AOSP, dan Custom.
 - [Keybox Manager](docs/KeyboxManager.md) - pemuatan, verifikasi, pemilihan, dan pemeriksaan pencabutan Keybox/CBOX.
 - [Application Scope](docs/ApplicationScope.md) dan [Application Rules](docs/ApplicationRules.md) - pilih aplikasi tempat fitur diterapkan.
 - [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), dan [Patch Levels](docs/PatchLevels.md) - kontrol identitas opsional.

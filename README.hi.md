@@ -47,6 +47,7 @@ CleveresTricky local compatibility path को बेहतर करता ह�
 
 ## और जानकारी
 
+- [Strong Integrity Guide](docs/StrongIntegrityGuide.md) - Official, AOSP और Custom ROMs पर Google Play Integrity (MEETS_STRONG_INTEGRITY) पास करने के लिए त्वरित मार्गदर्शिका।
 - [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX loading, verification, selection और revocation checks।
 - [Application Scope](docs/ApplicationScope.md) और [Application Rules](docs/ApplicationRules.md) - तय करें features किन apps पर लागू हों।
 - [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) और [Patch Levels](docs/PatchLevels.md) - optional identity controls।

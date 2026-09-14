@@ -250,3 +250,20 @@ Diagnosen gehen in Android logcat, nicht in eine separate Plaintext-Logdatei. Ha
 Minimalistisches monochromes Nothing-OS/Modern-Hybrid: dunkler Charcoal-Hintergrund, hellgrauer Text, silberner Accent, dunkle Panels, grüner Success, roter Danger. System Sans, technische Daten Monospace, Dynamic Island, runde Buttons, Modern-Toggles und Mobile-first Layout.
 
 Touch-Ziele mindestens etwa 44px, vertikaler Flow bevorzugt und Optimierung für Bedienung im KernelSU/APatch-Modulmanager.
+
+<a id="strong-integrity-guide"></a>
+## Strong Integrity Leitfaden
+
+Schritte zum Bestehen von Google Play Integrity (`MEETS_STRONG_INTEGRITY`) mit CleveresTricky nach ROM-Typ:
+
+- **Offizielle ROM (Stock)**: CleveresTricky installieren und eine gültige Keybox hinzufügen. Normalerweise sind keine weiteren Einstellungen nötig.
+- **Offizielle ROM mit sehr altem Sicherheitspatch**: Im WebUI Dashboard `Security Patch` aktivieren und auf `Auto` setzen.
+- **AOSP ROM**: Im WebUI Dashboard `Identity` aktivieren und Fingerprint anpassen (Auto Pixel Identity oder Geräteschablone wählen). *(Hinweis: Identity und automatisches Spoofing können den RAM-Bedarf durch dynamische Eigenschaftsauswertung leicht erhöhen).*
+- **Custom ROM**: Custom ROMs werden offiziell nicht unterstützt. Wenn das Keystore defekt ist oder native Hardware-Attestation fehlschlägt, die alte Fallback-Methode prüfen.
+
+**Keybox-Tools und Import:**
+- Online-Checker: https://keybox.tryigit.dev/checker
+- Keybox-Download & Info: https://keybox.tryigit.dev/
+- Import: Über CleveresTricky WebUI → Keybox Manager hochladen. Kein manuelles Kopieren in alte TrickyStore-Verzeichnisse erforderlich.
+
+**Rechtlicher Hinweis & Community-Info:** CleveresTricky ist ein unabhängiges Open-Source-Community-Projekt ohne Verbindung zu Google LLC. Google Play Integrity Regeln und Erkennungen können sich jederzeit unangekündigt ändern; dauerhafte Verifizierungen können nicht garantiert werden. Nur eigene oder autorisierte Schlüssel verwenden.

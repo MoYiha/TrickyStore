@@ -253,4 +253,21 @@ Diagnostics تكتب إلى Android logcat ولا يوجد plaintext log مست�
 
 Touch targets تقريبا 44px أو أكثر، vertical flow مفضل والواجهة محسنة للاستخدام على الهاتف داخل KernelSU/APatch.
 
+<a id="strong-integrity-guide"></a>
+## دليل Strong Integrity
+
+دليل سريع لاجتياز Google Play Integrity (`MEETS_STRONG_INTEGRITY`) باستخدام CleveresTricky حسب نوع الروم:
+
+- **الروم الرسمي (Stock ROM)**: قم بتثبيت CleveresTricky وأضف Keybox صالحاً. هذا كل ما تحتاجه عادةً دون تغيير باقي الإعدادات.
+- **روم رسمي مع تصحيح أمان قديم جداً**: من لوحة تحكم WebUI فعّل `Security Patch` واضبطه على `Auto`.
+- **رومات AOSP**: من لوحة تحكم WebUI فعّل `Identity` وقم بانتحال بصمة الجهاز (يمكنك استخدام Auto Pixel Identity أو قالب جهاز معتمد). *(ملاحظة: قد يؤدي تفعيل Identity والانتحال التلقائي إلى زيادة طفيفة في استهلاك الذاكرة RAM بسبب المعالجة الديناميكية).*
+- **الرومات المعدلة (Custom ROM)**: الرومات المعدلة غير مدعومة رسمياً. إذا كان Keystore معطلاً أو كان التحقق العتادي لا يعمل، فراجع الطريقة القديمة كبديل.
+
+**أدوات واستيراد Keybox:**
+- فاحص Keybox عبر الإنترنت: https://keybox.tryigit.dev/checker
+- تحميل ومعلومات Keybox: https://keybox.tryigit.dev/
+- طريقة الاستيراد: افتح CleveresTricky WebUI ← Keybox Manager وقم برفع الملف. لا حاجة للنسخ اليدوي إلى مجلدات TrickyStore القديمة.
+
+**إخلاء المسؤولية وإشعار المجتمع:** CleveresTricky مشروع مفتوح المصدر مستقل يدعمه مجتمع CleveresTricky، وليس تابعاً لشركة Google LLC. قد تتغير سياسات واختبارات Google Play Integrity في أي وقت دون إشعار مسبق؛ لذا لا يمكن تقديم أي ضمان دائم. استخدم فقط المفاتيح المصرح لك باختبارها.
+
 </div>
