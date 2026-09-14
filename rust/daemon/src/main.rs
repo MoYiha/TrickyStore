@@ -1923,7 +1923,6 @@ mod tests {
         let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
         let (daemon_adapter, _peer_adapter) = UnixStream::pair().unwrap();
         let header = FrameHeader {
-            magic: FRAME_MAGIC,
             opcode: OP_WEB_REQUEST,
             flags: 0,
             payload_len: 64,
