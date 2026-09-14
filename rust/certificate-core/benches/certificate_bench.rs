@@ -1,7 +1,8 @@
 //! Microbenchmark suite for certificate-core.
 
 use cleverestricky_certificate_core::{generate_ec_p256_keypair, is_ec_p256_spki};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 
 /// Benchmarks representative public certificate-core operations.
 fn bench_certificate(c: &mut Criterion) {
