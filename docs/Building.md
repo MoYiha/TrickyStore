@@ -4,7 +4,7 @@
 
 ## Required tools
 
-The build requires Java 21, the Android SDK for API 37, Android NDK 27.3.13750724, CMake 3.22.1, a stable Rust toolchain, the ARM64 and x86 64 Android Rust targets, and Cargo NDK.
+The build requires Java 21, the Android SDK for API 37, Android NDK 27.3.13750724, CMake 3.22.1, a stable Rust toolchain, the aarch64-linux-android and x86_64-linux-android Android Rust targets, and Cargo NDK.
 
 Git submodules must be available because LSPlt provides the Android native hook bridge.
 

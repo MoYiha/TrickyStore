@@ -66,7 +66,7 @@ Auto Identity, Custom ROM kullanıcıları için Google public metadata üzerind
 <a id="building"></a>
 ## Building
 
-Build için Java 21, Android SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86 64 Android Rust target'ları, Cargo NDK ve git submodule'ları gerekir. Kotlin/Android lint ile Rust fmt, clippy ve testleri çalıştırılır; modül paketlemesi unit testleri de içerir.
+Build için Java 21, Android SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, aarch64-linux-android ve x86_64-linux-android Android Rust target'ları, Cargo NDK ve git submodule'ları gerekir. Kotlin/Android lint ile Rust fmt, clippy ve testleri çalıştırılır; modül paketlemesi unit testleri de içerir.
 
 CI shell, SELinux, template structure, Kotlin/Java/Rust testleri, iki mimari, release/debug ZIP ve Encryptor app'i doğrular. First-party C yasaktır; yalnız Android libbinder/LSPlt ABI sınırı olan `binder_interceptor.cpp` first-party C++ istisnasıdır. Release için `./gradlew zipRelease`, debug için `./gradlew zipDebug` kullanılır.
 

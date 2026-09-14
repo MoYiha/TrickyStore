@@ -66,7 +66,7 @@ Auto Identity может получить Pixel beta/canary identity из public
 <a id="building"></a>
 ## Building
 
-Нужны Java 21, SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86-64 Android targets, Cargo NDK, submodules. Требуются Kotlin/Android checks, Rust fmt/clippy/tests и unit tests.
+Нужны Java 21, SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, aarch64-linux-android и x86_64-linux-android Android targets, Cargo NDK, submodules. Требуются Kotlin/Android checks, Rust fmt/clippy/tests и unit tests.
 
 CI проверяет shell, SELinux, template, Kotlin/Java/Rust, обе архитектуры, release/debug ZIP и Encryptor. First-party C запрещен; `binder_interceptor.cpp` единственная first-party C++ ABI boundary. Release: `./gradlew zipRelease`.
 

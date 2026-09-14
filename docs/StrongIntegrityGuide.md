@@ -54,7 +54,9 @@ If your official firmware has not received monthly security updates and has a ve
 
 ### Tools and Resources
 
-* **Online Keybox Checker:** Verify certificate validity, chain integrity, and revocation status online at [https://keybox.tryigit.dev/checker](https://keybox.tryigit.dev/checker)
+* **Online Keybox Checker:** Verify certificate validity, chain integrity, and revocation status online at [https://keybox.tryigit.dev/checker](https://keybox.tryigit.dev/checker).
+  > [!CAUTION]
+  > **Privacy and Key Security:** Uploading a keybox file exposes cryptographic material. Only upload credentials you are authorized to disclose or test. The online checker operates with browser-side encryption, performs in-memory evaluation without saving private keys to permanent storage, and registers anonymous SHA-256 certificate fingerprints for revocation tracking. For sensitive environments, local verification through **Keybox Manager** directly on your device is the recommended and preferred option.
 * **Keybox Download & Information:** [https://keybox.tryigit.dev/](https://keybox.tryigit.dev/)
 
 ### How to Import Your Keybox

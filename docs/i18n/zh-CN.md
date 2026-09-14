@@ -66,7 +66,7 @@ Auto Identity 可从 Google 公共元数据解析 Pixel beta/canary Build Identi
 <a id="building"></a>
 ## Building
 
-构建需要 Java 21、Android SDK API 37、NDK 27.3.13750724、CMake 3.22.1、stable Rust、ARM64/x86 64 Android Rust targets、Cargo NDK 与 git submodules。需要运行 Kotlin/Android 检查、Rust fmt/clippy/tests 和模块 unit tests。
+构建需要 Java 21、Android SDK API 37、NDK 27.3.13750724、CMake 3.22.1、stable Rust、aarch64-linux-android 与 x86_64-linux-android Android Rust targets、Cargo NDK 与 git submodules。需要运行 Kotlin/Android 检查、Rust fmt/clippy/tests 和模块 unit tests。
 
 CI 同时验证 shell、SELinux、module template、Kotlin/Java/Rust、双架构、release/debug ZIP 与 Encryptor。First-party C 被禁止，`binder_interceptor.cpp` 是唯一允许的 first-party C++ Android ABI 边界。Release 使用 `./gradlew zipRelease`。
 
