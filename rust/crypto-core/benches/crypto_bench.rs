@@ -1,7 +1,8 @@
 //! Microbenchmark suite for crypto-core.
 
 use cleverestricky_crypto_core::{has_supported_cbox_header, verify_cbox_signature, CboxPayload};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use std::hint::black_box;
 
 const EC_PUBLIC_KEY: &str =
     "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1JxPSOlrdyKm0raMMZTeiV0WevPD6Nol0UdzGsWfpkwkz8HS3WaT1weN7FrMFimvq4QUJq9pwZ0hrO6/cy++Pg==";
