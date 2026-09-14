@@ -852,8 +852,10 @@ fn serve_web(
                     Err(ForwardError::AdapterUnavailable(error)) => {
                         let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
                     }
-                    Err(ForwardError::ClientFailed) => {
-                        // Client disconnected or encountered I/O failure; preserve the healthy adapter.
+                    Err(ForwardError::ClientFailed { preserve_adapter }) => {
+                        if !preserve_adapter {
+                            adapter = None;
+                        }
                     }
                 }
             }
@@ -1306,7 +1308,7 @@ fn delete_dir_contents_safe(dir: &Path) -> io::Result<()> {
 enum ForwardError {
     AdapterUnavailable(io::Error),
     AdapterFailed(io::Error),
-    ClientFailed,
+    ClientFailed { preserve_adapter: bool },
 }
 
 fn drain_exact(
@@ -1333,58 +1335,93 @@ fn forward_web_request_with_timeout(
     scratch: &mut [u8],
     timeout: Duration,
 ) -> Result<(), ForwardError> {
-    let target = match adapter.as_mut() {
-        Some(registered) => &mut registered.stream,
-        None => {
-            let _ = drain_exact(client, request.payload_len, scratch);
-            return Err(ForwardError::AdapterUnavailable(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Android adapter is unavailable",
-            )));
+    let result = {
+        let target = match adapter.as_mut() {
+            Some(registered) => &mut registered.stream,
+            None => {
+                let _ = drain_exact(client, request.payload_len, scratch);
+                return Err(ForwardError::AdapterUnavailable(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "Android adapter is unavailable",
+                )));
+            }
+        };
+        target
+            .set_read_timeout(Some(timeout))
+            .map_err(ForwardError::AdapterFailed)?;
+        target
+            .set_write_timeout(Some(timeout))
+            .map_err(ForwardError::AdapterFailed)?;
+        write_header(target, request).map_err(ForwardError::AdapterFailed)?;
+
+        let mut remaining = request.payload_len;
+        let mut client_read_failed = false;
+        while remaining != 0 {
+            let chunk_len = remaining.min(scratch.len());
+            if client.read_exact(&mut scratch[..chunk_len]).is_err() {
+                client_read_failed = true;
+                break;
+            }
+            target
+                .write_all(&scratch[..chunk_len])
+                .map_err(ForwardError::AdapterFailed)?;
+            remaining -= chunk_len;
+        }
+
+        if client_read_failed {
+            Err(ForwardError::ClientFailed {
+                preserve_adapter: false,
+            })
+        } else {
+            let response = read_header_bounded(target, MAX_FRAME_BYTES)
+                .map_err(ForwardError::AdapterFailed)?;
+            if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
+                Err(ForwardError::AdapterFailed(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "adapter returned an invalid response header",
+                )))
+            } else if write_header(client, response).is_err() {
+                let drain_ok = drain_exact(target, response.payload_len, scratch).is_ok();
+                Err(ForwardError::ClientFailed {
+                    preserve_adapter: drain_ok,
+                })
+            } else {
+                let mut remaining_resp = response.payload_len;
+                let mut client_write_failed = None;
+                while remaining_resp != 0 {
+                    let chunk_len = remaining_resp.min(scratch.len());
+                    target
+                        .read_exact(&mut scratch[..chunk_len])
+                        .map_err(ForwardError::AdapterFailed)?;
+                    if client.write_all(&scratch[..chunk_len]).is_err() {
+                        let unread = remaining_resp - chunk_len;
+                        let drain_ok = drain_exact(target, unread, scratch).is_ok();
+                        client_write_failed = Some(drain_ok);
+                        break;
+                    }
+                    remaining_resp -= chunk_len;
+                }
+                if let Some(drain_ok) = client_write_failed {
+                    Err(ForwardError::ClientFailed {
+                        preserve_adapter: drain_ok,
+                    })
+                } else {
+                    Ok(())
+                }
+            }
         }
     };
-    target
-        .set_read_timeout(Some(timeout))
-        .map_err(ForwardError::AdapterFailed)?;
-    target
-        .set_write_timeout(Some(timeout))
-        .map_err(ForwardError::AdapterFailed)?;
-    write_header(target, request).map_err(ForwardError::AdapterFailed)?;
 
-    let mut remaining = request.payload_len;
-    while remaining != 0 {
-        let chunk_len = remaining.min(scratch.len());
-        client
-            .read_exact(&mut scratch[..chunk_len])
-            .map_err(|_| ForwardError::ClientFailed)?;
-        target
-            .write_all(&scratch[..chunk_len])
-            .map_err(ForwardError::AdapterFailed)?;
-        remaining -= chunk_len;
+    match &result {
+        Err(ForwardError::AdapterFailed(_))
+        | Err(ForwardError::ClientFailed {
+            preserve_adapter: false,
+        }) => {
+            *adapter = None;
+        }
+        _ => {}
     }
-
-    let response =
-        read_header_bounded(target, MAX_FRAME_BYTES).map_err(ForwardError::AdapterFailed)?;
-    if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
-        return Err(ForwardError::AdapterFailed(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "adapter returned an invalid response header",
-        )));
-    }
-    write_header(client, response).map_err(|_| ForwardError::ClientFailed)?;
-
-    let mut remaining_resp = response.payload_len;
-    while remaining_resp != 0 {
-        let chunk_len = remaining_resp.min(scratch.len());
-        target
-            .read_exact(&mut scratch[..chunk_len])
-            .map_err(ForwardError::AdapterFailed)?;
-        client
-            .write_all(&scratch[..chunk_len])
-            .map_err(|_| ForwardError::ClientFailed)?;
-        remaining_resp -= chunk_len;
-    }
-    Ok(())
+    result
 }
 
 /// Replies to a request with an error frame derived from an IO error.
@@ -1861,6 +1898,7 @@ mod tests {
         let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
         let payload = b"large-client-payload-that-would-cause-broken-pipe-if-not-drained";
         write_frame(&mut bridge, OP_WEB_REQUEST, 0, payload).unwrap();
+        write_frame(&mut bridge, OP_PING, 0, b"").unwrap();
         let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
         let mut slot = None;
         let mut scratch = vec![0u8; STREAM_COPY_BYTES];
@@ -1876,6 +1914,126 @@ mod tests {
             ForwardError::AdapterUnavailable(_) => {}
             other => panic!("expected AdapterUnavailable, got {other:?}"),
         }
+        let next = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        assert_eq!(next.opcode, OP_PING);
+    }
+
+    #[test]
+    fn forward_request_drops_adapter_when_client_fails_during_request_body() {
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, _peer_adapter) = UnixStream::pair().unwrap();
+        let header = FrameHeader {
+            magic: FRAME_MAGIC,
+            opcode: OP_WEB_REQUEST,
+            flags: 0,
+            payload_len: 64,
+        };
+        write_header(&mut bridge, header).unwrap();
+        bridge.write_all(b"partial-").unwrap();
+        drop(bridge);
+
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        let err = forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_millis(100),
+        )
+        .unwrap_err();
+        match err {
+            ForwardError::ClientFailed { preserve_adapter } => {
+                assert!(
+                    !preserve_adapter,
+                    "adapter must not be preserved after partial request"
+                );
+            }
+            other => panic!("expected ClientFailed with preserve_adapter false, got {other:?}"),
+        }
+        assert!(
+            slot.is_none(),
+            "slot must be dropped when adapter is desynchronized"
+        );
+    }
+
+    #[test]
+    fn forward_request_preserves_adapter_when_response_is_drained_after_client_disconnect() {
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, mut peer_adapter) = UnixStream::pair().unwrap();
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, b"ping").unwrap();
+        bridge.shutdown(std::net::Shutdown::Read).unwrap();
+
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
+
+        let adapter_handle = std::thread::spawn(move || {
+            let req_hdr = read_header_bounded(&mut peer_adapter, MAX_FRAME_BYTES).unwrap();
+            assert_eq!(req_hdr.opcode, OP_WEB_REQUEST);
+            let mut req_body = vec![0u8; req_hdr.payload_len as usize];
+            peer_adapter.read_exact(&mut req_body).unwrap();
+            assert_eq!(req_body, b"ping");
+            write_frame(&mut peer_adapter, OP_WEB_REQUEST, 0, b"1234567890abcdef").unwrap();
+            peer_adapter
+        });
+
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        let err = forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        match err {
+            ForwardError::ClientFailed { preserve_adapter } => {
+                assert!(
+                    preserve_adapter,
+                    "adapter must be preserved when response is fully drained"
+                );
+            }
+            other => panic!("expected ClientFailed with preserve_adapter true, got {other:?}"),
+        }
+        assert!(slot.is_some(), "slot must be preserved");
+
+        let mut peer_adapter = adapter_handle.join().unwrap();
+        let (mut second_bridge, mut second_daemon_web) = UnixStream::pair().unwrap();
+        write_frame(&mut second_bridge, OP_WEB_REQUEST, 0, b"second").unwrap();
+        let second_req = read_header_bounded(&mut second_daemon_web, MAX_FRAME_BYTES).unwrap();
+        let second_adapter_handle = std::thread::spawn(move || {
+            let req_hdr = read_header_bounded(&mut peer_adapter, MAX_FRAME_BYTES).unwrap();
+            assert_eq!(req_hdr.opcode, OP_WEB_REQUEST);
+            let mut req_body = vec![0u8; req_hdr.payload_len as usize];
+            peer_adapter.read_exact(&mut req_body).unwrap();
+            assert_eq!(req_body, b"second");
+            write_frame(&mut peer_adapter, OP_WEB_REQUEST, 0, b"second-ok").unwrap();
+        });
+        forward_web_request_with_timeout(
+            &mut second_daemon_web,
+            second_req,
+            &mut slot,
+            &mut scratch,
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        let (resp_hdr, resp_body) = read_payload(&mut second_bridge, MAX_FRAME_BYTES);
+        assert_eq!(resp_hdr.opcode, OP_WEB_REQUEST);
+        assert_eq!(resp_body, b"second-ok");
+        second_adapter_handle.join().unwrap();
     }
 
     #[test]

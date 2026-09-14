@@ -1074,43 +1074,53 @@ element.textContent = String(value ?? '');
 return element.innerHTML;
         }
         async function fetchAuth(url, options = {}) {
-if (!window.CleveresBridge) throw new Error('Native WebUI bridge is unavailable');
-const startupRetryDelaysMs = [250, 500, 1000, 2000, 4000, 8000, 16000];
-for (let attempt = 0; ; attempt++) {
-    let response;
-    try {
-        response = await window.CleveresBridge.fetch(url, options);
-        if (response.status !== 503 || attempt >= startupRetryDelaysMs.length || typeof response.clone !== 'function') return response;
-        let message = '';
-        try { message = (await response.clone().text()).trim(); } catch (_) { return response; }
-        if (message !== 'Native WebUI runtime is starting; retry shortly') return response;
-    } catch (error) {
-        const msg = String(error && error.message || '');
-        const isTransient = msg.includes('Android adapter is unavailable') || msg.includes('Broken pipe') || msg.includes('service is unavailable');
-        if (!isTransient || attempt >= startupRetryDelaysMs.length) throw error;
-    }
-    if (options.signal && options.signal.aborted) throw new DOMException('The request was aborted', 'AbortError');
-    await new Promise((resolve, reject) => {
-        let settled = false;
-        const onAbort = () => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            if (options.signal) options.signal.removeEventListener('abort', onAbort);
-            reject(new DOMException('The request was aborted', 'AbortError'));
-        };
-        const timer = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            if (options.signal) options.signal.removeEventListener('abort', onAbort);
-            resolve();
-        }, startupRetryDelaysMs[attempt]);
-        if (options.signal) {
-            options.signal.addEventListener('abort', onAbort, { once: true });
-            if (options.signal.aborted) onAbort();
-        }
-    });
-}
+            if (!window.CleveresBridge) throw new Error('Native WebUI bridge is unavailable');
+            const startupRetryDelaysMs = [250, 500, 1000, 2000, 4000, 8000, 16000];
+            const method = String(options.method || 'GET').toUpperCase();
+            const isSafeMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+            const headers = options.headers;
+            const hasIdempotencyKey = Boolean(
+                headers && (
+                    (typeof headers.has === 'function' && (headers.has('Idempotency-Key') || headers.has('idempotency-key') || headers.has('X-Idempotency-Key') || headers.has('x-idempotency-key'))) ||
+                    (typeof headers === 'object' && (headers['Idempotency-Key'] || headers['idempotency-key'] || headers['X-Idempotency-Key'] || headers['x-idempotency-key']))
+                )
+            );
+            const canRetryTransient = isSafeMethod || Boolean(options.idempotent) || hasIdempotencyKey;
+            for (let attempt = 0; ; attempt++) {
+                let response;
+                try {
+                    response = await window.CleveresBridge.fetch(url, options);
+                    if (response.status !== 503 || attempt >= startupRetryDelaysMs.length || typeof response.clone !== 'function') return response;
+                    let message = '';
+                    try { message = (await response.clone().text()).trim(); } catch (_) { return response; }
+                    if (message !== 'Native WebUI runtime is starting; retry shortly') return response;
+                } catch (error) {
+                    const msg = String(error && error.message || '');
+                    const isTransient = msg.includes('Android adapter is unavailable') || msg.includes('Broken pipe') || msg.includes('service is unavailable');
+                    if (!isTransient || !canRetryTransient || attempt >= startupRetryDelaysMs.length) throw error;
+                }
+                if (options.signal && options.signal.aborted) throw new DOMException('The request was aborted', 'AbortError');
+                await new Promise((resolve, reject) => {
+                    let settled = false;
+                    const onAbort = () => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timer);
+                        if (options.signal) options.signal.removeEventListener('abort', onAbort);
+                        reject(new DOMException('The request was aborted', 'AbortError'));
+                    };
+                    const timer = setTimeout(() => {
+                        if (settled) return;
+                        settled = true;
+                        if (options.signal) options.signal.removeEventListener('abort', onAbort);
+                        resolve();
+                    }, startupRetryDelaysMs[attempt]);
+                    if (options.signal) {
+                        options.signal.addEventListener('abort', onAbort, { once: true });
+                        if (options.signal.aborted) onAbort();
+                    }
+                });
+            }
         }
         async function downloadBlob(blob, filename) {
 if (!window.CleveresBridge) throw new Error('Native WebUI bridge is unavailable');
