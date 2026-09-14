@@ -70,6 +70,12 @@ Rust/Native-Injector und Binder-Interception-Migration, Runtime-Lifecycle und Na
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Native Binder Interceptor Reentrancy-Härtung, Reduzierung von Lock-Konflikten, Begrenzung von Speicher und Caches sowie Benchmark-Suiten.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, Privacy und Plattformintegration
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native Laufzeitarchitektur |
 | 2026-08-30 | #1132 | StrongBox- und TEE-Weiterleitung |
 | 2026-09-07 | #1199 | StrongBox- und TEE-Keybox-Indexierung & AttestKey-Erhalt |
+| 2026-09-14 | #1217 | Native Binder Interceptor Härtung, Lock-Optimierung & Cache-Begrenzung |

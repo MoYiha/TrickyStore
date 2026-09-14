@@ -66,7 +66,7 @@ Auto Identity kann Pixel-beta/canary-Metadaten von Google auflösen und lokal sp
 <a id="building"></a>
 ## Building
 
-Benötigt Java 21, SDK API 36, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86-64 Android targets, Cargo NDK und Submodules. Kotlin/Android-Checks, Rust fmt/clippy/tests und Unit Tests müssen erfolgreich sein.
+Benötigt Java 21, SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86-64 Android targets, Cargo NDK und Submodules. Kotlin/Android-Checks, Rust fmt/clippy/tests und Unit Tests müssen erfolgreich sein.
 
 CI prüft Shell, SELinux, Template, Kotlin/Java/Rust, beide Architekturen, Release/Debug ZIP und Encryptor. First-party C ist verboten; `binder_interceptor.cpp` ist die einzige erlaubte first-party C++ ABI-Grenze. Release: `./gradlew zipRelease`.
 

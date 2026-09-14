@@ -66,7 +66,7 @@ Auto Identity dapat mengambil Pixel beta/canary dari metadata publik Google dan 
 <a id="building"></a>
 ## Building
 
-Memerlukan Java 21, SDK API 36, NDK 27.3.13750724, CMake 3.22.1, stable Rust, target Android ARM64/x86 64, Cargo NDK dan submodule. Kotlin/Android checks, Rust fmt/clippy/tests dan unit tests harus lulus.
+Memerlukan Java 21, SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, target Android ARM64/x86 64, Cargo NDK dan submodule. Kotlin/Android checks, Rust fmt/clippy/tests dan unit tests harus lulus.
 
 CI memvalidasi shell, SELinux, template, Kotlin/Java/Rust, dua architecture, release/debug ZIP dan Encryptor. First-party C dilarang; `binder_interceptor.cpp` satu-satunya C++ ABI boundary. Release: `./gradlew zipRelease`.
 

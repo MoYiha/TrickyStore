@@ -70,6 +70,12 @@ https://github.com/tryigit/CleveresTricky/pull/909
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Усиление реентрантности нативного перехватчика Binder, снижение конфликтов блокировок, ограничение памяти и кэшей, а также наборы бенчмарков.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, privacy и интеграция с платформой
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox и TEE redirection |
 | 2026-09-07 | #1199 | Индексация keybox StrongBox и TEE & сохранение AttestKey |
+| 2026-09-14 | #1217 | Усиление нативного перехватчика Binder, оптимизация блокировок и кэшей |

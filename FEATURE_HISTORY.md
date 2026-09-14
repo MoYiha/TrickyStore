@@ -52,6 +52,10 @@ This page records the public development history of major CleveresTricky feature
   Rust/native injector and Binder interception migration, runtime lifecycle handling and native hardening.
   https://github.com/tryigit/CleveresTricky/pull/876
 
+- **#1217, 2026-09-14**
+  Native Binder interceptor reentrancy hardening, lock contention reduction, memory and cache bounding, and benchmark suites.
+  https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, privacy and platform integration
 
 - **#476**
@@ -87,5 +91,6 @@ This page records the public development history of major CleveresTricky feature
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox and TEE redirection |
 | 2026-09-07 | #1199 | StrongBox and TEE keybox indexing & AttestKey preservation |
+| 2026-09-14 | #1217 | Native Binder interceptor hardening, lock contention reduction & cache bounding |
 
 All links above point directly to the project's public GitHub development records.
