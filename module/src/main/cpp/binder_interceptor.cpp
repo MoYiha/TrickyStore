@@ -606,17 +606,20 @@ static thread_local bool tls_forwarding = false;
 /**
  * RAII guard to manage the thread-local Binder forwarding state.
  * Prevents recursive ioctl interception during outgoing Binder transactions.
+ * Preserves the previous forwarding state to support nested reentrant calls safely.
  */
 struct ForwardGuard {
-  /**
-   * Constructs the guard and marks the current thread as actively forwarding.
-   */
-  ForwardGuard() { tls_forwarding = true; }
+  const bool prev_;
 
   /**
-   * Destructs the guard and resets the thread-local forwarding state.
+   * Constructs the guard, saving the previous forwarding state and marking the current thread as forwarding.
    */
-  ~ForwardGuard() { tls_forwarding = false; }
+  ForwardGuard() : prev_(tls_forwarding) { tls_forwarding = true; }
+
+  /**
+   * Destructs the guard and restores the previous thread-local forwarding state.
+   */
+  ~ForwardGuard() { tls_forwarding = prev_; }
   ForwardGuard(const ForwardGuard&) = delete;
   ForwardGuard& operator=(const ForwardGuard&) = delete;
 };
@@ -843,6 +846,7 @@ status_t BinderInterceptor::onTransact(uint32_t code,
     }
     if (replaced_interceptor != nullptr) {
       Parcel notification;
+      ForwardGuard forward_guard;
       replaced_interceptor->transact(INTERCEPTOR_REPLACED, notification,
                                      nullptr, IBinder::FLAG_ONEWAY);
     }
@@ -966,8 +970,10 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   CHECK(tmpData.writeInt32(static_cast<int32_t>(calling_pid)));
   CHECK(tmpData.writeUint64(data.dataSize()));
   CHECK(tmpData.appendFrom(&data, 0, data.dataSize()));
-  ForwardGuard forward_guard;
-  CHECK(interceptor->transact(PRE_TRANSACT, tmpData, &tmpReply));
+  {
+    ForwardGuard forward_guard;
+    CHECK(interceptor->transact(PRE_TRANSACT, tmpData, &tmpReply));
+  }
   int32_t preType;
   CHECK(tmpReply.readInt32(&preType));
   LOGD("pre transact type %d", preType);
@@ -1043,7 +1049,10 @@ bool BinderInterceptor::handleIntercept(sp<BBinder> target, uint32_t code,
   if (reply) {
     CHECK_POST(tmpData.appendFrom(reply, 0, reply->dataSize()));
   }
-  CHECK_POST(interceptor->transact(POST_TRANSACT, tmpData, &tmpReply));
+  {
+    ForwardGuard forward_guard;
+    CHECK_POST(interceptor->transact(POST_TRANSACT, tmpData, &tmpReply));
+  }
   int32_t postType;
   CHECK_POST(tmpReply.readInt32(&postType));
   LOGD("post transact type %d", postType);

@@ -83,17 +83,17 @@ class ConfigEnhancementTest {
             assertEquals("FallbackMan", Config.getBuildVar("MANUFACTURER"))
 
             // Verify Fallback to Build Var
-            val manBytes = Config.getAttestationId("MANUFACTURER", 0)
+            val manBytes = Config.getAttestationId("MANUFACTURER", 10_000)
             assertNotNull(manBytes)
             assertEquals("FallbackMan", String(manBytes!!))
 
             // Verify Explicit Override
-            val brandBytes = Config.getAttestationId("BRAND", 0)
+            val brandBytes = Config.getAttestationId("BRAND", 10_000)
             assertNotNull(brandBytes)
             assertEquals("ExplicitBrand", String(brandBytes!!))
 
             // Verify Missing
-            assertNull(Config.getAttestationId("MISSING", 0))
+            assertNull(Config.getAttestationId("MISSING", 10_000))
         } finally {
             root.deleteRecursively()
             Config.reset()

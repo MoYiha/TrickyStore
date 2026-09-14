@@ -948,7 +948,10 @@ object Config {
         tag: String,
         uid: Int,
     ): ByteArray? {
-        if (!PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, uid)) return null
+        if (isProtectedInfrastructureUid(uid)) return null
+        val identityEnabled = if (PolicyState.usesV2()) PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, uid) else isSpoofEnabled
+        if (!identityEnabled) return null
+        if (!PolicyState.usesV2() && identityTargetState.packages.size > 0 && !isIdentityTargeted(uid)) return null
         when (getAppPrivacyMode(uid)) {
             AppPrivacyMode.REDACT -> return ByteArray(0)
             AppPrivacyMode.ISOLATE -> {
@@ -2412,11 +2415,12 @@ object Config {
     }
 
     private fun isProtectedInfrastructureUid(callingUid: Int): Boolean {
+        if (callingUid < FIRST_APPLICATION_UID) return true
         val cached = getCachedDecision(rkpInfrastructureCache, callingUid)
         if (cached != null) return cached
         val packages = getPackages(callingUid)
-        val protected = packages.isEmpty() || packages.any(rkpInfrastructurePackages::contains)
-        cacheDecision(rkpInfrastructureCache, callingUid, protected)
+        val protected = packages.any(rkpInfrastructurePackages::contains)
+        if (packages.isNotEmpty()) cacheDecision(rkpInfrastructureCache, callingUid, protected)
         return protected
     }
 
@@ -2429,7 +2433,10 @@ object Config {
             val isDrm = cachedDrm ?: checkPackages(state.packages, callingUid).also { cacheDecision(state.cache, callingUid, it) }
             if (isDrm) return false
         }
-        if (isGlobalMode) return true
+        if (isGlobalMode) {
+            val packages = getPackages(callingUid)
+            return packages.isNotEmpty()
+        }
         if (getAppConfig(callingUid) != null) return true
         val state = targetState
         val cached = getCachedDecision(state.hackCache, callingUid)
@@ -2444,7 +2451,10 @@ object Config {
     fun isIdentityTargeted(callingUid: Int): Boolean {
         if (callingUid < FIRST_APPLICATION_UID) return false
         if (isProtectedInfrastructureUid(callingUid)) return false
-        if (isGlobalIdentityMode) return true
+        if (isGlobalIdentityMode) {
+            val packages = getPackages(callingUid)
+            return packages.isNotEmpty()
+        }
         if (getAppConfig(callingUid) != null) return true
         val state = identityTargetState
         val cached = getCachedDecision(state.cache, callingUid)
