@@ -754,9 +754,14 @@ object KeyboxVerifier {
         val spki = certificate.publicKey.encoded ?: return false
         for (md in legacyMessageDigests.get()!!) {
             val digest = md.digest(spki)
-            val hex = buildString(digest.size * 2) {
-                for (byte in digest) append(HEX[(byte.toInt() ushr 4) and 0xf]).append(HEX[byte.toInt() and 0xf])
+            val chars = CharArray(digest.size * 2)
+            var i = 0
+            for (byte in digest) {
+                val v = byte.toInt()
+                chars[i++] = HEX[(v ushr 4) and 0xf]
+                chars[i++] = HEX[v and 0xf]
             }
+            val hex = String(chars)
             digest.fill(0)
             if (revoked.contains(hex)) return true
         }
