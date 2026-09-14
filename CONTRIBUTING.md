@@ -19,7 +19,7 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-For a complete module build, install Android SDK 36, NDK `27.3.13750724`, Rust, `cargo-ndk`, and the `aarch64-linux-android` and `x86_64-linux-android` targets, then run `./gradlew zipDebug`.
+For a complete module build, install Android SDK 37, NDK `27.3.13750724`, Rust, `cargo-ndk`, and the `aarch64-linux-android` and `x86_64-linux-android` targets, then run `./gradlew zipDebug`.
 
 ## Expectations
 
