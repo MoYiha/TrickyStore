@@ -3,9 +3,10 @@
 use cleverestricky_attestation_core::{
     inspect_captured_patch_levels, rewrite_extension, PatchLevels, RewriteRequest,
 };
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use der::asn1::Any;
 use der::{Encode, Tag};
+use std::hint::black_box;
 
 const ROOT_OF_TRUST_TAG: u32 = 704;
 const BOOT_KEY: [u8; 32] = [0x11; 32];
