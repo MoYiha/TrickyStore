@@ -6,7 +6,6 @@ import android.system.keystore2.KeyMetadata;
 
 import androidx.annotation.VisibleForTesting;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.KeyPair;
 import java.security.cert.Certificate;
