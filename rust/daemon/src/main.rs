@@ -1320,7 +1320,10 @@ fn drain_exact(
         let chunk = remaining.min(scratch.len());
         let read = stream.read(&mut scratch[..chunk])?;
         if read == 0 {
-            break;
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "stream ended before payload was fully drained",
+            ));
         }
         remaining -= read;
     }

@@ -98,7 +98,7 @@ jobs:
 
           # Rust is part of the service/module/native integration contract. Any change in
           # those consumers must run the full workspace quality gate, not only selected tests.
-          if [[ "$module" == "true" || "$android_app" == "true" ]]; then
+          if [[ "$module" == "true" || "$android_app" == "true" || "$rust" == "true" ]]; then
             rust=true
             build=true
           fi
