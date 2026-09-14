@@ -220,15 +220,7 @@ object Config {
         }
         getCachedValue(state.cache, uid)?.let { return PolicyState.resolveAppConfig(uid, it.value) }
         val pkgs = getPackages(uid)
-        var result: AppSpoofConfig? = null
-        val len = pkgs.size
-        for (i in 0 until len) {
-            val config = state.configs.get(pkgs[i])
-            if (config != null) {
-                result = config
-                break
-            }
-        }
+        val result = pkgs.firstNotNullOfOrNull { state.configs.get(it) }
         cacheValue(state.cache, uid, result)
         return PolicyState.resolveAppConfig(uid, result)
     }
