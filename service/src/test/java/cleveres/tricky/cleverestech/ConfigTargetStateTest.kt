@@ -121,9 +121,11 @@ class ConfigTargetStateTest {
         val untargetedBrand = Config.getAttestationId("BRAND", nonTargetUid)
         assertNull("Untargeted app must not receive attestation ID when global identity mode is off", untargetedBrand)
 
-        // System UID must NEVER receive spoofed attestation IDs
+        // System and root UIDs must NEVER receive spoofed attestation IDs
         val systemBrand = Config.getAttestationId("BRAND", systemUid)
         assertNull("System UID must never receive spoofed attestation ID", systemBrand)
+        val rootBrand = Config.getAttestationId("BRAND", 0)
+        assertNull("Root UID 0 must never receive spoofed attestation ID", rootBrand)
     }
 
     private fun createIdentityTargetState(packages: PackageTrie<Boolean>): Any {
