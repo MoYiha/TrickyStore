@@ -1350,6 +1350,134 @@ fn drain_exact(
     Ok(())
 }
 
+fn forward_web_request_inner(
+    client: &mut UnixStream,
+    request: FrameHeader,
+    adapter: &mut Option<RegisteredAdapter>,
+    scratch: &mut [u8],
+    timeout: Duration,
+) -> Result<(), ForwardError> {
+    let deadline = Instant::now() + timeout;
+    let target = match adapter.as_mut() {
+        Some(registered) => &mut registered.stream,
+        None => {
+            let _ = drain_exact(client, request.payload_len, scratch, deadline);
+            return Err(ForwardError::AdapterUnavailable(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Android adapter is unavailable",
+            )));
+        }
+    };
+
+    let initial_rem = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
+    target
+        .set_read_timeout(Some(initial_rem))
+        .map_err(ForwardError::AdapterFailed)?;
+    target
+        .set_write_timeout(Some(initial_rem))
+        .map_err(ForwardError::AdapterFailed)?;
+    write_header(target, request).map_err(ForwardError::AdapterFailed)?;
+
+    let mut remaining = request.payload_len;
+    let mut client_read_failed = false;
+    while remaining != 0 {
+        let rem = match remaining_timeout(deadline) {
+            Ok(t) => t,
+            Err(_) => {
+                client_read_failed = true;
+                break;
+            }
+        };
+        if client.set_read_timeout(Some(rem)).is_err() {
+            client_read_failed = true;
+            break;
+        }
+        let chunk_len = remaining.min(scratch.len());
+        if client.read_exact(&mut scratch[..chunk_len]).is_err() {
+            client_read_failed = true;
+            break;
+        }
+        let rem_target = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
+        target
+            .set_write_timeout(Some(rem_target))
+            .map_err(ForwardError::AdapterFailed)?;
+        target
+            .write_all(&scratch[..chunk_len])
+            .map_err(ForwardError::AdapterFailed)?;
+        remaining -= chunk_len;
+    }
+
+    if client_read_failed {
+        return Err(ForwardError::ClientFailed {
+            preserve_adapter: false,
+        });
+    }
+
+    let rem_resp = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
+    target
+        .set_read_timeout(Some(rem_resp))
+        .map_err(ForwardError::AdapterFailed)?;
+    let response =
+        read_header_bounded(target, MAX_FRAME_BYTES).map_err(ForwardError::AdapterFailed)?;
+    if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
+        return Err(ForwardError::AdapterFailed(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "adapter returned an invalid response header",
+        )));
+    }
+
+    let rem_client = match remaining_timeout(deadline) {
+        Ok(t) => t,
+        Err(_) => Duration::from_millis(1),
+    };
+    let _ = client.set_write_timeout(Some(rem_client));
+    if write_header(client, response).is_err() {
+        let drain_ok = drain_exact(target, response.payload_len, scratch, deadline).is_ok();
+        return Err(ForwardError::ClientFailed {
+            preserve_adapter: drain_ok,
+        });
+    }
+
+    let mut remaining_resp = response.payload_len;
+    let mut client_write_failed = None;
+    while remaining_resp != 0 {
+        let rem_target = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
+        target
+            .set_read_timeout(Some(rem_target))
+            .map_err(ForwardError::AdapterFailed)?;
+        let chunk_len = remaining_resp.min(scratch.len());
+        target
+            .read_exact(&mut scratch[..chunk_len])
+            .map_err(ForwardError::AdapterFailed)?;
+
+        let rem_client = match remaining_timeout(deadline) {
+            Ok(t) => t,
+            Err(_) => {
+                let unread = remaining_resp - chunk_len;
+                let drain_ok = drain_exact(target, unread, scratch, deadline).is_ok();
+                client_write_failed = Some(drain_ok);
+                break;
+            }
+        };
+        let _ = client.set_write_timeout(Some(rem_client));
+        if client.write_all(&scratch[..chunk_len]).is_err() {
+            let unread = remaining_resp - chunk_len;
+            let drain_ok = drain_exact(target, unread, scratch, deadline).is_ok();
+            client_write_failed = Some(drain_ok);
+            break;
+        }
+        remaining_resp -= chunk_len;
+    }
+
+    if let Some(drain_ok) = client_write_failed {
+        Err(ForwardError::ClientFailed {
+            preserve_adapter: drain_ok,
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// Forwards a web request to the registered adapter and relays the response back to the client.
 fn forward_web_request_with_timeout(
     client: &mut UnixStream,
@@ -1358,130 +1486,7 @@ fn forward_web_request_with_timeout(
     scratch: &mut [u8],
     timeout: Duration,
 ) -> Result<(), ForwardError> {
-    let deadline = Instant::now() + timeout;
-    let result = {
-        let target = match adapter.as_mut() {
-            Some(registered) => &mut registered.stream,
-            None => {
-                let _ = drain_exact(client, request.payload_len, scratch, deadline);
-                return Err(ForwardError::AdapterUnavailable(io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    "Android adapter is unavailable",
-                )));
-            }
-        };
-
-        let initial_rem = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-        target
-            .set_read_timeout(Some(initial_rem))
-            .map_err(ForwardError::AdapterFailed)?;
-        target
-            .set_write_timeout(Some(initial_rem))
-            .map_err(ForwardError::AdapterFailed)?;
-        write_header(target, request).map_err(ForwardError::AdapterFailed)?;
-
-        let mut remaining = request.payload_len;
-        let mut client_read_failed = false;
-        while remaining != 0 {
-            let rem = match remaining_timeout(deadline) {
-                Ok(t) => t,
-                Err(_) => {
-                    client_read_failed = true;
-                    break;
-                }
-            };
-            if client.set_read_timeout(Some(rem)).is_err() {
-                client_read_failed = true;
-                break;
-            }
-            let chunk_len = remaining.min(scratch.len());
-            if client.read_exact(&mut scratch[..chunk_len]).is_err() {
-                client_read_failed = true;
-                break;
-            }
-            let rem_target = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-            target
-                .set_write_timeout(Some(rem_target))
-                .map_err(ForwardError::AdapterFailed)?;
-            target
-                .write_all(&scratch[..chunk_len])
-                .map_err(ForwardError::AdapterFailed)?;
-            remaining -= chunk_len;
-        }
-
-        if client_read_failed {
-            Err(ForwardError::ClientFailed {
-                preserve_adapter: false,
-            })
-        } else {
-            let rem_resp = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-            target
-                .set_read_timeout(Some(rem_resp))
-                .map_err(ForwardError::AdapterFailed)?;
-            let response = read_header_bounded(target, MAX_FRAME_BYTES)
-                .map_err(ForwardError::AdapterFailed)?;
-            if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
-                Err(ForwardError::AdapterFailed(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "adapter returned an invalid response header",
-                )))
-            } else {
-                let rem_client = match remaining_timeout(deadline) {
-                    Ok(t) => t,
-                    Err(_) => Duration::from_millis(1),
-                };
-                let _ = client.set_write_timeout(Some(rem_client));
-                if write_header(client, response).is_err() {
-                    let drain_ok =
-                        drain_exact(target, response.payload_len, scratch, deadline).is_ok();
-                    Err(ForwardError::ClientFailed {
-                        preserve_adapter: drain_ok,
-                    })
-                } else {
-                    let mut remaining_resp = response.payload_len;
-                    let mut client_write_failed = None;
-                    while remaining_resp != 0 {
-                        let rem_target =
-                            remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-                        target
-                            .set_read_timeout(Some(rem_target))
-                            .map_err(ForwardError::AdapterFailed)?;
-                        let chunk_len = remaining_resp.min(scratch.len());
-                        target
-                            .read_exact(&mut scratch[..chunk_len])
-                            .map_err(ForwardError::AdapterFailed)?;
-
-                        let rem_client = match remaining_timeout(deadline) {
-                            Ok(t) => t,
-                            Err(_) => {
-                                let unread = remaining_resp - chunk_len;
-                                let drain_ok =
-                                    drain_exact(target, unread, scratch, deadline).is_ok();
-                                client_write_failed = Some(drain_ok);
-                                break;
-                            }
-                        };
-                        let _ = client.set_write_timeout(Some(rem_client));
-                        if client.write_all(&scratch[..chunk_len]).is_err() {
-                            let unread = remaining_resp - chunk_len;
-                            let drain_ok = drain_exact(target, unread, scratch, deadline).is_ok();
-                            client_write_failed = Some(drain_ok);
-                            break;
-                        }
-                        remaining_resp -= chunk_len;
-                    }
-                    if let Some(drain_ok) = client_write_failed {
-                        Err(ForwardError::ClientFailed {
-                            preserve_adapter: drain_ok,
-                        })
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
-        }
-    };
-
+    let result = forward_web_request_inner(client, request, adapter, scratch, timeout);
     match &result {
         Err(ForwardError::AdapterFailed(_))
         | Err(ForwardError::ClientFailed {
