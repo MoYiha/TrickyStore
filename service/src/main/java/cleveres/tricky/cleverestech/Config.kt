@@ -934,11 +934,16 @@ object Config {
     private const val MAX_BUILD_VARS_BYTES = 1024 * 1024L
     private const val MAX_BUILD_VAR_ENTRIES = 512
     private const val MAX_BUILD_VAR_VALUE_LENGTH = 512
-
     private val stringToBytesCache = ConcurrentHashMap<String, ByteArray>()
 
+    /**
+     * Returns the global attestation ID byte array for a given tag.
+     */
     fun getAttestationId(tag: String): ByteArray? = attestationIds[tag]
 
+    /**
+     * Resolves an attestation ID for a given tag and calling UID with bounded caching.
+     */
     fun getAttestationId(
         tag: String,
         uid: Int,
@@ -963,6 +968,7 @@ object Config {
         if (global != null) return global
         val value = getBuildVar(tag, uid) ?: return null
         return stringToBytesCache.getOrPut(value) { value.toByteArray(Charsets.UTF_8) }
+            .also { if (stringToBytesCache.size > MAX_BUILD_VAR_ENTRIES) stringToBytesCache.clear() }
     }
 
     @Volatile
@@ -1540,6 +1546,9 @@ object Config {
             else -> runCatching { value.convertPatchLevel(false) }.map { value }.getOrNull()
         }
 
+    /**
+     * Resolves the security patch integer level for a template date string with bounded caching.
+     */
     private fun resolvePatchValue(value: String, long: Boolean): Int {
         val cacheKey = "${if (long) "long" else "short"}:$value"
         val nowMs = clockSource()
@@ -1553,6 +1562,7 @@ object Config {
                     .replace("DD", String.format(Locale.ROOT, "%02d", now.dayOfMonth))
         val result = effectiveDate.convertPatchLevel(long)
         dynamicPatchCache[cacheKey] = nowMs to result
+        if (dynamicPatchCache.size > MAX_SECURITY_PATCH_RULES) dynamicPatchCache.clear()
         return result
     }
 

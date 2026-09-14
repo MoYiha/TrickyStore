@@ -47,6 +47,7 @@ Yalnızca kullanmaya yetkili olduğunuz yapılandırma ve kimlik bilgilerini kul
 
 ## Daha fazla bilgi
 
+- [Strong Integrity Rehberi](docs/StrongIntegrityGuide.md) - Orijinal, AOSP ve Custom ROM'lar için Google Play Integrity (MEETS_STRONG_INTEGRITY) hızlı başlangıç kılavuzu.
 - [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
 - [Application Scope](docs/ApplicationScope.md) ve [Application Rules](docs/ApplicationRules.md) - özelliklerin hangi uygulamalara uygulanacağını seçin.
 - [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) ve [Patch Levels](docs/PatchLevels.md) - isteğe bağlı kimlik kontrolleri.

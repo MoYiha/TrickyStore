@@ -47,6 +47,7 @@ CleveresTricky 改善的是本地兼容路径。最终远程结果仍取决于�
 
 ## 了解更多
 
+- [Strong Integrity 指南](docs/StrongIntegrityGuide.md) - 面向官方系统、AOSP 与第三方 ROM 的 Google Play Integrity (MEETS_STRONG_INTEGRITY) 快速配置指南。
 - [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX 加载、验证、选择和撤销检查。
 - [Application Scope](docs/ApplicationScope.md) 与 [Application Rules](docs/ApplicationRules.md) - 决定功能作用于哪些应用。
 - [Build Identity](docs/BuildIdentity.md)、[Telephony Identity](docs/TelephonyIdentity.md) 与 [Patch Levels](docs/PatchLevels.md) - 可选身份控制。

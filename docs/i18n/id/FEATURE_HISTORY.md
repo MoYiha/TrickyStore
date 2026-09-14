@@ -70,6 +70,12 @@ Migrasi injector dan Binder interception ke Rust/Native, runtime lifecycle, dan 
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Penguatan reentrancy pencegat Binder native, pengurangan contention lock, pembatasan memori dan cache, serta rangkaian benchmark.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, privacy, dan integrasi platform
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox dan TEE redirection |
 | 2026-09-07 | #1199 | Pengindeksan keybox StrongBox dan TEE & pelestarian AttestKey |
+| 2026-09-14 | #1217 | Penguatan pencegat Binder native, optimasi lock & pembatasan cache |

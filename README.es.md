@@ -47,6 +47,7 @@ Utiliza únicamente configuraciones y credenciales para las que tengas autorizac
 
 ## Más información
 
+- [Guía de Strong Integrity](docs/StrongIntegrityGuide.md) - guía de inicio rápido para pasar Google Play Integrity (MEETS_STRONG_INTEGRITY) en ROMs oficiales, AOSP y personalizadas.
 - [Keybox Manager](docs/KeyboxManager.md) - carga, verificación, selección y comprobaciones de revocación de Keybox/CBOX.
 - [Application Scope](docs/ApplicationScope.md) y [Application Rules](docs/ApplicationRules.md) - elige dónde se aplican las funciones.
 - [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) y [Patch Levels](docs/PatchLevels.md) - controles opcionales de identidad.

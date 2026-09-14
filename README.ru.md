@@ -47,6 +47,7 @@ CleveresTricky улучшает локальный путь совместимо
 
 ## Подробнее
 
+- [Руководство по Strong Integrity](docs/StrongIntegrityGuide.md) - быстрое руководство по прохождению Google Play Integrity (MEETS_STRONG_INTEGRITY) на официальных, AOSP и кастомных прошивках.
 - [Keybox Manager](docs/KeyboxManager.md) - загрузка, проверка, выбор и проверка отзыва Keybox/CBOX.
 - [Application Scope](docs/ApplicationScope.md) и [Application Rules](docs/ApplicationRules.md) - выбор приложений, к которым применяются функции.
 - [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) и [Patch Levels](docs/PatchLevels.md) - дополнительные настройки идентичности.

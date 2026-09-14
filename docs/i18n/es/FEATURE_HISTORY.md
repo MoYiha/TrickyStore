@@ -70,6 +70,12 @@ Migración del injector y Binder interception a Rust/Native, ciclo de vida en ru
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Endurecimiento de reentrancia en el interceptor nativo de Binder, reducción de contención de bloqueos, límites de memoria y cachés, y suites de benchmarks.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, privacidad e integración con la plataforma
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox y TEE redirection |
 | 2026-09-07 | #1199 | Indexación de keybox StrongBox/TEE y preservación de AttestKey |
+| 2026-09-14 | #1217 | Endurecimiento de interceptor nativo de Binder, optimización de bloqueos y límite de cachés |

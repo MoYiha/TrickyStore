@@ -70,6 +70,12 @@ Rust/native injector ve Binder interception dönüşümü, runtime lifecycle ve 
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Native Binder interceptor reentrancy güçlendirmesi, kilit çekişmesinin azaltılması, bellek ve önbellek sınırlandırmaları ile benchmark paketleri.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity, privacy ve platform entegrasyonu
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox ve TEE redirection |
 | 2026-09-07 | #1199 | StrongBox ve TEE keybox indeksleme & AttestKey imza bütünlüğü |
+| 2026-09-14 | #1217 | Native Binder interceptor güçlendirmesi, kilit optimizasyonu ve önbellek sınırlandırmaları |

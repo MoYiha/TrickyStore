@@ -66,7 +66,7 @@ Auto Identity kann Pixel-beta/canary-Metadaten von Google auflösen und lokal sp
 <a id="building"></a>
 ## Building
 
-Benötigt Java 21, SDK API 36, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86-64 Android targets, Cargo NDK und Submodules. Kotlin/Android-Checks, Rust fmt/clippy/tests und Unit Tests müssen erfolgreich sein.
+Benötigt Java 21, SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, aarch64-linux-android und x86_64-linux-android Android targets, Cargo NDK und Submodules. Kotlin/Android-Checks, Rust fmt/clippy/tests und Unit Tests müssen erfolgreich sein.
 
 CI prüft Shell, SELinux, Template, Kotlin/Java/Rust, beide Architekturen, Release/Debug ZIP und Encryptor. First-party C ist verboten; `binder_interceptor.cpp` ist die einzige erlaubte first-party C++ ABI-Grenze. Release: `./gradlew zipRelease`.
 
@@ -250,3 +250,20 @@ Diagnosen gehen in Android logcat, nicht in eine separate Plaintext-Logdatei. Ha
 Minimalistisches monochromes Nothing-OS/Modern-Hybrid: dunkler Charcoal-Hintergrund, hellgrauer Text, silberner Accent, dunkle Panels, grüner Success, roter Danger. System Sans, technische Daten Monospace, Dynamic Island, runde Buttons, Modern-Toggles und Mobile-first Layout.
 
 Touch-Ziele mindestens etwa 44px, vertikaler Flow bevorzugt und Optimierung für Bedienung im KernelSU/APatch-Modulmanager.
+
+<a id="strong-integrity-guide"></a>
+## Strong Integrity Leitfaden
+
+Schritte zum Bestehen von Google Play Integrity (`MEETS_STRONG_INTEGRITY`) mit CleveresTricky nach ROM-Typ:
+
+- **Offizielle ROM (Stock)**: CleveresTricky installieren und eine gültige Keybox hinzufügen. Normalerweise sind keine weiteren Einstellungen nötig.
+- **Offizielle ROM mit sehr altem Sicherheitspatch**: Im WebUI Dashboard `Security Patch` aktivieren und auf `Auto` setzen.
+- **AOSP ROM**: Im WebUI Dashboard `Identity` aktivieren und Fingerprint anpassen (Auto Pixel Identity oder Geräteschablone wählen). *(Hinweis: Identity und automatisches Spoofing können den RAM-Bedarf durch dynamische Eigenschaftsauswertung leicht erhöhen).*
+- **Custom ROM**: Custom ROMs werden offiziell nicht unterstützt. Wenn das Keystore defekt ist oder native Hardware-Attestation fehlschlägt, die alte Fallback-Methode prüfen.
+
+**Keybox-Tools und Import:**
+- Online-Checker: https://keybox.tryigit.dev/checker
+- Keybox-Download & Info: https://keybox.tryigit.dev/
+- Import: Über CleveresTricky WebUI → Keybox Manager hochladen. Kein manuelles Kopieren in alte TrickyStore-Verzeichnisse erforderlich.
+
+**Rechtlicher Hinweis & Community-Info:** CleveresTricky ist ein unabhängiges Open-Source-Community-Projekt ohne Verbindung zu Google LLC. Google Play Integrity Regeln und Erkennungen können sich jederzeit unangekündigt ändern; dauerhafte Verifizierungen können nicht garantiert werden. Nur eigene oder autorisierte Schlüssel verwenden.

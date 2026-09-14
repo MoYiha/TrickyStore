@@ -70,6 +70,12 @@ Rust/Native injector 和 Binder interception 迁移、Runtime lifecycle 以及 n
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217, 2026-09-14**
+
+Native Binder 拦截器重入加固、锁争用优化、内存与缓存边界约束以及基准测试套件。
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity、Privacy 与平台集成
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox 与 TEE redirection |
 | 2026-09-07 | #1199 | StrongBox 与 TEE keybox 索引及 AttestKey 签名保留 |
+| 2026-09-14 | #1217 | Native Binder 拦截器加固、锁竞争优化与缓存边界约束 |

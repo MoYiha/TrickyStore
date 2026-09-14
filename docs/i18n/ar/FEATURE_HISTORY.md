@@ -70,6 +70,12 @@ https://github.com/tryigit/CleveresTricky/pull/909
 
 https://github.com/tryigit/CleveresTricky/pull/876
 
+**#1217، 2026-09-14**
+
+تقوية Binder interceptor ضد reentrancy، تقليل تعارض الأقفال، تقييد حدود الذاكرة والتخزين المؤقت، وإضافة حزم الاختبارات القياسية.
+
+https://github.com/tryigit/CleveresTricky/pull/1217
+
 ## Identity وPrivacy والتكامل مع المنصة
 
 **#476**
@@ -115,3 +121,4 @@ https://github.com/tryigit/CleveresTricky/pull/1132
 | 2026-08-09 | #876 | Rust/native runtime architecture |
 | 2026-08-30 | #1132 | StrongBox وTEE redirection |
 | 2026-09-07 | #1199 | فهرسة صناديق مفاتيح StrongBox وTEE والحفاظ على AttestKey |
+| 2026-09-14 | #1217 | تقوية Native Binder interceptor وتحسين الأقفال والذاكرة المؤقتة |

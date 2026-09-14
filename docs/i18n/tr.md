@@ -66,7 +66,7 @@ Auto Identity, Custom ROM kullanıcıları için Google public metadata üzerind
 <a id="building"></a>
 ## Building
 
-Build için Java 21, Android SDK API 36, NDK 27.3.13750724, CMake 3.22.1, stable Rust, ARM64/x86 64 Android Rust target'ları, Cargo NDK ve git submodule'ları gerekir. Kotlin/Android lint ile Rust fmt, clippy ve testleri çalıştırılır; modül paketlemesi unit testleri de içerir.
+Build için Java 21, Android SDK API 37, NDK 27.3.13750724, CMake 3.22.1, stable Rust, aarch64-linux-android ve x86_64-linux-android Android Rust target'ları, Cargo NDK ve git submodule'ları gerekir. Kotlin/Android lint ile Rust fmt, clippy ve testleri çalıştırılır; modül paketlemesi unit testleri de içerir.
 
 CI shell, SELinux, template structure, Kotlin/Java/Rust testleri, iki mimari, release/debug ZIP ve Encryptor app'i doğrular. First-party C yasaktır; yalnız Android libbinder/LSPlt ABI sınırı olan `binder_interceptor.cpp` first-party C++ istisnasıdır. Release için `./gradlew zipRelease`, debug için `./gradlew zipDebug` kullanılır.
 
@@ -250,3 +250,20 @@ CleveresTricky ayrı plain log file tutmaz; tanılama Android logcat'e yazılır
 WebUI minimalist monochrome Nothing OS / Modern hybrid tasarım kullanır. Arka plan koyu charcoal, foreground light gray, accent silver, panel dark gray, success emerald ve danger red'dir. Typography system sans-serif, teknik veri monospace; Dynamic Island bildirimleri, rounded buttons, Modern-style toggles ve responsive mobile-first layout kullanılır.
 
 Touch target'lar en az yaklaşık 44 px olmalı, vertical flow horizontal karmaşıklığa tercih edilmeli ve tasarım KernelSU/APatch içindeki telefon kullanımına optimize edilmelidir.
+
+<a id="strong-integrity-guide"></a>
+## Strong Integrity Rehberi
+
+CleveresTricky ile Google Play Integrity (`MEETS_STRONG_INTEGRITY`) geçişi için ROM tipine göre hızlı adımlar:
+
+- **Orijinal (Stock) ROM**: CleveresTricky'yi kurun ve geçerli bir Keybox ekleyin. Genellikle başka hiçbir ayara gerek yoktur.
+- **Eski Güvenlik Yamalı Orijinal ROM**: WebUI Dashboard'dan `Security Patch` özelliğini açın ve `Auto` moduna ayarlayın.
+- **AOSP ROM**: WebUI Dashboard'dan `Identity` (Spoof Engine) özelliğini açın, parmak izinizi spoof edin (Auto Pixel Identity veya sertifikalı bir model şablonu seçebilirsiniz). *(Not: Identity ve otomatik spoofing dinamik property eşlemesi nedeniyle RAM kullanımını bir miktar artırabilir.)*
+- **Custom ROM**: Custom ROM'lar resmi olarak desteklenmez. Keystore'unuz bozuksa veya native donanım attestation çalışmıyorsa eski yöntemleri inceleyin.
+
+**Keybox Araçları ve İçe Aktarma:**
+- Keybox Doğrulayıcı (Online Checker): https://keybox.tryigit.dev/checker
+- Keybox İndirme ve Bilgi: https://keybox.tryigit.dev/
+- İçe Aktarma: CleveresTricky WebUI → Keybox Manager üzerinden yükleyin. Dosyayı manuel olarak eski TrickyStore dizinlerine kopyalamanıza gerek yoktur; CleveresTricky güvenli ve yalıtılmış şekilde depolar.
+
+**Yasal Uyarı ve Topluluk Bildirimi:** CleveresTricky bağımsız bir açık kaynak topluluk projesidir, Google LLC ile bağlantısı yoktur. Google Play Integrity kuralları ve tespit yöntemleri Google tarafından habersiz olarak her an değiştirilebilir; bu nedenle kalıcı veya garantili geçiş taahhüt edilemez. Sadece test etmeye yetkili olduğunuz kendi anahtarlarınızı kullanın.
