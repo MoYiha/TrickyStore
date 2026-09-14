@@ -2,7 +2,10 @@ package cleveres.tricky.cleverestech
 
 import cleveres.tricky.cleverestech.util.PackageTrie
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -89,6 +92,38 @@ class ConfigTargetStateTest {
         assertTrue("Untargeted app must be targeted when global identity mode is on", Config.isIdentityTargeted(nonTargetUid))
         assertTrue("Targeted app must still be targeted when global identity mode is on", Config.isIdentityTargeted(appUid))
         assertFalse("System UID must still be protected when global identity mode is on", Config.isIdentityTargeted(systemUid))
+    }
+
+    @Test
+    fun `getAttestationId honors identity targeting and protects untargeted and system UIDs`() {
+        val appUid = 10_020
+        val nonTargetUid = 10_021
+        val systemUid = 1000
+
+        mockPackage(appUid, arrayOf("com.android.vending"))
+        mockPackage(nonTargetUid, arrayOf("com.example.untargeted"))
+        mockPackage(systemUid, arrayOf("android"))
+
+        val trie = PackageTrie<Boolean>()
+        trie.add("com.android.vending", true)
+        val idState = createIdentityTargetState(trie)
+        setPrivateField(Config, "identityTargetState", idState)
+        setPrivateField(Config, "isGlobalIdentityMode", false)
+        setPrivateField(Config, "isSpoofEnabled", true)
+        setPrivateField(Config, "attestationIds", mapOf("BRAND" to "google".toByteArray(Charsets.UTF_8)))
+
+        // Targeted app must receive the attestation ID
+        val targetedBrand = Config.getAttestationId("BRAND", appUid)
+        assertNotNull("Targeted app in identity_target.txt must receive attestation ID", targetedBrand)
+        assertEquals("google", String(requireNotNull(targetedBrand)))
+
+        // Untargeted app must NOT receive the attestation ID (fail closed / transparent)
+        val untargetedBrand = Config.getAttestationId("BRAND", nonTargetUid)
+        assertNull("Untargeted app must not receive attestation ID when global identity mode is off", untargetedBrand)
+
+        // System UID must NEVER receive spoofed attestation IDs
+        val systemBrand = Config.getAttestationId("BRAND", systemUid)
+        assertNull("System UID must never receive spoofed attestation ID", systemBrand)
     }
 
     private fun createIdentityTargetState(packages: PackageTrie<Boolean>): Any {
