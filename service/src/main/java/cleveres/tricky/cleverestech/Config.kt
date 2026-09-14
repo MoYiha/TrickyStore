@@ -948,7 +948,7 @@ object Config {
         tag: String,
         uid: Int,
     ): ByteArray? {
-        if (uid in 1 until FIRST_APPLICATION_UID || isProtectedInfrastructureUid(uid)) return null
+        if (uid in 1 until FIRST_APPLICATION_UID) return null
         if (!PolicyState.isFeatureEnabled(PolicyState.Feature.ATTESTATION_IDENTITY, uid)) return null
         if (!PolicyState.usesV2() && identityTargetState.packages.size > 0 && !isIdentityTargeted(uid)) return null
         when (getAppPrivacyMode(uid)) {
