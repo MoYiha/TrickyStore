@@ -36,11 +36,6 @@ class KeyboxVerifierPaddingBugTest {
         val revokedSet = KeyboxVerifier.parseCrl(json)
         println("Revoked Set contains: " + revokedSet)
 
-        // In checkHash logic:
-        // val hex = digest.toHexString(hexFormat) -> returns "0a11..." (padded)
-        // KeyboxVerifier logic:
-        // BigInteger(decimalString).toString(16) -> returns "a11..." (not padded)
-
         // The set should ideally contain the padded version OR the checkHash logic should handle unpadded checks.
         // Since we cannot easily change checkHash logic without affecting other things or being inconsistent,
         // we should probably ensure the set contains the padded version if it's a hash length.
