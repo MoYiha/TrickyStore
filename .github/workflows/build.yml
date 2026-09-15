@@ -199,6 +199,8 @@ jobs:
       - name: Setup Android SDK
         if: needs.changes.outputs.gradle == 'true'
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: 'platform-tools'
 
       - name: "🐚 Shell Script Linting (Shellcheck)"
         if: needs.changes.outputs.shell == 'true'
@@ -442,6 +444,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Rust toolchain
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.module == 'true' || needs.changes.outputs.rust == 'true' }}
