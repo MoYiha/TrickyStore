@@ -72,6 +72,66 @@ vm.runInContext(`${implementation}\nthis.fetchAuth = fetchAuth;`, context, { fil
   assert.ok(abortTimer, 'startup retry must install a cancellable timer');
   abortController.abort();
   await assert.rejects(aborted, error => error && error.name === 'AbortError');
+
+  // Test transient retry with safe GET request
+  let transientGetCalls = 0;
+  context.setTimeout = callback => { callback(); return 3; };
+  context.window.CleveresBridge.fetch = () => {
+    transientGetCalls += 1;
+    if (transientGetCalls === 1) {
+      return Promise.reject(new Error('Android adapter is unavailable (Broken pipe)'));
+    }
+    return Promise.resolve({ status: 200, ok: true });
+  };
+  const getRes = await context.fetchAuth('/api/config', { method: 'GET' });
+  assert.equal(getRes.status, 200, 'safe GET request must retry on transient bridge error');
+  assert.equal(transientGetCalls, 2, 'GET must retry once after transient failure');
+
+  // Test non-idempotent POST fails fast on transient error without retrying
+  let postCalls = 0;
+  context.window.CleveresBridge.fetch = () => {
+    postCalls += 1;
+    return Promise.reject(new Error('Android adapter is unavailable (Broken pipe)'));
+  };
+  await assert.rejects(
+    context.fetchAuth('/api/toggle', { method: 'POST' }),
+    error => error && error.message.includes('Broken pipe'),
+    'state-changing POST must not automatically retry on transient error'
+  );
+  assert.equal(postCalls, 1, 'non-idempotent POST must not issue retry requests');
+
+  // Test explicit idempotent option retries on transient error
+  let idempotentPostCalls = 0;
+  context.window.CleveresBridge.fetch = () => {
+    idempotentPostCalls += 1;
+    if (idempotentPostCalls === 1) {
+      return Promise.reject(new Error('service is unavailable'));
+    }
+    return Promise.resolve({ status: 200, ok: true });
+  };
+  const idempotentRes = await context.fetchAuth('/api/save', {
+    method: 'POST',
+    idempotent: true
+  });
+  assert.equal(idempotentRes.status, 200, 'explicitly idempotent POST must retry on transient error');
+  assert.equal(idempotentPostCalls, 2, 'idempotent POST must retry once');
+
+  // Test POST with Idempotency-Key header does not retry without end-to-end deduplication support
+  let headerPostCalls = 0;
+  context.window.CleveresBridge.fetch = () => {
+    headerPostCalls += 1;
+    return Promise.reject(new Error('Android adapter is unavailable (Broken pipe)'));
+  };
+  await assert.rejects(
+    context.fetchAuth('/api/save', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'test-key-1' }
+    }),
+    error => error && error.message.includes('Broken pipe'),
+    'POST with Idempotency-Key header must not retry without explicit idempotency support'
+  );
+  assert.equal(headerPostCalls, 1, 'POST with Idempotency-Key header must not issue retry requests');
+
   console.log('Startup readiness retry regression checks passed');
 })().catch(error => {
   console.error(error);
