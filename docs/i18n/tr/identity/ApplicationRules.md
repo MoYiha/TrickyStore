@@ -1,0 +1,7 @@
+# Application Rules
+
+**Dil:** [English](../../../identity/ApplicationRules.md) | **Türkçe** | [简体中文](../../zh-CN/identity/ApplicationRules.md) | [Español](../../es/identity/ApplicationRules.md) | [Deutsch](../../de/identity/ApplicationRules.md) | [Русский](../../ru/identity/ApplicationRules.md) | [Bahasa Indonesia](../../id/identity/ApplicationRules.md) | [हिन्दी](../../hi/identity/ApplicationRules.md) | [العربية](../../ar/identity/ApplicationRules.md)
+
+Application Rules, uygun bir uygulamaya cihaz şablonu, doğrulanmış yerel keybox veya gizlilik politikası atar. Geçerli bir kural zaten açık bir hedef olduğu için ayrıca scope girdisi gerekmez. `inherit` global kimlik politikasını korur; `isolate` korunan random seed üzerinden uygulamaya özel kararlı IMEI, IMSI, ICCID, MEID, telefon, serial, desteklenen attestation kimlikleri ve modern DRM `deviceUniqueId` takma kimliği üretir; `redact` desteklenen telephony ve attestation değerlerini boş döndürürken Android izin hatalarını korur.
+
+Attestation kimliği değiştirme etkin ve doğrulanmış keybox gerektirir. DRM identifier isolation, DRM Keystore Passthrough'tan bağımsızdır. Shared UID paketleri tek deterministik bağlam olarak çözülür; gerçek paketler Package Manager üzerinden bulunur ve istek içindeki paket adına güvenilmez. Kurallar sınırlı trie içinde tutulur, geçerli yeni snapshot atomik olarak eskisinin yerini alır ve ilgili cache'ler temizlenir.

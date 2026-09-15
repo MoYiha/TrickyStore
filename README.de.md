@@ -47,20 +47,20 @@ Verwende nur Konfigurationen und Zugangsdaten, für deren Nutzung du berechtigt 
 
 ## Mehr erfahren
 
-- [Strong Integrity Leitfaden](docs/StrongIntegrityGuide.md) - Schnellstartanleitung zum Bestehen von Google Play Integrity (MEETS_STRONG_INTEGRITY) für offizielle, AOSP- und Custom-ROMs.
-- [Keybox Manager](docs/KeyboxManager.md) - Laden, Prüfen, Auswählen und Revocation-Checks für Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) und [Application Rules](docs/ApplicationRules.md) - festlegen, für welche Apps Funktionen gelten.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) und [Patch Levels](docs/PatchLevels.md) - optionale Identitätssteuerung.
-- [RKP Protection](docs/RkpProtection.md) und [DRM Privacy](docs/DrmPassthrough.md) - Plattformkompatibilität und Datenschutz.
-- [Backup and Restore](docs/BackupRestore.md) - verschlüsselte Sicherung und Wiederherstellung der Konfiguration.
-- [Security Model](docs/SecurityModel.md) und [Installer](docs/Installer.md) - Vertrauensgrenzen und Installationsdetails.
+- [Strong Integrity Leitfaden](docs/i18n/de/security/StrongIntegrityGuide.md) - Schnellstartanleitung zum Bestehen von Google Play Integrity (MEETS_STRONG_INTEGRITY) für offizielle, AOSP- und Custom-ROMs.
+- [Keybox Manager](docs/i18n/de/security/KeyboxManager.md) - Laden, Prüfen, Auswählen und Revocation-Checks für Keybox/CBOX.
+- [Application Scope](docs/i18n/de/identity/ApplicationScope.md) und [Application Rules](docs/i18n/de/identity/ApplicationRules.md) - festlegen, für welche Apps Funktionen gelten.
+- [Build Identity](docs/i18n/de/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/de/identity/TelephonyIdentity.md) und [Patch Levels](docs/i18n/de/identity/PatchLevels.md) - optionale Identitätssteuerung.
+- [RKP Protection](docs/i18n/de/security/RkpProtection.md) und [DRM Privacy](docs/i18n/de/system/DrmPassthrough.md) - Plattformkompatibilität und Datenschutz.
+- [Backup and Restore](docs/i18n/de/system/BackupRestore.md) - verschlüsselte Sicherung und Wiederherstellung der Konfiguration.
+- [Security Model](docs/i18n/de/security/SecurityModel.md) und [Installer](docs/i18n/de/system/Installer.md) - Vertrauensgrenzen und Installationsdetails.
 
 ## Hilfe benötigt?
 
 Nutze die **Logs**-Seite der WebUI oder die Modul-**Action**, um einen Notfall-Diagnosebericht zu erstellen. Prüfe das Archiv vor dem Teilen, da es Geräte- und Systeminformationen enthalten kann.
 
-Unter [Diagnostics](docs/Diagnostics.md) findest du häufige Probleme und Schritte zur Fehlerbehebung.
+Unter [Diagnostics](docs/i18n/de/system/Diagnostics.md) findest du häufige Probleme und Schritte zur Fehlerbehebung.
 
 ## Projekt
 
-[Changelog](CHANGELOG.md) · [Mitwirken](CONTRIBUTING.md) · [Sprachen](LANGUAGES.md) · [Lizenz](LICENSING.md) · [Spenden](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Mitwirken](docs/i18n/de/CONTRIBUTING.md) · [Sprachen](docs/i18n/de/LANGUAGES.md) · [Lizenz](LICENSING.md) · [Spenden](docs/i18n/de/DONATE.md) · [Telegram](https://t.me/cleverestech)

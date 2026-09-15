@@ -47,20 +47,20 @@ Magisk والتثبيت من recovery غير مدعومين.
 
 ## المزيد من المعلومات
 
-- [دليل Strong Integrity](docs/StrongIntegrityGuide.md) - دليل البدء السريع لاجتياز Google Play Integrity (MEETS_STRONG_INTEGRITY) على الرومات الرسمية وAOSP والمعدلة.
-- [Keybox Manager](docs/KeyboxManager.md) - تحميل Keybox/CBOX والتحقق منها واختيارها وفحص الإلغاء.
-- [Application Scope](docs/ApplicationScope.md) و [Application Rules](docs/ApplicationRules.md) - تحديد التطبيقات التي تنطبق عليها الميزات.
-- [Build Identity](docs/BuildIdentity.md) و [Telephony Identity](docs/TelephonyIdentity.md) و [Patch Levels](docs/PatchLevels.md) - خيارات الهوية الاختيارية.
-- [RKP Protection](docs/RkpProtection.md) و [DRM Privacy](docs/DrmPassthrough.md) - توافق المنصة وسلوك الخصوصية.
-- [Backup and Restore](docs/BackupRestore.md) - نسخ الإعدادات المشفّر واستعادته.
-- [Security Model](docs/SecurityModel.md) و [Installer](docs/Installer.md) - حدود الثقة وتفاصيل التثبيت.
+- [دليل Strong Integrity](docs/i18n/ar/security/StrongIntegrityGuide.md) - دليل البدء السريع لاجتياز Google Play Integrity (MEETS_STRONG_INTEGRITY) على الرومات الرسمية وAOSP والمعدلة.
+- [Keybox Manager](docs/i18n/ar/security/KeyboxManager.md) - تحميل Keybox/CBOX والتحقق منها واختيارها وفحص الإلغاء.
+- [Application Scope](docs/i18n/ar/identity/ApplicationScope.md) و [Application Rules](docs/i18n/ar/identity/ApplicationRules.md) - تحديد التطبيقات التي تنطبق عليها الميزات.
+- [Build Identity](docs/i18n/ar/identity/BuildIdentity.md) و [Telephony Identity](docs/i18n/ar/identity/TelephonyIdentity.md) و [Patch Levels](docs/i18n/ar/identity/PatchLevels.md) - خيارات الهوية الاختيارية.
+- [RKP Protection](docs/i18n/ar/security/RkpProtection.md) و [DRM Privacy](docs/i18n/ar/system/DrmPassthrough.md) - توافق المنصة وسلوك الخصوصية.
+- [Backup and Restore](docs/i18n/ar/system/BackupRestore.md) - نسخ الإعدادات المشفّر واستعادته.
+- [Security Model](docs/i18n/ar/security/SecurityModel.md) و [Installer](docs/i18n/ar/system/Installer.md) - حدود الثقة وتفاصيل التثبيت.
 
 ## تحتاج مساعدة؟
 
 استخدم صفحة **Logs** في WebUI أو **Action** الخاص بالموديول لإنشاء تقرير تشخيص طارئ. راجع الأرشيف قبل مشاركته لأن التشخيصات قد تحتوي على معلومات عن الجهاز والنظام.
 
-راجع [Diagnostics](docs/Diagnostics.md) للمشاكل الشائعة وخطوات استكشاف الأخطاء.
+راجع [Diagnostics](docs/i18n/ar/system/Diagnostics.md) للمشاكل الشائعة وخطوات استكشاف الأخطاء.
 
 ## المشروع
 
-[سجل التغييرات](CHANGELOG.md) · [المساهمة](CONTRIBUTING.md) · [اللغات](LANGUAGES.md) · [الترخيص](LICENSING.md) · [التبرع](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[سجل التغييرات](CHANGELOG.md) · [المساهمة](docs/i18n/ar/CONTRIBUTING.md) · [اللغات](docs/i18n/ar/LANGUAGES.md) · [الترخيص](LICENSING.md) · [التبرع](docs/i18n/ar/DONATE.md) · [Telegram](https://t.me/cleverestech)

@@ -47,20 +47,20 @@ CleveresTricky улучшает локальный путь совместимо
 
 ## Подробнее
 
-- [Руководство по Strong Integrity](docs/StrongIntegrityGuide.md) - быстрое руководство по прохождению Google Play Integrity (MEETS_STRONG_INTEGRITY) на официальных, AOSP и кастомных прошивках.
-- [Keybox Manager](docs/KeyboxManager.md) - загрузка, проверка, выбор и проверка отзыва Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) и [Application Rules](docs/ApplicationRules.md) - выбор приложений, к которым применяются функции.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) и [Patch Levels](docs/PatchLevels.md) - дополнительные настройки идентичности.
-- [RKP Protection](docs/RkpProtection.md) и [DRM Privacy](docs/DrmPassthrough.md) - совместимость платформы и приватность.
-- [Backup and Restore](docs/BackupRestore.md) - зашифрованное резервное копирование и восстановление конфигурации.
-- [Security Model](docs/SecurityModel.md) и [Installer](docs/Installer.md) - границы доверия и детали установки.
+- [Руководство по Strong Integrity](docs/i18n/ru/security/StrongIntegrityGuide.md) - быстрое руководство по прохождению Google Play Integrity (MEETS_STRONG_INTEGRITY) на официальных, AOSP и кастомных прошивках.
+- [Keybox Manager](docs/i18n/ru/security/KeyboxManager.md) - загрузка, проверка, выбор и проверка отзыва Keybox/CBOX.
+- [Application Scope](docs/i18n/ru/identity/ApplicationScope.md) и [Application Rules](docs/i18n/ru/identity/ApplicationRules.md) - выбор приложений, к которым применяются функции.
+- [Build Identity](docs/i18n/ru/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/ru/identity/TelephonyIdentity.md) и [Patch Levels](docs/i18n/ru/identity/PatchLevels.md) - дополнительные настройки идентичности.
+- [RKP Protection](docs/i18n/ru/security/RkpProtection.md) и [DRM Privacy](docs/i18n/ru/system/DrmPassthrough.md) - совместимость платформы и приватность.
+- [Backup and Restore](docs/i18n/ru/system/BackupRestore.md) - зашифрованное резервное копирование и восстановление конфигурации.
+- [Security Model](docs/i18n/ru/security/SecurityModel.md) и [Installer](docs/i18n/ru/system/Installer.md) - границы доверия и детали установки.
 
 ## Нужна помощь?
 
 Используйте страницу **Logs** в WebUI или **Action** модуля, чтобы создать аварийный диагностический отчёт. Перед отправкой проверьте архив: он может содержать сведения об устройстве и системе.
 
-Типовые проблемы и шаги диагностики описаны в [Diagnostics](docs/Diagnostics.md).
+Типовые проблемы и шаги диагностики описаны в [Diagnostics](docs/i18n/ru/system/Diagnostics.md).
 
 ## Проект
 
-[История изменений](CHANGELOG.md) · [Участие](CONTRIBUTING.md) · [Языки](LANGUAGES.md) · [Лицензия](LICENSING.md) · [Пожертвовать](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[История изменений](CHANGELOG.md) · [Участие](docs/i18n/ru/CONTRIBUTING.md) · [Языки](docs/i18n/ru/LANGUAGES.md) · [Лицензия](LICENSING.md) · [Пожертвовать](docs/i18n/ru/DONATE.md) · [Telegram](https://t.me/cleverestech)

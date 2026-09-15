@@ -47,19 +47,19 @@ Use only configuration and credentials that you are authorized to use.
 
 ## Learn more
 
-- [Strong Integrity Guide](docs/StrongIntegrityGuide.md) - quick-start guide to passing Google Play Integrity (MEETS_STRONG_INTEGRITY) across Official, AOSP, and Custom ROMs.
-- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX loading, verification, selection, and revocation checks.
-- [Application Scope](docs/ApplicationScope.md) and [Application Rules](docs/ApplicationRules.md) - choose where features apply.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), and [Patch Levels](docs/PatchLevels.md) - optional identity controls.
-- [RKP Protection](docs/RkpProtection.md) and [DRM Privacy](docs/DrmPassthrough.md) - platform compatibility and privacy behavior.
-- [Backup and Restore](docs/BackupRestore.md) - encrypted configuration backup and recovery.
-- [Security Model](docs/SecurityModel.md) and [Installer](docs/Installer.md) - trust boundaries and installation details.
+- [Strong Integrity Guide](docs/security/StrongIntegrityGuide.md) - quick-start guide to passing Google Play Integrity (MEETS_STRONG_INTEGRITY) across Official, AOSP, and Custom ROMs.
+- [Keybox Manager](docs/security/KeyboxManager.md) - Keybox/CBOX loading, verification, selection, and revocation checks.
+- [Application Scope](docs/identity/ApplicationScope.md) and [Application Rules](docs/identity/ApplicationRules.md) - choose where features apply.
+- [Build Identity](docs/identity/BuildIdentity.md), [Telephony Identity](docs/identity/TelephonyIdentity.md), and [Patch Levels](docs/identity/PatchLevels.md) - optional identity controls.
+- [RKP Protection](docs/security/RkpProtection.md) and [DRM Privacy](docs/system/DrmPassthrough.md) - platform compatibility and privacy behavior.
+- [Backup and Restore](docs/system/BackupRestore.md) - encrypted configuration backup and recovery.
+- [Security Model](docs/security/SecurityModel.md) and [Installer](docs/system/Installer.md) - trust boundaries and installation details.
 
 ## Need help?
 
 Use the **Logs** page in the WebUI or the module **Action** to create an emergency diagnostic report. Review the archive before sharing it because diagnostics can contain device and system information.
 
-See [Diagnostics](docs/Diagnostics.md) for common problems and troubleshooting steps.
+See [Diagnostics](docs/system/Diagnostics.md) for common problems and troubleshooting steps.
 
 ## Project
 

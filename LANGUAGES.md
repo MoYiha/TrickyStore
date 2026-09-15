@@ -1,6 +1,6 @@
 # Language Support
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#languages) | [简体中文](docs/i18n/zh-CN.md#languages) | [Español](docs/i18n/es.md#languages) | [Deutsch](docs/i18n/de.md#languages) | [Русский](docs/i18n/ru.md#languages) | [Bahasa Indonesia](docs/i18n/id.md#languages) | [हिन्दी](docs/i18n/hi.md#languages) | [العربية](docs/i18n/ar.md#languages)
+**Language:** **English** | [Türkçe](docs/i18n/tr/LANGUAGES.md) | [简体中文](docs/i18n/zh-CN/LANGUAGES.md) | [Español](docs/i18n/es/LANGUAGES.md) | [Deutsch](docs/i18n/de/LANGUAGES.md) | [Русский](docs/i18n/ru/LANGUAGES.md) | [Bahasa Indonesia](docs/i18n/id/LANGUAGES.md) | [हिन्दी](docs/i18n/hi/LANGUAGES.md) | [العربية](docs/i18n/ar/LANGUAGES.md)
 
 CleveresTricky ships with nine built in WebUI languages and matching user documentation entry points:
 

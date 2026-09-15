@@ -47,20 +47,20 @@ Yalnızca kullanmaya yetkili olduğunuz yapılandırma ve kimlik bilgilerini kul
 
 ## Daha fazla bilgi
 
-- [Strong Integrity Rehberi](docs/StrongIntegrityGuide.md) - Orijinal, AOSP ve Custom ROM'lar için Google Play Integrity (MEETS_STRONG_INTEGRITY) hızlı başlangıç kılavuzu.
-- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
-- [Application Scope](docs/ApplicationScope.md) ve [Application Rules](docs/ApplicationRules.md) - özelliklerin hangi uygulamalara uygulanacağını seçin.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) ve [Patch Levels](docs/PatchLevels.md) - isteğe bağlı kimlik kontrolleri.
-- [RKP Protection](docs/RkpProtection.md) ve [DRM Privacy](docs/DrmPassthrough.md) - platform uyumluluğu ve gizlilik davranışı.
-- [Backup and Restore](docs/BackupRestore.md) - şifreli yapılandırma yedeği ve geri yükleme.
-- [Security Model](docs/SecurityModel.md) ve [Installer](docs/Installer.md) - güven sınırları ve kurulum ayrıntıları.
+- [Strong Integrity Rehberi](docs/i18n/tr/security/StrongIntegrityGuide.md) - Orijinal, AOSP ve Custom ROM'lar için Google Play Integrity (MEETS_STRONG_INTEGRITY) hızlı başlangıç kılavuzu.
+- [Keybox Manager](docs/i18n/tr/security/KeyboxManager.md) - Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
+- [Application Scope](docs/i18n/tr/identity/ApplicationScope.md) ve [Application Rules](docs/i18n/tr/identity/ApplicationRules.md) - özelliklerin hangi uygulamalara uygulanacağını seçin.
+- [Build Identity](docs/i18n/tr/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/tr/identity/TelephonyIdentity.md) ve [Patch Levels](docs/i18n/tr/identity/PatchLevels.md) - isteğe bağlı kimlik kontrolleri.
+- [RKP Protection](docs/i18n/tr/security/RkpProtection.md) ve [DRM Privacy](docs/i18n/tr/system/DrmPassthrough.md) - platform uyumluluğu ve gizlilik davranışı.
+- [Backup and Restore](docs/i18n/tr/system/BackupRestore.md) - şifreli yapılandırma yedeği ve geri yükleme.
+- [Security Model](docs/i18n/tr/security/SecurityModel.md) ve [Installer](docs/i18n/tr/system/Installer.md) - güven sınırları ve kurulum ayrıntıları.
 
 ## Yardım mı gerekiyor?
 
 WebUI içindeki **Logs** sayfasını veya modül **Action** seçeneğini kullanarak acil tanılama raporu oluşturabilirsiniz. Tanılama arşivi cihaz ve sistem bilgileri içerebileceği için paylaşmadan önce kontrol edin.
 
-Yaygın sorunlar ve çözüm adımları için [Diagnostics](docs/Diagnostics.md) sayfasına bakın.
+Yaygın sorunlar ve çözüm adımları için [Diagnostics](docs/i18n/tr/system/Diagnostics.md) sayfasına bakın.
 
 ## Proje
 
-[Değişiklikler](CHANGELOG.md) · [Katkıda bulunma](CONTRIBUTING.md) · [Diller](LANGUAGES.md) · [Lisans](LICENSING.md) · [Bağış](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[Değişiklikler](CHANGELOG.md) · [Katkıda bulunma](docs/i18n/tr/CONTRIBUTING.md) · [Diller](docs/i18n/tr/LANGUAGES.md) · [Lisans](LICENSING.md) · [Bağış](docs/i18n/tr/DONATE.md) · [Telegram](https://t.me/cleverestech)

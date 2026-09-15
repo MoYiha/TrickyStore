@@ -47,20 +47,20 @@ CleveresTricky local compatibility path को बेहतर करता ह�
 
 ## और जानकारी
 
-- [Strong Integrity Guide](docs/StrongIntegrityGuide.md) - Official, AOSP और Custom ROMs पर Google Play Integrity (MEETS_STRONG_INTEGRITY) पास करने के लिए त्वरित मार्गदर्शिका।
-- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX loading, verification, selection और revocation checks।
-- [Application Scope](docs/ApplicationScope.md) और [Application Rules](docs/ApplicationRules.md) - तय करें features किन apps पर लागू हों।
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md) और [Patch Levels](docs/PatchLevels.md) - optional identity controls।
-- [RKP Protection](docs/RkpProtection.md) और [DRM Privacy](docs/DrmPassthrough.md) - platform compatibility और privacy behavior।
-- [Backup and Restore](docs/BackupRestore.md) - encrypted configuration backup और recovery।
-- [Security Model](docs/SecurityModel.md) और [Installer](docs/Installer.md) - trust boundaries और installation details।
+- [Strong Integrity Guide](docs/i18n/hi/security/StrongIntegrityGuide.md) - Official, AOSP और Custom ROMs पर Google Play Integrity (MEETS_STRONG_INTEGRITY) पास करने के लिए त्वरित मार्गदर्शिका।
+- [Keybox Manager](docs/i18n/hi/security/KeyboxManager.md) - Keybox/CBOX loading, verification, selection और revocation checks।
+- [Application Scope](docs/i18n/hi/identity/ApplicationScope.md) और [Application Rules](docs/i18n/hi/identity/ApplicationRules.md) - तय करें features किन apps पर लागू हों।
+- [Build Identity](docs/i18n/hi/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/hi/identity/TelephonyIdentity.md) और [Patch Levels](docs/i18n/hi/identity/PatchLevels.md) - optional identity controls।
+- [RKP Protection](docs/i18n/hi/security/RkpProtection.md) और [DRM Privacy](docs/i18n/hi/system/DrmPassthrough.md) - platform compatibility और privacy behavior।
+- [Backup and Restore](docs/i18n/hi/system/BackupRestore.md) - encrypted configuration backup और recovery।
+- [Security Model](docs/i18n/hi/security/SecurityModel.md) और [Installer](docs/i18n/hi/system/Installer.md) - trust boundaries और installation details।
 
 ## मदद चाहिए?
 
 WebUI के **Logs** page या module **Action** से emergency diagnostic report बनाएं। Share करने से पहले archive को देख लें, क्योंकि diagnostics में device और system information हो सकती है।
 
-Common problems और troubleshooting steps के लिए [Diagnostics](docs/Diagnostics.md) देखें।
+Common problems और troubleshooting steps के लिए [Diagnostics](docs/i18n/hi/system/Diagnostics.md) देखें।
 
 ## Project
 
-[Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md) · [Languages](LANGUAGES.md) · [Licensing](LICENSING.md) · [Donate](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Contributing](docs/i18n/hi/CONTRIBUTING.md) · [Languages](docs/i18n/hi/LANGUAGES.md) · [Licensing](LICENSING.md) · [Donate](docs/i18n/hi/DONATE.md) · [Telegram](https://t.me/cleverestech)

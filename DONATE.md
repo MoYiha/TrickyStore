@@ -1,6 +1,6 @@
 # Support the Development
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#donate) | [简体中文](docs/i18n/zh-CN.md#donate) | [Español](docs/i18n/es.md#donate) | [Deutsch](docs/i18n/de.md#donate) | [Русский](docs/i18n/ru.md#donate) | [Bahasa Indonesia](docs/i18n/id.md#donate) | [हिन्दी](docs/i18n/hi.md#donate) | [العربية](docs/i18n/ar.md#donate)
+**Language:** **English** | [Türkçe](docs/i18n/tr/DONATE.md) | [简体中文](docs/i18n/zh-CN/DONATE.md) | [Español](docs/i18n/es/DONATE.md) | [Deutsch](docs/i18n/de/DONATE.md) | [Русский](docs/i18n/ru/DONATE.md) | [Bahasa Indonesia](docs/i18n/id/DONATE.md) | [हिन्दी](docs/i18n/hi/DONATE.md) | [العربية](docs/i18n/ar/DONATE.md)
 
 ## Recommended
 

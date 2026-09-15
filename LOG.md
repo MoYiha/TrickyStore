@@ -1,6 +1,6 @@
 # Logging and diagnostics
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#logging) | [简体中文](docs/i18n/zh-CN.md#logging) | [Español](docs/i18n/es.md#logging) | [Deutsch](docs/i18n/de.md#logging) | [Русский](docs/i18n/ru.md#logging) | [Bahasa Indonesia](docs/i18n/id.md#logging) | [हिन्दी](docs/i18n/hi.md#logging) | [العربية](docs/i18n/ar.md#logging)
+**Language:** **English** | [Türkçe](docs/i18n/tr/LOG.md) | [简体中文](docs/i18n/zh-CN/LOG.md) | [Español](docs/i18n/es/LOG.md) | [Deutsch](docs/i18n/de/LOG.md) | [Русский](docs/i18n/ru/LOG.md) | [Bahasa Indonesia](docs/i18n/id/LOG.md) | [हिन्दी](docs/i18n/hi/LOG.md) | [العربية](docs/i18n/ar/LOG.md)
 
 CleveresTricky writes diagnostics to Android logcat; it does not store a separate plaintext log file.
 

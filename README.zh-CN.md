@@ -47,20 +47,20 @@ CleveresTricky 改善的是本地兼容路径。最终远程结果仍取决于�
 
 ## 了解更多
 
-- [Strong Integrity 指南](docs/StrongIntegrityGuide.md) - 面向官方系统、AOSP 与第三方 ROM 的 Google Play Integrity (MEETS_STRONG_INTEGRITY) 快速配置指南。
-- [Keybox Manager](docs/KeyboxManager.md) - Keybox/CBOX 加载、验证、选择和撤销检查。
-- [Application Scope](docs/ApplicationScope.md) 与 [Application Rules](docs/ApplicationRules.md) - 决定功能作用于哪些应用。
-- [Build Identity](docs/BuildIdentity.md)、[Telephony Identity](docs/TelephonyIdentity.md) 与 [Patch Levels](docs/PatchLevels.md) - 可选身份控制。
-- [RKP Protection](docs/RkpProtection.md) 与 [DRM Privacy](docs/DrmPassthrough.md) - 平台兼容和隐私行为。
-- [Backup and Restore](docs/BackupRestore.md) - 加密配置备份与恢复。
-- [Security Model](docs/SecurityModel.md) 与 [Installer](docs/Installer.md) - 信任边界和安装细节。
+- [Strong Integrity 指南](docs/i18n/zh-CN/security/StrongIntegrityGuide.md) - 面向官方系统、AOSP 与第三方 ROM 的 Google Play Integrity (MEETS_STRONG_INTEGRITY) 快速配置指南。
+- [Keybox Manager](docs/i18n/zh-CN/security/KeyboxManager.md) - Keybox/CBOX 加载、验证、选择和撤销检查。
+- [Application Scope](docs/i18n/zh-CN/identity/ApplicationScope.md) 与 [Application Rules](docs/i18n/zh-CN/identity/ApplicationRules.md) - 决定功能作用于哪些应用。
+- [Build Identity](docs/i18n/zh-CN/identity/BuildIdentity.md)、[Telephony Identity](docs/i18n/zh-CN/identity/TelephonyIdentity.md) 与 [Patch Levels](docs/i18n/zh-CN/identity/PatchLevels.md) - 可选身份控制。
+- [RKP Protection](docs/i18n/zh-CN/security/RkpProtection.md) 与 [DRM Privacy](docs/i18n/zh-CN/system/DrmPassthrough.md) - 平台兼容和隐私行为。
+- [Backup and Restore](docs/i18n/zh-CN/system/BackupRestore.md) - 加密配置备份与恢复。
+- [Security Model](docs/i18n/zh-CN/security/SecurityModel.md) 与 [Installer](docs/i18n/zh-CN/system/Installer.md) - 信任边界和安装细节。
 
 ## 需要帮助？
 
 可以使用 WebUI 的 **Logs** 页面或模块 **Action** 生成紧急诊断报告。诊断压缩包可能包含设备和系统信息，分享前请先检查内容。
 
-常见问题和排查步骤请查看 [Diagnostics](docs/Diagnostics.md)。
+常见问题和排查步骤请查看 [Diagnostics](docs/i18n/zh-CN/system/Diagnostics.md)。
 
 ## 项目
 
-[更新记录](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md) · [语言](LANGUAGES.md) · [许可证](LICENSING.md) · [捐赠](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[更新记录](CHANGELOG.md) · [参与贡献](docs/i18n/zh-CN/CONTRIBUTING.md) · [语言](docs/i18n/zh-CN/LANGUAGES.md) · [许可证](LICENSING.md) · [捐赠](docs/i18n/zh-CN/DONATE.md) · [Telegram](https://t.me/cleverestech)

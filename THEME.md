@@ -1,6 +1,6 @@
 # CleveresTricky UI Theme
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#theme) | [简体中文](docs/i18n/zh-CN.md#theme) | [Español](docs/i18n/es.md#theme) | [Deutsch](docs/i18n/de.md#theme) | [Русский](docs/i18n/ru.md#theme) | [Bahasa Indonesia](docs/i18n/id.md#theme) | [हिन्दी](docs/i18n/hi.md#theme) | [العربية](docs/i18n/ar.md#theme)
+**Language:** **English** | [Türkçe](docs/i18n/tr/THEME.md) | [简体中文](docs/i18n/zh-CN/THEME.md) | [Español](docs/i18n/es/THEME.md) | [Deutsch](docs/i18n/de/THEME.md) | [Русский](docs/i18n/ru/THEME.md) | [Bahasa Indonesia](docs/i18n/id/THEME.md) | [हिन्दी](docs/i18n/hi/THEME.md) | [العربية](docs/i18n/ar/THEME.md)
 
 This document tracks the color palette and design system used in the CleveresTricky Web UI.
 

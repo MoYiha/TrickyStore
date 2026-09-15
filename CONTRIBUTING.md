@@ -1,6 +1,6 @@
 # Contributing
 
-**Language:** **English** | [Türkçe](docs/i18n/tr.md#contributing) | [简体中文](docs/i18n/zh-CN.md#contributing) | [Español](docs/i18n/es.md#contributing) | [Deutsch](docs/i18n/de.md#contributing) | [Русский](docs/i18n/ru.md#contributing) | [Bahasa Indonesia](docs/i18n/id.md#contributing) | [हिन्दी](docs/i18n/hi.md#contributing) | [العربية](docs/i18n/ar.md#contributing)
+**Language:** **English** | [Türkçe](docs/i18n/tr/CONTRIBUTING.md) | [简体中文](docs/i18n/zh-CN/CONTRIBUTING.md) | [Español](docs/i18n/es/CONTRIBUTING.md) | [Deutsch](docs/i18n/de/CONTRIBUTING.md) | [Русский](docs/i18n/ru/CONTRIBUTING.md) | [Bahasa Indonesia](docs/i18n/id/CONTRIBUTING.md) | [हिन्दी](docs/i18n/hi/CONTRIBUTING.md) | [العربية](docs/i18n/ar/CONTRIBUTING.md)
 
 Changes should preserve the module's fail-closed security model and its supported Android 12 to 17 and KernelSU plus APatch scope. Claims in code, tests, and documentation must describe behavior that can actually be verified; userspace code must not claim to manufacture hardware-backed integrity.
 

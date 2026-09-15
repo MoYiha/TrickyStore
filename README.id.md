@@ -47,20 +47,20 @@ Gunakan hanya konfigurasi dan kredensial yang memang Anda berhak gunakan.
 
 ## Pelajari lebih lanjut
 
-- [Panduan Strong Integrity](docs/StrongIntegrityGuide.md) - panduan cepat untuk memenuhi Google Play Integrity (MEETS_STRONG_INTEGRITY) di ROM Resmi, AOSP, dan Custom.
-- [Keybox Manager](docs/KeyboxManager.md) - pemuatan, verifikasi, pemilihan, dan pemeriksaan pencabutan Keybox/CBOX.
-- [Application Scope](docs/ApplicationScope.md) dan [Application Rules](docs/ApplicationRules.md) - pilih aplikasi tempat fitur diterapkan.
-- [Build Identity](docs/BuildIdentity.md), [Telephony Identity](docs/TelephonyIdentity.md), dan [Patch Levels](docs/PatchLevels.md) - kontrol identitas opsional.
-- [RKP Protection](docs/RkpProtection.md) dan [DRM Privacy](docs/DrmPassthrough.md) - kompatibilitas platform dan perilaku privasi.
-- [Backup and Restore](docs/BackupRestore.md) - backup dan pemulihan konfigurasi terenkripsi.
-- [Security Model](docs/SecurityModel.md) dan [Installer](docs/Installer.md) - batas kepercayaan dan detail instalasi.
+- [Panduan Strong Integrity](docs/i18n/id/security/StrongIntegrityGuide.md) - panduan cepat untuk memenuhi Google Play Integrity (MEETS_STRONG_INTEGRITY) di ROM Resmi, AOSP, dan Custom.
+- [Keybox Manager](docs/i18n/id/security/KeyboxManager.md) - pemuatan, verifikasi, pemilihan, dan pemeriksaan pencabutan Keybox/CBOX.
+- [Application Scope](docs/i18n/id/identity/ApplicationScope.md) dan [Application Rules](docs/i18n/id/identity/ApplicationRules.md) - pilih aplikasi tempat fitur diterapkan.
+- [Build Identity](docs/i18n/id/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/id/identity/TelephonyIdentity.md), dan [Patch Levels](docs/i18n/id/identity/PatchLevels.md) - kontrol identitas opsional.
+- [RKP Protection](docs/i18n/id/security/RkpProtection.md) dan [DRM Privacy](docs/i18n/id/system/DrmPassthrough.md) - kompatibilitas platform dan perilaku privasi.
+- [Backup and Restore](docs/i18n/id/system/BackupRestore.md) - backup dan pemulihan konfigurasi terenkripsi.
+- [Security Model](docs/i18n/id/security/SecurityModel.md) dan [Installer](docs/i18n/id/system/Installer.md) - batas kepercayaan dan detail instalasi.
 
 ## Perlu bantuan?
 
 Gunakan halaman **Logs** di WebUI atau **Action** modul untuk membuat laporan diagnostik darurat. Periksa arsip sebelum membagikannya karena diagnostik dapat berisi informasi perangkat dan sistem.
 
-Lihat [Diagnostics](docs/Diagnostics.md) untuk masalah umum dan langkah pemecahan masalah.
+Lihat [Diagnostics](docs/i18n/id/system/Diagnostics.md) untuk masalah umum dan langkah pemecahan masalah.
 
 ## Proyek
 
-[Changelog](CHANGELOG.md) · [Kontribusi](CONTRIBUTING.md) · [Bahasa](LANGUAGES.md) · [Lisensi](LICENSING.md) · [Donasi](DONATE.md) · [Telegram](https://t.me/cleverestech)
+[Changelog](CHANGELOG.md) · [Kontribusi](docs/i18n/id/CONTRIBUTING.md) · [Bahasa](docs/i18n/id/LANGUAGES.md) · [Lisensi](LICENSING.md) · [Donasi](docs/i18n/id/DONATE.md) · [Telegram](https://t.me/cleverestech)

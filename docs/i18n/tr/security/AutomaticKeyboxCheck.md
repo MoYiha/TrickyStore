@@ -1,0 +1,7 @@
+# Automatic Keybox Check
+
+**Dil:** [English](../../../security/AutomaticKeyboxCheck.md) | **Türkçe** | [简体中文](../../zh-CN/security/AutomaticKeyboxCheck.md) | [Español](../../es/security/AutomaticKeyboxCheck.md) | [Deutsch](../../de/security/AutomaticKeyboxCheck.md) | [Русский](../../ru/security/AutomaticKeyboxCheck.md) | [Bahasa Indonesia](../../id/security/AutomaticKeyboxCheck.md) | [हिन्दी](../../hi/security/AutomaticKeyboxCheck.md) | [العربية](../../ar/security/AutomaticKeyboxCheck.md)
+
+Automatic Keybox Check, keybox ve revocation durumunu sürekli storage taraması yapmadan güncel tutar. Worker kendi kontrolüne bağlıdır ve core Keystore bakımından bağımsız şekilde servis yaşam döngüsüne uyar. File observer normal değişiklikleri izler; observer'ın güvenilir olmadığı dosya sistemlerinde düşük frekanslı fallback kullanılır.
+
+Her yenilemede key/certificate eşleşmesi, chain, algoritma, validity, ambiguity ve revocation yeniden doğrulanır. Geçerli keybox materyali açılışta ve çevrimdışı ortamlarda ağ beklenmeksizin anında aktif edilir. Revocation kontrolü doğrudan Automatic Keybox Check ayarına bağlıdır: açıkken internet bağlantısı sağlandığında arka planda doğrulanır ve iptal edilen anahtarlar güvenle devreden çıkarılır; kapalıyken özel veya iptal edilmiş keybox'lar engellenmeden kullanılabilir. Bozuk veya hatalı girdiler havuzun tamamını korumak için reddedilir. Cache dosya sayısı ve boyutuyla sınırlıdır; değişmeyen doğrulanmış dosyalar yeniden parse edilmez.

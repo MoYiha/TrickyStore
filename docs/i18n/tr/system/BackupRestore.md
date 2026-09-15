@@ -1,0 +1,7 @@
+# Backup and Restore
+
+**Dil:** [English](../../../system/BackupRestore.md) | **Türkçe** | [简体中文](../../zh-CN/system/BackupRestore.md) | [Español](../../es/system/BackupRestore.md) | [Deutsch](../../de/system/BackupRestore.md) | [Русский](../../ru/system/BackupRestore.md) | [Bahasa Indonesia](../../id/system/BackupRestore.md) | [हिन्दी](../../hi/system/BackupRestore.md) | [العربية](../../ar/system/BackupRestore.md)
+
+Backup and Restore, yapılandırma ve yetkili key material'i tek authenticated encrypted archive içinde taşır. Export en az 12 karakter parola ister ve yalnız allowlist içindeki bilinen config dosyaları ile normal keybox dosyalarını dahil eder. Symlink, bilinmeyen path, aşırı dosya sayısı veya boyutu reddedilir ve persistent plain archive bırakılmaz.
+
+Import yalnız encrypted CTSB formatını kabul eder; upload, entry count, keybox count, tekil ve toplam expanded size limitleri uygulanır. Traversal, duplicate, directory, symlink destination, malformed text, invalid setting ve invalid keybox staged write öncesi reddedilir. Version two policy state ve profile referansları da doğrulanarak tek snapshot halinde geri yüklenir.
