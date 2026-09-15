@@ -340,6 +340,26 @@ class WebUiBridgeTest {
         assertFalse(upload.exists())
     }
 
+    @Test
+    fun `serveConnected handles transport error without terminating JVM`() {
+        bridge = WebUiBridge(WebServer(0, configDir), configDir)
+        val mockSocket = org.mockito.Mockito.mock(android.net.LocalSocket::class.java)
+        val input = ByteArrayInputStream(byteArrayOf(0, 0, 0, 0))
+        val output = java.io.ByteArrayOutputStream()
+        org.mockito.Mockito.`when`(mockSocket.inputStream).thenReturn(input)
+        org.mockito.Mockito.`when`(mockSocket.outputStream).thenReturn(output)
+
+        bridge.setConnectedForTesting(mockSocket)
+
+        try {
+            bridge.serveConnected(mockSocket)
+        } catch (_: java.io.IOException) {
+            // Expected EOF or stream drop
+        }
+        assertEquals(0, input.available())
+        org.mockito.Mockito.verify(mockSocket).close()
+    }
+
     private fun submit(path: String): JSONObject =
         submit(
             JSONObject()

@@ -25,7 +25,6 @@ import java.security.SecureRandom
 import java.util.Base64
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import kotlin.system.exitProcess
 
 class WebUiBridge(
     private val server: WebServer,
@@ -42,16 +41,33 @@ class WebUiBridge(
     private var started = false
     private var socket: LocalSocket? = null
     private var worker: Thread? = null
+    private var lifecycleGeneration = 0L
 
     private val lifecycleLock = Any()
 
     fun start() {
+        var workerToStart: Thread? = null
         synchronized(lifecycleLock) {
             if (started) return
-        }
-        ensureLayout()
-        withStagingLock { cleanupStale() }
+            ensureLayout()
+            withStagingLock { cleanupStale() }
 
+            val connected = connectAndRegister()
+            socket = connected
+            started = true
+            val generation = ++lifecycleGeneration
+            workerToStart =
+                Thread({ workerLoop(connected, generation) }, "CleveresTricky-WebUI").apply {
+                    isDaemon = true
+                    priority = Thread.NORM_PRIORITY
+                }
+            worker = workerToStart
+        }
+        workerToStart?.start()
+        Logger.i("Native WebUI bridge is ready over bounded UDS IPC")
+    }
+
+    internal fun connectAndRegister(): LocalSocket {
         val connected = LocalSocket()
         try {
             connected.connect(LocalSocketAddress(SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT))
@@ -75,27 +91,11 @@ class WebUiBridge(
                 acknowledgementPayload.fill(0)
             }
             connected.setSoTimeout(0)
+            return connected
         } catch (error: Throwable) {
             runCatching { connected.close() }
             throw error
         }
-
-        synchronized(lifecycleLock) {
-            if (started) {
-                // Another thread started it concurrently
-                runCatching { connected.close() }
-                return
-            }
-            socket = connected
-            started = true
-            worker =
-                Thread({ serveLoop(connected) }, "CleveresTricky-WebUI").apply {
-                    isDaemon = true
-                    priority = Thread.NORM_PRIORITY
-                    start()
-                }
-        }
-        Logger.i("Native WebUI bridge is ready over bounded UDS IPC")
     }
 
     fun stop() {
@@ -104,6 +104,7 @@ class WebUiBridge(
         synchronized(lifecycleLock) {
             if (!started) return
             started = false
+            lifecycleGeneration++
             activeSocket = socket
             activeWorker = worker
             socket = null
@@ -113,13 +114,89 @@ class WebUiBridge(
         activeWorker?.interrupt()
     }
 
-    private fun serveLoop(connected: LocalSocket) {
+    private fun workerLoop(initialSocket: LocalSocket, generation: Long) {
+        var currentSocket: LocalSocket? = initialSocket
+        var backoffMs = RECONNECT_INITIAL_DELAY_MS
+        while (true) {
+            synchronized(lifecycleLock) {
+                if (!started || lifecycleGeneration != generation) return
+            }
+            val sock =
+                currentSocket ?: try {
+                    val newSocket = connectAndRegister()
+                    synchronized(lifecycleLock) {
+                        if (!started || lifecycleGeneration != generation) {
+                            runCatching { newSocket.close() }
+                            return
+                        }
+                        socket = newSocket
+                    }
+                    Logger.i("Native WebUI bridge reconnected over bounded UDS IPC")
+                    newSocket
+                } catch (error: Throwable) {
+                    synchronized(lifecycleLock) {
+                        if (!started || lifecycleGeneration != generation) return
+                    }
+                    Logger.w("Native WebUI bridge reconnect attempt failed: ${error.message}")
+                    try {
+                        Thread.sleep(backoffMs)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return
+                    }
+                    backoffMs = minOf(backoffMs * 2, RECONNECT_MAX_DELAY_MS)
+                    continue
+                }
+
+            val connectedAt = System.currentTimeMillis()
+            var processedRequests = 0L
+            try {
+                processedRequests = serveConnected(sock)
+            } catch (error: Throwable) {
+                synchronized(lifecycleLock) {
+                    if (!started || lifecycleGeneration != generation) return
+                }
+                Logger.w("Native WebUI UDS transport disconnected; reconnecting: ${error.message}")
+            } finally {
+                runCatching { sock.close() }
+                synchronized(lifecycleLock) {
+                    if (socket === sock) {
+                        socket = null
+                    }
+                }
+                currentSocket = null
+            }
+
+            val sessionDurationMs = System.currentTimeMillis() - connectedAt
+            if (processedRequests > 0 || sessionDurationMs >= STABLE_CONNECTION_MS) {
+                backoffMs = RECONNECT_INITIAL_DELAY_MS
+            } else {
+                backoffMs = minOf(backoffMs * 2, RECONNECT_MAX_DELAY_MS)
+            }
+
+            synchronized(lifecycleLock) {
+                if (!started || lifecycleGeneration != generation) return
+            }
+            try {
+                Thread.sleep(backoffMs)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
+            }
+        }
+    }
+
+    internal fun serveConnected(connected: LocalSocket): Long {
+        var processedCount = 0L
         val readHeaderBuffer = ByteArray(HEADER_BYTES)
         val writeHeaderBuffer = ByteArray(HEADER_BYTES)
         try {
             val input = connected.inputStream
             val output = connected.outputStream
-            while (started && socket === connected) {
+            while (true) {
+                synchronized(lifecycleLock) {
+                    if (!started || socket !== connected) return processedCount
+                }
                 val header = readHeader(input, readHeaderBuffer)
                 if (header.opcode != OP_WEB_REQUEST || header.flags != 0) {
                     throw IOException("Unexpected native WebUI IPC operation")
@@ -134,18 +211,21 @@ class WebUiBridge(
                     readFully(input, requestBytes)
                     responseBytes = processRequestBytes(requestBytes)
                     writeFrame(output, OP_WEB_REQUEST, 0, responseBytes, writeHeaderBuffer)
+                    processedCount++
                 } finally {
                     requestBytes.fill(0)
                     responseBytes?.fill(0)
                 }
             }
-        } catch (error: Throwable) {
-            if (started && socket === connected) {
-                Logger.e("Native WebUI UDS transport failed; terminating adapter for supervisor recovery", error)
-                exitProcess(1)
-            }
         } finally {
             runCatching { connected.close() }
+        }
+    }
+
+    internal fun setConnectedForTesting(sock: LocalSocket) {
+        synchronized(lifecycleLock) {
+            started = true
+            socket = sock
         }
     }
 
@@ -689,6 +769,9 @@ class WebUiBridge(
         private const val OP_ADAPTER_REGISTER = 2
         private const val OP_WEB_REQUEST = 3
         private const val REGISTER_TIMEOUT_MS = 5_000
+        private const val RECONNECT_INITIAL_DELAY_MS = 250L
+        private const val RECONNECT_MAX_DELAY_MS = 2_000L
+        private const val STABLE_CONNECTION_MS = 5_000L
         private const val HEX = "0123456789abcdef"
         private val IPC_MAGIC = byteArrayOf('C'.code.toByte(), 'T'.code.toByte(), 'I'.code.toByte(), 'P'.code.toByte())
         private val REGISTER_ACK = byteArrayOf('o'.code.toByte(), 'k'.code.toByte())
