@@ -1078,14 +1078,7 @@ return element.innerHTML;
             const startupRetryDelaysMs = [250, 500, 1000, 2000, 4000, 8000, 16000];
             const method = String(options.method || 'GET').toUpperCase();
             const isSafeMethod = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
-            const headers = options.headers;
-            const hasIdempotencyKey = Boolean(
-                headers && (
-                    (typeof headers.has === 'function' && (headers.has('Idempotency-Key') || headers.has('idempotency-key') || headers.has('X-Idempotency-Key') || headers.has('x-idempotency-key'))) ||
-                    (typeof headers === 'object' && (headers['Idempotency-Key'] || headers['idempotency-key'] || headers['X-Idempotency-Key'] || headers['x-idempotency-key']))
-                )
-            );
-            const canRetryTransient = isSafeMethod || Boolean(options.idempotent) || hasIdempotencyKey;
+            const canRetryTransient = isSafeMethod || Boolean(options.idempotent);
             for (let attempt = 0; ; attempt++) {
                 let response;
                 try {
