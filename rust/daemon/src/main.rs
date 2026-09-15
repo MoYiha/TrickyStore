@@ -1330,7 +1330,11 @@ fn read_exact_deadline(
     while !buf.is_empty() {
         let rem = remaining_timeout(deadline)?;
         stream.set_read_timeout(Some(rem))?;
-        let read = stream.read(buf)?;
+        let read = match stream.read(buf) {
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if read == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
@@ -1350,7 +1354,11 @@ fn write_all_deadline(
     while !buf.is_empty() {
         let rem = remaining_timeout(deadline)?;
         stream.set_write_timeout(Some(rem))?;
-        let written = stream.write(buf)?;
+        let written = match stream.write(buf) {
+            Ok(written) => written,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
         if written == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::WriteZero,
