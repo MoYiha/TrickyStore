@@ -26,10 +26,8 @@ English files are the canonical technical source. User documentation is localize
 
 * `README.md` is the canonical project overview.
 * `README.tr.md`, `README.zh-CN.md`, `README.es.md`, `README.de.md`, `README.ru.md`, `README.id.md`, `README.hi.md`, and `README.ar.md` provide localized project overviews.
-* `docs/i18n/tr.md`, `zh-CN.md`, `es.md`, `de.md`, `ru.md`, `id.md`, `hi.md`, and `ar.md` provide localized references for every user-facing root Markdown document and every document under `docs/`.
+* `docs/i18n/<locale>/` provides file-level localized references for every user-facing root Markdown document and every document under `docs/`, organized into `security/`, `identity/`, and `system/` categories with centralized hubs at `docs/i18n/<locale>/README.md`.
 * Every canonical user-facing Markdown document exposes links to the same nine language choices.
-
-The localized reference intentionally keeps stable English anchor identifiers such as `#application-rules`, `#security-model`, and `#web-interface`, so language links remain predictable even when translated headings change.
 
 ## Maintenance contract
 

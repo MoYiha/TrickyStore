@@ -209,7 +209,7 @@ The built in user-facing language set is fixed to English, Türkçe, 简体中�
 English is the canonical technical documentation language. User-facing documentation includes `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `DONATE.md`, `LANGUAGES.md`, `LOG.md`, `THEME.md`, and Markdown documents directly under `docs/`.
 
 - Localized project overviews live in `README.<locale>.md`.
-- Localized documentation references live in `docs/i18n/<locale>.md` and use stable English anchor IDs.
+- Localized documentation references live in `docs/i18n/<locale>/` matching the canonical structure, with hubs at `docs/i18n/<locale>/README.md`.
 - Every canonical user-facing Markdown document must expose the same nine-language navigation where that navigation already exists.
 - `CHANGELOG.md` is the release-log exception: keep release entries canonical English only by default; do not duplicate them into `docs/i18n/` or localized README files unless the maintainer explicitly requests localized release notes.
 - Except for `CHANGELOG.md` release entries, when a user-visible Markdown document changes materially, update the matching sections in all localized references and update localized README files when the project overview changes.
