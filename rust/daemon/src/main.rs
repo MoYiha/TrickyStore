@@ -5,9 +5,9 @@ mod service_guard;
 
 use cleverestricky_service_core::backend_auth::{BACKEND_AUTH_ENV, BACKEND_AUTH_HEX_BYTES};
 use cleverestricky_service_core::ipc::{
-    read_header, read_header_bounded, write_frame, write_header, FrameHeader, FLAG_ERROR,
-    MAX_FRAME_BYTES, OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_INTEGRITY_DELETE_MODULE,
-    OP_INTEGRITY_VERIFY_FILE, OP_INTEGRITY_VERIFY_FULL, OP_PING, OP_WEB_REQUEST, STREAM_COPY_BYTES,
+    read_header, read_header_bounded, write_frame, FrameHeader, FLAG_ERROR, MAX_FRAME_BYTES,
+    OP_ADAPTER_REGISTER, OP_FILE_WRITE, OP_INTEGRITY_DELETE_MODULE, OP_INTEGRITY_VERIFY_FILE,
+    OP_INTEGRITY_VERIFY_FULL, OP_PING, OP_WEB_REQUEST, STREAM_COPY_BYTES,
 };
 use cleverestricky_service_core::secure_fs::TrustedDir;
 use cleverestricky_service_core::unix_socket::{
@@ -1322,6 +1322,112 @@ fn remaining_timeout(deadline: Instant) -> io::Result<Duration> {
     Ok(deadline - now)
 }
 
+fn read_exact_deadline(
+    stream: &mut UnixStream,
+    mut buf: &mut [u8],
+    deadline: Instant,
+) -> io::Result<()> {
+    while !buf.is_empty() {
+        let rem = remaining_timeout(deadline)?;
+        stream.set_read_timeout(Some(rem))?;
+        let read = stream.read(buf)?;
+        if read == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "stream reached EOF before buffer was completely filled",
+            ));
+        }
+        buf = &mut buf[read..];
+    }
+    Ok(())
+}
+
+fn write_all_deadline(
+    stream: &mut UnixStream,
+    mut buf: &[u8],
+    deadline: Instant,
+) -> io::Result<()> {
+    while !buf.is_empty() {
+        let rem = remaining_timeout(deadline)?;
+        stream.set_write_timeout(Some(rem))?;
+        let written = stream.write(buf)?;
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "stream failed to write entire buffer",
+            ));
+        }
+        buf = &buf[written..];
+    }
+    Ok(())
+}
+
+fn write_header_deadline(
+    stream: &mut UnixStream,
+    header: FrameHeader,
+    deadline: Instant,
+) -> io::Result<()> {
+    if header.opcode == 0
+        || header.payload_len > MAX_FRAME_BYTES
+        || header.payload_len > u32::MAX as usize
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid IPC frame",
+        ));
+    }
+    let mut encoded = [0u8; cleverestricky_service_core::ipc::HEADER_BYTES];
+    encoded[0..4].copy_from_slice(&cleverestricky_service_core::ipc::PROTOCOL_MAGIC);
+    encoded[4..6]
+        .copy_from_slice(&cleverestricky_service_core::ipc::PROTOCOL_VERSION.to_be_bytes());
+    encoded[6..8].copy_from_slice(&header.opcode.to_be_bytes());
+    encoded[8..12].copy_from_slice(&header.flags.to_be_bytes());
+    encoded[12..16].copy_from_slice(&(header.payload_len as u32).to_be_bytes());
+    write_all_deadline(stream, &encoded, deadline)
+}
+
+fn read_header_deadline(
+    stream: &mut UnixStream,
+    max_payload: usize,
+    deadline: Instant,
+) -> io::Result<FrameHeader> {
+    let mut header = [0u8; cleverestricky_service_core::ipc::HEADER_BYTES];
+    read_exact_deadline(stream, &mut header, deadline)?;
+    if header[0..4] != cleverestricky_service_core::ipc::PROTOCOL_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid IPC magic",
+        ));
+    }
+    let version = u16::from_be_bytes([header[4], header[5]]);
+    if version != cleverestricky_service_core::ipc::PROTOCOL_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unsupported IPC version",
+        ));
+    }
+    let opcode = u16::from_be_bytes([header[6], header[7]]);
+    if opcode == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid IPC opcode",
+        ));
+    }
+    let flags = u32::from_be_bytes(header[8..12].try_into().unwrap());
+    let payload_len = u32::from_be_bytes(header[12..16].try_into().unwrap()) as usize;
+    if payload_len > max_payload {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("IPC frame exceeds configured bound: {}", payload_len),
+        ));
+    }
+    Ok(FrameHeader {
+        opcode,
+        flags,
+        payload_len,
+    })
+}
+
 fn drain_exact(
     stream: &mut UnixStream,
     mut remaining: usize,
@@ -1329,23 +1435,9 @@ fn drain_exact(
     deadline: Instant,
 ) -> io::Result<()> {
     while remaining > 0 {
-        let now = Instant::now();
-        if now >= deadline {
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "drain timed out before payload was fully drained",
-            ));
-        }
-        let _ = stream.set_read_timeout(Some(deadline - now));
         let chunk = remaining.min(scratch.len());
-        let read = stream.read(&mut scratch[..chunk])?;
-        if read == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "stream ended before payload was fully drained",
-            ));
-        }
-        remaining -= read;
+        read_exact_deadline(stream, &mut scratch[..chunk], deadline)?;
+        remaining -= chunk;
     }
     Ok(())
 }
@@ -1369,56 +1461,30 @@ fn forward_web_request_inner(
         }
     };
 
-    let initial_rem = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-    target
-        .set_read_timeout(Some(initial_rem))
-        .map_err(ForwardError::AdapterFailed)?;
-    target
-        .set_write_timeout(Some(initial_rem))
-        .map_err(ForwardError::AdapterFailed)?;
-    write_header(target, request).map_err(ForwardError::AdapterFailed)?;
+    if let Err(e) = write_header_deadline(target, request, deadline) {
+        let _ = drain_exact(client, request.payload_len, scratch, deadline);
+        return Err(ForwardError::AdapterFailed(e));
+    }
 
     let mut remaining = request.payload_len;
-    let mut client_read_failed = false;
     while remaining != 0 {
-        let rem = match remaining_timeout(deadline) {
-            Ok(t) => t,
-            Err(_) => {
-                client_read_failed = true;
-                break;
-            }
-        };
-        if client.set_read_timeout(Some(rem)).is_err() {
-            client_read_failed = true;
-            break;
-        }
         let chunk_len = remaining.min(scratch.len());
-        if client.read_exact(&mut scratch[..chunk_len]).is_err() {
-            client_read_failed = true;
-            break;
+        if read_exact_deadline(client, &mut scratch[..chunk_len], deadline).is_err() {
+            return Err(ForwardError::ClientFailed {
+                preserve_adapter: false,
+            });
         }
-        let rem_target = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-        target
-            .set_write_timeout(Some(rem_target))
-            .map_err(ForwardError::AdapterFailed)?;
-        target
-            .write_all(&scratch[..chunk_len])
-            .map_err(ForwardError::AdapterFailed)?;
         remaining -= chunk_len;
+        if let Err(e) = write_all_deadline(target, &scratch[..chunk_len], deadline) {
+            let _ = drain_exact(client, remaining, scratch, deadline);
+            return Err(ForwardError::AdapterFailed(e));
+        }
     }
 
-    if client_read_failed {
-        return Err(ForwardError::ClientFailed {
-            preserve_adapter: false,
-        });
-    }
-
-    let rem_resp = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-    target
-        .set_read_timeout(Some(rem_resp))
-        .map_err(ForwardError::AdapterFailed)?;
-    let response =
-        read_header_bounded(target, MAX_FRAME_BYTES).map_err(ForwardError::AdapterFailed)?;
+    let response = match read_header_deadline(target, MAX_FRAME_BYTES, deadline) {
+        Ok(hdr) => hdr,
+        Err(e) => return Err(ForwardError::AdapterFailed(e)),
+    };
     if response.opcode != OP_WEB_REQUEST || response.flags != 0 {
         return Err(ForwardError::AdapterFailed(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1426,12 +1492,7 @@ fn forward_web_request_inner(
         )));
     }
 
-    let rem_client = match remaining_timeout(deadline) {
-        Ok(t) => t,
-        Err(_) => Duration::from_millis(1),
-    };
-    let _ = client.set_write_timeout(Some(rem_client));
-    if write_header(client, response).is_err() {
+    if write_header_deadline(client, response, deadline).is_err() {
         let drain_ok = drain_exact(target, response.payload_len, scratch, deadline).is_ok();
         return Err(ForwardError::ClientFailed {
             preserve_adapter: drain_ok,
@@ -1441,26 +1502,12 @@ fn forward_web_request_inner(
     let mut remaining_resp = response.payload_len;
     let mut client_write_failed = None;
     while remaining_resp != 0 {
-        let rem_target = remaining_timeout(deadline).map_err(ForwardError::AdapterFailed)?;
-        target
-            .set_read_timeout(Some(rem_target))
-            .map_err(ForwardError::AdapterFailed)?;
         let chunk_len = remaining_resp.min(scratch.len());
-        target
-            .read_exact(&mut scratch[..chunk_len])
-            .map_err(ForwardError::AdapterFailed)?;
+        if let Err(e) = read_exact_deadline(target, &mut scratch[..chunk_len], deadline) {
+            return Err(ForwardError::AdapterFailed(e));
+        }
 
-        let rem_client = match remaining_timeout(deadline) {
-            Ok(t) => t,
-            Err(_) => {
-                let unread = remaining_resp - chunk_len;
-                let drain_ok = drain_exact(target, unread, scratch, deadline).is_ok();
-                client_write_failed = Some(drain_ok);
-                break;
-            }
-        };
-        let _ = client.set_write_timeout(Some(rem_client));
-        if client.write_all(&scratch[..chunk_len]).is_err() {
+        if write_all_deadline(client, &scratch[..chunk_len], deadline).is_err() {
             let unread = remaining_resp - chunk_len;
             let drain_ok = drain_exact(target, unread, scratch, deadline).is_ok();
             client_write_failed = Some(drain_ok);
@@ -1518,6 +1565,7 @@ fn reply_text_error(stream: &mut UnixStream, opcode: u16, message: &str) -> io::
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cleverestricky_service_core::ipc::write_header;
     use std::fs;
     use std::io::{Cursor, Read, Write};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2133,9 +2181,12 @@ mod tests {
                 payload_len: 100,
             };
             write_header(&mut peer_adapter, resp_hdr).unwrap();
-            peer_adapter.write_all(b"1234567890").unwrap();
-            std::thread::sleep(Duration::from_millis(60));
-            let _ = peer_adapter.write_all(b"1234567890");
+            // Send multiple small chunks with pauses individually below the timeout (15ms < 30ms),
+            // but whose cumulative duration exceeds the 30ms deadline.
+            for _ in 0..5 {
+                let _ = peer_adapter.write_all(b"12345");
+                std::thread::sleep(Duration::from_millis(15));
+            }
         });
         let mut scratch = vec![0u8; STREAM_COPY_BYTES];
         let start = Instant::now();
@@ -2157,6 +2208,43 @@ mod tests {
             "relay must not block past deadline"
         );
         adapter_handle.join().unwrap();
+    }
+
+    #[test]
+    fn web_relay_drains_client_payload_when_adapter_forwarding_fails() {
+        let (mut bridge, mut daemon_web) = UnixStream::pair().unwrap();
+        let (daemon_adapter, peer_adapter) = UnixStream::pair().unwrap();
+        drop(peer_adapter);
+
+        let payload = vec![0x42u8; 256];
+        write_frame(&mut bridge, OP_WEB_REQUEST, 0, &payload).unwrap();
+        write_frame(&mut bridge, OP_PING, 0, b"").unwrap();
+
+        let request = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        let mut slot = Some(RegisteredAdapter {
+            stream: daemon_adapter,
+            lease: AdapterLease {
+                pid: 1,
+                generation: 1,
+            },
+        });
+        let mut scratch = vec![0u8; STREAM_COPY_BYTES];
+        let err = forward_web_request_with_timeout(
+            &mut daemon_web,
+            request,
+            &mut slot,
+            &mut scratch,
+            Duration::from_millis(100),
+        )
+        .unwrap_err();
+        match err {
+            ForwardError::AdapterFailed(_) => {}
+            other => panic!("expected AdapterFailed, got {other:?}"),
+        }
+        assert!(slot.is_none(), "adapter must be dropped after failure");
+
+        let next = read_header_bounded(&mut daemon_web, MAX_FRAME_BYTES).unwrap();
+        assert_eq!(next.opcode, OP_PING);
     }
 
     #[test]
