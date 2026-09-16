@@ -770,18 +770,12 @@ jobs:
           path: release-assets
           merge-multiple: true
           skip-decompress: true
-          repository: tryigit/CleveresTricky
-          run-id: 35097240031
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Encryptor App
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: EncryptorApp
           path: release-assets
-          repository: tryigit/CleveresTricky
-          run-id: 35097240031
-          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify release assets and create checksums
         shell: bash
@@ -826,11 +820,10 @@ jobs:
           subject-checksums: release-assets/SHA256SUMS
 
       - name: Create tag and release
-        if: success()
+        if: steps.release_version.outputs.create == 'true'
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: "V${{ steps.release_version.outputs.version }}"
           name: "Release V${{ steps.release_version.outputs.version }}"
           generate_release_notes: true
-          overwrite_files: true
           files: "release-assets/*"
