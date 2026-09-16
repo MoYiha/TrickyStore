@@ -58,8 +58,10 @@ function makeElement(tagName) {
 
 const list = makeElement('div');
 const verifyResult = makeElement('div');
+let now = Date.now();
 const context = {
   console,
+  Date: { parse: Date.parse, now: () => now },
   locale() { return 'en'; },
   VALUE_POPUP_COPY: { en: { title: 'Details', copy: 'Copy', copied: 'Copied', close: 'Close', hold: 'Hold to view and copy' } },
   document: {
@@ -88,6 +90,7 @@ vm.runInContext(`
   let selected = new Set();
   function filtered() { return inventory; }
   ${expiredImplementation}
+  this.isKeyboxExpired = isKeyboxExpired;
   ${implementation}
   this.setInventory = items => { inventory = items; };
   this.renderKeyboxes = render;
@@ -99,6 +102,13 @@ vm.runInContext(`
   this.setVerificationItems = items => { verificationItems = items; };
   this.renderVerification = renderVerification;
 `, context, { filename: 'ux.js#renderKeyboxes' });
+
+// A minute-precision expiry represents the end of its displayed minute.
+now = Date.parse('2030-01-01T10:45:30Z');
+assert.equal(context.isKeyboxExpired('2030-01-01 10:45'), false, 'a minute-precision expiry must remain active through :59');
+assert.equal(context.isKeyboxExpired('2030-01-01 10:45:15'), true, 'a second-precision expiry must retain its exact instant');
+now = Date.parse('2030-01-01T10:46:00Z');
+assert.equal(context.isKeyboxExpired('2030-01-01 10:45'), true, 'a minute-precision expiry must expire after its displayed minute');
 
 // Test 1: StrongBox badge
 context.setInventory([
@@ -362,5 +372,25 @@ const compactMeta = compactBody.children[1];
 assert.equal(compactMeta.children.length, 3);
 assert.equal(compactMeta.children[1].children[1].textContent, 'ABCDEF0123456789ABCDEF0123456789');
 assert.equal(compactMeta.children[2].children[1].textContent, '2029-02-08');
+
+// Test 16: Expiry with time string parsing
+context.setInventory([
+  { id: '16a', filename: 'expired_time.xml', scope: 'managed', certificate_serial: '111', security_level: 'StrongBox', not_after: '2020-01-01 12:00' },
+  { id: '16b', filename: 'future_time.xml', scope: 'managed', certificate_serial: '222', security_level: 'StrongBox', not_after: '2099-01-01 15:30' }
+]);
+list.children = [];
+context.renderKeyboxes();
+assert.equal(list.children.length, 2);
+const expTimeName = list.children[0].children[1].children[0];
+assert.equal(expTimeName.children[2].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired');
+const futTimeName = list.children[1].children[1].children[0];
+assert.equal(futTimeName.children.length, 2); // No expired badge
+
+// Test 17: Long press attributes attached across items
+const storedFilename = list.children[0].children[1].children[0].children[0];
+assert.equal(storedFilename.attributes.role, 'button');
+assert.equal(storedFilename.attributes['aria-haspopup'], 'dialog');
+const storedScope = list.children[0].children[1].children[1].children[0].children[1];
+assert.equal(storedScope.attributes.role, 'button');
 
 console.log('Keybox security and algorithm badge rendering regression checks passed');
