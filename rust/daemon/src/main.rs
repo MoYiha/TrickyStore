@@ -790,10 +790,100 @@ fn serve_web(
     adapter_identity: Arc<AdapterIdentity>,
     module_dir: Arc<PathBuf>,
 ) -> io::Result<()> {
-    let mut adapter: Option<RegisteredAdapter> = None;
-    let mut relay_buffer = vec![0u8; STREAM_COPY_BYTES];
+    // Keep the adapter registration state behind a mutex so a long-running WebUI request cannot
+    // block the listener from accepting a reconnect. This prevents the daemon from reporting
+    // "Android adapter is unavailable" while the adapter process itself is still alive and trying
+    // to re-register after a transport reset.
+    let adapter: Arc<std::sync::Mutex<Option<RegisteredAdapter>>> =
+        Arc::new(std::sync::Mutex::new(None));
+    const WEB_RELAY_QUEUE_CAPACITY: usize = 8;
+    struct WebRequest {
+        client: UnixStream,
+        header: FrameHeader,
+    }
+
     let cached_manifest: Arc<std::sync::RwLock<Option<CachedManifest>>> =
         Arc::new(std::sync::RwLock::new(None));
+    let (web_relay_tx, web_relay_rx) = mpsc::sync_channel::<WebRequest>(WEB_RELAY_QUEUE_CAPACITY);
+
+    let relay_adapter_state = Arc::clone(&adapter);
+    let relay_identity = Arc::clone(&adapter_identity);
+    thread::Builder::new()
+        .name("ct-web-relay".to_string())
+        .spawn(move || {
+            for mut request in web_relay_rx {
+                let mut relay_buffer = vec![0u8; STREAM_COPY_BYTES];
+                let mut selected = match relay_adapter_state.lock() {
+                    Ok(mut registered) => {
+                        if registered
+                            .as_ref()
+                            .is_some_and(|entry| !relay_identity.matches(entry.lease))
+                        {
+                            *registered = None;
+                        }
+                        registered.take()
+                    }
+                    Err(_) => {
+                        let error = io::Error::other("adapter registration state is poisoned");
+                        let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
+                        continue;
+                    }
+                };
+
+                if selected.is_none() {
+                    let error = io::Error::other("Android adapter is unavailable");
+                    let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
+                    continue;
+                }
+
+                let selected_lease = selected.as_ref().map(|entry| entry.lease);
+                let result = forward_web_request_with_timeout(
+                    &mut request.client,
+                    request.header,
+                    &mut selected,
+                    &mut relay_buffer,
+                    WEB_REQUEST_TIMEOUT,
+                );
+
+                match result {
+                    Ok(()) => {
+                        if let Some(adapter) = selected.take() {
+                            if relay_identity.matches(adapter.lease) {
+                                if let Ok(mut registered) = relay_adapter_state.lock() {
+                                    if registered.is_none() {
+                                        *registered = Some(adapter);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(ForwardError::AdapterFailed(error)) => {
+                        let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
+                    }
+                    Err(ForwardError::AdapterUnavailable(error)) => {
+                        let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
+                    }
+                    Err(ForwardError::ClientFailed { preserve_adapter }) => {
+                        if preserve_adapter {
+                            if let Some(adapter) = selected.take() {
+                                if Some(adapter.lease) == selected_lease
+                                    && relay_identity.matches(adapter.lease)
+                                {
+                                    if let Ok(mut registered) = relay_adapter_state.lock() {
+                                        if registered.is_none() {
+                                            *registered = Some(adapter);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        .map_err(|error| {
+            io::Error::other(format!("could not spawn WebUI relay worker: {error}"))
+        })?;
     loop {
         let (mut client, _) = match listener.accept() {
             Ok(value) => value,
@@ -823,11 +913,13 @@ fn serve_web(
                 continue;
             }
         };
-        if adapter
-            .as_ref()
-            .is_some_and(|registered| !adapter_identity.matches(registered.lease))
-        {
-            adapter = None;
+        if let Ok(mut registered) = adapter.lock() {
+            if registered
+                .as_ref()
+                .is_some_and(|entry| !adapter_identity.matches(entry.lease))
+            {
+                *registered = None;
+            }
         }
         let peer_pid = u32::try_from(credentials.pid).ok();
         let peer_lease = adapter_identity
@@ -855,34 +947,32 @@ fn serve_web(
                 if write_frame(&mut client, OP_ADAPTER_REGISTER, 0, b"ok").is_err() {
                     continue;
                 }
-                adapter = Some(RegisteredAdapter {
-                    stream: client,
-                    lease,
-                });
+                if let Ok(mut registered) = adapter.lock() {
+                    *registered = Some(RegisteredAdapter {
+                        stream: client,
+                        lease,
+                    });
+                } else {
+                    continue;
+                }
             }
             OP_PING if header.flags == 0 && header.payload_len == 0 => {
                 let _ = write_frame(&mut client, OP_PING, 0, b"pong");
             }
             OP_WEB_REQUEST if header.flags == 0 && header.payload_len <= MAX_FRAME_BYTES => {
-                match forward_web_request_with_timeout(
-                    &mut client,
-                    header,
-                    &mut adapter,
-                    &mut relay_buffer,
-                    WEB_REQUEST_TIMEOUT,
-                ) {
+                let request = WebRequest { client, header };
+                match web_relay_tx.try_send(request) {
                     Ok(()) => {}
-                    Err(ForwardError::AdapterFailed(error)) => {
-                        adapter = None;
-                        let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
+                    Err(mpsc::TrySendError::Full(mut request)) => {
+                        let error = io::Error::new(
+                            io::ErrorKind::WouldBlock,
+                            "WebUI request queue is full",
+                        );
+                        let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
                     }
-                    Err(ForwardError::AdapterUnavailable(error)) => {
-                        let _ = reply_error(&mut client, OP_WEB_REQUEST, &error);
-                    }
-                    Err(ForwardError::ClientFailed { preserve_adapter }) => {
-                        if !preserve_adapter {
-                            adapter = None;
-                        }
+                    Err(mpsc::TrySendError::Disconnected(mut request)) => {
+                        let error = io::Error::other("WebUI relay worker is unavailable");
+                        let _ = reply_error(&mut request.client, OP_WEB_REQUEST, &error);
                     }
                 }
             }
