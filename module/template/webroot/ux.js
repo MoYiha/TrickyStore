@@ -3247,6 +3247,82 @@
         return !Number.isNaN(ts) && ts < Date.now();
     }
 
+    const VALUE_POPUP_COPY = {
+        en: { title: 'Details', copy: 'Copy', copied: 'Copied', close: 'Close', hold: 'Hold to view and copy' },
+        tr: { title: 'Ayrıntı', copy: 'Kopyala', copied: 'Kopyalandı', close: 'Kapat', hold: 'Görüntülemek ve kopyalamak için basılı tut' },
+        'zh-CN': { title: '详细信息', copy: '复制', copied: '已复制', close: '关闭', hold: '长按查看并复制' },
+        es: { title: 'Detalle', copy: 'Copiar', copied: 'Copiado', close: 'Cerrar', hold: 'Mantén pulsado para ver y copiar' },
+        de: { title: 'Details', copy: 'Kopieren', copied: 'Kopiert', close: 'Schließen', hold: 'Gedrückt halten zum Anzeigen und Kopieren' },
+        ru: { title: 'Подробности', copy: 'Копировать', copied: 'Скопировано', close: 'Закрыть', hold: 'Нажмите и удерживайте для просмотра и копирования' },
+        id: { title: 'Detail', copy: 'Salin', copied: 'Tersalin', close: 'Tutup', hold: 'Tekan lama untuk melihat dan menyalin' },
+        hi: { title: 'विवरण', copy: 'कॉपी करें', copied: 'कॉपी किया गया', close: 'बंद करें', hold: 'देखने और कॉपी करने के लिए दबाकर रखें' },
+        ar: { title: 'التفاصيل', copy: 'نسخ', copied: 'تم النسخ', close: 'إغلاق', hold: 'اضغط مطولاً للعرض والنسخ' }
+    };
+    function popupCopy() { return VALUE_POPUP_COPY[locale()] || VALUE_POPUP_COPY.en; }
+    async function copyKeyboxValue(value) {
+        const text = String(value || '');
+        if (!text) return false;
+        try { if (global.navigator?.clipboard?.writeText) { await global.navigator.clipboard.writeText(text); return true; } } catch (_) {}
+        try {
+            const textarea = document.createElement('textarea');
+            const previouslyFocused = document.activeElement;
+            textarea.value = text; textarea.setAttribute('readonly', '');
+            textarea.style.cssText = 'position:fixed;inset:-9999px;opacity:0;pointer-events:none;';
+            document.body.appendChild(textarea); textarea.focus(); textarea.select();
+            const copied = Boolean(document.execCommand && document.execCommand('copy')); textarea.remove();
+            if (previouslyFocused?.isConnected) previouslyFocused.focus();
+            return copied;
+        } catch (_) { return false; }
+    }
+    function closeKeyboxValuePopup(restoreFocus = true) {
+        const trigger = global.__ctKeyboxPopupTrigger; global.__ctKeyboxPopupTrigger = null;
+        const popup = document.getElementById('ct_keybox_value_popup'); if (popup) popup.remove();
+        if (global.__ctKeyboxPopupEscapeHandler) { document.removeEventListener('keydown', global.__ctKeyboxPopupEscapeHandler); global.__ctKeyboxPopupEscapeHandler = null; }
+        if (restoreFocus && trigger?.isConnected) trigger.focus();
+    }
+    function showKeyboxValuePopup(label, value, trigger) {
+        const text = String(value || ''); if (!text || !document.body) return; closeKeyboxValuePopup(false);
+        const copy = popupCopy();
+        const overlay = document.createElement('div'); overlay.id = 'ct_keybox_value_popup'; overlay.className = 'ct-keybox-value-popup'; overlay.setAttribute('role','dialog'); overlay.setAttribute('aria-modal','true');
+        overlay.addEventListener('click', event => { if (event.target === overlay) closeKeyboxValuePopup(); });
+        const card = document.createElement('div'); card.className = 'ct-keybox-value-popup-card';
+        const heading = document.createElement('div'); heading.className = 'ct-keybox-value-popup-heading'; heading.textContent = String(label || copy.title);
+        const valueNode = document.createElement('div'); valueNode.className = 'ct-keybox-value-popup-value'; valueNode.textContent = text;
+        const hint = document.createElement('div'); hint.className = 'ct-keybox-value-popup-hint'; hint.textContent = copy.hold;
+        const actions = document.createElement('div'); actions.className = 'ct-keybox-value-popup-actions';
+        const copyButton = document.createElement('button'); copyButton.type = 'button'; copyButton.className = 'ct-keybox-value-popup-copy'; copyButton.textContent = copy.copy;
+        const closeButton = document.createElement('button'); closeButton.type = 'button'; closeButton.className = 'ct-keybox-value-popup-close'; closeButton.textContent = copy.close;
+        const setCopiedState = copied => { copyButton.textContent = copied ? copy.copied : copy.copy; copyButton.classList.toggle('is-copied', copied); };
+        copyButton.addEventListener('click', async () => setCopiedState(await copyKeyboxValue(text)));
+        closeButton.addEventListener('click', closeKeyboxValuePopup);
+        actions.append(copyButton, closeButton); card.append(heading, valueNode, hint, actions); overlay.appendChild(card); document.body.appendChild(overlay);
+        global.__ctKeyboxPopupTrigger = trigger;
+        const escapeHandler = event => { if (event.key === 'Escape') closeKeyboxValuePopup(); };
+        global.__ctKeyboxPopupEscapeHandler = escapeHandler; document.addEventListener('keydown', escapeHandler);
+        global.requestAnimationFrame?.(() => overlay.classList.add('is-visible'));
+        copyButton.focus();
+        copyKeyboxValue(text).then(setCopiedState); global.navigator?.vibrate?.(8);
+    }
+    function attachKeyboxLongPress(node, label, value) {
+        if (!node || !value) return; let timer = null; let longPressed = false;
+        const cancel = () => { if (timer !== null) { global.clearTimeout(timer); timer = null; } };
+        node.setAttribute('title', popupCopy().hold); node.setAttribute('role', 'button'); node.setAttribute('aria-haspopup', 'dialog'); node.tabIndex = 0; node.style.cursor = 'copy'; node.style.touchAction = 'manipulation';
+        node.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+            event.preventDefault(); cancel(); showKeyboxValuePopup(label, value, node);
+        });
+        node.addEventListener('pointerdown', () => { longPressed = false; cancel(); timer = global.setTimeout(() => { timer = null; longPressed = true; showKeyboxValuePopup(label, value, node); }, 650); });
+        node.addEventListener('pointerup', cancel); node.addEventListener('pointercancel', cancel); node.addEventListener('pointerleave', cancel);
+        node.addEventListener('contextmenu', event => { if (longPressed) event.preventDefault(); });
+    }
+    function appendKeyboxValue(parent, label, value, options = {}) {
+        const text = String(value || '').trim(); if (!text) return;
+        const line = document.createElement('div'); line.className = 'ct-keybox-meta-row';
+        const labelNode = document.createElement('span'); labelNode.className = 'ct-keybox-meta-label'; labelNode.textContent = String(label || '');
+        const valueNode = document.createElement('span'); valueNode.className = options.className || 'ct-keybox-meta-value'; valueNode.textContent = text; valueNode.title = text;
+        if (options.copyable !== false) attachKeyboxLongPress(valueNode, label, text);
+        line.append(labelNode, valueNode); parent.appendChild(line);
+    }
     function statusLabel() {
         const node = document.getElementById('keyboxStatus');
         if (!node) return;
@@ -3453,11 +3529,19 @@
                 name.append(expBadge);
             }
             const meta = document.createElement('div');
-            meta.style.cssText = 'font-size:.78em;color:#888;margin-top:3px;overflow-wrap:anywhere;word-break:break-word;';
-            const scope = item.scope === 'root' ? t('root') : t('managed');
-            const cert = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
-            const expiry = item.not_after ? ' | ' + t('expires') + ': ' + item.not_after : '';
-            meta.textContent = scope + ' | ' + cert + expiry;
+            meta.className = 'ct-keybox-meta';
+            const scopeNode = document.createElement('div');
+            scopeNode.className = 'ct-keybox-meta-row';
+            const scopeLabel = document.createElement('span');
+            scopeLabel.className = 'ct-keybox-meta-label';
+            scopeLabel.textContent = t('Scope');
+            const scopeValue = document.createElement('span');
+            scopeValue.className = 'ct-keybox-meta-value';
+            scopeValue.textContent = item.scope === 'root' ? t('root') : t('managed');
+            scopeNode.append(scopeLabel, scopeValue);
+            meta.appendChild(scopeNode);
+            if (item.certificate_serial) appendKeyboxValue(meta, t('cert'), item.certificate_serial);
+            if (item.not_after) appendKeyboxValue(meta, t('expires'), item.not_after);
             body.append(name, meta);
 
             const remove = document.createElement('button');
@@ -3797,10 +3881,9 @@
             title.append(badgesContainer);
 
             const meta = document.createElement('div');
-            meta.style.cssText = 'font-size:.8em;color:#888;margin-top:2px';
-            const certText = item.certificate_serial ? t('cert') + ': ' + item.certificate_serial : t('certMissing');
-            const expiryText = item.not_after ? ' | ' + t('expires') + ': ' + item.not_after : '';
-            meta.textContent = certText + expiryText;
+            meta.className = 'ct-verification-meta';
+            if (item.certificate_serial) appendKeyboxValue(meta, t('cert'), item.certificate_serial);
+            if (item.not_after) appendKeyboxValue(meta, t('expires'), item.not_after);
             const details = document.createElement('div');
             details.style.cssText = 'font-size:.8em;color:#aaa;margin-top:2px';
             const rawDetails = String(item.details || '');
