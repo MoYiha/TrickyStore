@@ -43,6 +43,10 @@ object ServerManager {
         var lastAuthor: String = "",
         var contentPassword: String? = null,
         var contentPublicKey: String? = null,
+        var keyboxCount: Int = 0,
+        var rkpCount: Int = 0,
+        var rsaCount: Int = 0,
+        var cboxCount: Int = 0,
     )
 
     private data class FetchContext(
@@ -151,7 +155,7 @@ object ServerManager {
         }
     }
 
-    private fun parseServer(json: JSONObject): ServerConfig {
+    internal fun parseServer(json: JSONObject): ServerConfig {
         return ServerConfig(
             id = json.getString("id"),
             name = json.getString("name"),
@@ -167,10 +171,14 @@ object ServerManager {
             lastAuthor = json.optString("lastAuthor", ""),
             contentPassword = json.optString("contentPassword").ifEmpty { null },
             contentPublicKey = json.optString("contentPublicKey").ifEmpty { null },
+            keyboxCount = json.optInt("keyboxCount", 0).coerceIn(0, MAX_REMOTE_KEYBOXES),
+            rkpCount = json.optInt("rkpCount", 0).coerceIn(0, MAX_REMOTE_KEYBOXES),
+            rsaCount = json.optInt("rsaCount", 0).coerceIn(0, MAX_REMOTE_KEYBOXES),
+            cboxCount = json.optInt("cboxCount", 0).coerceIn(0, MAX_REMOTE_KEYBOXES),
         )
     }
 
-    private fun serializeServer(server: ServerConfig): JSONObject {
+    internal fun serializeServer(server: ServerConfig): JSONObject {
         val json = JSONObject()
         json.put("id", server.id)
         json.put("name", server.name)
@@ -186,6 +194,10 @@ object ServerManager {
         json.put("lastAuthor", server.lastAuthor)
         json.put("contentPassword", server.contentPassword ?: "")
         json.put("contentPublicKey", server.contentPublicKey ?: "")
+        json.put("keyboxCount", server.keyboxCount)
+        json.put("rkpCount", server.rkpCount)
+        json.put("rsaCount", server.rsaCount)
+        json.put("cboxCount", server.cboxCount)
         return json
     }
 
@@ -302,6 +314,10 @@ object ServerManager {
         require(server.lastAuthor.length <= 1024 && server.lastAuthor.none { it.isISOControl() }) {
             "Invalid server author"
         }
+        require(server.keyboxCount in 0..MAX_REMOTE_KEYBOXES) { "Invalid keybox count" }
+        require(server.rkpCount in 0..MAX_REMOTE_KEYBOXES) { "Invalid rkp count" }
+        require(server.rsaCount in 0..MAX_REMOTE_KEYBOXES) { "Invalid rsa count" }
+        require(server.cboxCount in 0..MAX_REMOTE_KEYBOXES) { "Invalid cbox count" }
         validateAuthentication(server)
         validatedServerUrl(server.url)
     }
@@ -392,10 +408,9 @@ object ServerManager {
         }
     }
 
-    private fun loadCachedKeyboxes() {
-        if (serversList.none { it.enabled }) return
+    internal fun loadCachedKeyboxes() {
         val checkEnabled = Config.isAutoKeyboxCheckEnabled
-        val revoked = if (checkEnabled) KeyboxVerifier.fetchCrl() else null
+        val revoked = if (checkEnabled && serversList.any { it.enabled }) KeyboxVerifier.fetchCrl() else null
         serversList.forEach { server ->
             if (server.enabled) {
                 val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_${server.id}.enc")
@@ -417,6 +432,10 @@ object ServerManager {
                             }
                             if (parsed.isNotEmpty() && (statuses.isEmpty() || statuses.all { it == KeyboxVerifier.Status.VALID })) {
                                 serverKeyboxes[server.id] = parsed
+                                server.keyboxCount = parsed.size
+                                server.rkpCount = parsed.count { CertHack.isRkpKeybox(it) }
+                                server.rsaCount = parsed.count { CertHack.hasRsaKeybox(it) }
+                                server.cboxCount = parsed.count { isCboxKeybox(it) }
                                 Logger.i("Loaded cached keyboxes for server: ${server.name}")
                             } else {
                                 deactivateServerContent(server.id, deleteCache = true)
@@ -432,7 +451,11 @@ object ServerManager {
                         cachePayload?.fill(0)
                         decrypted?.fill(0)
                     }
+                } else {
+                    deactivateServerContent(server.id, deleteCache = false)
                 }
+            } else {
+                deactivateServerContent(server.id, deleteCache = false)
             }
         }
     }
@@ -443,7 +466,7 @@ object ServerManager {
     ): List<CertHack.KeyBox> {
         val isZip = bytes.size > 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
         val isCbox = CboxDecryptor.hasSupportedEnvelopeHeader(bytes)
-        if (!isZip && !isCbox) return KeyboxLoader.parse(bytes, "server_${server.name}")
+        if (!isZip && !isCbox) return KeyboxLoader.parse(bytes, "server_${server.name}.xml")
 
         val parsed = processContent(bytes, server)
         return try {
@@ -507,6 +530,10 @@ object ServerManager {
             } else {
                 "Unknown"
             }
+        target.keyboxCount = keyboxes.size
+        target.rkpCount = keyboxes.count { CertHack.isRkpKeybox(it) }
+        target.rsaCount = keyboxes.count { CertHack.hasRsaKeybox(it) }
+        target.cboxCount = keyboxes.count { isCboxKeybox(it) }
         serverKeyboxes[target.id] = keyboxes
         if (cacheBytes != null) cacheXml(context.snapshot, cacheBytes)
         persistStatusSafely()
@@ -665,7 +692,7 @@ object ServerManager {
         if (CboxDecryptor.hasSupportedEnvelopeHeader(bytes)) {
             val password = server.contentPassword ?: ""
             val publicKey = server.contentPublicKey?.takeUnless { it.isBlank() }
-            val keyboxes = materializeServerCbox(bytes, password, publicKey, "server_${server.name}")
+            val keyboxes = materializeServerCbox(bytes, password, publicKey, "server_${server.name}.cbox")
             if (keyboxes.isNotEmpty()) {
                 return Pair(keyboxes, bytes.copyOf())
             }
@@ -709,7 +736,7 @@ object ServerManager {
                 return Pair(emptyList(), null)
             }
             val cacheBytes = bytes.copyOf()
-            val keyboxes = KeyboxLoader.parse(bytes, "server_${server.name}")
+            val keyboxes = KeyboxLoader.parse(bytes, "server_${server.name}.xml")
             if (keyboxes.isNotEmpty()) {
                 return Pair(keyboxes, cacheBytes)
             }
@@ -834,10 +861,28 @@ object ServerManager {
         deleteCache: Boolean,
     ) {
         serverKeyboxes.remove(serverId)
+        val server = serversMap[serverId]
+        if (server != null) {
+            val hadCounts = server.keyboxCount != 0 || server.rkpCount != 0 || server.rsaCount != 0 || server.cboxCount != 0
+            server.keyboxCount = 0
+            server.rkpCount = 0
+            server.rsaCount = 0
+            server.cboxCount = 0
+            if (hadCounts) {
+                persistStatusSafely()
+            }
+        }
         if (!deleteCache) return
         val cacheFile = File(Config.keyboxDirectory.parentFile, "server_cache_$serverId.enc")
         deleteCacheFile(cacheFile, "rejected")
     }
+
+    internal fun isCboxKeybox(box: CertHack.KeyBox): Boolean {
+        val lower = box.filename.lowercase()
+        return lower.endsWith(".cbox") || (lower.startsWith("server_") && !lower.endsWith(".xml"))
+    }
+
+    fun getServerKeyboxes(serverId: String): List<CertHack.KeyBox>? = serverKeyboxes[serverId]
 
     private fun deleteCacheFile(
         cacheFile: File,
