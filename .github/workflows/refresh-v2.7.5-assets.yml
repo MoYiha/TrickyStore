@@ -1,4 +1,4 @@
-name: Refresh V2.7.5 assets
+name: Refresh V2.8.1 assets
 
 on:
   push:
@@ -15,11 +15,11 @@ jobs:
     if: github.repository == 'tryigit/CleveresTricky'
     runs-on: ubuntu-latest
     env:
-      SOURCE_RUN: '34265010949'
-      TAG: 'V2.7.5'
-      VERSION_CODE: '3938'
-      BUILD_HASH: 'f98d141d'
-      MODULE_ARTIFACT: 'CleveresTricky-V2.7.5-3938-f98d141d-release.zip'
+      SOURCE_RUN: '35097240031'
+      TAG: 'V2.8.1'
+      VERSION_CODE: '4168'
+      BUILD_HASH: '44ec94c4'
+      MODULE_ARTIFACT: 'CleveresTricky-V2.8.1-4168-44ec94c4-release.zip'
       NEW_ZIP: 'CleveresTricky-V2.7.5-3938-f98d141d-release.zip'
       APK: 'encryptor-app-release.apk'
       UPDATE_FILE: 'update.json'
