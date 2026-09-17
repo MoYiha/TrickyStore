@@ -112,6 +112,18 @@ popup = document.getElementById('ct_keybox_value_popup');
 assert.ok(popup, 'long-press must continue opening the dialog');
 findByClass(popup, 'ct-keybox-value-popup-close').dispatch('click');
 
+let contextmenuPrevented = false;
+let contextmenuPropagationStopped = false;
+value.dispatch('contextmenu', {
+    preventDefault() { contextmenuPrevented = true; },
+    stopPropagation() { contextmenuPropagationStopped = true; }
+});
+assert.equal(contextmenuPrevented, true, 'contextmenu must be prevented');
+assert.equal(contextmenuPropagationStopped, true, 'contextmenu must not propagate');
+popup = document.getElementById('ct_keybox_value_popup');
+assert.ok(popup, 'contextmenu must open the dialog for mobile and desktop callers');
+findByClass(popup, 'ct-keybox-value-popup-close').dispatch('click');
+
 context.navigator = {};
 context.showKeyboxValuePopup('Certificate', '5678', value);
 popup = document.getElementById('ct_keybox_value_popup');

@@ -719,9 +719,16 @@ class WebServer(
             var certSerial = CertHack.getDeviceCertificateSerial(targetId) ?: ""
             var notAfter = CertHack.getDeviceCertificateNotAfter(targetId) ?: ""
             var secLevel = CertHack.getKeyboxSecurityLevel(targetId)
-            var isRkp = CertHack.isRkpKeybox(targetId)
-            var hasRsa = CertHack.hasRsaKeybox(targetId)
-            var hasEc = CertHack.hasEcKeybox(targetId)
+            var isRkp = CertHack.isRkpKeybox(targetId) ||
+                CertHack.isRkpKeybox(source.filename) ||
+                RkpProvenanceStore.isRkp(source.id, configDir) ||
+                RkpProvenanceStore.isRkp(source.filename, configDir)
+            var hasRsa = CertHack.hasRsaKeybox(targetId) || CertHack.hasRsaKeybox(source.filename)
+            var hasEc = CertHack.hasEcKeybox(targetId) || CertHack.hasEcKeybox(source.filename)
+
+            if (isRkp && secLevel != "StrongBox") {
+                secLevel = "RKP"
+            }
 
             if (secLevel == "Unknown" || certSerial.isEmpty() || notAfter.isEmpty() || (!hasRsa && !hasEc)) {
                 val fileScope = source.scope.fileScope
@@ -731,7 +738,13 @@ class WebServer(
                             KeyboxLoader.parseFileSnapshot(fileScope, source.filename, source.id)
                         }.getOrNull()
                     if (parsed != null && parsed.keyboxes.isNotEmpty()) {
-                        if (secLevel == "Unknown") {
+                        if (!isRkp) {
+                            isRkp = parsed.keyboxes.any(CertHack::isRkpKeybox) ||
+                                parsed.keyboxes.any(RkpProvenanceStore::hasVerifiedRkpCertificates) ||
+                                RkpProvenanceStore.isRkp(source.filename, configDir) ||
+                                RkpProvenanceStore.isRkp(source.id, configDir)
+                        }
+                        if (secLevel == "Unknown" || (isRkp && secLevel != "RKP")) {
                             var hasTee = false
                             var hasStrongBox = false
                             for (box in parsed.keyboxes) {
@@ -744,7 +757,7 @@ class WebServer(
                                     CertHack.KeyboxSecurityLevel.UNKNOWN -> {}
                                 }
                             }
-                            secLevel = if (hasStrongBox) "StrongBox" else if (hasTee) "TEE" else "Unknown"
+                            secLevel = if (hasStrongBox) "StrongBox" else if (isRkp) "RKP" else if (hasTee) "TEE" else "Unknown"
                         }
                         if (certSerial.isEmpty()) {
                             certSerial =
@@ -755,9 +768,6 @@ class WebServer(
                         if (notAfter.isEmpty()) {
                             notAfter = CertHack.getDeviceCertificateNotAfter(parsed.keyboxes) ?: ""
                         }
-                        if (!isRkp) {
-                            isRkp = parsed.keyboxes.any(CertHack::isRkpKeybox)
-                        }
                         if (!hasRsa) {
                             hasRsa = parsed.keyboxes.any(CertHack::hasRsaKeybox)
                         }
@@ -765,6 +775,16 @@ class WebServer(
                             hasEc = parsed.keyboxes.any(CertHack::hasEcKeybox)
                         }
                     }
+                }
+            }
+
+            if (isRkp && secLevel != "StrongBox") {
+                secLevel = "RKP"
+            }
+            if (isRkp) {
+                RkpProvenanceStore.recordRkp(source.filename, configDir)
+                if (source.id.isNotEmpty() && source.id != source.filename) {
+                    RkpProvenanceStore.recordRkp(source.id, configDir)
                 }
             }
 
@@ -816,7 +836,9 @@ class WebServer(
                 return Pair(KeyboxUploadValidation.INVALID, false)
             }
 
-            val isRkp = unauthenticatedKeyboxes.all(RkpProvenanceStore::hasVerifiedRkpCertificates)
+            val isRkp = unauthenticatedKeyboxes.all {
+                CertHack.isRkpKeybox(it) || RkpProvenanceStore.hasVerifiedRkpCertificates(it)
+            }
             val effectiveRkp = authenticatedRkpHint && isRkp
 
             val keyboxes =
@@ -829,10 +851,10 @@ class WebServer(
             if (!Config.isAutoKeyboxCheckEnabled) {
                 return Pair(KeyboxUploadValidation.VALID, effectiveRkp)
             }
-            if (keyboxes.all(CertHack::isRkpKeybox)) {
+            if (effectiveRkp && keyboxes.all(CertHack::isRkpKeybox)) {
                 return Pair(KeyboxUploadValidation.VALID, effectiveRkp)
             }
-            val nonRkpKeyboxes = keyboxes.filterNot(CertHack::isRkpKeybox)
+            val nonRkpKeyboxes = if (effectiveRkp) keyboxes.filterNot(CertHack::isRkpKeybox) else keyboxes
             val allValid =
                 crlFetcher?.let { legacyFetcher ->
                     val revoked = legacyFetcher() ?: return Pair(KeyboxUploadValidation.REVOCATION_UNAVAILABLE, false)
