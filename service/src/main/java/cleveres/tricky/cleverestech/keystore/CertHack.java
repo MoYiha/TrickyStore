@@ -919,20 +919,8 @@ public final class CertHack {
     }
 
     public static boolean isRkpKeybox(KeyBox keybox) {
-        if (keybox == null || keybox.certificates() == null) return false;
-        for (Certificate cert : keybox.certificates()) {
-            if (cert instanceof X509Certificate x509) {
-                var subject = x509.getSubjectX500Principal();
-                if (subject != null && subject.getName().toLowerCase(Locale.ROOT).contains("droid ca")) {
-                    return true;
-                }
-                var issuer = x509.getIssuerX500Principal();
-                if (issuer != null && issuer.getName().toLowerCase(Locale.ROOT).contains("droid ca")) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        if (keybox == null || keybox.certificates() == null || keybox.certificates().isEmpty()) return false;
+        return keybox.authenticatedRkpProvenance();
     }
 
     public static boolean hasRsaKeybox(String identifier) {
@@ -2436,7 +2424,15 @@ public final class CertHack {
         return matches;
     }
 
-    public record KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
+    public record KeyBox(
+            KeyPair keyPair,
+            List<Certificate> certificates,
+            String filename,
+            boolean authenticatedRkpProvenance) {
+        public KeyBox(KeyPair keyPair, List<Certificate> certificates, String filename) {
+            this(keyPair, certificates, filename, false);
+        }
+
         public KeyBox {
             Objects.requireNonNull(keyPair, "keyPair");
             certificates = List.copyOf(Objects.requireNonNull(certificates, "certificates"));

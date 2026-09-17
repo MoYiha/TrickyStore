@@ -102,6 +102,7 @@ class WebServerUploadTest {
     @After
     fun tearDown() {
         KeyboxLoader.resetForTesting()
+        RkpProvenanceStore.resetForTesting(configDir)
         BackendRecovery.recoveryOverride = null
         cleveres.tricky.cleverestech.keystore.CertHack.setKeyboxes(emptyList())
         ManagedKeyboxParserOracle.reset()
@@ -112,6 +113,7 @@ class WebServerUploadTest {
     private fun uploadKeyboxResponse(
         filename: String,
         content: String,
+        authenticatedRkp: Boolean = false,
     ): Pair<Int, String> {
         val port = server.listeningPort
         val token = server.token
@@ -119,7 +121,10 @@ class WebServerUploadTest {
 
         val encodedFilename = java.net.URLEncoder.encode(filename, StandardCharsets.UTF_8.name())
         val encodedContent = java.net.URLEncoder.encode(content, StandardCharsets.UTF_8.name())
-        val postData = "filename=$encodedFilename&content=$encodedContent"
+        var postData = "filename=$encodedFilename&content=$encodedContent"
+        if (authenticatedRkp) {
+            postData += "&authenticated_rkp=true"
+        }
         val postDataBytes = postData.toByteArray(StandardCharsets.UTF_8)
 
         val conn = url.openConnection() as HttpURLConnection
@@ -142,6 +147,7 @@ class WebServerUploadTest {
     private fun uploadMultipartKeybox(
         filename: String,
         content: ByteArray,
+        authenticatedRkp: Boolean = false,
     ): Int {
         val boundary = "CleveresTrickyUploadBoundary"
         val output = ByteArrayOutputStream()
@@ -151,6 +157,11 @@ class WebServerUploadTest {
         write("--$boundary\r\n")
         write("Content-Disposition: form-data; name=\"filename\"\r\n\r\n")
         write("$filename\r\n")
+        if (authenticatedRkp) {
+            write("--$boundary\r\n")
+            write("Content-Disposition: form-data; name=\"authenticated_rkp\"\r\n\r\n")
+            write("true\r\n")
+        }
         write("--$boundary\r\n")
         write("Content-Disposition: form-data; name=\"file\"; filename=\"$filename\"\r\n")
         write("Content-Type: application/octet-stream\r\n\r\n")
@@ -203,6 +214,20 @@ class WebServerUploadTest {
 
         assertEquals(200, uploadMultipartKeybox("multipart.xml", content))
         assertArrayEquals(content, File(configDir, "keyboxes/multipart.xml").readBytes())
+    }
+
+    @Test
+    fun `multipart standalone Keybox is stored in AndroidAttestation wrapper`() {
+        val standalone = TestKeyboxFixtures.validEcKeyboxXml
+            .substringAfter("<Keybox")
+            .substringBeforeLast("</Keybox>")
+            .let { "<Keybox$it</Keybox>" }
+
+        assertEquals(200, uploadMultipartKeybox("standalone.xml", standalone.toByteArray(StandardCharsets.UTF_8)))
+        val stored = File(configDir, "keyboxes/standalone.xml").readText()
+        assertTrue(stored.contains("<AndroidAttestation>"))
+        assertTrue(stored.contains("<NumberOfKeyboxes>1</NumberOfKeyboxes>"))
+        assertTrue(stored.contains("<Keybox"))
     }
 
     @Test
@@ -271,5 +296,211 @@ class WebServerUploadTest {
 
         val responseCode = uploadKeybox("../foo.xml", "<xml>bad</xml>")
         assertEquals(400, responseCode)
+    }
+
+    private fun uploadKeyboxPost(
+        params: Map<String, String>,
+    ): Pair<Int, String> {
+        val port = server.listeningPort
+        val token = server.token
+        val url = URL("http://localhost:$port/api/upload_keybox?token=$token")
+
+        val postData = params.entries.joinToString("&") { (k, v) ->
+            java.net.URLEncoder.encode(k, StandardCharsets.UTF_8.name()) + "=" +
+                java.net.URLEncoder.encode(v, StandardCharsets.UTF_8.name())
+        }
+        val postDataBytes = postData.toByteArray(StandardCharsets.UTF_8)
+
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        conn.outputStream.use { it.write(postDataBytes) }
+        val responseCode = conn.responseCode
+        val stream = if (responseCode >= 400) conn.errorStream else conn.inputStream
+        val responseBody = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+        conn.disconnect()
+        return responseCode to responseBody
+    }
+
+    @Test
+    fun testUploadRkpKeyboxWithoutWrapperOrCounts() {
+        val rawRkpXml = """
+            <Keybox>
+              <Key algorithm="ecdsa">
+                <PrivateKey>
+${TestKeyboxFixtures.ecPrivateKey.prependIndent("                  ")}
+                </PrivateKey>
+                <CertificateChain>
+                  <Certificate>
+${TestKeyboxFixtures.certificate.prependIndent("                    ")}
+                  </Certificate>
+                </CertificateChain>
+              </Key>
+            </Keybox>
+        """.trimIndent()
+
+        val (responseCode, _) = uploadKeyboxResponse("rkp.xml", rawRkpXml)
+        assertEquals(200, responseCode)
+        val file = File(configDir, "keyboxes/rkp.xml")
+        assertTrue(file.isFile)
+        val saved = file.readText()
+        assertTrue(saved.contains("<AndroidAttestation>"))
+        assertTrue(saved.contains("<NumberOfKeyboxes>1</NumberOfKeyboxes>"))
+    }
+
+    @Test
+    fun testUploadRkpKeyboxWithoutFilenameDefaultsToRkpXml() {
+        val rawRkpXml = """
+            <Keybox>
+              <Key algorithm="ecdsa">
+                <PrivateKey>
+${TestKeyboxFixtures.ecPrivateKey.prependIndent("                  ")}
+                </PrivateKey>
+                <CertificateChain>
+                  <Certificate>
+${TestKeyboxFixtures.certificate.prependIndent("                    ")}
+                  </Certificate>
+                </CertificateChain>
+              </Key>
+            </Keybox>
+        """.trimIndent()
+
+        val (responseCode, _) = uploadKeyboxPost(mapOf("content" to "<!-- rkp -->\n$rawRkpXml"))
+        assertEquals(200, responseCode)
+        val file = File(configDir, "keyboxes/rkp.xml")
+        assertTrue(file.isFile)
+    }
+
+    @Test
+    fun `RKP filename cannot bypass unavailable revocation checks`() {
+        val originalRoot = Config.getConfigRoot()
+        try {
+            Config.setRootForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+            KeyboxLoader.activeSetOverride = { true }
+            File(configDir, "auto_keybox_check").createNewFile()
+            server.stop()
+            server = WebServer(0, configDir, crlFetcher = { null })
+            server.start()
+
+            val rkpXml = TestKeyboxFixtures.validEcKeyboxXml
+
+            val (rkpCode, _) = uploadKeyboxResponse("rkp.xml", rkpXml)
+            assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, rkpCode)
+            assertFalse(File(configDir, "keyboxes/rkp.xml").exists())
+        } finally {
+            Config.setRootForTesting(originalRoot)
+            ManagedKeyboxParserOracle.install()
+        }
+    }
+
+    @Test
+    fun `untrusted RKP hint cannot bypass unavailable revocation checks for non-RKP keybox`() {
+        val originalRoot = Config.getConfigRoot()
+        try {
+            Config.setRootForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+            KeyboxLoader.activeSetOverride = { true }
+            File(configDir, "auto_keybox_check").createNewFile()
+            server.stop()
+            server = WebServer(0, configDir, crlFetcher = { null })
+            server.start()
+
+            val nonRkpXml = TestKeyboxFixtures.validEcKeyboxXml
+            val selfSignedRkpXml = TestKeyboxFixtures.selfSignedRkpKeyboxXml
+
+            // Non-RKP keybox claiming authenticated RKP must NOT bypass revocation
+            val (formCode, _) = uploadKeyboxResponse("fake_rkp.xml", nonRkpXml, authenticatedRkp = true)
+            assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, formCode)
+            assertFalse(File(configDir, "keyboxes/fake_rkp.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("fake_rkp.xml", configDir))
+
+            // Self-signed certificate claiming RKP (unanchored) must also be rejected
+            val (selfSignedCode, _) = uploadKeyboxResponse("self_signed_rkp.xml", selfSignedRkpXml, authenticatedRkp = true)
+            assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, selfSignedCode)
+            assertFalse(File(configDir, "keyboxes/self_signed_rkp.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("self_signed_rkp.xml", configDir))
+
+            // Multipart non-RKP keybox claiming authenticated RKP must also be rejected
+            val multipartCode = uploadMultipartKeybox(
+                "fake_rkp_multi.xml",
+                nonRkpXml.toByteArray(StandardCharsets.UTF_8),
+                authenticatedRkp = true,
+            )
+            assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, multipartCode)
+            assertFalse(File(configDir, "keyboxes/fake_rkp_multi.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("fake_rkp_multi.xml", configDir))
+
+            // Keybox with non-CA intermediate signed by anchor must be rejected by CA constraint checks (400 Bad Request)
+            RkpProvenanceStore.addTrustedAnchorForTesting(TestKeyboxFixtures.rkpRootCert)
+            val nonCaRkpXml = TestKeyboxFixtures.nonCaIntermediateRkpKeyboxXml
+            val (nonCaCode, _) = uploadKeyboxResponse("non_ca_rkp.xml", nonCaRkpXml, authenticatedRkp = true)
+            assertEquals(HttpURLConnection.HTTP_BAD_REQUEST, nonCaCode)
+            assertFalse(File(configDir, "keyboxes/non_ca_rkp.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("non_ca_rkp.xml", configDir))
+        } finally {
+            Config.setRootForTesting(originalRoot)
+            RkpProvenanceStore.resetForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+        }
+    }
+
+    @Test
+    fun `authenticated RKP upload remains valid and persists provenance across restarts`() {
+        val originalRoot = Config.getConfigRoot()
+        try {
+            Config.setRootForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+            KeyboxLoader.activeSetOverride = { true }
+            RkpProvenanceStore.addTrustedAnchorForTesting(TestKeyboxFixtures.rkpRootCert)
+            File(configDir, "auto_keybox_check").createNewFile()
+            server.stop()
+            server = WebServer(0, configDir, crlFetcher = { null })
+            server.start()
+
+            val genuineRkpXml = TestKeyboxFixtures.validRkpKeyboxXml
+
+            // Genuine RKP uploaded WITHOUT authenticated hint must NOT bypass revocation when CRL offline
+            val (unhintedCode, _) = uploadKeyboxResponse("rkp_unhinted.xml", genuineRkpXml, authenticatedRkp = false)
+            assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, unhintedCode)
+            assertFalse(File(configDir, "keyboxes/rkp_unhinted.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("rkp_unhinted.xml", configDir))
+
+            // Genuine RKP upload via form post must succeed even with offline CRL
+            val (formCode, _) = uploadKeyboxResponse("rkp_form.xml", genuineRkpXml, authenticatedRkp = true)
+            assertEquals(200, formCode)
+            assertTrue(File(configDir, "keyboxes/rkp_form.xml").isFile)
+            assertTrue(RkpProvenanceStore.isRkp("rkp_form.xml", configDir))
+
+            // Reloading keybox from disk snapshot must restore authenticated RKP provenance
+            val reloaded = KeyboxLoader.parseFileSnapshot(KeyboxLoader.FileScope.KEYBOX_DIRECTORY, "rkp_form.xml")
+            assertTrue(reloaded.keyboxes.isNotEmpty())
+            assertTrue(reloaded.keyboxes.all(cleveres.tricky.cleverestech.keystore.CertHack::isRkpKeybox))
+
+            // Genuine RKP upload via multipart must also succeed and record provenance
+            val multipartCode = uploadMultipartKeybox(
+                "rkp_multipart.xml",
+                genuineRkpXml.toByteArray(StandardCharsets.UTF_8),
+                authenticatedRkp = true,
+            )
+            assertEquals(200, multipartCode)
+            assertTrue(File(configDir, "keyboxes/rkp_multipart.xml").isFile)
+            assertTrue(RkpProvenanceStore.isRkp("rkp_multipart.xml", configDir))
+
+            // Deleting keybox must clean up RKP provenance
+            val deleteUrl = URL("http://localhost:${server.listeningPort}/api/delete_keybox?token=${server.token}")
+            val conn = deleteUrl.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.outputStream.use { it.write("filename=rkp_form.xml&scope=keyboxes".toByteArray(StandardCharsets.UTF_8)) }
+            assertEquals(200, conn.responseCode)
+            assertFalse(File(configDir, "keyboxes/rkp_form.xml").exists())
+            assertFalse(RkpProvenanceStore.isRkp("rkp_form.xml", configDir))
+        } finally {
+            Config.setRootForTesting(originalRoot)
+            RkpProvenanceStore.resetForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+        }
     }
 }
