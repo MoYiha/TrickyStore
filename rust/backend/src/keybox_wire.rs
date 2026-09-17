@@ -194,6 +194,7 @@ fn encode_document(
     Ok(output)
 }
 
+/// Validates keybox metadata and key records before they are encoded for the wire protocol.
 fn validate_wire_fields(
     declared_keyboxes: usize,
     keybox_count: usize,
@@ -205,7 +206,7 @@ fn validate_wire_fields(
     if keybox_count == 0 || keybox_count > u8::MAX as usize || keybox_count != declared_keyboxes {
         return Err("keybox count exceeds wire bound");
     }
-    if keys.is_empty() || keys.len() > u16::MAX as usize {
+    if keys.len() < keybox_count || keys.len() > u16::MAX as usize {
         return Err("key count exceeds wire bound");
     }
     for key in keys {

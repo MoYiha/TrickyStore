@@ -513,8 +513,9 @@ ${TestKeyboxFixtures.certificate.prependIndent("                    ")}
         }
     }
 
+    /** Verifies that mixed RKP uploads persist only the valid key and retain RKP provenance. */
     @Test
-    fun `keybox with valid RKP EC key and dummy sibling RSA key uploads successfully and retains valid key`() {
+    fun `keybox sanitization drops commented empty sibling containers and recounts surviving Keyboxes`() {
         val originalRoot = Config.getConfigRoot()
         try {
             Config.setRootForTesting(configDir)
@@ -541,12 +542,29 @@ ${TestKeyboxFixtures.certificate.prependIndent("                    ")}
                     </CertificateChain>
                 </Key>
                 """.trimIndent()
-            val combinedXml = genuineRkpXml.replace("</Keybox>", "$dummyRsaKey\n</Keybox>")
+            val combinedXml =
+                genuineRkpXml.replace(
+                    "</AndroidAttestation>",
+                    """
+                    <Keybox DeviceID="invalid-sibling">
+                    $dummyRsaKey
+                    <!-- <Key>not a real key</Key>; this container must not survive after its invalid Key is removed. -->
+                    </Keybox>
+                    </AndroidAttestation>
+                    """.trimIndent(),
+                )
 
             val (code, _) = uploadKeyboxResponse("mixed_rkp.xml", combinedXml, authenticatedRkp = true)
             assertEquals(200, code)
             assertTrue(File(configDir, "keyboxes/mixed_rkp.xml").isFile)
             assertTrue(RkpProvenanceStore.isRkp("mixed_rkp.xml", configDir))
+
+            val storedFileText = File(configDir, "keyboxes/mixed_rkp.xml").readText()
+            assertTrue(storedFileText.contains("algorithm=\"ecdsa\""))
+            assertFalse(storedFileText.contains("algorithm=\"rsa\""))
+            assertFalse(storedFileText.contains("Rm9yIG1vcmU"))
+            assertEquals(1, Regex("(?is)<Keybox[\\s>]").findAll(storedFileText).count())
+            assertTrue(storedFileText.contains("<NumberOfKeyboxes>1</NumberOfKeyboxes>"))
 
             val reloaded = KeyboxLoader.parseFileSnapshot(KeyboxLoader.FileScope.KEYBOX_DIRECTORY, "mixed_rkp.xml")
             assertEquals(1, reloaded.keyboxes.size)

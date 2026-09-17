@@ -56,6 +56,9 @@ pub(crate) fn reset_for_testing() {
     store.clear_poison();
 }
 
+/// Validates and atomically registers every key in a parsed keybox document.
+///
+/// Registration fails before the shared store is mutated when any key is invalid.
 pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecord>, &'static str> {
     if document.keys.is_empty() || document.keys.len() > MAX_STORED_KEYS {
         return Err("keybox key count exceeds store bound");
@@ -66,20 +69,11 @@ pub fn register_document(document: &KeyboxDocument) -> Result<Vec<PublicKeyRecor
         .try_reserve_exact(document.keys.len())
         .map_err(|_| "keybox store allocation failed")?;
     for raw in &document.keys {
-        match build_stored_key(
+        pending.push(build_stored_key(
             &raw.algorithm,
             &raw.private_key_pem,
             &raw.certificates_pem,
-        ) {
-            Ok(key) => pending.push(key),
-            Err(_) => {
-                // Sibling key in multi-key keybox may be malformed or dummy placeholder.
-                // Keep processing other keys in the document.
-            }
-        }
-    }
-    if pending.is_empty() {
-        return Err("no valid keys found in keybox document");
+        )?);
     }
 
     let store = STORE.get_or_init(|| Mutex::new(KeyStore::default()));

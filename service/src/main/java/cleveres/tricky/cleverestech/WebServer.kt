@@ -835,17 +835,76 @@ class WebServer(
         BACKEND_UNAVAILABLE,
     }
 
+    /**
+     * Removes invalid sibling keys from a mixed keybox document while preserving valid keys.
+     * Documents without both valid and invalid keys are returned unchanged for normal validation.
+     */
+    private fun sanitizeKeyboxXmlContent(xml: String): String {
+        val keyRegex = Regex("(?is)<Key(?:\\s+[^>]*)?>.*?</Key>")
+        val keyboxRegex = Regex("(?is)<Keybox(?:\\s+[^>]*)?>.*?</Keybox>")
+        val nonElementContentRegex = Regex("(?s)<!--.*?-->|<!\\[CDATA\\[.*?]]>|<\\?.*?\\?>")
+        val matches = keyRegex.findAll(xml).toList()
+        if (matches.size <= 1) return xml
+
+        val validKeys = ArrayList<MatchResult>()
+        val invalidKeys = ArrayList<MatchResult>()
+
+        for (match in matches) {
+            val singleKeyXml =
+                "<?xml version=\"1.0\"?>\n<AndroidAttestation>\n    <NumberOfKeyboxes>1</NumberOfKeyboxes>\n    <Keybox DeviceID=\"sanitization-check\">\n        ${match.value}\n    </Keybox>\n</AndroidAttestation>"
+            val isValid =
+                try {
+                    val parsed = KeyboxLoader.parse(singleKeyXml.toByteArray(Charsets.UTF_8), "check.xml", false)
+                    parsed.isNotEmpty()
+                } catch (_: Throwable) {
+                    false
+                }
+            if (isValid) {
+                validKeys.add(match)
+            } else {
+                invalidKeys.add(match)
+            }
+        }
+
+        if (invalidKeys.isNotEmpty() && validKeys.isNotEmpty()) {
+            var sanitized = xml
+            for (invalid in invalidKeys) {
+                sanitized = sanitized.replace(invalid.value, "")
+            }
+            sanitized =
+                keyboxRegex.replace(sanitized) { keybox ->
+                    if (keyRegex.containsMatchIn(keybox.value.replace(nonElementContentRegex, ""))) keybox.value else ""
+                }
+            val keyboxCount = Regex("(?is)<Keybox[\\s>]").findAll(sanitized).count()
+            if (keyboxCount > 0) {
+                sanitized =
+                    sanitized.replace(
+                        Regex("(?is)<NumberOfKeyboxes>\\s*\\d+\\s*</NumberOfKeyboxes>"),
+                        "<NumberOfKeyboxes>$keyboxCount</NumberOfKeyboxes>",
+                    )
+            }
+            return sanitized
+        }
+        return xml
+    }
+
+    /**
+     * Normalizes uploaded keybox XML and wraps a bare Keybox element in its required container.
+     */
     private fun normalizeKeyboxXmlContent(raw: String): String {
         val stripped = raw.removePrefix("\uFEFF").trim()
-        if (!stripped.contains("<AndroidAttestation", ignoreCase = true) &&
-            stripped.contains("<Keybox", ignoreCase = true)
-        ) {
-            val hasXmlDecl = stripped.startsWith("<?xml", ignoreCase = true)
-            val decl = if (hasXmlDecl) stripped.substringBefore("?>") + "?>\n" else "<?xml version=\"1.0\"?>\n"
-            val body = if (hasXmlDecl) stripped.substringAfter("?>").trim() else stripped
-            return "$decl<AndroidAttestation>\n    <NumberOfKeyboxes>1</NumberOfKeyboxes>\n    $body\n</AndroidAttestation>"
-        }
-        return stripped
+        val wrapped =
+            if (!stripped.contains("<AndroidAttestation", ignoreCase = true) &&
+                stripped.contains("<Keybox", ignoreCase = true)
+            ) {
+                val hasXmlDecl = stripped.startsWith("<?xml", ignoreCase = true)
+                val decl = if (hasXmlDecl) stripped.substringBefore("?>") + "?>\n" else "<?xml version=\"1.0\"?>\n"
+                val body = if (hasXmlDecl) stripped.substringAfter("?>").trim() else stripped
+                "$decl<AndroidAttestation>\n    <NumberOfKeyboxes>1</NumberOfKeyboxes>\n    $body\n</AndroidAttestation>"
+            } else {
+                stripped
+            }
+        return sanitizeKeyboxXmlContent(wrapped)
     }
 
     private fun validateUploadedKeyboxXml(
