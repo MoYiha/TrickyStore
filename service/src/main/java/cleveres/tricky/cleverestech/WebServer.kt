@@ -62,12 +62,35 @@ private fun isValidTemplateName(s: String): Boolean {
 
 private val clonedKeyboxFilenameSuffix = Regex("""\s*\((\d+)\)(?=\s*(?:\(\d+\)\s*)*\.[^.]+$)""")
 
+private val turkishCharMap = mapOf(
+    'ç' to 'c', 'Ç' to 'C',
+    'ğ' to 'g', 'Ğ' to 'G',
+    'ı' to 'i', 'İ' to 'I',
+    'ö' to 'o', 'Ö' to 'O',
+    'ş' to 's', 'Ş' to 'S',
+    'ü' to 'u', 'Ü' to 'U',
+)
+
 /**
  * Android file providers commonly append " (1)" when a filename is copied. Keep the strict
  * basename policy, but canonicalize that provider-generated suffix before validation and storage.
+ * Transliterates Turkish and other diacritic characters into ASCII characters.
  */
-private fun normalizeKeyboxUploadFilename(name: String): String =
-    name.replace(clonedKeyboxFilenameSuffix) { match -> "_${match.groupValues[1]}" }
+internal fun normalizeKeyboxUploadFilename(name: String): String {
+    val suffixNormalized = name.replace(clonedKeyboxFilenameSuffix) { match -> "_${match.groupValues[1]}" }
+    val transliterated = buildString(suffixNormalized.length) {
+        for (c in suffixNormalized) {
+            val mapped = turkishCharMap[c]
+            if (mapped != null) {
+                append(mapped)
+            } else {
+                append(c)
+            }
+        }
+    }
+    return java.text.Normalizer.normalize(transliterated, java.text.Normalizer.Form.NFD)
+        .replace("\\p{M}+".toRegex(), "")
+}
 
 /**
  * Returns the current system locale as a BCP 47 language tag, defaulting to "en" if unavailable.
@@ -813,16 +836,16 @@ class WebServer(
     }
 
     private fun normalizeKeyboxXmlContent(raw: String): String {
-        val trimmed = raw.trim()
-        if (!trimmed.contains("<AndroidAttestation", ignoreCase = true) &&
-            trimmed.contains("<Keybox", ignoreCase = true)
+        val stripped = raw.removePrefix("\uFEFF").trim()
+        if (!stripped.contains("<AndroidAttestation", ignoreCase = true) &&
+            stripped.contains("<Keybox", ignoreCase = true)
         ) {
-            val hasXmlDecl = trimmed.startsWith("<?xml", ignoreCase = true)
-            val decl = if (hasXmlDecl) trimmed.substringBefore("?>") + "?>\n" else "<?xml version=\"1.0\"?>\n"
-            val body = if (hasXmlDecl) trimmed.substringAfter("?>").trim() else trimmed
+            val hasXmlDecl = stripped.startsWith("<?xml", ignoreCase = true)
+            val decl = if (hasXmlDecl) stripped.substringBefore("?>") + "?>\n" else "<?xml version=\"1.0\"?>\n"
+            val body = if (hasXmlDecl) stripped.substringAfter("?>").trim() else stripped
             return "$decl<AndroidAttestation>\n    <NumberOfKeyboxes>1</NumberOfKeyboxes>\n    $body\n</AndroidAttestation>"
         }
-        return raw
+        return stripped
     }
 
     private fun validateUploadedKeyboxXml(
@@ -1810,6 +1833,7 @@ class WebServer(
                 obj.put("lastAuthor", s.lastAuthor)
                 obj.put("keyboxCount", s.keyboxCount)
                 obj.put("rkpCount", s.rkpCount)
+                obj.put("teeCount", s.teeCount)
                 obj.put("rsaCount", s.rsaCount)
                 obj.put("cboxCount", s.cboxCount)
                 if (exposeSecrets) {
@@ -1880,6 +1904,7 @@ class WebServer(
                             contentPublicKey = contentPublicKey,
                             keyboxCount = existing?.keyboxCount ?: 0,
                             rkpCount = existing?.rkpCount ?: 0,
+                            teeCount = existing?.teeCount ?: 0,
                             rsaCount = existing?.rsaCount ?: 0,
                             cboxCount = existing?.cboxCount ?: 0,
                         )
