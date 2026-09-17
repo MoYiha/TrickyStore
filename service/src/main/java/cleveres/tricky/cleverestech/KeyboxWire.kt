@@ -33,7 +33,7 @@ internal object KeyboxWire {
             val snapshotSha256 = cursor.readBytes(SNAPSHOT_SHA256_BYTES).toHexString()
             requireWire(declaredKeyboxes in 1..MAX_KEYBOXES_PER_FILE)
             requireWire(keyboxCount == declaredKeyboxes)
-            requireWire(keyCount in keyboxCount..keyboxCount * MAX_KEYS_PER_KEYBOX)
+            requireWire(keyCount in 1..keyboxCount * MAX_KEYS_PER_KEYBOX)
 
             val decodedKeys = ArrayList<RawKey>(keyCount)
             repeat(keyCount) {

@@ -2000,7 +2000,14 @@ if (file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('filename', normalizedUploadName);
-    if (/droid\s*ca|rkp|remote\s*provisioning|key\s*provisioning/i.test(file.name)) {
+    let isRkp = /droid\s*ca|rkp|remote\s*provisioning|key\s*provisioning/i.test(file.name);
+    if (!isRkp && lowerName.endsWith('.xml')) {
+        try {
+            const head = await file.slice(0, 65536).text();
+            isRkp = /droid\s*ca|rkp|remote\s*provisioning|key\s*provisioning/i.test(head);
+        } catch (_) {}
+    }
+    if (isRkp) {
         formData.append('rkp_hint', 'true');
     }
 

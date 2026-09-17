@@ -512,4 +512,50 @@ ${TestKeyboxFixtures.certificate.prependIndent("                    ")}
             ManagedKeyboxParserOracle.install()
         }
     }
+
+    @Test
+    fun `keybox with valid RKP EC key and dummy sibling RSA key uploads successfully and retains valid key`() {
+        val originalRoot = Config.getConfigRoot()
+        try {
+            Config.setRootForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+            KeyboxLoader.activeSetOverride = { true }
+            RkpProvenanceStore.addTrustedAnchorForTesting(TestKeyboxFixtures.rkpRootCert)
+
+            val genuineRkpXml = TestKeyboxFixtures.validRkpKeyboxXml
+            val dummyRsaKey =
+                """
+                <Key algorithm="rsa">
+                    <PrivateKey format="pem">
+                    -----BEGIN RSA PRIVATE KEY-----
+                    Rm9yIG1vcmUga2V5Ym94IEpvaW4gOiBAaW50ZWdyaXR5X3Jvb3RfY2hhbm5lbA==
+                    -----END RSA PRIVATE KEY-----
+                    </PrivateKey>
+                    <CertificateChain>
+                        <NumberOfCertificates>1</NumberOfCertificates>
+                        <Certificate format="pem">
+                    -----BEGIN CERTIFICATE-----
+                    QGludGVncml0eV9yb290X2NoYW5uZWwgOiB2YWxpZCBrZXlib3hlcw==
+                    -----END CERTIFICATE-----
+                        </Certificate>
+                    </CertificateChain>
+                </Key>
+                """.trimIndent()
+            val combinedXml = genuineRkpXml.replace("</Keybox>", "$dummyRsaKey\n</Keybox>")
+
+            val (code, _) = uploadKeyboxResponse("mixed_rkp.xml", combinedXml, authenticatedRkp = true)
+            assertEquals(200, code)
+            assertTrue(File(configDir, "keyboxes/mixed_rkp.xml").isFile)
+            assertTrue(RkpProvenanceStore.isRkp("mixed_rkp.xml", configDir))
+
+            val reloaded = KeyboxLoader.parseFileSnapshot(KeyboxLoader.FileScope.KEYBOX_DIRECTORY, "mixed_rkp.xml")
+            assertEquals(1, reloaded.keyboxes.size)
+            assertEquals("EC", reloaded.keyboxes.first().keyPair()?.public?.algorithm)
+            assertTrue(cleveres.tricky.cleverestech.keystore.CertHack.isRkpKeybox(reloaded.keyboxes.first()))
+        } finally {
+            Config.setRootForTesting(originalRoot)
+            RkpProvenanceStore.resetForTesting(configDir)
+            ManagedKeyboxParserOracle.install()
+        }
+    }
 }

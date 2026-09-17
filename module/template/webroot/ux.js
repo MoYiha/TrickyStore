@@ -2997,6 +2997,18 @@
         const file = new File([bytes], entry.uploadName, { type });
         formData.append('file', file);
         formData.append('filename', entry.uploadName);
+        if (type === 'application/xml') {
+            let isRkp = /droid\s*ca|rkp|remote\s*provisioning|key\s*provisioning/i.test(entry.uploadName);
+            if (!isRkp && bytes && bytes.length > 0) {
+                try {
+                    const head = new TextDecoder().decode(bytes.slice(0, 65536));
+                    isRkp = /droid\s*ca|rkp|remote\s*provisioning|key\s*provisioning/i.test(head);
+                } catch (_) {}
+            }
+            if (isRkp) {
+                formData.append('rkp_hint', 'true');
+            }
+        }
         const response = await global.fetchAuth('/api/upload_keybox', { method: 'POST', body: formData, timeoutMs: 120000 });
         if (response.ok) {
             let storedName = entry.uploadName;

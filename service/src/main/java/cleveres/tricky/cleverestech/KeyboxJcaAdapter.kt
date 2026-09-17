@@ -21,8 +21,10 @@ internal object KeyboxJcaAdapter {
         if (filename.isEmpty() || document.keys.isEmpty()) return emptyList()
         val parsed = ArrayList<CertHack.KeyBox>(document.keys.size)
         for (raw in document.keys) {
-            val keybox = materializeKey(raw, filename, authenticatedRkpProvenance) ?: return emptyList()
-            parsed += keybox
+            val keybox = materializeKey(raw, filename, authenticatedRkpProvenance)
+            if (keybox != null) {
+                parsed += keybox
+            }
         }
         return parsed
     }
