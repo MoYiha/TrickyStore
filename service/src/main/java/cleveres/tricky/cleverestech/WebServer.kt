@@ -629,105 +629,7 @@ class WebServer(
             .toMutableList()
 
     private fun saveIdentityUpdates(updates: Map<String, String?>): Boolean {
-        synchronized(fileLock) {
-            val file = File(configDir, "spoof_build_vars")
-            val path = file.toPath()
-            if (
-                Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
-                !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
-            ) {
-                return false
-            }
-            if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && file.length() > MAX_CONFIG_FILE_SIZE) {
-                return false
-            }
-
-            return try {
-                val templateRequested = updates.containsKey("TEMPLATE")
-                val directUpdates = LinkedHashMap(updates).apply { remove("TEMPLATE") }
-                val templateLines = ArrayList<String>()
-                if (templateRequested) {
-                    updates["TEMPLATE"]?.let { templateName ->
-                        val template = Config.getTemplate(templateName) ?: return false
-                        templateLines += BUILD_IDENTITY_BLOCK_START
-                        templateLines += "TEMPLATE=$templateName"
-                        BUILD_IDENTITY_VAR_KEYS.forEach { key ->
-                            template[key]?.let { value -> templateLines += "$key=$value" }
-                        }
-                        templateLines += BUILD_IDENTITY_BLOCK_END
-                    }
-                }
-                val lines =
-                    if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-                        try {
-                            readIdentityLinesBounded(file)
-                        } catch (error: IOException) {
-                            Logger.w(
-                                "Refusing oversized or unstable identity configuration: " +
-                                    (error.message ?: error::class.simpleName),
-                            )
-                            return false
-                        }
-                    } else {
-                        mutableListOf()
-                    }
-                val rewritten = ArrayList<String>(lines.size + directUpdates.size + templateLines.size)
-                val processed = HashSet<String>(directUpdates.size)
-                var insideBuildIdentityBlock = false
-
-                lines.forEach { line ->
-                    val trimmed = line.trim()
-                    if (trimmed == BUILD_IDENTITY_BLOCK_START) {
-                        insideBuildIdentityBlock = true
-                        if (!templateRequested) rewritten += line
-                        return@forEach
-                    }
-                    if (insideBuildIdentityBlock) {
-                        if (trimmed == BUILD_IDENTITY_BLOCK_END) {
-                            insideBuildIdentityBlock = false
-                            if (!templateRequested) rewritten += line
-                        } else if (!templateRequested) {
-                            rewritten += line
-                        }
-                        return@forEach
-                    }
-                    val separator = if (trimmed.startsWith("#")) -1 else trimmed.indexOf('=')
-                    val key = if (separator > 0) trimmed.substring(0, separator).trim() else ""
-                    if (templateRequested && key == "TEMPLATE") {
-                        return@forEach
-                    }
-                    if (key in directUpdates) {
-                        if (processed.add(key)) {
-                            directUpdates[key]?.let { value -> rewritten += "$key=$value" }
-                        }
-                    } else {
-                        rewritten += line
-                    }
-                }
-                require(!insideBuildIdentityBlock) { "Unterminated managed build identity block" }
-                directUpdates.forEach { (key, value) ->
-                    if (processed.add(key) && value != null) rewritten += "$key=$value"
-                }
-                if (templateRequested && templateLines.isNotEmpty()) {
-                    if (rewritten.isNotEmpty() && rewritten.last().isNotBlank()) rewritten += ""
-                    rewritten += templateLines
-                }
-
-                val content =
-                    if (rewritten.isEmpty()) {
-                        ""
-                    } else {
-                        rewritten.joinToString("\n", postfix = "\n")
-                    }
-                if (!validateContent("spoof_build_vars", content)) return false
-                SecureFile.writeText(file, content)
-                Config.updateBuildVars(file)
-                true
-            } catch (error: Exception) {
-                Logger.e("Failed to save identity configuration", error)
-                false
-            }
-        }
+        return persistIdentityUpdates(configDir, updates)
     }
 
     private fun listKeyboxes(): List<String> =
@@ -2436,7 +2338,32 @@ class WebServer(
         if (uri == "/api/file" && method == Method.GET) {
             val filename = getParam(session, "filename")
             if (filename != null && filename in EDITABLE_CONFIG_FILES) {
-                return secureResponse(Response.Status.OK, "text/plain", readFile(filename))
+                val content = readFile(filename)
+                if (content.isEmpty() && filename == "templates.json") {
+                    val templates = DeviceTemplateManager.listTemplates()
+                    val array = JSONArray()
+                    for (t in templates) {
+                        array.put(
+                            JSONObject().apply {
+                                put("id", t.id)
+                                put("manufacturer", t.manufacturer)
+                                put("model", t.model)
+                                put("fingerprint", t.fingerprint)
+                                put("brand", t.brand)
+                                put("product", t.product)
+                                put("device", t.device)
+                                put("release", t.release)
+                                put("buildId", t.buildId)
+                                put("incremental", t.incremental)
+                                put("type", t.type)
+                                put("tags", t.tags)
+                                put("securityPatch", t.securityPatch)
+                            },
+                        )
+                    }
+                    return secureResponse(Response.Status.OK, "text/plain", array.toString(2))
+                }
+                return secureResponse(Response.Status.OK, "text/plain", content)
             }
             return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid filename")
         }
@@ -2455,6 +2382,12 @@ class WebServer(
                     if (saveFile(filename, content)) {
                         if (filename == "templates.json") {
                             DeviceTemplateManager.initialize(configDir)
+                            if (
+                                Config.updateCustomTemplates(File(configDir, "custom_templates")).isFailure ||
+                                !refreshSelectedTemplateIdentity(configDir)
+                            ) {
+                                return secureResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed")
+                            }
                         } else if (filename == "keybox.xml") {
                             updateKeyboxesFromConfiguredRevocationSource()
                         }
@@ -3007,6 +2940,115 @@ class WebServer(
                 PolicyState.STATE_FILE,
             )
         private val APP_RULE_FIELDS = setOf("package", "template", "keybox", "privacy", "autoIdentity")
+
+        internal fun refreshSelectedTemplateIdentity(configDir: File): Boolean {
+            val file = File(configDir, "spoof_build_vars")
+            val template = Config.getBuildVar("TEMPLATE")
+            return if (template == null) {
+                Config.updateBuildVars(file).isSuccess
+            } else if (Config.getTemplate(template) == null) {
+                persistIdentityUpdates(configDir, mapOf("TEMPLATE" to null))
+            } else {
+                persistIdentityUpdates(configDir, mapOf("TEMPLATE" to template))
+            }
+        }
+
+        private fun persistIdentityUpdates(
+            configDir: File,
+            updates: Map<String, String?>,
+        ): Boolean {
+            synchronized(ManagedFileCoordinator.monitor) {
+                val file = File(configDir, "spoof_build_vars")
+                val path = file.toPath()
+                if (
+                    Files.exists(path, LinkOption.NOFOLLOW_LINKS) &&
+                    !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
+                ) {
+                    return false
+                }
+                if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) && file.length() > MAX_CONFIG_FILE_SIZE) {
+                    return false
+                }
+
+                return try {
+                    val templateRequested = updates.containsKey("TEMPLATE")
+                    val directUpdates = LinkedHashMap(updates).apply { remove("TEMPLATE") }
+                    val templateLines = ArrayList<String>()
+                    if (templateRequested) {
+                        updates["TEMPLATE"]?.let { templateName ->
+                            val template = Config.getTemplate(templateName) ?: return false
+                            templateLines += BUILD_IDENTITY_BLOCK_START
+                            templateLines += "TEMPLATE=$templateName"
+                            BUILD_IDENTITY_VAR_KEYS.forEach { key ->
+                                template[key]?.let { value -> templateLines += "$key=$value" }
+                            }
+                            templateLines += BUILD_IDENTITY_BLOCK_END
+                        }
+                    }
+                    val lines =
+                        if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                            readUtf8FileSnapshotBounded(file, 0, MAX_CONFIG_FILE_SIZE).lineSequence().toMutableList()
+                        } else {
+                            mutableListOf()
+                        }
+                    val rewritten = ArrayList<String>(lines.size + directUpdates.size + templateLines.size)
+                    val processed = HashSet<String>(directUpdates.size)
+                    var insideBuildIdentityBlock = false
+
+                    lines.forEach { line ->
+                        val trimmed = line.trim()
+                        if (trimmed == BUILD_IDENTITY_BLOCK_START) {
+                            insideBuildIdentityBlock = true
+                            if (!templateRequested) rewritten += line
+                            return@forEach
+                        }
+                        if (insideBuildIdentityBlock) {
+                            if (trimmed == BUILD_IDENTITY_BLOCK_END) {
+                                insideBuildIdentityBlock = false
+                                if (!templateRequested) rewritten += line
+                            } else if (!templateRequested) {
+                                rewritten += line
+                            }
+                            return@forEach
+                        }
+                        val separator = if (trimmed.startsWith("#")) -1 else trimmed.indexOf('=')
+                        val key = if (separator > 0) trimmed.substring(0, separator).trim() else ""
+                        if (templateRequested && key == "TEMPLATE") {
+                            return@forEach
+                        }
+                        if (key in directUpdates) {
+                            if (processed.add(key)) {
+                                directUpdates[key]?.let { value -> rewritten += "$key=$value" }
+                            }
+                        } else {
+                            rewritten += line
+                        }
+                    }
+                    require(!insideBuildIdentityBlock) { "Unterminated managed build identity block" }
+                    directUpdates.forEach { (key, value) ->
+                        if (processed.add(key) && value != null) rewritten += "$key=$value"
+                    }
+                    if (templateRequested && templateLines.isNotEmpty()) {
+                        if (rewritten.isNotEmpty() && rewritten.last().isNotBlank()) rewritten += ""
+                        rewritten += templateLines
+                    }
+
+                    val content =
+                        if (rewritten.isEmpty()) {
+                            ""
+                        } else {
+                            rewritten.joinToString("\n", postfix = "\n")
+                        }
+                    if (!validateContent("spoof_build_vars", content)) return false
+                    SecureFile.writeText(file, content)
+                    Config.updateBuildVars(file).getOrThrow()
+                    true
+                } catch (error: Exception) {
+                    Logger.e("Failed to save identity configuration", error)
+                    false
+                }
+            }
+        }
 
         fun getSafeFile(
             baseDir: File,

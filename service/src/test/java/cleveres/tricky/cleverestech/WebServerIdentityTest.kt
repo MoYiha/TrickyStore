@@ -1,8 +1,10 @@
 package cleveres.tricky.cleverestech
 
+import android.os.FileObserver
 import cleveres.tricky.cleverestech.util.RandomUtils
 import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -312,6 +314,176 @@ class WebServerIdentityTest {
         assertEquals(400, response.first)
         assertEquals("SAFE", destination.readText())
     }
+
+    @Test
+    fun `custom template saved to templates_json can be applied via identity API`() {
+        val customTemplates =
+            """
+            [{
+              "id":"mycustompixel",
+              "manufacturer":"Google",
+              "model":"Pixel Custom",
+              "fingerprint":"google/custom/custom:15/BUILD/1:user/release-keys",
+              "brand":"google",
+              "product":"custom",
+              "device":"custom",
+              "release":"15",
+              "buildId":"BUILD",
+              "incremental":"1",
+              "securityPatch":"2026-09-05"
+            }]
+            """.trimIndent()
+        val saveResponse = postSave("templates.json", customTemplates)
+        assertEquals(200, saveResponse.first)
+
+        val identityResponse = postIdentity(JSONObject().put("template", "mycustompixel"))
+        assertEquals(200, identityResponse.first)
+
+        val spoofFile = File(configDir, "spoof_build_vars")
+        assertTrue(spoofFile.exists())
+        val text = spoofFile.readText()
+        assertTrue(text.contains("TEMPLATE=mycustompixel"))
+        assertTrue(text.contains("MODEL=Pixel Custom"))
+        assertTrue(text.contains("FINGERPRINT=google/custom/custom:15/BUILD/1:user/release-keys"))
+    }
+
+    @Test
+    fun `custom template can be saved in spoof_build_vars via file save API`() {
+        val customTemplates =
+            """
+            [{
+              "id":"mycustomdevice",
+              "manufacturer":"Google",
+              "model":"Pixel Custom 2",
+              "fingerprint":"google/custom2/custom2:15/BUILD/2:user/release-keys",
+              "brand":"google",
+              "product":"custom2",
+              "device":"custom2",
+              "release":"15",
+              "buildId":"BUILD",
+              "incremental":"2",
+              "securityPatch":"2026-09-05"
+            }]
+            """.trimIndent()
+        val saveTmplResponse = postSave("templates.json", customTemplates)
+        assertEquals(200, saveTmplResponse.first)
+
+        val spoofContent = "TEMPLATE=mycustomdevice\n"
+        val saveSpoofResponse = postSave("spoof_build_vars", spoofContent)
+        assertEquals(200, saveSpoofResponse.first)
+
+        val spoofFile = File(configDir, "spoof_build_vars")
+        assertTrue(spoofFile.exists())
+        assertTrue(spoofFile.readText().contains("TEMPLATE=mycustomdevice"))
+    }
+
+    @Test
+    fun `template save and observer refresh selected managed identity without changing user lines`() {
+        val spoofFile =
+            File(configDir, "spoof_build_vars").apply {
+                writeText("# Keep this line\nSERIAL=KEEP_ME\n")
+            }
+        Config.updateBuildVars(spoofFile).getOrThrow()
+
+        assertEquals(200, postSave("templates.json", customTemplate("Selected Model", "BUILD/1")).first)
+        assertEquals(200, postIdentity(JSONObject().put("template", "selectedtemplate")).first)
+
+        assertEquals(200, postSave("templates.json", customTemplate("Saved Model", "BUILD/2")).first)
+        val saved = spoofFile.readText()
+        assertTrue(saved.contains("# Keep this line"))
+        assertTrue(saved.contains("SERIAL=KEEP_ME"))
+        assertTrue(saved.contains("MODEL=Saved Model"))
+        assertTrue(saved.contains("FINGERPRINT=google/custom/custom:15/BUILD/2:user/release-keys"))
+        assertFalse(saved.contains("MODEL=Selected Model"))
+        assertEquals("Saved Model", Config.getBuildVar("MODEL"))
+        assertEquals(1, saved.lineSequence().count { it == "# BEGIN CLEVERESTRICKY BUILD IDENTITY" })
+
+        File(configDir, "templates.json").writeText(customTemplate("Observed Model", "BUILD/3"))
+        Config.ConfigObserver.onEvent(FileObserver.CLOSE_WRITE, "templates.json")
+
+        val observed = spoofFile.readText()
+        assertTrue(observed.contains("# Keep this line"))
+        assertTrue(observed.contains("SERIAL=KEEP_ME"))
+        assertTrue(observed.contains("MODEL=Observed Model"))
+        assertTrue(observed.contains("FINGERPRINT=google/custom/custom:15/BUILD/3:user/release-keys"))
+        assertFalse(observed.contains("MODEL=Saved Model"))
+        assertEquals("Observed Model", Config.getBuildVar("MODEL"))
+        assertEquals(1, observed.lineSequence().count { it == "# BEGIN CLEVERESTRICKY BUILD IDENTITY" })
+    }
+
+    @Test
+    fun `template save clears a selected custom identity when its template is removed`() {
+        val spoofFile =
+            File(configDir, "spoof_build_vars").apply {
+                writeText("# Keep this line\nSERIAL=KEEP_ME\n")
+            }
+        Config.updateBuildVars(spoofFile).getOrThrow()
+
+        assertEquals(200, postSave("templates.json", customTemplate("Selected Model", "BUILD/1")).first)
+        assertEquals(200, postIdentity(JSONObject().put("template", "selectedtemplate")).first)
+
+        assertEquals(200, postSave("templates.json", "[]").first)
+        val refreshed = spoofFile.readText()
+        assertTrue(refreshed.contains("# Keep this line"))
+        assertTrue(refreshed.contains("SERIAL=KEEP_ME"))
+        assertFalse(refreshed.contains("CLEVERESTRICKY BUILD IDENTITY"))
+        assertFalse(refreshed.lineSequence().any { it.startsWith("TEMPLATE=") })
+        assertEquals(null, Config.getBuildVar("TEMPLATE"))
+        assertEquals(null, Config.getBuildVar("MODEL"))
+    }
+
+    @Test
+    fun `template save keeps a selected built in identity`() {
+        assertEquals(200, postIdentity(JSONObject().put("template", "pixel8pro")).first)
+
+        assertEquals(200, postSave("templates.json", customTemplate("Custom Model", "BUILD/1")).first)
+        val refreshed = File(configDir, "spoof_build_vars").readText()
+        assertTrue(refreshed.contains("TEMPLATE=pixel8pro"))
+        assertTrue(refreshed.contains("MODEL=Pixel 8 Pro"))
+        assertEquals("pixel8pro", Config.getBuildVar("TEMPLATE"))
+        assertEquals("Pixel 8 Pro", Config.getBuildVar("MODEL"))
+    }
+
+    @Test
+    fun `templates_json file endpoint returns valid JSON array when file does not exist on disk`() {
+        val file = File(configDir, "templates.json")
+        file.delete()
+        assertFalse(file.exists())
+
+        val response = request("GET", "/api/file?filename=templates.json")
+        assertEquals(200, response.first)
+        val array = JSONArray(response.second)
+        assertTrue(array.length() > 0)
+        val first = array.getJSONObject(0)
+        assertTrue(first.has("id"))
+        assertTrue(first.has("model"))
+    }
+
+    private fun postSave(filename: String, content: String): Pair<Int, String> {
+        val encFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8.name())
+        val encContent = URLEncoder.encode(content, StandardCharsets.UTF_8.name())
+        return request("POST", "/api/save", "filename=$encFilename&content=$encContent")
+    }
+
+    private fun customTemplate(
+        model: String,
+        build: String,
+    ): String =
+        """
+        [{
+          "id":"selectedtemplate",
+          "manufacturer":"Google",
+          "model":"$model",
+          "fingerprint":"google/custom/custom:15/$build:user/release-keys",
+          "brand":"google",
+          "product":"custom",
+          "device":"custom",
+          "release":"15",
+          "buildId":"BUILD",
+          "incremental":"1",
+          "securityPatch":"2026-09-05"
+        }]
+        """.trimIndent()
 
     private fun postIdentity(json: JSONObject): Pair<Int, String> {
         val encoded = URLEncoder.encode(json.toString(), StandardCharsets.UTF_8.name())

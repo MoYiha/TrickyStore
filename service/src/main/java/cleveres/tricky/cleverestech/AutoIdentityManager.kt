@@ -46,6 +46,9 @@ object AutoIdentityManager {
                 put("TAGS", "release-keys")
                 put("SECURITY_PATCH", securityPatch)
             }
+
+        fun removedBuildVars(): Set<String> =
+            if (release == null) setOf("RELEASE") else emptySet()
     }
 
     internal data class DeviceCandidate(
@@ -196,40 +199,76 @@ object AutoIdentityManager {
                 }.getOrNull()
             }
         val candidates = candidatePages.maxByOrNull { it.size }.orEmpty()
-        val candidate = selector(candidates) ?: throw IOException("No Pixel beta device was found")
+        if (candidates.isEmpty()) throw IOException("No Pixel beta device was found")
 
         val flashHtml = fetcher.get(FLASH_TOOL, emptyMap())
         val apiKey = extractFlashApiKey(flashHtml) ?: throw IOException("Android Flash Tool API key was not found")
-        val product = URLEncoder.encode(candidate.product, StandardCharsets.UTF_8.name())
         val key = URLEncoder.encode(apiKey, StandardCharsets.UTF_8.name())
-        val buildsJson =
-            fetcher.get(
-                "$FLASH_BUILDS?product=$product&key=$key",
-                mapOf("Referer" to FLASH_TOOL),
-            )
-        val canary = findLatestCanary(buildsJson) ?: throw IOException("Pixel canary build metadata was not found")
+
+        val primary = selector(candidates) ?: candidates.first()
+        val orderedCandidates = listOf(primary) + (candidates - primary)
+
+        var foundCandidate: DeviceCandidate? = null
+        var foundCanary: JSONObject? = null
+
+        for (cand in orderedCandidates) {
+            val product = URLEncoder.encode(cand.product, StandardCharsets.UTF_8.name())
+            val canary =
+                try {
+                    findLatestCanary(
+                        fetcher.get(
+                            "$FLASH_BUILDS?product=$product&key=$key",
+                            mapOf("Referer" to FLASH_TOOL),
+                        ),
+                    )
+                } catch (_: IOException) {
+                    continue
+                }
+            if (canary != null) {
+                foundCandidate = cand
+                foundCanary = canary
+                break
+            }
+        }
+
+        val candidate = foundCandidate ?: throw IOException("Pixel canary build metadata was not found")
+        val canary = foundCanary ?: throw IOException("Pixel canary build metadata was not found")
         val buildId = canary.optString("releaseCandidateName").trim()
         val incremental = canary.optString("buildId").trim()
         if (buildId.isEmpty() || incremental.isEmpty()) throw IOException("Pixel canary build metadata is incomplete")
 
-        val track = canary.optString("releaseTrackVersionName").trim()
-        val release = Regex("""\b(\d{1,2})(?:\.\d+)?\b""").find(track)?.groupValues?.get(1)
+        val preview = canary.optJSONObject("previewMetadata")
+        val track =
+            preview?.optString("releaseTrackVersionName")?.trim()?.takeIf(String::isNotEmpty)
+                ?: canary.optString("releaseTrackVersionName").trim()
+        val releaseTrackName =
+            preview?.optString("releaseTrackName")?.trim()?.takeIf(String::isNotEmpty)
+                ?: canary.optString("releaseTrackName").trim()
+        val numericRelease = Regex("""\b(\d{1,2})(?:\.\d+)?\b""").find(track)?.groupValues?.get(1)
+        val release =
+            numericRelease ?: if (
+                track.contains("canary", ignoreCase = true) ||
+                releaseTrackName.contains("canary", ignoreCase = true) ||
+                preview?.optBoolean("canary", false) == true ||
+                canary.optBoolean("canary", false)
+            ) "CANARY" else null
         val fingerprint =
             "google/${candidate.product}/${candidate.device}:CANARY/$buildId/$incremental:user/release-keys"
 
         var estimated = false
         val explicitPatch = findSecurityPatchField(canary)
+        val canaryId = preview?.optString("id")?.takeIf { it.isNotBlank() } ?: canary.optString("id")
         val bulletinPatch =
             if (explicitPatch == null) {
                 runCatching {
                     val bulletin = fetcher.get(PIXEL_BULLETIN, emptyMap())
-                    findSecurityPatchInBulletin(bulletin, canary.optString("id"))
+                    findSecurityPatchInBulletin(bulletin, canaryId)
                 }.getOrNull()
             } else {
                 null
             }
         val securityPatch =
-            explicitPatch ?: bulletinPatch ?: estimateSecurityPatch(canary.optString("id")).also { estimated = true }
+            explicitPatch ?: bulletinPatch ?: estimateSecurityPatch(canaryId).also { estimated = true }
 
         return Result(
             model = candidate.model,
@@ -326,17 +365,39 @@ object AutoIdentityManager {
             .asSequence()
             .withIndex()
             .filter { (_, obj) ->
-                obj.optBoolean("canary", false) &&
+                val preview = obj.optJSONObject("previewMetadata")
+                val isCanary =
+                    preview?.optBoolean("canary", false) == true ||
+                        obj.optBoolean("canary", false) ||
+                        preview?.optString("id")?.contains("canary", ignoreCase = true) == true ||
+                        obj.optString("id").contains("canary", ignoreCase = true) ||
+                        preview?.optString("releaseTrackName")?.contains("canary", ignoreCase = true) == true ||
+                        obj.optString("releaseTrackName").contains("canary", ignoreCase = true)
+                isCanary &&
                     obj.optString("releaseCandidateName").isNotBlank() &&
                     obj.optString("buildId").isNotBlank()
             }
             .map { (index, obj) ->
+                val preview = obj.optJSONObject("previewMetadata")
+                if (preview != null) {
+                    if (!obj.has("id") && preview.has("id")) obj.put("id", preview.optString("id"))
+                    if (!obj.has("releaseTrackVersionName") && preview.has("releaseTrackVersionName")) {
+                        obj.put("releaseTrackVersionName", preview.optString("releaseTrackVersionName"))
+                    }
+                    if (!obj.has("releaseTrackName") && preview.has("releaseTrackName")) {
+                        obj.put("releaseTrackName", preview.optString("releaseTrackName"))
+                    }
+                    if (!obj.has("canary") && preview.has("canary")) {
+                        obj.put("canary", preview.optBoolean("canary"))
+                    }
+                }
                 val rankText =
                     listOf(
                         obj.optString("id"),
                         obj.optString("releaseCandidateName"),
                         obj.optString("buildId"),
                         obj.optString("releaseTrackVersionName"),
+                        obj.optString("releaseTrackName"),
                     ).joinToString(" ")
                 RankedCanary(
                     value = obj,
@@ -408,6 +469,12 @@ object AutoIdentityManager {
     ): String? {
         val token = canaryId.removePrefix("canary-").trim()
         if (token.isEmpty()) return null
+        val tokens =
+            if (token.length == 6 && token.all(Char::isDigit)) {
+                listOf(token, "${token.substring(0, 4)}-${token.substring(4, 6)}")
+            } else {
+                listOf(token)
+            }
         val rows =
             Regex(
                 """<tr\b[^>]*>.*?</tr>""",
@@ -416,7 +483,7 @@ object AutoIdentityManager {
         return rows
             .findAll(html)
             .map { it.value }
-            .firstOrNull { row -> row.contains(token, ignoreCase = true) }
+            .firstOrNull { row -> tokens.any { row.contains(it, ignoreCase = true) } }
             ?.let(::normalizePatch)
     }
 
