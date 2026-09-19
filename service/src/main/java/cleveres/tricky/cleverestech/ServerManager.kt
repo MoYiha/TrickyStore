@@ -477,7 +477,23 @@ object ServerManager {
                             } else {
                                 emptyList()
                             }
-                            if (parsed.isNotEmpty() && (statuses.isEmpty() || statuses.all { it == KeyboxVerifier.Status.VALID })) {
+                            val blockInvalid = Config.isBlockInvalidKeyboxesEnabled
+                            // Only verified entries can block: when checking is off or the
+                            // CRL is unavailable, statuses is empty and cached content is
+                            // admitted exactly as before.
+                            val hasBlockingInvalid = statuses.indices.any { index ->
+                                val box = parsed[index]
+                                val previouslyValid =
+                                    KeyboxValidityTracker.getState(box.filename())?.validityState ==
+                                        KeyboxVerifier.ValidityState.VALID
+                                KeyboxVerifier.isBlockedByPolicy(
+                                    statuses[index],
+                                    CertHack.getDeviceCertificateNotAfter(box),
+                                    blockInvalid,
+                                    previouslyValid,
+                                )
+                            }
+                            if (parsed.isNotEmpty() && (statuses.isEmpty() || !hasBlockingInvalid)) {
                                 serverKeyboxes[server.id] = parsed
                                 server.keyboxCount = parsed.size
                                 server.rkpCount = parsed.count { CertHack.isRkpKeybox(it) || RkpProvenanceStore.hasVerifiedRkpCertificates(it) }
@@ -720,7 +736,24 @@ object ServerManager {
                 } else {
                     emptyList()
                 }
-                if (keyboxes.isEmpty() || (checkEnabled && statuses.any { it != KeyboxVerifier.Status.VALID })) {
+                // Retained content is still filtered per keybox by the config
+                // refresh path, so only policy-blocking entries fail the fetch:
+                // structurally invalid content is always rejected, while
+                // expired/revoked content is retained when blocking is off.
+                val blockInvalid = Config.isBlockInvalidKeyboxesEnabled
+                val hasBlockingInvalid = statuses.indices.any { index ->
+                    val box = keyboxes[index]
+                    val previouslyValid =
+                        KeyboxValidityTracker.getState(box.filename())?.validityState ==
+                            KeyboxVerifier.ValidityState.VALID
+                    KeyboxVerifier.isBlockedByPolicy(
+                        statuses[index],
+                        CertHack.getDeviceCertificateNotAfter(box),
+                        blockInvalid,
+                        previouslyValid,
+                    )
+                }
+                if (keyboxes.isEmpty() || (checkEnabled && hasBlockingInvalid)) {
                     return@coordinateRefresh commitFetchFailure(
                         context,
                         "INVALID_CONTENT",
@@ -809,7 +842,7 @@ object ServerManager {
             Logger.e("CBOX signature verification failed closed: $filename")
             return emptyList()
         }
-        return KeyboxJcaAdapter.materialize(payload.document, filename)
+        return KeyboxJcaAdapter.materialize(payload.document, filename, tolerateExpiry = true)
     }
 
     private fun cacheXml(

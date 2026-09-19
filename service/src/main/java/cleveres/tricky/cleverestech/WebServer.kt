@@ -713,6 +713,14 @@ class WebServer(
                 }
             }
 
+            val trackerEntry = KeyboxValidityTracker.getState(source.id.ifEmpty { source.filename })
+                ?: KeyboxValidityTracker.getState(source.filename)
+            val isExpired = notAfter.isNotEmpty() && KeyboxVerifier.isExpired(notAfter)
+            val validityState = trackerEntry?.validityState?.name
+                ?: if (isExpired) "INVALID" else "VALID"
+            val invalidReason = trackerEntry?.invalidReason?.name
+                ?: if (isExpired) "EXPIRED" else null
+
             array.put(
                 JSONObject()
                     .put("id", source.id)
@@ -724,7 +732,9 @@ class WebServer(
                     .put("security_level", secLevel)
                     .put("is_rkp", isRkp)
                     .put("has_rsa", hasRsa)
-                    .put("has_ec", hasEc),
+                    .put("has_ec", hasEc)
+                    .put("validity_state", validityState)
+                    .put("invalid_reason", invalidReason ?: JSONObject.NULL),
             )
         }
         return array.toString()
@@ -1515,6 +1525,37 @@ class WebServer(
             }
         }
 
+        if (uri == "/api/keybox_priority_order" && method == Method.GET) {
+            val pref = Config.keyboxPriorityPreference
+            return secureResponse(Response.Status.OK, "application/json", pref.toJson().toString())
+        }
+
+        if (uri == "/api/keybox_priority_order" && method == Method.POST) {
+            val body = HashMap<String, String>()
+            try {
+                session.parseBody(body)
+            } catch (_: Exception) {
+                return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to parse body")
+            }
+            val raw = getParam(session, "data")
+                ?: return secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing data")
+            return try {
+                val json = JSONObject(raw)
+                val pref = KeyboxPriorityPreference.fromJson(json)
+                PolicyState.setKeyboxPriorityPreference(pref).fold(
+                    onSuccess = {
+                        Config.updateKeyBoxes()
+                        secureResponse(Response.Status.OK, "application/json", pref.toJson().toString())
+                    },
+                    onFailure = { error ->
+                        secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Failed to update priority order: ${error.message}")
+                    },
+                )
+            } catch (_: Exception) {
+                secureResponse(Response.Status.BAD_REQUEST, "text/plain", "Invalid JSON")
+            }
+        }
+
         if (uri == "/api/cbox_status" && method == Method.GET) {
             Config.ensureFreshKeyboxes()
             val json = JSONObject()
@@ -1755,6 +1796,8 @@ class WebServer(
                 synchronized(fileLock) {
                     val results = crlFetcher?.let { KeyboxVerifier.verifyLegacy(configDir, it) }
                         ?: KeyboxVerifier.verify(configDir)
+                    KeyboxValidityTracker.update(results)
+                    Config.updateKeyBoxes()
                     val json = createKeyboxVerificationJson(results)
                     return secureResponse(Response.Status.OK, "application/json", json)
                 }
@@ -2889,6 +2932,7 @@ class WebServer(
                 "spoof_build_identity",
                 "global_mode",
                 "auto_keybox_check",
+                "block_invalid_keyboxes",
                 "random_on_boot",
                 "spoof_region_cn",
                 "telephony",
@@ -2926,6 +2970,7 @@ class WebServer(
                 "global_mode",
                 "tee_broken_mode",
                 "auto_keybox_check",
+                "block_invalid_keyboxes",
                 "random_on_boot",
                 "hide_sensitive_props",
                 "spoof_region_cn",
@@ -3492,6 +3537,8 @@ class WebServer(
                 obj.put("details", r.details)
                 obj.put("certificate_serial", r.certificateSerial ?: "")
                 obj.put("not_after", r.notAfter ?: "")
+                obj.put("validity_state", r.validityState.name)
+                obj.put("invalid_reason", r.invalidReason?.name ?: JSONObject.NULL)
                 array.put(obj)
             }
             return array.toString()

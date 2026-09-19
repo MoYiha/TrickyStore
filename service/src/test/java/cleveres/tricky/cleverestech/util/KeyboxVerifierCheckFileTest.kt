@@ -13,6 +13,7 @@ import org.mockito.Mockito
 import java.io.File
 import java.io.IOException
 import java.security.cert.X509Certificate
+import java.util.Date
 import cleveres.tricky.cleverestech.util.KeyboxVerifier.RevocationSource
 
 class KeyboxVerifierCheckFileTest {
@@ -172,6 +173,33 @@ class KeyboxVerifierCheckFileTest {
 
         assertEquals(KeyboxVerifier.Status.VALID, result.status)
         assertEquals("Active keybox", result.details)
+    }
+
+    @Test
+    fun `checkFile marks an expired certificate invalid after successful verification`() {
+        tempFile.writeText("content")
+        val mockCert = Mockito.mock(X509Certificate::class.java)
+        Mockito.`when`(mockCert.serialNumber).thenReturn(java.math.BigInteger.ONE)
+        Mockito.`when`(mockCert.notAfter).thenReturn(Date(0))
+        val mockPublicKey = Mockito.mock(java.security.PublicKey::class.java)
+        Mockito.`when`(mockPublicKey.encoded).thenReturn(ByteArray(0))
+        Mockito.`when`(mockCert.publicKey).thenReturn(mockPublicKey)
+        val mockKeyBox = Mockito.mock(CertHack.KeyBox::class.java)
+        Mockito.`when`(mockKeyBox.certificates()).thenReturn(listOf(mockCert))
+        KeyboxLoader.fileParserOverride = { _, _ ->
+            KeyboxLoader.ParsedFile(snapshotSha256 = null, keyboxes = listOf(mockKeyBox))
+        }
+
+        val result = KeyboxVerifier.checkFile(
+            tempFile,
+            KeyboxLoader.FileScope.CONFIG_ROOT,
+            tempFile.name,
+            "storage123",
+        ) { RevocationSource.Legacy(emptySet()) }
+
+        assertEquals(KeyboxVerifier.Status.VALID, result.status)
+        assertEquals(KeyboxVerifier.ValidityState.INVALID, result.validityState)
+        assertEquals(KeyboxVerifier.InvalidReason.EXPIRED, result.invalidReason)
     }
 
     @Test
@@ -430,5 +458,85 @@ class KeyboxVerifierCheckFileTest {
         assertEquals(KeyboxVerifier.Status.ERROR, result.status)
         assertEquals("StrongBox", result.securityLevel)
         assertTrue(result.isRkp)
+    }
+
+    @Test
+    fun `resolveValidity keeps structurally invalid keyboxes as verification failed even when expired`() {
+        val (state, reason) =
+            KeyboxVerifier.resolveValidity(KeyboxVerifier.Status.INVALID, "2020-01-01 00:00")
+        assertEquals(KeyboxVerifier.ValidityState.INVALID, state)
+        assertEquals(KeyboxVerifier.InvalidReason.VERIFICATION_FAILED, reason)
+    }
+
+    @Test
+    fun `resolveValidity reports expired for structurally valid keyboxes past notAfter`() {
+        val (state, reason) =
+            KeyboxVerifier.resolveValidity(KeyboxVerifier.Status.VALID, "2020-01-01 00:00")
+        assertEquals(KeyboxVerifier.ValidityState.INVALID, state)
+        assertEquals(KeyboxVerifier.InvalidReason.EXPIRED, reason)
+    }
+
+    @Test
+    fun `resolveValidity reports revoked for fresh keyboxes flagged by the revocation source`() {
+        val (state, reason) =
+            KeyboxVerifier.resolveValidity(KeyboxVerifier.Status.REVOKED, "2126-07-08 19:46")
+        assertEquals(KeyboxVerifier.ValidityState.INVALID, state)
+        assertEquals(KeyboxVerifier.InvalidReason.REVOKED, reason)
+    }
+
+    @Test
+    fun `policy blocks verification failures in both modes and expired entries only when blocking`() {
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.INVALID, "2020-01-01 00:00", blockInvalid = false),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.INVALID, "2020-01-01 00:00", blockInvalid = true),
+        )
+        assertFalse(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.VALID, "2020-01-01 00:00", blockInvalid = false),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.VALID, "2020-01-01 00:00", blockInvalid = true),
+        )
+        assertFalse(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.REVOKED, "2126-07-08 19:46", blockInvalid = false),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.REVOKED, "2126-07-08 19:46", blockInvalid = true),
+        )
+        assertFalse(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.VALID, "2126-07-08 19:46", blockInvalid = true),
+        )
+    }
+
+    @Test
+    fun `policy keeps serving previously valid keyboxes through failed checks but fails closed without history`() {
+        assertFalse(
+            KeyboxVerifier.isBlockedByPolicy(
+                KeyboxVerifier.Status.ERROR,
+                "2126-07-08 19:46",
+                blockInvalid = true,
+                previouslyValid = true,
+            ),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(
+                KeyboxVerifier.Status.ERROR,
+                "2126-07-08 19:46",
+                blockInvalid = false,
+                previouslyValid = false,
+            ),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(KeyboxVerifier.Status.ERROR, "2126-07-08 19:46", blockInvalid = true),
+        )
+        assertTrue(
+            KeyboxVerifier.isBlockedByPolicy(
+                KeyboxVerifier.Status.ERROR,
+                "2020-01-01 00:00",
+                blockInvalid = false,
+                previouslyValid = true,
+            ),
+        )
     }
 }

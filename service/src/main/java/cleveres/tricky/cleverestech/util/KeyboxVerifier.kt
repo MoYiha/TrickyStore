@@ -42,6 +42,8 @@ object KeyboxVerifier {
         val hasRsa: Boolean = false,
         val hasEc: Boolean = false,
         val notAfter: String? = null,
+        val validityState: ValidityState = ValidityState.VALID,
+        val invalidReason: InvalidReason? = null,
     )
 
     enum class Status {
@@ -49,6 +51,92 @@ object KeyboxVerifier {
         REVOKED,
         INVALID,
         ERROR,
+    }
+
+    enum class ValidityState {
+        VALID,
+        INVALID,
+    }
+
+    enum class InvalidReason {
+        VERIFICATION_FAILED,
+        EXPIRED,
+        REVOKED,
+    }
+
+    fun resolveValidity(
+        status: Status,
+        notAfter: String?,
+    ): Pair<ValidityState, InvalidReason?> {
+        // Structural distrust dominates the time-based signal: a keybox that fails
+        // verification stays VERIFICATION_FAILED (always blocked) even when it is
+        // also expired. Otherwise an expired date would launder it into EXPIRED,
+        // which rejoins selection when blocking is disabled.
+        if (status == Status.INVALID) {
+            return ValidityState.INVALID to InvalidReason.VERIFICATION_FAILED
+        }
+        if (notAfter != null && isExpired(notAfter)) {
+            return ValidityState.INVALID to InvalidReason.EXPIRED
+        }
+        return when (status) {
+            Status.VALID -> ValidityState.VALID to null
+            Status.REVOKED -> ValidityState.INVALID to InvalidReason.REVOKED
+            Status.INVALID -> ValidityState.INVALID to InvalidReason.VERIFICATION_FAILED
+            Status.ERROR -> ValidityState.VALID to null
+        }
+    }
+
+    /**
+     * Single eligibility invariant shared by the config refresh path, the server
+     * content gates, and the validity tracker. VERIFICATION_FAILED is always
+     * blocked; EXPIRED and REVOKED rejoin selection only when blocking is off.
+     */
+    fun isEligible(
+        validityState: ValidityState,
+        invalidReason: InvalidReason?,
+        blockInvalid: Boolean,
+    ): Boolean {
+        if (validityState == ValidityState.VALID) return true
+        if (!blockInvalid) return invalidReason != InvalidReason.VERIFICATION_FAILED
+        return false
+    }
+
+    /**
+     * Status-based form of [isEligible] for call sites that verify first and
+     * resolve validity inline. Callers force RKP status to VALID before this
+     * point, so expiry still applies to RKP boxes exactly as before.
+     *
+     * A failed check proves nothing about the keybox: boxes that were valid
+     * the last time verification succeeded keep serving through transient
+     * backend faults, while boxes with no verified history fail closed
+     * instead of being admitted blind.
+     */
+    fun isBlockedByPolicy(
+        status: Status,
+        notAfter: String?,
+        blockInvalid: Boolean,
+        previouslyValid: Boolean = false,
+    ): Boolean {
+        if (status == Status.ERROR) {
+            // Expiry is known locally from the certificate itself: never serve
+            // an expired keybox through a failed check, even one with a valid
+            // history. Otherwise only boxes with no verified history fail here.
+            if (notAfter != null && isExpired(notAfter)) return true
+            return !previouslyValid
+        }
+        val (validityState, invalidReason) = resolveValidity(status, notAfter)
+        return !isEligible(validityState, invalidReason, blockInvalid)
+    }
+
+    internal fun isExpired(notAfter: String): Boolean {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            val expiryDate = sdf.parse(notAfter) ?: return false
+            expiryDate.before(java.util.Date())
+        } catch (_: Exception) {
+            false
+        }
     }
 
     internal sealed interface RevocationSource {
@@ -559,7 +647,15 @@ object KeyboxVerifier {
         var trackedNotAfter: String? = null
         return try {
             if (!isSafeKeyboxFile(file)) {
-                return Result(file, file.name, Status.ERROR, "Unsafe or oversized keybox file", storageId = storageId)
+                return Result(
+                    file,
+                    file.name,
+                    Status.ERROR,
+                    "Unsafe or oversized keybox file",
+                    storageId = storageId,
+                    validityState = ValidityState.INVALID,
+                    invalidReason = InvalidReason.VERIFICATION_FAILED,
+                )
             }
             val parsed = KeyboxLoader.parseFileSnapshot(scope, filename, storageId)
             val snapshotSha256 = parsed.snapshotSha256?.takeIf(FULL_SHA256_PATTERN::matches)
@@ -604,6 +700,8 @@ object KeyboxVerifier {
                     isRkp = isRkp,
                     hasRsa = hasRsa,
                     hasEc = hasEc,
+                    validityState = ValidityState.INVALID,
+                    invalidReason = InvalidReason.VERIFICATION_FAILED,
                 )
             }
             val deviceSerial = keyboxes.asSequence().mapNotNull(CertHack::getDeviceCertificateSerial).firstOrNull()
@@ -662,9 +760,12 @@ object KeyboxVerifier {
                             hasRsa = hasRsa,
                             hasEc = hasEc,
                             notAfter = deviceNotAfter,
+                            validityState = ValidityState.INVALID,
+                            invalidReason = InvalidReason.REVOKED,
                         )
                     }
                     Status.INVALID -> {
+                        val (state, reason) = resolveValidity(Status.INVALID, deviceNotAfter)
                         return Result(
                             file,
                             file.name,
@@ -678,6 +779,8 @@ object KeyboxVerifier {
                             hasRsa = hasRsa,
                             hasEc = hasEc,
                             notAfter = deviceNotAfter,
+                            validityState = state,
+                            invalidReason = reason,
                         )
                     }
                     Status.ERROR -> {
@@ -700,6 +803,7 @@ object KeyboxVerifier {
                     Status.VALID -> Unit
                 }
             }
+            val (state, reason) = resolveValidity(Status.VALID, deviceNotAfter)
             Result(
                 file,
                 file.name,
@@ -713,6 +817,8 @@ object KeyboxVerifier {
                 hasRsa = hasRsa,
                 hasEc = hasEc,
                 notAfter = deviceNotAfter,
+                validityState = state,
+                invalidReason = reason,
             )
         } catch (_: RustBackendUnavailableException) {
             Result(

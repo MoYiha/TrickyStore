@@ -33,6 +33,7 @@ import cleveres.tricky.cleverestech.CertificateBackend;
 import cleveres.tricky.cleverestech.Config;
 import cleveres.tricky.cleverestech.KeyboxActivation;
 import cleveres.tricky.cleverestech.KeyboxLoader;
+import cleveres.tricky.cleverestech.KeyboxPriorityOrder;
 import cleveres.tricky.cleverestech.Logger;
 import cleveres.tricky.cleverestech.ManagedAttestKeyRegistry;
 import cleveres.tricky.cleverestech.ManagedAttestKeyRehydrator;
@@ -349,6 +350,7 @@ public final class CertHack {
         final Map<String, List<KeyBox>> keyboxFiles;
         final Map<KeyBox, PreparedKeyBox> preparedKeyboxes;
         final Map<KeyBox, KeyboxSecurityLevel> keyboxClassifications;
+        final Map<KeyBox, String> priorityLevels;
         final Set<KeyBox> strongBoxKeyboxes;
         final Set<KeyBox> teeKeyboxes;
         final Map<String, String> securityLevelByIdentifier;
@@ -398,15 +400,20 @@ public final class CertHack {
                 }
             }
 
+            Map<KeyBox, String> priLevels = new IdentityHashMap<>();
             for (Map.Entry<String, List<KeyBox>> entry : this.keyboxFiles.entrySet()) {
                 boolean fileHasStrongBox = false;
                 boolean fileHasTee = false;
                 boolean fileHasRkp = false;
                 for (KeyBox box : entry.getValue()) {
-                    if (isRkpKeybox(box)) {
+                    boolean rkp = isRkpKeybox(box);
+                    if (rkp) {
                         fileHasRkp = true;
                     }
                     KeyboxSecurityLevel level = classifications.getOrDefault(box, KeyboxSecurityLevel.UNKNOWN);
+                    if (!priLevels.containsKey(box)) {
+                        priLevels.put(box, priorityLevelFor(rkp, level));
+                    }
                     if (level == KeyboxSecurityLevel.STRONGBOX) {
                         fileHasStrongBox = true;
                     } else if (level == KeyboxSecurityLevel.TEE) {
@@ -420,6 +427,7 @@ public final class CertHack {
             this.securityLevelByIdentifier = Map.copyOf(secLevelById);
             this.strongBoxKeyboxes = Collections.unmodifiableSet(sbKeyboxes);
             this.teeKeyboxes = Collections.unmodifiableSet(tKeyboxes);
+            this.priorityLevels = Collections.unmodifiableMap(priLevels);
 
             List<KeyBox> teeEc = new ArrayList<>();
             List<KeyBox> teeRsa = new ArrayList<>();
@@ -1445,7 +1453,8 @@ public final class CertHack {
             List<KeyBox> list;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
-                List<KeyBox> candidates = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+                List<KeyBox> candidates = KeyboxPriorityOrder.filterEligibleCandidates(
+                        currentState.keyboxFiles.get(appConfig.getKeyboxFilename()));
                 List<KeyBox> matchingLevel = filterKeyboxesBySecurityLevel(candidates, isStrongbox);
                 if (!matchingLevel.isEmpty()) {
                     candidates = matchingLevel;
@@ -1456,25 +1465,21 @@ public final class CertHack {
                     // TEE attestation must NEVER fall back to StrongBox keyboxes
                     candidates = Collections.emptyList();
                 }
-                list = selectKeyboxPool(candidates, KeyProperties.KEY_ALGORITHM_EC);
+                // Priority tiers are decided before the EC/RSA algorithm preference so a
+                // custom order compares every level-fixed candidate; in default mode the
+                // tier filter is a pass-through and selection is unchanged.
+                list = selectKeyboxPool(
+                        KeyboxPriorityOrder.filterTopPriorityTier(candidates),
+                        KeyProperties.KEY_ALGORITHM_EC);
             } else {
-                if (isStrongbox) {
-                    if (!currentState.globalStrongBoxEc.isEmpty()) {
-                        list = currentState.globalStrongBoxEc;
-                    } else if (!currentState.globalStrongBoxRsa.isEmpty()) {
-                        list = currentState.globalStrongBoxRsa;
-                    } else if (!currentState.globalTeeEc.isEmpty()) {
-                        list = currentState.globalTeeEc;
-                    } else {
-                        list = currentState.globalTeeRsa;
-                    }
-                } else {
-                    if (!currentState.globalTeeEc.isEmpty()) {
-                        list = currentState.globalTeeEc;
-                    } else {
-                        list = currentState.globalTeeRsa;
-                    }
-                }
+                // The EC preference applies inside the top tier as well, so a mixed
+                // custom tier still prefers EC exactly like the per-file path. In
+                // default mode the tier filter is a pass-through over a
+                // single-algorithm pool and selection is unchanged.
+                list = selectKeyboxPool(
+                        KeyboxPriorityOrder.filterTopPriorityTier(
+                                selectGlobalKeyboxPool(currentState, isStrongbox)),
+                        KeyProperties.KEY_ALGORITHM_EC);
             }
             if (list.isEmpty()) {
                 return caList;
@@ -1687,7 +1692,8 @@ public final class CertHack {
             List<KeyBox> list;
             var appConfig = Config.INSTANCE.getAppConfig(uid);
             if (appConfig != null && appConfig.getKeyboxFilename() != null) {
-                List<KeyBox> candidates = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+                List<KeyBox> candidates = KeyboxPriorityOrder.filterEligibleCandidates(
+                        currentState.keyboxFiles.get(appConfig.getKeyboxFilename()));
                 List<KeyBox> matchingLevel = filterKeyboxesBySecurityLevel(candidates, isStrongbox);
                 if (!matchingLevel.isEmpty()) {
                     candidates = matchingLevel;
@@ -1696,25 +1702,21 @@ public final class CertHack {
                 } else {
                     candidates = Collections.emptyList();
                 }
-                list = selectKeyboxPool(candidates, KeyProperties.KEY_ALGORITHM_EC);
+                // Priority tiers are decided before the EC/RSA algorithm preference so a
+                // custom order compares every level-fixed candidate; in default mode the
+                // tier filter is a pass-through and selection is unchanged.
+                list = selectKeyboxPool(
+                        KeyboxPriorityOrder.filterTopPriorityTier(candidates),
+                        KeyProperties.KEY_ALGORITHM_EC);
             } else {
-                if (isStrongbox) {
-                    if (!currentState.globalStrongBoxEc.isEmpty()) {
-                        list = currentState.globalStrongBoxEc;
-                    } else if (!currentState.globalStrongBoxRsa.isEmpty()) {
-                        list = currentState.globalStrongBoxRsa;
-                    } else if (!currentState.globalTeeEc.isEmpty()) {
-                        list = currentState.globalTeeEc;
-                    } else {
-                        list = currentState.globalTeeRsa;
-                    }
-                } else {
-                    if (!currentState.globalTeeEc.isEmpty()) {
-                        list = currentState.globalTeeEc;
-                    } else {
-                        list = currentState.globalTeeRsa;
-                    }
-                }
+                // The EC preference applies inside the top tier as well, so a mixed
+                // custom tier still prefers EC exactly like the per-file path. In
+                // default mode the tier filter is a pass-through over a
+                // single-algorithm pool and selection is unchanged.
+                list = selectKeyboxPool(
+                        KeyboxPriorityOrder.filterTopPriorityTier(
+                                selectGlobalKeyboxPool(currentState, isStrongbox)),
+                        KeyProperties.KEY_ALGORITHM_EC);
             }
             if (list.isEmpty()) {
                 noteAttestFailure(uid, 6);
@@ -1863,7 +1865,8 @@ public final class CertHack {
         List<KeyBox> list;
         var appConfig = Config.INSTANCE.getAppConfig(uid);
         if (appConfig != null && appConfig.getKeyboxFilename() != null) {
-            List<KeyBox> candidates = currentState.keyboxFiles.get(appConfig.getKeyboxFilename());
+            List<KeyBox> candidates = KeyboxPriorityOrder.filterEligibleCandidates(
+                    currentState.keyboxFiles.get(appConfig.getKeyboxFilename()));
             List<KeyBox> matchingLevel = filterKeyboxesBySecurityLevel(candidates, isStrongbox);
             if (!matchingLevel.isEmpty()) {
                 candidates = matchingLevel;
@@ -1872,25 +1875,21 @@ public final class CertHack {
             } else {
                 candidates = Collections.emptyList();
             }
-            list = selectKeyboxPool(candidates, KeyProperties.KEY_ALGORITHM_EC);
+            // Priority tiers are decided before the EC/RSA algorithm preference so a
+            // custom order compares every level-fixed candidate; in default mode the
+            // tier filter is a pass-through and selection is unchanged.
+            list = selectKeyboxPool(
+                    KeyboxPriorityOrder.filterTopPriorityTier(candidates),
+                    KeyProperties.KEY_ALGORITHM_EC);
         } else {
-            if (isStrongbox) {
-                if (!currentState.globalStrongBoxEc.isEmpty()) {
-                    list = currentState.globalStrongBoxEc;
-                } else if (!currentState.globalStrongBoxRsa.isEmpty()) {
-                    list = currentState.globalStrongBoxRsa;
-                } else if (!currentState.globalTeeEc.isEmpty()) {
-                    list = currentState.globalTeeEc;
-                } else {
-                    list = currentState.globalTeeRsa;
-                }
-            } else {
-                if (!currentState.globalTeeEc.isEmpty()) {
-                    list = currentState.globalTeeEc;
-                } else {
-                    list = currentState.globalTeeRsa;
-                }
-            }
+            // The EC preference applies inside the top tier as well, so a mixed
+            // custom tier still prefers EC exactly like the per-file path. In
+            // default mode the tier filter is a pass-through over a
+            // single-algorithm pool and selection is unchanged.
+            list = selectKeyboxPool(
+                    KeyboxPriorityOrder.filterTopPriorityTier(
+                            selectGlobalKeyboxPool(currentState, isStrongbox)),
+                    KeyProperties.KEY_ALGORITHM_EC);
         }
         if (list == null || list.isEmpty()) {
             return null;
@@ -2383,6 +2382,81 @@ public final class CertHack {
         if ("SHA256withECDSA".equals(signatureAlgorithm)) return 1;
         if ("SHA256withRSA".equals(signatureAlgorithm)) return 2;
         return 0;
+    }
+
+    /**
+     * Priority level label for a keybox. Pure function of the RKP verdict and the
+     * classified security level; the per-publish snapshot in {@link State} stores
+     * the result so hot selection paths never repeat PKIX validation or native
+     * attestation inspection per call.
+     */
+    public static String priorityLevelFor(boolean isRkp, KeyboxSecurityLevel level) {
+        if (isRkp) return "RKP";
+        if (level == KeyboxSecurityLevel.STRONGBOX) return "StrongBox";
+        if (level == KeyboxSecurityLevel.TEE) return "TEE";
+        return "Unknown";
+    }
+
+    /**
+     * Publish-cached priority level for selection hot paths. Boxes served from the
+     * current snapshot hit the map (no crypto per call); anything else falls back
+     * to live computation with identical semantics.
+     */
+    public static String cachedPriorityLevel(KeyBox box) {
+        if (box == null) return "Unknown";
+        State currentState = state;
+        String cached = currentState.priorityLevels.get(box);
+        if (cached != null) return cached;
+        return priorityLevelFor(isRkpKeybox(box), classifyKeyboxSecurityLevel(box));
+    }
+
+    private static List<KeyBox> selectGlobalKeyboxPool(State currentState, boolean strongBox) {
+        List<KeyBox> strongBoxEc = KeyboxPriorityOrder.filterEligibleCandidates(currentState.globalStrongBoxEc);
+        List<KeyBox> strongBoxRsa = KeyboxPriorityOrder.filterEligibleCandidates(currentState.globalStrongBoxRsa);
+        List<KeyBox> teeEc = KeyboxPriorityOrder.filterEligibleCandidates(currentState.globalTeeEc);
+        List<KeyBox> teeRsa = KeyboxPriorityOrder.filterEligibleCandidates(currentState.globalTeeRsa);
+        if (isCustomPriorityOrdering()) {
+            // Custom mode lets the priority engine compare every candidate the
+            // requested security level permits. StrongBox requests stay within
+            // StrongBox pools (TEE is only the established empty-pool fallback),
+            // so a custom order can never force a StrongBox caller onto TEE keys.
+            return unionAllowedPools(strongBoxEc, strongBoxRsa, teeEc, teeRsa, strongBox);
+        }
+        if (strongBox) {
+            if (!strongBoxEc.isEmpty()) return strongBoxEc;
+            if (!strongBoxRsa.isEmpty()) return strongBoxRsa;
+        }
+        if (!teeEc.isEmpty()) return teeEc;
+        return teeRsa;
+    }
+
+    private static boolean isCustomPriorityOrdering() {
+        try {
+            cleveres.tricky.cleverestech.KeyboxPriorityPreference preference =
+                    cleveres.tricky.cleverestech.Config.INSTANCE.getKeyboxPriorityPreference();
+            return preference.getMode() == cleveres.tricky.cleverestech.KeyboxPriorityPreference.Mode.CUSTOM
+                    && !preference.getCustomOrder().isEmpty();
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    static List<KeyBox> unionAllowedPools(
+            List<KeyBox> strongBoxEc,
+            List<KeyBox> strongBoxRsa,
+            List<KeyBox> teeEc,
+            List<KeyBox> teeRsa,
+            boolean strongBox) {
+        if (strongBox) {
+            List<KeyBox> strongBoxPools = new ArrayList<>();
+            if (strongBoxEc != null) strongBoxPools.addAll(strongBoxEc);
+            if (strongBoxRsa != null) strongBoxPools.addAll(strongBoxRsa);
+            if (!strongBoxPools.isEmpty()) return strongBoxPools;
+        }
+        List<KeyBox> teePools = new ArrayList<>();
+        if (teeEc != null) teePools.addAll(teeEc);
+        if (teeRsa != null) teePools.addAll(teeRsa);
+        return teePools;
     }
 
     private static List<KeyBox> selectKeyboxPool(List<KeyBox> candidates, String preferredAlgorithm) {
