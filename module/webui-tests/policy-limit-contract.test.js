@@ -4,9 +4,9 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/policy.js', 'utf8');
 
-assert.match(source, /const MAX_POLICY_PROFILES = 64;/, 'WebUI profile limit must match PolicyState');
-assert.match(source, /const MAX_PROFILE_APPLICATIONS = 256;/, 'WebUI per-profile assignment limit must match PolicyState');
-assert.match(source, /const MAX_TOTAL_ASSIGNMENTS = 2048;/, 'WebUI total assignment limit must match PolicyState');
+assert.match(source, /const\s+MAX_POLICY_PROFILES\s*=\s*64;/, 'WebUI profile limit must match PolicyState');
+assert.match(source, /const\s+MAX_PROFILE_APPLICATIONS\s*=\s*256;/, 'WebUI per-profile assignment limit must match PolicyState');
+assert.match(source, /const\s+MAX_TOTAL_ASSIGNMENTS\s*=\s*2048;/, 'WebUI total assignment limit must match PolicyState');
 assert.match(source, /validatePolicyLimits\(normalized\);/, 'policy saves must validate the complete normalized state');
 
 const categoriesMatch = source.match(/const KEYBOX_PRIORITY_CATEGORIES = \[([\s\S]*?)\];/);
