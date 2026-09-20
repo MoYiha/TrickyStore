@@ -1,3 +1,4 @@
+#!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="${CLEVERES_TRICKY_CONFIG_DIR:-/data/adb/cleverestricky}"
 CONFIG_ROOT_SAFE=false
