@@ -57,7 +57,7 @@ assert.match(
 );
 assert.match(
   uxSource,
-  /row\.style\.cssText = '[^']*min-height:44px/s,
+  /row\.style\.cssText\s*=\s*'[^']*min-height:44px/s,
   'ZIP confirmation label row must provide a full-size clickable target',
 );
 assert.match(
