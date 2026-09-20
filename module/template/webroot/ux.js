@@ -6,8 +6,6 @@
 
     const STORAGE_KEY = 'cleverestricky.language.v1';
     const SYSTEM_LOCALE_KEY = 'cleverestricky.system_locale.v1';
-    // To add a locale: append [locale, displayName] here, add TRANSLATIONS[locale],
-    // add GUIDE[locale] when a localized guide is available, then run module/webui-tests.
     const SUPPORTED = [
         ['en', 'English'],
         ['tr', 'Türkçe'],
@@ -451,9 +449,6 @@
         }
     };
 
-    // Turkish defines the canonical complete first-party WebUI key set. The
-    // aligned catalog rows below provide the same static and runtime-generated
-    // coverage for every other built-in locale.
     Object.assign(TRANSLATIONS.tr, {
         'noServers': 'Yapılandırılmış sunucu yok. Keybox\'ları otomatik olarak almak için aşağıdan bir tane ekleyin.',
         'refresh': 'Yenile',
@@ -923,9 +918,6 @@
         'active_profile': 'Etkin profil'
     });
 
-    // Complete catalogs share one source key per row to keep all built-in
-    // locales aligned without adding locale-specific runtime assets. Columns:
-    // source, zh-CN, es, de, ru, id, hi, ar.
     const COMPLETE_LOCALE_IDS = ['zh-CN', 'es', 'de', 'ru', 'id', 'hi', 'ar'];
     const COMPLETE_CATALOG_ROWS = [
         ["status_ok", "正常", "Correcto", "OK", "ОК", "Normal", "सामान्य", "سليم"],
@@ -2382,8 +2374,6 @@
     }
 
     function installDrmPanel() {
-        // DRM controls live exclusively in Feature Center. Remove stale standalone copies
-        // from cached/older WebUI layouts instead of creating another toggle surface.
         const legacy = document.getElementById('ct_drm_dashboard_panel');
         if (legacy) legacy.remove();
     }
@@ -2586,7 +2576,6 @@
     else start();
 })(window);
 
-// ZIP keybox import UX; single-owner compatibility hook for the legacy inline upload controller.
 (function (global) {
     'use strict';
 
@@ -3274,8 +3263,6 @@
     }
 })(window);
 
-
-// Source-aware Stored Keyboxes and Verification UX. Runtime ownership stays in ux.js.
 (function (global) {
     'use strict';
     if (typeof document === 'undefined') return;
@@ -3686,7 +3673,6 @@
             }
             updateLayout(mq);
         }
-
 
         const left = document.createElement('div');
         left.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
@@ -4423,11 +4409,7 @@
 
     function normalizeLoadedPriorityOrder(order) {
         if (isValidPriorityOrder(order)) return [...order];
-        // Legacy six-category orders saved before server tiers existed expand
-        // to local/server pairs, preserving the saved relative order.
         if (isLegacyPriorityOrder(order)) return migrateLegacyPriorityOrder(order);
-        // Full 32-category orders (and legacy 16-category orders) project onto
-        // the twelve exposed categories, preserving their relative order.
         if (Array.isArray(order) && (order.length === 32 || order.length === 16)) {
             const projected = order.filter(category => DEFAULT_PRIORITY_CATEGORIES.includes(category));
             if (isValidPriorityOrder(projected)) return projected;
@@ -4498,8 +4480,6 @@
             if (typeof attachKeyboxLongPress === 'function') {
                 attachKeyboxLongPress(label, labelText, labelText);
             }
-            // Set after attach: the helper stores its hold hint in the title
-            // attribute, which browsers reflect into node.title.
             label.title = labelText;
 
             left.append(num, label);
@@ -4560,7 +4540,6 @@
             }
             renderPriorityOrder();
         } catch (_err) {
-            // Ignore fetch errors during abort / offline
         }
     }
 

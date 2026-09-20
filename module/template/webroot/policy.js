@@ -83,8 +83,6 @@ const MAX_TOTAL_ASSIGNMENTS = 2048;
 const MAX_PROFILE_VALUE_LENGTH = 256;
 
 function onReady(fn) {
-  // policy.js is loaded at the end of <body>, before the legacy inline bootstrap.
-  // Install structural UI synchronously so that bootstrap code never sees missing nodes.
   if (document.body) fn();
   else document.addEventListener('DOMContentLoaded', fn, {once:true});
 }
@@ -182,8 +180,6 @@ function normalizeKeyboxPriorityOrder(value) {
     new Set(order).size === KEYBOX_PRIORITY_CATEGORIES.length &&
     order.every(category => KEYBOX_PRIORITY_CATEGORIES.includes(category));
   if (complete) return {mode: 'custom', customOrder: order};
-  // Legacy six-category orders saved before server tiers existed pass through
-  // unchanged; the backend migrates them to local/server pairs.
   const legacy =
     order.length === LEGACY_KEYBOX_PRIORITY_CATEGORIES.length &&
     new Set(order).size === LEGACY_KEYBOX_PRIORITY_CATEGORIES.length &&
@@ -1558,8 +1554,6 @@ function installAutoIdentityOverride() {
     showLoadingButton(button);
     notify('Loading...','working');
     try {
-      // Give WebView a guaranteed paint opportunity before the native bridge begins
-      // potentially blocking host work. The timeout keeps background-tab behavior bounded.
       await nextUiPaint();
       const data = await request('/api/auto_identity',{method:'POST',timeoutMs:18000});
       let refreshFailed = false;
@@ -1777,8 +1771,6 @@ function installPackagePicker(inputId) {
   const render = () => {
     const query = input.value.trim().toLowerCase();
     const names = normalizedPackageNames();
-    // Non-All filters classify a bounded window first so unclassified
-    // packages never leak into the wrong category; All keeps the cheap path.
     const scanLimit = activeFilter === 'all' ? 24 : FILTER_SCAN_LIMIT;
     const pool = names.filter(name => !query || name.toLowerCase().includes(query) || packageDisplayName(name).toLowerCase().includes(query)).slice(0, scanLimit);
     requestPackageLabels(pool, scanLimit);
