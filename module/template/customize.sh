@@ -94,8 +94,6 @@ extract "$ZIPFILE" 'service.sh' "$MODPATH"
 extract "$ZIPFILE" 'action.sh' "$MODPATH"
 extract "$ZIPFILE" 'emergency-report.sh' "$MODPATH"
 
-# webui-host.sha256 is release-pin metadata, not a payload with its own
-# checksum sidecar. Extract it directly and keep the same safe target guards.
 host_pin_target="$MODPATH/webui-host.sha256"
 prepare_extract_target "$host_pin_target"
 unzip -o "$ZIPFILE" 'webui-host.sha256' -d "$MODPATH" >&2   || abort "! Could not extract WebUI host pin"
@@ -208,18 +206,12 @@ if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
   chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
 fi
 
-# Marker files below are created with truncating writes, so a planted symlink must
-# abort the install instead of redirecting a root write outside the config dir.
 for marker_file in settings_schema_v3 global_mode auto_keybox_check block_invalid_keyboxes recommended_defaults_pending spoof_switch_initialized; do
   if [ -L "$CONFIG_DIR/$marker_file" ]; then
     abort "! Refusing symlinked configuration marker: $marker_file"
   fi
 done
 
-# Schema v3 retires the historical RKP user switch. RKP infrastructure UIDs are
-# protected by the runtime unconditionally, so retaining this file only creates
-# conflicting Dashboard/Resources state. CBOX device caches are disposable and
-# are regenerated after an upgrade to avoid carrying stale serialization state.
 if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   ui_print "- Migrating persisted settings to schema v3"
   if [ -e "$CONFIG_DIR/rkp_passthrough" ]; then
@@ -239,10 +231,6 @@ if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   chown 0:0 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not set settings migration marker ownership"
 fi
 
-# Fresh installs use the recommended minimal default: global core coverage and
-# automatic keybox checking are enabled; identity/privacy extras stay off. The
-# v2 patch policy follows the device's captured/property patch level and only
-# advances stale values through Automatic mode.
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
   ui_print "- Applying recommended default settings"
   [ -e "$CONFIG_DIR/global_mode" ] || : > "$CONFIG_DIR/global_mode" \
@@ -317,8 +305,6 @@ if [ ! -f "$CONFIG_DIR/drm_packages.txt" ]; then
 fi
 chmod 600 "$CONFIG_DIR/drm_packages.txt" || abort "! Could not secure drm_packages.txt"
 
-# Kept as an internal identity-build compatibility policy. Core bootloader/TEE
-# property protection ignores this file and is always applied.
 if [ ! -f "$CONFIG_DIR/boot_props_mode" ]; then
   ui_print "- Adding automatic identity-build compatibility policy"
   extract "$ZIPFILE" 'boot_props_mode' "$TMPDIR"

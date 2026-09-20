@@ -1,16 +1,4 @@
 #!/system/bin/sh
-# CleveresTricky WebUI launcher.
-#
-# This is the Magisk Action button entrypoint. It opens the CleveresTricky
-# WebUI (webroot/index.html) inside a standalone WebUI host application,
-# which is only a WebView container and is NOT a root manager.
-# KernelSU and APatch keep using their manager's built-in WebUI button; this
-# launcher only needs the standalone host when no manager WebUI is available
-# (Magisk).
-#
-# Emergency diagnostics were moved out of this file and live in
-# emergency-report.sh next to this script. Run that file directly from a root
-# shell to collect a bug report archive.
 
 set -u
 
@@ -52,8 +40,6 @@ host_installed() {
     pm path "$WEBUI_HOST_PKG" >/dev/null 2>&1
 }
 
-# True when the running manager already offers a module WebUI button
-# (KernelSU/APatch), so downloading the standalone host would be redundant.
 manager_webui_available() {
     [ "${KSU:-false}" = "true" ] && return 0
     [ "${APATCH:-false}" = "true" ] && return 0
@@ -76,13 +62,6 @@ launch_webui() {
     fi
 }
 
-# Downloader chain, most capable first. curl flags are curl's own and valid
-# wherever curl exists. Magisk's busybox applet set is fixed, so its wget is
-# addressed explicitly with applet-supported options. Stock toybox wget lacks
-# -T/-q, so it is only accepted together with timeout(1); a bare unbounded
-# wget is rejected outright and the flow falls back to manual install.
-# Byte limits ride along: the API body is small and the pinned APK is a few
-# megabytes, so anything larger fails closed before hashing.
 WEBUI_HOST_MAX_API_BYTES=65536
 WEBUI_HOST_MAX_APK_BYTES="${WEBUI_HOST_MAX_APK_BYTES:-33554432}"
 probe_downloader() {
@@ -139,15 +118,6 @@ sha256_of() {
     fi
 }
 
-# Only these HTTPS hosts are accepted for the host APK download. Release
-# metadata comes from api.github.com and release assets are served from
-# github.com or *.githubusercontent.com. Anything else fails closed to the
-# manual-install path. This allowlist authenticates the transport endpoints,
-# not the APK signer: the host APK is a third-party build whose signing
-# certificate cannot be verified at our build time, so a hardcoded hash would
-# either brick the flow on legitimate rotation or give false assurance.
-# Publisher trust rests on the pinned adivenxnataly/KsuWebUI GitHub
-# releases; the manual-install path stays available for anyone who prefers it.
 is_allowed_apk_url() {
     case "$1" in
         https://github.com/*|https://objects.githubusercontent.com/*|https://*.githubusercontent.com/*) return 0 ;;
@@ -166,9 +136,6 @@ latest_apk_url() {
     [ -n "$api_response" ] || return 1
     apk_urls=$(printf '%s' "$api_response" | grep -o '"browser_download_url": "[^"]*\.apk"' | cut -d '"' -f 4)
     [ -n "$apk_urls" ] || return 1
-    # Releases may list several APKs (e.g. debug before release). When the
-    # reviewed pin is already loaded, prefer its exact asset; otherwise take
-    # the first one and let the pin comparison below fail closed.
     apk_url=$(printf '%s\n' "$apk_urls" | head -n 1)
     if [ -n "${PIN_URL:-}" ]; then
         pinned_hit=$(printf '%s\n' "$apk_urls" | grep -Fx "$PIN_URL" | head -n 1)
@@ -179,14 +146,9 @@ latest_apk_url() {
     printf '%s' "$apk_url"
 }
 
-# Reads the pinned host release that a human reviewed. Only the exact pinned
-# bytes may auto-install; anything else (rotated upstream release, tampered
-# file) fails closed to the manual-install path.
 read_host_pin() {
     pin_path=$1
     [ -f "$pin_path" ] && [ ! -L "$pin_path" ] || return 1
-    # GNU wc pads the count with blanks while toybox does not; strip all
-    # whitespace so the numeric check behaves identically everywhere.
     pin_size=$(wc -c < "$pin_path" 2>/dev/null | tr -d '[:space:]') || return 1
     case "$pin_size" in ''|*[!0-9]*) return 1 ;; esac
     [ "$pin_size" -ge 10 ] && [ "$pin_size" -le 4096 ] || return 1
@@ -205,8 +167,6 @@ read_host_pin() {
 apk_looks_valid() {
     candidate=$1
     [ -f "$candidate" ] && [ ! -L "$candidate" ] || return 1
-    # GNU wc pads the count with blanks while toybox does not; strip all
-    # whitespace so the numeric checks behave identically everywhere.
     candidate_size=$(wc -c < "$candidate" 2>/dev/null | tr -d '[:space:]') || return 1
     case "$candidate_size" in ''|*[!0-9]*) return 1 ;; esac
     [ "$candidate_size" -gt 102400 ] || return 1
@@ -223,10 +183,6 @@ install_webui_host() {
     probe_downloader || fail_manual "No downloader available (need curl, Magisk busybox, or wget)."
     read_host_pin "$HOST_PIN_FILE" || fail_manual "Reviewed host release pin is missing or invalid."
     apk_url=$(latest_apk_url) || fail_manual "Could not resolve the latest WebUI host release."
-    # Only the exact reviewed bytes may auto-install. A rotated upstream
-    # release has no reviewed pin yet, so it goes through manual install.
-    # With whole-file hash verification, the redirect target needs no
-    # separate trust: foreign bytes can never match the pinned digest.
     if [ "$apk_url" != "$PIN_URL" ]; then
         fail_manual "A new host release ($apk_url) has no reviewed pin yet."
     fi
@@ -268,9 +224,6 @@ if [ ! -f "$MODDIR/webroot/index.html" ] || [ -L "$MODDIR/webroot/index.html" ];
 fi
 
 if manager_webui_available; then
-    # KernelSU/APatch already offer a module WebUI button: keep the historic
-    # behavior here and run the localized emergency report. This branch comes
-    # first so a stray host install can never divert the manager flow.
     report_script="$MODDIR/emergency-report.sh"
     if [ -f "$report_script" ] && [ ! -L "$report_script" ] && [ -x "$report_script" ]; then
         exec "$report_script" ${1+"$@"}
