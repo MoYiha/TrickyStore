@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const longPressStart = source.indexOf('    function attachKeyboxLongPress(');
-const longPressEnd = source.indexOf('    function appendKeyboxValue(', longPressStart);
+const longPressStart = source.indexOf('function attachKeyboxLongPress(');
+const longPressEnd = source.indexOf('function appendKeyboxValue(', longPressStart);
 assert.ok(longPressStart >= 0 && longPressEnd > longPressStart, 'long-press handler is missing');
 const longPressImplementation = source.slice(longPressStart, longPressEnd);
 assert.match(longPressImplementation, /setTimeout\([\s\S]*650\)/);
@@ -14,18 +14,18 @@ assert.match(longPressImplementation, /showKeyboxValuePopup\(label, value, node\
 assert.match(longPressImplementation, /pointerdown/);
 assert.match(source, /async function copyKeyboxValue\(value\)/);
 
-const start = source.indexOf('    function render() {');
-const end = source.indexOf('    function normalizeKeyboxScope(value) {', start);
+const start = source.indexOf('function render()');
+const end = source.indexOf('function normalizeKeyboxScope(value)', start);
 assert.ok(start >= 0 && end > start, 'render implementation is missing');
 const implementation = source.slice(start, end);
 
-const startVerify = source.indexOf('    function renderVerification() {');
-const endVerify = source.indexOf('    async function verify() {', startVerify);
+const startVerify = source.indexOf('function renderVerification()');
+const endVerify = source.indexOf('async function verify()', startVerify);
 assert.ok(startVerify >= 0 && endVerify > startVerify, 'renderVerification implementation is missing');
 const verifyImplementation = source.slice(startVerify, endVerify);
 
-const startExpired = source.indexOf('    function isKeyboxExpired(notAfter) {');
-const endExpired = source.indexOf('    function statusLabel() {', startExpired);
+const startExpired = source.indexOf('function isKeyboxExpired(notAfter)');
+const endExpired = source.indexOf('function statusLabel()', startExpired);
 assert.ok(startExpired >= 0 && endExpired > startExpired, 'isKeyboxExpired implementation is missing');
 const expiredImplementation = source.slice(startExpired, endExpired);
 
