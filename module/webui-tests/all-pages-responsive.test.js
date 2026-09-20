@@ -62,7 +62,7 @@ assert.match(
 );
 assert.match(
   uxSource,
-  /#ct_debug_panel \.row \{[^}]*flex-direction:\s*row\s*!important/s,
+  /#ct_debug_panel \\.row\\s*\\{[^}]*flex-direction:\s*row\s*!important/s,
   'Debug logging panel row must retain horizontal flex layout',
 );
 assert.match(
