@@ -12,6 +12,7 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
 fi
 
+# BEGIN BOOT EPOCH HELPERS
 current_boot_id() {
   boot_id=$(dd if=/proc/sys/kernel/random/boot_id bs=65 count=1 2>/dev/null) || return 1
   boot_id=$(printf '%s' "$boot_id" | tr -d '\r\n')
@@ -69,6 +70,8 @@ prepare_runtime_boot_epoch() {
 }
 
 prepare_runtime_boot_epoch
+
+# END BOOT EPOCH HELPERS
 
 boot_policy_feature_enabled() {
   feature=$1
