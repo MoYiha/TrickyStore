@@ -1,11 +1,9 @@
-#!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
 SUPERVISOR_PID_FILE="$CONFIG_DIR/supervisor.pid"
 DAEMON_PID_FILE="$CONFIG_DIR/daemon.pid"
 
-# BEGIN PID SAFETY HELPERS
 process_start_ticks() {
   target_pid=$1
   proc_stat=$(dd if="/proc/$target_pid/stat" bs=16384 count=1 2>/dev/null) || return 1
@@ -14,8 +12,6 @@ process_start_ticks() {
     *) return 1 ;;
   esac
   stat_fields=${proc_stat##*) }
-  # All fields after the parenthesized command are kernel-generated scalar tokens.
-  # shellcheck disable=SC2086
   set -- $stat_fields
   [ "$#" -ge 20 ] || return 1
   start_ticks=${20}
@@ -80,10 +76,6 @@ terminate_pid() {
       old_start=${pid_record#* }
       ;;
     *)
-      # A PID-only legacy record cannot prove which same-boot process instance created it.
-      # Probe the current occupant through pidfd without a destructive signal: stale or
-      # identity-mismatched records are safe to discard, while a matching occupant remains
-      # ambiguous and must block startup rather than be signaled.
       old_pid=$pid_record
       if ! helper_pid_valid "$old_pid"; then
         rm -f "$pid_file" 2>/dev/null || true
@@ -144,7 +136,6 @@ terminate_pid() {
   rm -f "$pid_file" 2>/dev/null || true
   return 0
 }
-# END PID SAFETY HELPERS
 
 terminate_previous_instances() {
   terminate_pid "$CONFIG_DIR/supervisor.pid" "supervisor" 15 "" "" "$MODDIR/service.sh" || return 1

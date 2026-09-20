@@ -1,4 +1,3 @@
-#!/system/bin/sh
 set -e
 
 MODULE_ID="cleverestricky"
@@ -12,15 +11,8 @@ RAW_LOCALE=""
 workspace=""
 tmp=""
 
-# Android shells use either 512-byte or 1 KiB file-size blocks. This keeps the
-# staged archive at or below the native publisher's 256 MiB streaming bound.
 REPORT_FILE_BLOCK_LIMIT=262144
 
-# Bound the uncompressed collection before tar sees it. Directory snapshots keep
-# at most 128 regular files. The native collector pins each source directory and
-# reads at most 1 MiB from a single O_NOFOLLOW descriptor. Generated command logs
-# are independently capped to at most 8 MiB on Android shells that use 1 KiB
-# ulimit blocks (and 4 MiB on 512-byte-block shells).
 REPORT_COPY_FILE_LIMIT=128
 REPORT_LOG_FILE_BLOCK_LIMIT=8192
 report_copy_count=0
@@ -404,7 +396,6 @@ if [ "$FROM_WEBUI" = "1" ] && [ "${1:-}" = "--send" ]; then
     send_bugreport "${2:-}"
     exit $?
 fi
-
 
 if [ "$FROM_WEBUI" != "1" ]; then
     print_log "$(message WARNING)"

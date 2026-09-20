@@ -1,4 +1,3 @@
-#!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="${CLEVERES_TRICKY_CONFIG_DIR:-/data/adb/cleverestricky}"
 CONFIG_ROOT_SAFE=false
@@ -12,7 +11,6 @@ if [ -d "$CONFIG_DIR" ] && [ ! -L "$CONFIG_DIR" ]; then
   chcon u:object_r:system_file:s0 "$CONFIG_DIR" 2>/dev/null
 fi
 
-# BEGIN BOOT EPOCH HELPERS
 current_boot_id() {
   boot_id=$(dd if=/proc/sys/kernel/random/boot_id bs=65 count=1 2>/dev/null) || return 1
   boot_id=$(printf '%s' "$boot_id" | tr -d '\r\n')
@@ -68,7 +66,6 @@ prepare_runtime_boot_epoch() {
   chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
   mv -f "$tmp" "$marker" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
 }
-# END BOOT EPOCH HELPERS
 
 prepare_runtime_boot_epoch
 
@@ -76,9 +73,6 @@ boot_policy_feature_enabled() {
   feature=$1
   state="$CONFIG_DIR/boot_policy_state"
 
-  # Upgrades may have v2 policy before the managed service has emitted its first
-  # projection. In that case fail closed instead of treating a profile-derived
-  # legacy marker as global policy. Legacy-only installations keep marker fallback.
   if [ ! -e "$state" ] && [ ! -L "$state" ]; then
     legacy_state="$CONFIG_DIR/policy_state_v2.json"
     if [ -e "$legacy_state" ] || [ -L "$legacy_state" ]; then
