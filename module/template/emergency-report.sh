@@ -1,3 +1,4 @@
+#!/system/bin/sh
 set -e
 
 MODULE_ID="cleverestricky"
