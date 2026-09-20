@@ -1678,7 +1678,7 @@ function requestPackageLabels(names, limit) {
   const token = ++packageLabelRequest;
   let parsed = null;
   try {
-    const raw = global.ksu.getPackagesInfo(JSON.stringify(missing.slice(0, 24)));
+    const raw = global.ksu.getPackagesInfo(JSON.stringify(missing));
     parsed = JSON.parse(raw);
   } catch (_) {
     return;

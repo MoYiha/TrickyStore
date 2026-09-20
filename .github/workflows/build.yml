@@ -672,9 +672,14 @@ jobs:
           done < <(find "$target" -type f -print0)
 
           while IFS= read -r -d '' checksum; do
+            relative=${checksum#"$target/"}
+            # webui-host.sha256 is release-pin metadata, not a checksum sidecar.
+            case "$relative" in
+              webui-host.sha256) continue ;;
+            esac
             payload=${checksum%.sha256}
             if [ ! -f "$payload" ]; then
-              echo "::error file=$archive::Orphan checksum ${checksum#"$target/"}"
+              echo "::error file=$archive::Orphan checksum ${relative}"
               exit 1
             fi
           done < <(find "$target" -type f -name '*.sha256' -print0)
