@@ -128,7 +128,7 @@ function makePickerHarness(ksu) {
 }
 
 const pickerStart = policySource.indexOf('const packageLabelCache');
-const pickerEnd = policySource.indexOf('\nfunction installPackagePickers', pickerStart);
+const pickerEnd = policySource.indexOf('function installPackagePickers', pickerStart);
 assert.ok(pickerStart >= 0 && pickerEnd > pickerStart, 'picker implementation block is missing');
 const pickerCode = policySource.slice(pickerStart, pickerEnd);
 assert.ok(pickerCode.includes('role'), 'picker options must carry listbox semantics');
@@ -231,8 +231,8 @@ assert.ok(plainSuggestions.children[0].children[0].className === 'ct-appicon-fal
 assert.ok(plainWrapper.children.find(child => child.className === 'ct-cluster').hidden, 'filters must hide without flag data');
 
 // Part C: keybox card hierarchy contracts.
-const renderStart = uxSource.indexOf('    function render() {');
-const renderEnd = uxSource.indexOf('    function normalizeKeyboxScope', renderStart);
+const renderStart = uxSource.indexOf('function render()');
+const renderEnd = uxSource.indexOf('function normalizeKeyboxScope', renderStart);
 assert.ok(renderStart >= 0 && renderEnd > renderStart, 'keybox render block is missing');
 const renderCode = uxSource.slice(renderStart, renderEnd);
 assert.ok(renderCode.includes('ct-keybox-card'), 'keybox rows must use the card class');
@@ -275,7 +275,7 @@ for (const [key, samples] of Object.entries(newKeys)) {
 
 // Part G: state label sync installs once and follows switch changes.
 const syncStart = policySource.indexOf('function installStateLabelSync');
-const syncEnd = policySource.indexOf('\nfunction identityFeatureCardsMarkup', syncStart);
+const syncEnd = policySource.indexOf('function identityFeatureCardsMarkup', syncStart);
 assert.ok(syncStart >= 0 && syncEnd > syncStart, 'state sync implementation is missing');
 const syncCode = policySource.slice(syncStart, syncEnd);
 {
