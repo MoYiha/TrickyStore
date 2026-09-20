@@ -58,9 +58,55 @@ class KeyMintFailureCircuitBreakerTest {
     }
 
     @Test
-    fun `isSecureHwCommunicationFailure identifies exception message containing -49`() {
-        val ex = RuntimeException("keystore2 returned error -49")
-        assertTrue(KeystoreInterceptor.isSecureHwCommunicationFailure(ex))
+    fun `isSecureHwCommunicationFailure matches only the standalone error name token`() {
+        assertTrue(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("Transaction failed: SECURE_HW_COMMUNICATION_FAILED at HAL"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("upstream code NOT_SECURE_HW_COMMUNICATION_FAILED is unrelated"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("SECURE_HW_COMMUNICATION_FAILED_RETRY scheduled"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("KM_ERROR_SECURE_HW_COMMUNICATION_FAILED_RETRY rejected"),
+            ),
+        )
+    }
+
+    @Test
+    fun `isSecureHwCommunicationFailure rejects unrelated numbers that merely contain -49`() {
+        // The breaker is latching and device-wide. Matching a bare "-49" substring
+        // would arm it from ordinary text: sizes, timestamps, tag values and offsets
+        // all contain that substring, and one false positive disables interception
+        // for the rest of the process.
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("keystore2 returned error -49"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("binder reply size -4900 bytes"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("offset=-491 must stay aligned"),
+            ),
+        )
+        assertFalse(
+            KeystoreInterceptor.isSecureHwCommunicationFailure(
+                RuntimeException("generated at 2026-09-20T01:49:12Z"),
+            ),
+        )
     }
 
     @Test

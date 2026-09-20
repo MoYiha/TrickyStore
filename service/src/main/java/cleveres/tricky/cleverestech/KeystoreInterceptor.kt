@@ -34,6 +34,9 @@ object KeystoreInterceptor : BinderInterceptor() {
     const val INFO_KEYMINT_SEE_DOCS =
         "[INFO] Please consult documentation (docs/security/Attestation.md or docs/LOG.md) for TEE recovery guidance."
 
+    /** Explicit KeyMint error name. Typed provenance only; never a numeric substring. */
+    private const val SECURE_HW_COMMUNICATION_FAILED_TOKEN = "SECURE_HW_COMMUNICATION_FAILED"
+
     private val updateSubcomponentTransaction =
         getTransactCode(IKeystoreService.Stub::class.java, "updateSubcomponent").takeIf { it > 0 } ?: 3
 
@@ -74,6 +77,14 @@ object KeystoreInterceptor : BinderInterceptor() {
         }
     }
 
+    /**
+     * Typed provenance for the latching, device-wide fail-closed breaker.
+     *
+     * A bare "-49" inside an arbitrary message is not provenance: unrelated sizes,
+     * timestamps, tag values and offsets contain that substring, and a single false
+     * positive disables every interceptor for the rest of the process. Only an
+     * actual KeyMint error code, or the explicit error name, may arm the breaker.
+     */
     fun isSecureHwCommunicationFailure(t: Throwable?): Boolean {
         var curr = t
         while (curr != null) {
@@ -88,10 +99,36 @@ object KeystoreInterceptor : BinderInterceptor() {
                 return true
             }
             val msg = curr.message
-            if (msg != null && (msg.contains("SECURE_HW_COMMUNICATION_FAILED", ignoreCase = true) || msg.contains("-49"))) {
+            if (msg != null && messageContainsSecureHwFailureToken(msg)) {
                 return true
             }
             curr = curr.cause
+        }
+        return false
+    }
+
+    /**
+     * Delimiter-aware match for the explicit KeyMint error name.
+     *
+     * A plain substring match would also classify longer identifiers such as
+     * NOT_SECURE_HW_COMMUNICATION_FAILED or SECURE_HW_COMMUNICATION_FAILED_RETRY,
+     * and one false positive latches the device-wide breaker for the rest of the
+     * process. Only a standalone token surrounded by non-identifier characters
+     * counts as provenance; the typed errorCode path still owns genuine hardware
+     * failures.
+     */
+    private fun messageContainsSecureHwFailureToken(message: String): Boolean {
+        val token = SECURE_HW_COMMUNICATION_FAILED_TOKEN
+        var index = message.indexOf(token, ignoreCase = true)
+        while (index >= 0) {
+            val end = index + token.length
+            val before = message.getOrNull(index - 1)
+            val after = message.getOrNull(end)
+            val standalone =
+                (before == null || !(before.isLetterOrDigit() || before == '_')) &&
+                    (after == null || !(after.isLetterOrDigit() || after == '_'))
+            if (standalone) return true
+            index = message.indexOf(token, startIndex = index + 1, ignoreCase = true)
         }
         return false
     }

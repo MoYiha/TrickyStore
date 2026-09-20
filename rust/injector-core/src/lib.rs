@@ -13,7 +13,7 @@ mod abi;
 mod engine;
 #[cfg(any(target_os = "android", test))]
 mod health;
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 mod logging;
 #[cfg(target_os = "android")]
 mod process_memory;

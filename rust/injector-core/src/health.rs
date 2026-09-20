@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "android")]
-const STATUS_DIRECTORY: &str = "/data/adb/cleverestricky";
+pub(crate) const STATUS_DIRECTORY: &str = "/data/adb/cleverestricky";
 #[cfg(target_os = "android")]
 const STATUS_FILENAME: &str = "native_runtime_status";
 const MAXIMUM_PID_BYTES: usize = 10;

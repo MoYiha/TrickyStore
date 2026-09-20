@@ -191,7 +191,18 @@ class SecurityLevelInterceptor : BinderInterceptor() {
         }
 
         return try {
-            reply.readException()
+            // A native Binder call reports resultCode 0 whenever the transport
+            // succeeded, even if the reply carries a service-specific exception.
+            // Such an exception is the caller's own failed operation, not interceptor
+            // provenance: the platform answered normally, so there is nothing to
+            // rewrite. A per-key KeyMint failure must never arm the device-wide
+            // fail-closed breaker (KeystoreInterceptor.onPostTransact skips for the
+            // same reason on the getKeyEntry path).
+            try {
+                reply.readException()
+            } catch (_: Exception) {
+                return Skip
+            }
 
             val parsed = Utils.parseKeyMetadataParcel(reply)
             if (parsed != null) {

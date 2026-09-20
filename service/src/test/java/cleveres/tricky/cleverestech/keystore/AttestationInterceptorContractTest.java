@@ -1,5 +1,6 @@
 package cleveres.tricky.cleverestech.keystore;
 
+import android.hardware.security.keymint.ErrorCode;
 import android.hardware.security.keymint.SecurityLevel;
 import android.os.Binder;
 import android.os.Parcel;
@@ -1221,6 +1222,44 @@ public class AttestationInterceptorContractTest {
             CertHack.resetAttestFailureRingForTesting();
             globalModeField.set(Config.INSTANCE, prevGlobalMode);
         }
+    }
+
+    @Test
+    public void generateKeyReplyExceptionIsSkippedWithoutArmingTheTeeBreaker() throws Exception {
+        // The native hook reports resultCode 0 whenever the transport succeeded even
+        // when the reply carries a service-specific exception, so a caller's failed
+        // generateKey does reach reply.readException(). That is a per-operation
+        // failure with no device-wide meaning: arming the latching breaker from it
+        // tore down every keystore interceptor for the rest of the process, so
+        // keyboxes stopped being applied and attestation fell back to the genuine
+        // unlocked state.
+        KeystoreInterceptor.INSTANCE.resetTeeCircuitBreaker();
+        try {
+            Parcel request = AttestationRequestContractTest.request(false);
+            Parcel reply = mock(Parcel.class);
+            org.mockito.Mockito.doThrow(new KeyMintHardwareFailure())
+                    .when(reply).readException();
+
+            BinderInterceptor.Result result = generate(request, reply);
+
+            assertTrue("A reply-carried operation failure must be skipped",
+                    result instanceof BinderInterceptor.Skip);
+            assertFalse("A caller's failed generateKey must not latch the TEE breaker",
+                    KeystoreInterceptor.INSTANCE.isTeeBroken());
+        } finally {
+            KeystoreInterceptor.INSTANCE.resetTeeCircuitBreaker();
+        }
+    }
+
+    /**
+     * Mirrors android.os.ServiceSpecificException: the breaker classification reads a typed
+     * errorCode field, and the value below is the real KeyMint hardware-communication failure.
+     */
+    static final class KeyMintHardwareFailure extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        @SuppressWarnings("unused")
+        public final int errorCode = ErrorCode.SECURE_HW_COMMUNICATION_FAILED;
     }
 
     private static BinderInterceptor.Result generate(Parcel request, Parcel reply) throws Exception {

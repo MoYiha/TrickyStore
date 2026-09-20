@@ -234,13 +234,102 @@ class WebServerUXTest {
             timestamp_ms=123
             """.trimIndent(),
         )
-        val url = URL("http://localhost:${server.listeningPort}/api/resource_usage?token=${server.token}")
-        val conn = url.openConnection() as HttpURLConnection
-        val runtime = JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("native_runtime")
+        val runtime = fetchNativeRuntime()
 
         assertEquals("failed", runtime.getString("state"))
         assertEquals("symbol_resolution", runtime.getString("failure"))
         assertFalse(runtime.getBoolean("alive"))
+    }
+
+    @Test
+    fun testNativeRuntimeAliveRequiresActiveState() {
+        val selfPid = ProcessHandle.current().pid().toInt()
+        val selfStartTicks = readSelfStartTicks()
+        org.junit.Assume.assumeTrue(
+            "Linux /proc process accounting is unavailable on this host",
+            selfStartTicks != null,
+        )
+
+        fun writeStatus(state: String) {
+            File(configDir, "native_runtime_status").writeText(
+                """
+                version=2
+                state=$state
+                pid=$selfPid
+                start_ticks=$selfStartTicks
+                entry=entry
+                failure=none
+                timestamp_ms=123
+                """.trimIndent(),
+            )
+        }
+
+        writeStatus("active")
+        val active = fetchNativeRuntime()
+        assertEquals("active", active.getString("state"))
+        assertTrue("a live active runtime must report alive=true", active.getBoolean("alive"))
+
+        // The recorded pid is still alive, but a failed activation attempt is not
+        // an operating runtime: alive must never contradict the failed state.
+        writeStatus("failed")
+        val failed = fetchNativeRuntime()
+        assertEquals("failed", failed.getString("state"))
+        assertFalse("a failed runtime must never report alive=true", failed.getBoolean("alive"))
+    }
+
+    @Test
+    fun testTeeCircuitBreakerBecomesTheLiveNativeFailure() {
+        File(configDir, "native_runtime_status").writeText(
+            """
+            version=2
+            state=active
+            pid=2147483647
+            start_ticks=1
+            entry=entry
+            failure=none
+            timestamp_ms=123
+            """.trimIndent(),
+        )
+        // The trip path writes the required operator lines to the real stdout and
+        // stderr; capture them so the test runner does not treat them as errors.
+        val originalErr = System.err
+        val originalOut = System.out
+        val capture = java.io.PrintStream(java.io.ByteArrayOutputStream())
+        System.setErr(capture)
+        System.setOut(capture)
+        KeystoreInterceptor.tripTeeCircuitBreaker()
+        try {
+            val runtime = fetchNativeRuntime()
+            assertEquals("failed", runtime.getString("state"))
+            assertEquals("tee_broken", runtime.getString("failure"))
+            assertFalse(runtime.getBoolean("alive"))
+        } finally {
+            KeystoreInterceptor.resetTeeCircuitBreaker()
+            System.setErr(originalErr)
+            System.setOut(originalOut)
+            capture.close()
+        }
+    }
+
+    private fun fetchNativeRuntime(): JSONObject {
+        val url = URL("http://localhost:${server.listeningPort}/api/resource_usage?token=${server.token}")
+        val conn = url.openConnection() as HttpURLConnection
+        return JSONObject(conn.inputStream.bufferedReader().readText()).getJSONObject("native_runtime")
+    }
+
+    private fun readSelfStartTicks(): Long? {
+        val pid = ProcessHandle.current().pid()
+        val statFile = File("/proc/$pid/stat")
+        if (!statFile.isFile) return null
+        val stat = runCatching { statFile.readText() }.getOrNull() ?: return null
+        val commandEnd = stat.lastIndexOf(')')
+        if (commandEnd < 0) return null
+        return stat.substring(commandEnd + 1)
+            .trim()
+            .splitToSequence(' ')
+            .filter { it.isNotEmpty() }
+            .elementAtOrNull(19)
+            ?.toLongOrNull()
     }
 
     private fun fetchHtml(): String {
