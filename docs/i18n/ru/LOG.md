@@ -30,16 +30,19 @@ WebUI обеспечивает самый быстрый и удобный сп�
 
 ---
 
-## Способ 2: Создание аварийного архива в один клик (`action.sh`)
+## Способ 2: Создание аварийного архива в один клик (`emergency-report.sh`)
 
 Модуль содержит встроенный автоматический инструмент, который упаковывает системные логи, состояние модуля и информацию о root-окружении в сжатый архив (`.tar.gz`).
 
-### Через менеджер Root:
-- В **KernelSU** или **APatch** нажмите кнопку **Действие (Action)** рядом с карточкой модуля CleveresTricky.
+> [!NOTE]
+> В Magisk кнопка **Action** модуля открывает WebUI (через отдельное хост-приложение). В KernelSU/APatch она запускает этот отчет.
+
+### Через менеджер Root (KernelSU / APatch):
+- Нажмите кнопку **Action** рядом с карточкой модуля CleveresTricky.
 
 ### Через терминал (Termux / Root Shell):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Где найти архив:
@@ -115,5 +118,5 @@ adb logcat -d -s cleverestricky CleveresTricky
 
 При создании отчёта об ошибке на GitHub укажите:
 1. **Снимок диагностики поддержки** (со вкладки Информация в WebUI)
-2. **Журналы** (со вкладки Logs с включённым Debug Logging, архив `action.sh` или вывод logcat)
+2. **Журналы** (со вкладки Logs с включённым Debug Logging, архив `emergency-report.sh` или вывод logcat)
 3. Модель устройства, версию Android и используемый Root (KernelSU / APatch / Magisk)

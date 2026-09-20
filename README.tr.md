@@ -5,9 +5,9 @@
 [![Release](https://img.shields.io/github/v/release/tryigit/CleveresTricky?display_name=tag&sort=semver&label=Release)](https://github.com/tryigit/CleveresTricky/releases/latest)
 [![İndirmeler](https://img.shields.io/github/downloads/tryigit/CleveresTricky/total?color=0A84FF&label=%C4%B0ndirmeler)](https://github.com/tryigit/CleveresTricky/releases)
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
-![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
+![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch%20%7C%20Magisk-6f42c1)
 
-CleveresTricky, Android 12-17 için bir KernelSU ve APatch modülüdür. Android Keystore ve attestation uyumluluğunu, Keybox/CBOX yönetimini, uygulama hedeflemeyi, isteğe bağlı kimlik kontrollerini, patch seviyesi ayarlarını ve gizlilik araçlarını tek bir mobil WebUI içinde toplar.
+CleveresTricky, Android 12-17 için bir KernelSU, APatch ve Magisk modülüdür. Android Keystore ve attestation uyumluluğunu, Keybox/CBOX yönetimini, uygulama hedeflemeyi, isteğe bağlı kimlik kontrollerini, patch seviyesi ayarlarını ve gizlilik araçlarını tek bir mobil WebUI içinde toplar.
 
 Önce varsayılan ayarlarla başlayın; yalnızca gerçekten ihtiyaç duyduğunuz özellikleri açın.
 
@@ -17,13 +17,13 @@ CleveresTricky, Android 12-17 için bir KernelSU ve APatch modülüdür. Android
 - Global Mode kullanın veya uygulamaları ayrı ayrı kurallarla hedefleyin.
 - Cihaz/build, attestation, telephony, bölge ve security patch sunumunu isteğe bağlı olarak yapılandırın.
 - Remote Key Provisioning akışlarını koruyun ve DRM bypass iddiası olmadan desteklenen DRM tanımlayıcılarının görünürlüğünü azaltın.
-- Ayarları yedekleyin, etkin durumu inceleyin ve WebUI ya da modül Action üzerinden tanılama raporu oluşturun.
+- Ayarları yedekleyin, etkin durumu inceleyin ve WebUI Logs sayfasından ya da `/data/adb/modules/cleverestricky/emergency-report.sh` dosyasını çalıştırarak tanılama raporu oluşturun.
 
 ## Hızlı başlangıç
 
 1. En güncel ZIP dosyasını resmi [Releases](https://github.com/tryigit/CleveresTricky/releases/latest) sayfasından indirin.
-2. Android çalışırken ZIP dosyasını KernelSU veya APatch üzerinden kurun.
-3. Modül yöneticinizden CleveresTricky WebUI'yi açın.
+2. Android çalışırken ZIP dosyasını KernelSU, APatch veya Magisk üzerinden kurun.
+3. Modül yöneticinizden CleveresTricky WebUI'yi açın (Magisk'te modül Action düğmesinden).
 4. Yalnızca sahibi olduğunuz veya test etmek için yetkiniz bulunan bir **Keybox veya CBOX** ekleyin.
 5. Önce varsayılan kurulumu kullanın; kimlik, uygulama kuralları veya gizlilik seçeneklerini yalnızca gerektiğinde etkinleştirin.
 
@@ -33,10 +33,7 @@ Projeyle birlikte kullanılabilir bir Keybox veya özel attestation anahtarı ve
 
 - Android **12-17** / API **31-37**
 - **ARM64** ve **x86-64**
-- **KernelSU** ve **APatch** (önerilen, tam WebUI desteği)
-- **Magisk** (headless / `/data/adb/cleverestricky/` üzerinden manuel yapılandırma, [önerilmez](https://tryigit.dev/advanced-android-root-architecture-concealment/))
-
-Recovery üzerinden kurulum desteklenmez.
+- **KernelSU**, **APatch** ve **Magisk**
 
 ## Bilmeniz gerekenler
 
@@ -49,7 +46,6 @@ Yalnızca kullanmaya yetkili olduğunuz yapılandırma ve kimlik bilgilerini kul
 ## Daha fazla bilgi
 
 - [Strong Integrity Rehberi](docs/i18n/tr/security/StrongIntegrityGuide.md) - Orijinal, AOSP ve Custom ROM'lar için Google Play Integrity (MEETS_STRONG_INTEGRITY) hızlı başlangıç kılavuzu.
-- [Magisk Desteği Rehberi](docs/i18n/tr/system/Magisk.md) - Magisk kullanıcıları için headless manuel yapılandırma ve root gizleme kılavuzu.
 - [Keybox Manager](docs/i18n/tr/security/KeyboxManager.md) - Keybox/CBOX yükleme, doğrulama, seçim ve iptal kontrolleri.
 - [Application Scope](docs/i18n/tr/identity/ApplicationScope.md) ve [Application Rules](docs/i18n/tr/identity/ApplicationRules.md) - özelliklerin hangi uygulamalara uygulanacağını seçin.
 - [Build Identity](docs/i18n/tr/identity/BuildIdentity.md), [Telephony Identity](docs/i18n/tr/identity/TelephonyIdentity.md) ve [Patch Levels](docs/i18n/tr/identity/PatchLevels.md) - isteğe bağlı kimlik kontrolleri.
@@ -59,7 +55,7 @@ Yalnızca kullanmaya yetkili olduğunuz yapılandırma ve kimlik bilgilerini kul
 
 ## Yardım mı gerekiyor?
 
-WebUI içindeki **Logs** sayfasını veya modül **Action** seçeneğini kullanarak acil tanılama raporu oluşturabilirsiniz. Tanılama arşivi cihaz ve sistem bilgileri içerebileceği için paylaşmadan önce kontrol edin.
+WebUI içindeki **Logs** sayfasını kullanarak ya da `/data/adb/modules/cleverestricky/emergency-report.sh` dosyasını çalıştırarak acil tanılama raporu oluşturabilirsiniz. Tanılama arşivi cihaz ve sistem bilgileri içerebileceği için paylaşmadan önce kontrol edin.
 
 Yaygın sorunlar ve çözüm adımları için [Diagnostics](docs/i18n/tr/system/Diagnostics.md) sayfasına bakın.
 

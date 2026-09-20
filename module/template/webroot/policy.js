@@ -41,6 +41,14 @@ const IMPACTS = {
   'App Rules': 'Estimated impact: CPU very low with cached lookups; RAM low and proportional to configured rules.'
 };
 const KEYBOX_PRIORITY_CATEGORIES = [
+  'VALID_RKP','VALID_RKP_SERVER',
+  'VALID_TEE','VALID_TEE_SERVER',
+  'INVALID_EXPIRED_RKP','INVALID_EXPIRED_RKP_SERVER',
+  'INVALID_EXPIRED_TEE','INVALID_EXPIRED_TEE_SERVER',
+  'INVALID_REVOKED_RKP','INVALID_REVOKED_RKP_SERVER',
+  'INVALID_REVOKED_TEE','INVALID_REVOKED_TEE_SERVER'
+];
+const LEGACY_KEYBOX_PRIORITY_CATEGORIES = [
   'VALID_RKP','VALID_TEE',
   'INVALID_EXPIRED_RKP','INVALID_EXPIRED_TEE',
   'INVALID_REVOKED_RKP','INVALID_REVOKED_TEE'
@@ -173,8 +181,15 @@ function normalizeKeyboxPriorityOrder(value) {
     order.length === KEYBOX_PRIORITY_CATEGORIES.length &&
     new Set(order).size === KEYBOX_PRIORITY_CATEGORIES.length &&
     order.every(category => KEYBOX_PRIORITY_CATEGORIES.includes(category));
-  if (!complete) return {mode: 'default'};
-  return {mode: 'custom', customOrder: order};
+  if (complete) return {mode: 'custom', customOrder: order};
+  // Legacy six-category orders saved before server tiers existed pass through
+  // unchanged; the backend migrates them to local/server pairs.
+  const legacy =
+    order.length === LEGACY_KEYBOX_PRIORITY_CATEGORIES.length &&
+    new Set(order).size === LEGACY_KEYBOX_PRIORITY_CATEGORIES.length &&
+    order.every(category => LEGACY_KEYBOX_PRIORITY_CATEGORIES.includes(category));
+  if (legacy) return {mode: 'custom', customOrder: order};
+  return {mode: 'default'};
 }
 
 function normalizeSecurityPatch(value) {
@@ -315,7 +330,7 @@ function injectStyles() {
     .ct-keybox-summary{margin-top:8px;color:#999;font-size:.84em;line-height:1.4}
     .ct-impact-note{display:block;color:#8fa3b8;font-size:.78em;line-height:1.4;margin-top:6px}
     .ct-readonly-state{display:inline-flex;align-items:center;min-height:28px;padding:4px 9px;border:1px solid #3a3a3a;border-radius:999px;color:#bbb;background:#1d1d1d;font-size:.8em;white-space:nowrap}
-    .ct-package-picker{position:relative}.ct-package-suggestions{position:absolute;z-index:1300;left:0;right:0;top:calc(100% + 4px);max-height:min(42dvh,320px);overflow:auto;border:1px solid var(--border);border-radius:10px;background:#181818;box-shadow:0 10px 28px rgba(0,0,0,.45)}.ct-package-suggestions[hidden]{display:none!important}.ct-package-option{display:block;width:100%;min-height:44px;padding:10px 12px;border:0;border-bottom:1px solid #2b2b2b;border-radius:0;background:transparent;color:var(--fg);text-align:left;text-transform:none;letter-spacing:0;overflow-wrap:anywhere}.ct-package-option:last-child{border-bottom:0}.ct-package-option:focus,.ct-package-option:hover{background:#2a2a2a}
+    .ct-package-picker{position:relative}.ct-package-suggestions{position:absolute;z-index:1300;left:0;right:0;top:calc(100% + 4px);max-height:min(42dvh,320px);overflow:auto;border:1px solid var(--border);border-radius:14px;background:#181818;box-shadow:0 10px 28px rgba(0,0,0,.45);padding:6px}.ct-package-suggestions[hidden]{display:none!important}.ct-package-option{display:flex;align-items:center;gap:12px;width:100%;min-height:68px;padding:12px 16px;border:0;border-radius:10px;background:transparent;color:var(--fg);text-align:left;text-transform:none;letter-spacing:0;overflow-wrap:anywhere;cursor:pointer}.ct-package-option:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}.ct-package-option:focus,.ct-package-option:hover,.ct-package-option[aria-selected="true"]{background:rgba(255,255,255,.06)}.ct-pkg-empty{padding:12px 16px;font-size:.85em;color:var(--text-muted);text-align:center}
     input[type="checkbox"].ct-switch{appearance:none!important;-webkit-appearance:none!important;width:48px!important;height:28px!important;min-width:48px!important;min-height:28px!important;padding:0!important;margin:0!important;border:1px solid #4a4d52!important;border-radius:999px!important;background:#292b2f!important;box-sizing:border-box!important;position:relative!important;cursor:pointer!important;transition:background .18s ease,border-color .18s ease!important;flex:0 0 48px!important}
     input[type="checkbox"].ct-switch::after{content:''!important;position:absolute!important;width:22px!important;height:22px!important;left:2px!important;top:2px!important;border-radius:50%!important;background:#f4f4f5!important;box-shadow:0 1px 4px rgba(0,0,0,.45)!important;transform:translateX(0)!important;transition:transform .18s cubic-bezier(.22,.8,.25,1),background .18s ease!important}
     input[type="checkbox"].ct-switch:checked{background:var(--success,#30d158)!important;border-color:var(--success,#30d158)!important}
@@ -528,7 +543,24 @@ function switchMarkup(id, checked, extra) {
 }
 
 function cardMarkup(id, title, description, checked, children) {
-  return `<div class="ct-feature-card"><div class="row"><label for="${id}" style="flex:1;min-width:0;padding-right:12px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(description)}</span></label>${switchMarkup(id,checked)}</div>${children || ''}</div>`;
+  const stateWord = pickerText(checked ? 'Enabled' : 'Disabled', checked ? 'Enabled' : 'Disabled');
+  return `<div class="ct-feature-card"><div class="row"><label for="${id}" style="flex:1;min-width:0;padding-right:12px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(description)}</span></label><span class="ct-state-label" data-ct-state-for="${escapeHtml(id)}">${escapeHtml(stateWord)}</span>${switchMarkup(id,checked)}</div>${children || ''}</div>`;
+}
+
+function installStateLabelSync() {
+  if (!document || !document.documentElement || document.documentElement.dataset.ctStateSync === '1') return;
+  document.documentElement.dataset.ctStateSync = '1';
+  document.addEventListener('change', event => {
+    const target = event && event.target;
+    if (!target || target.type !== 'checkbox' || typeof target.id !== 'string' || !target.id) return;
+    const labels = document.querySelectorAll('[data-ct-state-for]');
+    for (const label of labels) {
+      if (label.dataset && label.dataset.ctStateFor === target.id) {
+        const word = pickerText(target.checked ? 'Enabled' : 'Disabled', target.checked ? 'Enabled' : 'Disabled');
+        if (label.textContent !== word) label.textContent = word;
+      }
+    }
+  });
 }
 
 function defaultPatch() {
@@ -538,6 +570,24 @@ function defaultPatch() {
 function isAutoPatch() {
   if (!policyState || !policyState.securityPatch) return false;
   return PATCH_COMPONENTS.every(([key]) => policyState.securityPatch[key] && policyState.securityPatch[key].mode === 'automatic');
+}
+
+function statusTile(label, value, state) {
+  return `<div class="ct-status-tile"><span class="ct-status-dot" data-state="${state}" aria-hidden="true"></span><div class="ct-status-copy"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(value)}</span></div></div>`;
+}
+
+function buildStatusStripMarkup() {
+  const identityOn = policyIdentityEnabled();
+  const secPatchOn = Boolean(policyState && policyState.features && policyState.features.securityPatch);
+  const keyboxCount = legacyConfig && Number.isFinite(Number(legacyConfig.keybox_count)) ? String(Number(legacyConfig.keybox_count)) : '-';
+  const pending = getPendingRebootSettings().size > 0;
+  const tiles = [
+    statusTile(pickerText('Identity', 'Identity'), pickerText(identityOn ? 'Enabled' : 'Disabled', identityOn ? 'Enabled' : 'Disabled'), identityOn ? 'on' : 'off'),
+    statusTile(pickerText('Keyboxes', 'Keyboxes'), keyboxCount, Number(keyboxCount) > 0 ? 'on' : 'off'),
+    statusTile(pickerText('Security Patch', 'Security Patch'), pickerText(secPatchOn ? 'Enabled' : 'Disabled', secPatchOn ? 'Enabled' : 'Disabled'), secPatchOn ? 'on' : 'off')
+  ];
+  if (pending) tiles.push(statusTile(pickerText('Status', 'Status'), pickerText('status_pending_reboot', 'Restart required'), 'warn'));
+  return `<div class="ct-section-title">${escapeHtml(pickerText('Status', 'Status'))}</div><div class="ct-status-strip" role="status" aria-live="polite">${tiles.join('')}</div>`;
 }
 
 function buildFeatureCenterMarkup(prefix) {
@@ -551,8 +601,9 @@ function buildFeatureCenterMarkup(prefix) {
   const drmChildren = `<div class="ct-subcontrols" id="${prefix}_drm_children" ${drmOn ? '' : 'hidden'}><strong>DRM Identifier Privacy</strong><p>Profile privacy Isolate replaces only DRM deviceUniqueId with a stable app-scoped pseudonymous ID. Licenses, provisioning and security level stay on Android's genuine DRM path.</p>${helpMarkup('Use Profiles > Privacy > Isolate for apps that should not share the genuine DRM device identifier.')}<button type="button" data-open-tab="profiles" style="width:100%;margin-top:10px">Configure Profiles</button></div>`;
   const secPatchHelp = helpMarkup('Security Patch is independent from Identity. It controls system, vendor, and boot security patch levels; use Device Default to keep captured values, Automatic for calendar-based policy, or Manual for an explicit date.');
   const secPatchChildren = `<div class="ct-subcontrols" id="${prefix}_sec_patch_children" ${secPatchOn ? '' : 'hidden'}><p>Controls system, vendor, and boot security patch levels independently from Identity properties.</p><button type="button" data-open-tab="patch" class="secondary" style="width:100%;margin-top:8px">Open Patch Settings</button></div>`;
+  const statusStrip = buildStatusStripMarkup();
 
-  return `<div class="ct-feature-grid">
+  return `${statusStrip}<div class="ct-feature-grid">
     ${cardMarkup(`${prefix}_global`,'Global Keybox','Applies custom Keybox attestation spoofing to all applications without requiring target.txt.',globalKeyboxOn,helpMarkup('Global Keybox is the module-wide attestation scope switch. Recommended ON for normal root usage.'))}
     ${cardMarkup(`${prefix}_sec_patch`,'Security Patch','Controls system, vendor, and boot security patch levels independently from Identity properties.',secPatchOn,secPatchHelp + secPatchChildren)}
     ${identityCards}
@@ -648,6 +699,7 @@ function renderFeatureCenter() {
 }
 
 function bindFeatureCenter(panel, prefix) {
+  installStateLabelSync();
   const globalToggle = panel.querySelector(`#${prefix}_global`);
   const secPatchToggle = panel.querySelector(`#${prefix}_sec_patch`);
   const secPatchChildren = panel.querySelector(`#${prefix}_sec_patch_children`);
@@ -724,10 +776,14 @@ function identityFeatureCardsMarkup(prefix) {
   const identityOn = policyIdentityEnabled();
   const cameraOn = Boolean(legacyConfig && legacyConfig.camera_visibility);
   const globalIdentityOn = Boolean(legacyConfig && legacyConfig.global_identity_mode);
+  const activeProfileName = policyState && typeof policyState.activeProfile === 'string' ? policyState.activeProfile.trim().slice(0, 64) : '';
+  const profileRow = activeProfileName
+    ? `<div class="ct-identity-summary"><span>${escapeHtml(pickerText('active_profile', 'Active profile'))}</span><strong>${escapeHtml(activeProfileName)}</strong></div>`
+    : '';
 
   const globalIdentityRow = `<div class="row" style="padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--border-color,#333)"><label for="${prefix}_global_identity" style="flex:1;padding-right:10px"><strong>Global Identity</strong><span class="res-desc">Applies Build Identity properties system-wide across all apps. When OFF, Identity applies only to identity_target.txt and configured profiles. Requires reboot.</span></label>${switchMarkup(`${prefix}_global_identity`,globalIdentityOn)}</div>`;
   const children = FEATURE_KEYS.map(([key,title,desc]) => `<div class="row"><label for="${prefix}_${key}" style="flex:1;padding-right:10px"><strong>${escapeHtml(title)}</strong><span class="res-desc">${escapeHtml(desc)}</span></label>${switchMarkup(`${prefix}_${key}`,Boolean(features && features[key]),`data-policy-feature="${key}"`)}</div>`).join('');
-  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity Engine</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${globalIdentityRow}${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. When Global Identity is off, these apply only to identity_target.txt and assigned profiles.')}</div>`;
+  const core = `<div class="ct-feature-card"><div class="row"><label for="${prefix}_master" style="flex:1;min-width:0;padding-right:12px"><strong>Identity Engine</strong><span class="res-desc">All Identity enable/disable controls live on Dashboard. Turn Identity on to reveal its child switches.</span></label>${switchMarkup(`${prefix}_master`,identityOn)}</div><div class="ct-subcontrols" id="${prefix}_children" ${identityOn ? '' : 'hidden'}>${profileRow}${globalIdentityRow}${children}<button type="button" data-open-tab="spoof" class="primary" style="width:100%;margin-top:10px">Open Identity settings</button></div>${helpMarkup('The Identity master toggles all child features together. When Global Identity is off, these apply only to identity_target.txt and assigned profiles.')}</div>`;
   const camera = cardMarkup(`${prefix}_camera_visibility`,'Camera visibility','Filters camera discovery for selected apps. Disabled means no cameraserver interceptor is started.',cameraOn,helpMarkup('This only reduces discoverable real camera IDs; it does not create cameras or block direct access.'));
   return `${core}${camera}`;
 }
@@ -737,6 +793,7 @@ function identityControlsMarkup(prefix) {
 }
 
 function bindIdentityControls(panel, prefix) {
+  installStateLabelSync();
   const master = panel.querySelector(`#${prefix}_master`);
   const children = panel.querySelector(`#${prefix}_children`);
   const globalIdentityToggle = panel.querySelector(`#${prefix}_global_identity`);
@@ -1580,6 +1637,87 @@ function normalizedPackageNames() {
     .slice(0, MAX_REFERENCE_PACKAGES).sort();
 }
 
+const packageLabelCache = new Map();
+const MAX_PACKAGE_LABEL_CACHE = 500;
+let packageLabelRequest = 0;
+let packageOptionUid = 0;
+
+function pickerText(key, fallback) {
+  try {
+    const i18n = global.CleveresI18n;
+    if (i18n && typeof i18n.translate === 'function') {
+      const value = i18n.translate(key);
+      if (typeof value === 'string' && value && value !== key) return value;
+    }
+  } catch (_) {}
+  return fallback;
+}
+
+function packageDisplayName(name) {
+  const cached = packageLabelCache.get(name);
+  if (cached && typeof cached.label === 'string' && cached.label) return cached.label;
+  return name;
+}
+
+function packageIsSystem(name) {
+  const cached = packageLabelCache.get(name);
+  return cached ? cached.isSystem : null;
+}
+
+function hostSupportsPackageInfo() {
+  const api = global.ksu;
+  return Boolean(api && typeof api.getPackagesInfo === 'function');
+}
+
+const FILTER_SCAN_LIMIT = 120;
+
+function requestPackageLabels(names, limit) {
+  const capped = Math.min(limit || 24, FILTER_SCAN_LIMIT);
+  const missing = names.filter(name => !packageLabelCache.has(name)).slice(0, capped);
+  if (!missing.length || !hostSupportsPackageInfo()) return;
+  const token = ++packageLabelRequest;
+  let parsed = null;
+  try {
+    const raw = global.ksu.getPackagesInfo(JSON.stringify(missing.slice(0, 24)));
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    return;
+  }
+  if (token !== packageLabelRequest || !Array.isArray(parsed)) return;
+  for (const entry of parsed) {
+    if (!entry || typeof entry.packageName !== 'string') continue;
+    const label = typeof entry.appLabel === 'string' && entry.appLabel ? entry.appLabel.slice(0, 128) : entry.packageName;
+    packageLabelCache.set(entry.packageName, {
+      label,
+      isSystem: entry.isSystem === true ? true : (entry.isSystem === false ? false : null)
+    });
+    if (packageLabelCache.size > MAX_PACKAGE_LABEL_CACHE) {
+      const oldest = packageLabelCache.keys().next();
+      if (!oldest.done) packageLabelCache.delete(oldest.value);
+    }
+  }
+}
+
+function packageIconNode(name) {
+  const initials = packageDisplayName(name).trim().charAt(0).toUpperCase() || '•';
+  const fallback = document.createElement('span');
+  fallback.className = 'ct-appicon-fallback';
+  fallback.setAttribute('aria-hidden', 'true');
+  fallback.textContent = initials;
+  if (!hostSupportsPackageInfo()) return fallback;
+  const icon = document.createElement('img');
+  icon.className = 'ct-appicon';
+  icon.alt = '';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.loading = 'lazy';
+  icon.decoding = 'async';
+  icon.src = 'ksu://icon/' + encodeURIComponent(name);
+  icon.addEventListener('error', () => {
+    if (icon.parentElement) icon.replaceWith(fallback);
+  }, { once: true });
+  return icon;
+}
+
 function installPackagePicker(inputId) {
   const input = document.getElementById(inputId);
   if (!input || input.dataset.ctPackagePicker === '1') return;
@@ -1591,28 +1729,141 @@ function installPackagePicker(inputId) {
   wrapper.className = 'ct-package-picker';
   parent.insertBefore(wrapper,input);
   wrapper.appendChild(input);
+  const chips = document.createElement('div');
+  chips.className = 'ct-cluster';
+  chips.style.cssText = 'margin-top:8px;';
+  chips.hidden = true;
+  const filters = [
+    ['all', 'app_filter_all', 'All'],
+    ['user', 'app_filter_user', 'User'],
+    ['system', 'app_filter_system', 'System']
+  ];
+  let activeFilter = 'all';
+  filters.forEach(([value, key, fallback]) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'ct-chip';
+    chip.dataset.ctPackageFilter = value;
+    chip.setAttribute('aria-pressed', value === 'all' ? 'true' : 'false');
+    chip.textContent = pickerText(key, fallback);
+    chip.addEventListener('pointerdown',event => event.preventDefault());
+    chip.addEventListener('click', () => {
+      activeFilter = value;
+      chips.querySelectorAll('[data-ct-package-filter]').forEach(node => {
+        node.setAttribute('aria-pressed', node === chip ? 'true' : 'false');
+      });
+      render();
+      input.focus();
+    });
+    chips.appendChild(chip);
+  });
+  wrapper.appendChild(chips);
   const suggestions = document.createElement('div');
   suggestions.className = 'ct-package-suggestions';
+  suggestions.setAttribute('role', 'listbox');
   suggestions.hidden = true;
   wrapper.appendChild(suggestions);
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-expanded', 'false');
+  input.setAttribute('aria-autocomplete', 'list');
+  let activeIndex = -1;
+  const pick = (name) => {
+    input.value = name;
+    suggestions.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    clearActiveDescendant();
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
   const render = () => {
     const query = input.value.trim().toLowerCase();
-    const matches = normalizedPackageNames().filter(name => !query || name.toLowerCase().includes(query)).slice(0,24);
+    const names = normalizedPackageNames();
+    const knownFlags = names.some(name => packageIsSystem(name) !== null);
+    chips.hidden = !hostSupportsPackageInfo() || !knownFlags;
+    // Non-All filters classify a bounded window first so unclassified
+    // packages never leak into the wrong category; All keeps the cheap path.
+    const scanLimit = activeFilter === 'all' ? 24 : FILTER_SCAN_LIMIT;
+    const pool = names.filter(name => !query || name.toLowerCase().includes(query) || packageDisplayName(name).toLowerCase().includes(query)).slice(0, scanLimit);
+    requestPackageLabels(pool, scanLimit);
+    activeIndex = -1;
+    clearActiveDescendant();
+    const matches = pool.filter(name => {
+      if (activeFilter === 'all') return true;
+      return packageIsSystem(name) === (activeFilter === 'system');
+    }).slice(0,24);
     suggestions.replaceChildren();
     matches.forEach(name => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'ct-package-option';
-      button.textContent = name;
+      button.id = 'ct-pkg-opt-' + (++packageOptionUid);
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', 'false');
+      const icon = packageIconNode(name);
+      const text = document.createElement('span');
+      text.className = 'ct-pkg-text';
+      const label = document.createElement('span');
+      label.className = 'ct-pkg-name';
+      label.textContent = packageDisplayName(name);
+      const sub = document.createElement('span');
+      sub.className = 'ct-pkg-sub';
+      sub.textContent = name;
+      text.append(label, sub);
+      const chevron = document.createElement('span');
+      chevron.className = 'ct-pkg-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.textContent = '›';
+      button.append(icon, text, chevron);
+      button.setAttribute('aria-label', packageDisplayName(name) + ', ' + name);
       button.addEventListener('pointerdown',event => event.preventDefault());
-      button.onclick = () => { input.value = name; suggestions.hidden = true; input.dispatchEvent(new Event('change',{bubbles:true})); };
+      button.onclick = () => pick(name);
       suggestions.appendChild(button);
     });
-    suggestions.hidden = matches.length === 0;
+    if (!matches.length && query) {
+      const note = document.createElement('div');
+      note.className = 'ct-pkg-empty';
+      note.setAttribute('aria-hidden', 'true');
+      note.textContent = pickerText('no_matching_apps', 'No matching apps. Press Enter to use the typed value.');
+      suggestions.appendChild(note);
+    }
+    suggestions.hidden = matches.length === 0 && !query;
+    input.setAttribute('aria-expanded', suggestions.hidden ? 'false' : 'true');
+  };
+  const clearActiveDescendant = () => input.removeAttribute('aria-activedescendant');
+  const moveActive = (delta) => {
+    const options = Array.from(suggestions.querySelectorAll('[role="option"]'));
+    if (!options.length) return;
+    activeIndex = (activeIndex + delta + options.length) % options.length;
+    options.forEach((option, index) => {
+      const active = index === activeIndex;
+      option.setAttribute('aria-selected', active ? 'true' : 'false');
+      if (active) {
+        input.setAttribute('aria-activedescendant', option.id);
+        if (typeof option.scrollIntoView === 'function') option.scrollIntoView({ block: 'nearest' });
+      }
+    });
   };
   input.addEventListener('focus',render);
   input.addEventListener('input',render);
-  input.addEventListener('blur',() => global.setTimeout(() => { suggestions.hidden = true; },100));
+  input.addEventListener('keydown',event => {
+    if (suggestions.hidden && event.key !== 'ArrowDown') return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (suggestions.hidden) render();
+      moveActive(event.key === 'ArrowDown' ? 1 : -1);
+    } else if (event.key === 'Enter') {
+      const options = suggestions.querySelectorAll('[role="option"]');
+      if (!suggestions.hidden && options.length && activeIndex >= 0 && options[activeIndex]) {
+        event.preventDefault();
+        options[activeIndex].click();
+      }
+    } else if (event.key === 'Escape') {
+      suggestions.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      clearActiveDescendant();
+    }
+  });
+  input.addEventListener('blur',() => global.setTimeout(() => { suggestions.hidden = true; input.setAttribute('aria-expanded', 'false'); activeIndex = -1; clearActiveDescendant(); },100));
 }
 
 function installPackagePickers() {

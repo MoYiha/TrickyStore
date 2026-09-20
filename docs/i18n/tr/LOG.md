@@ -30,16 +30,19 @@ WebUI, ADB veya bir bilgisayara ihtiyaç duymadan doğrudan telefon üzerinden t
 
 ---
 
-## Yöntem 2: Tek Tıkla Acil Durum Hata Raporu Arşivi (`action.sh`)
+## Yöntem 2: Tek Tıkla Acil Durum Hata Raporu Arşivi (`emergency-report.sh`)
 
 CleveresTricky, sistem loglarını, modül durumunu ve root ortamı bilgilerini sıkıştırılmış bir arşiv (`.tar.gz`) haline getiren otomatik bir acil durum aracına sahiptir.
 
-### Root Yöneticisi Üzerinden:
-- **KernelSU** veya **APatch** arayüzünde, CleveresTricky modül kartının yanındaki **Eylem (Action)** butonuna dokunun.
+> [!NOTE]
+> Magisk'te modül **Action** düğmesi WebUI'yi açar (bağımsız host uygulaması üzerinden). KernelSU/APatch'te bu raporu çalıştırır.
+
+### Root Yöneticisi Üzerinden (KernelSU / APatch):
+- CleveresTricky modül kartının yanındaki **Action** düğmesine dokunun.
 
 ### Terminal (Termux / Root Shell) Üzerinden:
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Rapor Arşivinin Yeri:
@@ -115,5 +118,5 @@ Bu durum, cihazın donanımsal TEE veya üretici KeyMint HAL iletişiminin koptu
 
 GitHub'da hata bildirimi açarken lütfen şunları ekleyin:
 1. **Destek Tanılama Anlık Görüntüsü** (WebUI Bilgi sekmesinden)
-2. **Loglar** (WebUI Logs sekmesi, `action.sh` arşivi veya logcat çıktısı)
+2. **Loglar** (WebUI Logs sekmesi, `emergency-report.sh` arşivi veya logcat çıktısı)
 3. Cihaz modeli, Android sürümü ve Root yöntemi (KernelSU / APatch / Magisk)

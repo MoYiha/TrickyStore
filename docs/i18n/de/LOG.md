@@ -30,16 +30,19 @@ Die WebUI bietet den schnellsten und unkompliziertesten Weg, Diagnosen ohne ADB 
 
 ---
 
-## Methode 2: Notfall-Fehlerbericht per Knopfdruck (`action.sh`)
+## Methode 2: Notfall-Fehlerbericht per Knopfdruck (`emergency-report.sh`)
 
 CleveresTricky enthält ein automatisiertes Skript, das Systemprotokolle, Modulstatus und Root-Umgebungsdaten in ein komprimiertes Archiv (`.tar.gz`) bündelt.
 
-### Über den Root-Manager:
-- Tippen Sie in **KernelSU** oder **APatch** auf die Schaltfläche **Aktion (Action)** neben der CleveresTricky-Modulkarte.
+> [!NOTE]
+> Unter Magisk öffnet die **Action**-Schaltfläche des Moduls die WebUI (über die eigenständige Host-App). Unter KernelSU/APatch führt sie diesen Bericht aus.
+
+### Über den Root-Manager (KernelSU / APatch):
+- Tippen Sie auf die **Action**-Schaltfläche neben der CleveresTricky-Modulkarte.
 
 ### Über das Terminal (Termux / Root-Shell):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Speicherort des Berichts:
@@ -115,5 +118,5 @@ Dies zeigt an, dass die Hardware-TEE- oder herstellerspezifische KeyMint-HAL-Kom
 
 Bitte fügen Sie beim Melden eines Fehlers auf GitHub folgende Informationen bei:
 1. **Support-Diagnoseschnappschuss** (aus dem WebUI-Reiter Info)
-2. **Protokolle** (aus WebUI Logs mit aktivem Debug Logging, `action.sh`-Archiv oder logcat)
+2. **Protokolle** (aus WebUI Logs mit aktivem Debug Logging, `emergency-report.sh`-Archiv oder logcat)
 3. Gerätemodell, Android-Version und Root-Methode (KernelSU / APatch / Magisk)

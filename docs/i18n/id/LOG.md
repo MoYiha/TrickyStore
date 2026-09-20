@@ -30,16 +30,19 @@ WebUI adalah cara tercepat dan termudah untuk mengumpulkan diagnostik langsung d
 
 ---
 
-## Metode 2: Arsip Laporan Bug Darurat Satu Klik (`action.sh`)
+## Metode 2: Arsip Laporan Bug Darurat Satu Klik (`emergency-report.sh`)
 
 CleveresTricky memiliki alat laporan otomatis yang mengemas log sistem, status modul, dan data lingkungan root ke dalam arsip terkompresi (`.tar.gz`).
 
-### Melalui Pengelola Root:
-- Di **KernelSU** atau **APatch**, ketuk tombol **Tindakan (Action)** di sebelah kartu modul CleveresTricky.
+> [!NOTE]
+> Di Magisk, tombol **Action** modul membuka WebUI (melalui aplikasi host mandiri). Di KernelSU/APatch, tombol tersebut menjalankan laporan ini.
+
+### Melalui Pengelola Root (KernelSU / APatch):
+- Ketuk tombol **Action** di sebelah kartu modul CleveresTricky.
 
 ### Melalui Terminal (Termux / Shell Root):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Lokasi Berkas Laporan:
@@ -115,5 +118,5 @@ Ini menunjukkan bahwa perangkat keras TEE atau vendor KeyMint HAL gagal berkomun
 
 Saat membuat laporan di GitHub, harap sertakan:
 1. **Ringkasan Diagnostik Dukungan** (dari tab Info di WebUI)
-2. **Log** (dari tab Logs WebUI dengan Debug Logging aktif, arsip `action.sh`, atau logcat)
+2. **Log** (dari tab Logs WebUI dengan Debug Logging aktif, arsip `emergency-report.sh`, atau logcat)
 3. Model perangkat, versi Android, dan metode Root (KernelSU / APatch / Magisk)

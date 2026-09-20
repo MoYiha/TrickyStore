@@ -17,13 +17,10 @@ elif [ "$BOOTMODE" ] && [ "$APATCH" ]; then
 elif [ "$MAGISK_VER_CODE" ] || { [ "$BOOTMODE" ] && [ -d /data/adb/magisk ]; }; then
   ui_print "- Installing from Magisk app"
   ui_print "- Magisk version: ${MAGISK_VER:-unknown} (${MAGISK_VER_CODE:-unknown})"
-  ui_print "*********************************************************"
-  ui_print "! NOTICE: Magisk is NOT recommended for CleveresTricky."
-  ui_print "! KernelSU or APatch is strongly recommended."
-  ui_print "! Learn why: https://tryigit.dev/advanced-android-root-architecture-concealment/"
-  ui_print "! WebUI is unavailable on Magisk."
-  ui_print "! Configure manually in: /data/adb/cleverestricky/"
-  ui_print "*********************************************************"
+  ui_print "- Magisk is supported. KernelSU and APatch are supported as well."
+  ui_print "- WebUI works on all three: on Magisk press Action to open it"
+  ui_print "  via a standalone WebUI host app (a WebView container,"
+  ui_print "  container, not a root manager). It installs on first use."
 else
   ui_print "*********************************************************"
   ui_print "! Install from recovery or unsupported root is not supported"
@@ -95,6 +92,8 @@ extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.sh' "$MODPATH"
 extract "$ZIPFILE" 'action.sh' "$MODPATH"
+extract "$ZIPFILE" 'emergency-report.sh' "$MODPATH"
+extract "$ZIPFILE" 'webui-host.sha256' "$MODPATH"
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
@@ -141,7 +140,7 @@ case "$ARCH" in
     ;;
 esac
 
-for module_payload in module.prop post-fs-data.sh service.sh action.sh service.apk sepolicy.rule daemon \
+for module_payload in module.prop post-fs-data.sh service.sh action.sh emergency-report.sh webui-host.sha256 service.apk sepolicy.rule daemon \
   "lib$SONAME.so" inject webui_bridge cleverestrickyd cleverestricky_backend integrity_manifest.json; do
   payload_path="$MODPATH/$module_payload"
   if [ -L "$payload_path" ] || [ ! -f "$payload_path" ]; then
@@ -150,9 +149,11 @@ for module_payload in module.prop post-fs-data.sh service.sh action.sh service.a
 done
 
 chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
-  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/post-fs-data.sh" \
+  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/emergency-report.sh" "$MODPATH/post-fs-data.sh" \
   || abort "! Could not set module executable permissions"
 chmod 644 "$MODPATH/integrity_manifest.json" || abort "! Could not set integrity manifest permissions"
+chmod 644 "$MODPATH/webui-host.sha256" || abort "! Could not set host pin permissions"
+chown 0:0 "$MODPATH/webui-host.sha256" || abort "! Could not set host pin ownership"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ -L "$CONFIG_DIR" ]; then

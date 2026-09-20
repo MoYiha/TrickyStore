@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-ACTION_SH="$REPO_ROOT/module/template/action.sh"
+ACTION_SH="$REPO_ROOT/module/template/emergency-report.sh"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -11,13 +11,13 @@ fail() {
 
 assert_contains() {
   needle=$1
-  grep -Fq -- "$needle" "$ACTION_SH" || fail "action.sh is missing security contract: $needle"
+  grep -Fq -- "$needle" "$ACTION_SH" || fail "emergency-report.sh is missing security contract: $needle"
 }
 
 assert_absent() {
   needle=$1
   if grep -Fq -- "$needle" "$ACTION_SH"; then
-    fail "action.sh restored unsafe pattern: $needle"
+    fail "emergency-report.sh restored unsafe pattern: $needle"
   fi
 }
 

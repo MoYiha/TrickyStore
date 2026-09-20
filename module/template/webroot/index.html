@@ -5,7 +5,7 @@
     <title>CleveresTricky</title>
     <link rel="icon" href="data:,">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: ksu:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
     <style>
         :root {
             --color-red: rgb(255, 69, 58);
@@ -161,7 +161,7 @@
         }
         .tab {
             width: 100%;
-            min-height: 42px;
+            min-height: 48px;
             justify-content: flex-start;
             padding: 10px 14px;
             border: 1px solid transparent;
@@ -347,6 +347,66 @@
         th { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600; font-size: 0.88rem; white-space: nowrap; }
         td { padding: 10px; border-bottom: 1px solid var(--border); color: #ccc; }
         .tag { display: inline-block; padding: 4px 9px; border-radius: 8px; background: var(--panel-elevated); color: var(--text-muted); font-size: 0.76rem; margin-right: 5px; font-weight: 600; white-space: nowrap; }
+        :root {
+            --ct-space-1: 4px;
+            --ct-space-2: 8px;
+            --ct-space-3: 12px;
+            --ct-space-4: 16px;
+            --ct-space-5: 20px;
+            --ct-space-6: 24px;
+            --ct-space-8: 32px;
+            --ct-radius-sm: 10px;
+            --ct-radius-md: 14px;
+            --ct-radius-lg: 18px;
+            --ct-ease: cubic-bezier(0.16, 1, 0.3, 1);
+            --ct-fast: 140ms;
+            --ct-med: 200ms;
+            --ct-surface: var(--panel);
+            --ct-surface-2: var(--panel-elevated);
+            --ct-separator: var(--border-subtle);
+        }
+        .ct-section-title { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); margin: 0 0 var(--ct-space-3); }
+        .ct-status-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--ct-space-3); margin-bottom: var(--ct-space-5); }
+        .ct-status-tile { display: flex; align-items: center; gap: var(--ct-space-3); background: var(--ct-surface); border: 1px solid var(--ct-separator); border-radius: var(--ct-radius-md); padding: var(--ct-space-3) var(--ct-space-4); min-width: 0; }
+        .ct-status-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ct-status-copy strong { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ct-status-copy span { font-size: 1.02rem; font-weight: 700; color: var(--text); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ct-status-dot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--color-gray3); }
+        .ct-status-dot[data-state="on"] { background: var(--success); box-shadow: 0 0 8px rgba(48, 209, 88, 0.5); }
+        .ct-status-dot[data-state="warn"] { background: var(--warning); box-shadow: 0 0 8px rgba(255, 159, 10, 0.5); }
+        .ct-state-label { flex: 0 0 auto; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); background: var(--ct-surface-2); border: 1px solid var(--ct-separator); border-radius: 999px; padding: 4px 10px; margin-right: 4px; white-space: nowrap; }
+        .ct-identity-summary { display: flex; align-items: baseline; gap: var(--ct-space-2); flex-wrap: wrap; padding: var(--ct-space-2) var(--ct-space-3); margin-bottom: var(--ct-space-2); background: var(--ct-surface-2); border: 1px solid var(--ct-separator); border-radius: var(--ct-radius-sm); font-size: 0.85rem; }
+        .ct-identity-summary span { color: var(--text-muted); }
+        .ct-identity-summary strong { color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+        .ct-section-sub { font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin: 0 0 var(--ct-space-4); overflow-wrap: anywhere; }
+        .ct-stack { display: flex; flex-direction: column; gap: var(--ct-space-3); min-width: 0; }
+        .ct-cluster { display: flex; align-items: center; gap: var(--ct-space-2); flex-wrap: wrap; min-width: 0; }
+        .ct-meta { font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+        .ct-meta-dim { font-size: 0.78rem; color: var(--text-tertiary); line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+        .ct-keybox-card { background: var(--ct-surface); border: 1px solid var(--ct-separator); border-radius: var(--ct-radius-md); padding: var(--ct-space-4); gap: var(--ct-space-3); margin-bottom: var(--ct-space-3); }
+        .ct-keybox-card:last-child { margin-bottom: 0; }
+        .ct-keybox-title { display: flex; align-items: center; gap: var(--ct-space-2); flex-wrap: wrap; min-width: 0; font-weight: 600; }
+        .ct-keybox-card .ct-keybox-meta { margin-top: var(--ct-space-2); }
+        .ct-package-option { display: flex !important; align-items: center; gap: var(--ct-space-3); width: 100%; min-height: 68px; padding: var(--ct-space-3) var(--ct-space-4); text-align: left; }
+        .ct-package-option .ct-pkg-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+        .ct-package-option .ct-pkg-name { font-size: 0.95rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ct-package-option .ct-pkg-sub { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+        .ct-package-option .ct-pkg-chevron { flex: 0 0 auto; color: var(--text-tertiary); font-size: 1.1rem; line-height: 1; }
+        .ct-package-option[aria-selected="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+        .ct-appicon { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 12px; background: var(--ct-surface-2); border: 1px solid var(--ct-separator); object-fit: cover; }
+        .ct-appicon-fallback { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: 0 0 auto; border-radius: 12px; background: var(--ct-surface-2); border: 1px solid var(--ct-separator); color: var(--text-tertiary); font-size: 1.05rem; font-weight: 700; }
+        .ct-chip { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+        .ct-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: rgba(10, 132, 255, 0.55); color: #ffffff; }
+        .ct-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ct-space-2); text-align: center; padding: var(--ct-space-8) var(--ct-space-4); color: var(--text-muted); }
+        .ct-empty .ct-empty-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+        .ct-empty .ct-empty-desc { font-size: 0.86rem; line-height: 1.5; max-width: 34ch; overflow-wrap: anywhere; }
+        .ct-skeleton { position: relative; overflow: hidden; background: var(--ct-surface-2); border-radius: var(--ct-radius-sm); min-height: 20px; }
+        .ct-skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.06) 50%, transparent 80%); animation: ct-shimmer 1.4s ease-in-out infinite; }
+        @keyframes ct-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+        @media (prefers-reduced-motion: reduce) {
+            .ct-skeleton::after { animation: none; }
+            .content.active { animation: none; }
+        }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; box-sizing: border-box; margin-bottom: 16px; }
         .grid-2 > div { min-width: 0; display: flex; flex-direction: column; }
         .identity-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px; }
@@ -806,7 +866,7 @@
         <option value="custom" data-i18n="priority_mode_custom_short">Custom</option>
     </select>
 </div>
-<p style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px;" data-i18n="priority_order_desc">Configure selection preference by security level and validity state. The first non-empty tier is selected.</p>
+<p style="font-size:0.85em; color:var(--text-muted); margin-bottom:12px;" data-i18n="priority_order_desc">Configure selection preference by security level, validity state, and source (local or server). The first non-empty tier is selected.</p>
 <p id="ct_keybox_priority_mode_hint" data-i18n="priority_mode_default" style="font-size:0.85em; color:var(--text-muted); margin:0 0 12px;">Default (Random in Tier)</p>
 <div id="ct_keybox_priority_list" style="display:none; flex-direction:column; gap:6px; margin-bottom:12px;"></div>
 <div id="ct_keybox_priority_actions" style="display:none; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:12px;">

@@ -45,7 +45,8 @@ Runtime architecture, build requirements, diagnostics, platform coexistence, and
 * [Logging & Diagnostics](LOG.md) - Diagnostic snapshots, WebUI debug logging, action report archive, and logcat.
 * [DRM Passthrough & Privacy](system/DrmPassthrough.md) - Media application Keystore preservation and deviceUniqueId isolation.
 * [Installer](system/Installer.md) - Module installation, environment detection, and package architecture.
-* [Magisk Support](system/Magisk.md) - Headless manual configuration, directory layout, and root concealment advisories.
+* [Magisk Support](system/Magisk.md) - WebUI via the Action button, directory layout, and root concealment advisories.
+* [Manual Configuration](system/ManualConfiguration.md) - File-based manual configuration without the WebUI.
 * [Native Architecture](system/NativeArchitecture.md) - Daemon supervision, IPC transport, and interceptors.
 * [Performance & Memory](system/Performance.md) - Zero-overhead design, memory limits, and bounded operations.
 * [Provider Coexistence](system/ProviderCoexistence.md) - Compatibility with other root and security modules.

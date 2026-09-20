@@ -1,0 +1,107 @@
+# Konfigurasi Manual
+
+**Bahasa:** [English](../../../system/ManualConfiguration.md) | [Türkçe](../../tr/system/ManualConfiguration.md) | [简体中文](../../zh-CN/system/ManualConfiguration.md) | [Español](../../es/system/ManualConfiguration.md) | [Deutsch](../../de/system/ManualConfiguration.md) | [Русский](../../ru/system/ManualConfiguration.md) | **Bahasa Indonesia** | [हिन्दी](../../hi/system/ManualConfiguration.md) | [العربية](../../ar/system/ManualConfiguration.md)
+
+Panduan ini mencakup konfigurasi manual CleveresTricky melalui file tanpa menggunakan WebUI. WebUI tetap menjadi cara normal mengubah pengaturan; gunakan panduan ini jika Anda lebih suka mengedit file manual atau jika WebUI tidak dapat diakses. Semua file pengaturan dan kebijakan berada di direktori `/data/adb/cleverestricky/`.
+
+---
+
+## 1. Cakupan & Target Aplikasi
+
+* **`target.txt`**: Daftar nama paket (satu per baris) yang menjadi target spoofing atestasi Keystore:
+  ```text
+  com.google.android.gms
+  com.google.android.gms.unstable
+  com.android.vending
+  ```
+* **`global_mode`**: File penanda kosong.
+  * **Ada**: Mode Global aktif (mencegat semua aplikasi di luar sistem dan root).
+  * **Tidak ada**: Hanya aplikasi yang tertera di `target.txt` yang dicegat.
+  * *Perintah:* `touch /data/adb/cleverestricky/global_mode` (aktifkan) atau `rm -f /data/adb/cleverestricky/global_mode` (nonaktifkan).
+
+* **`identity_target.txt`**: Paket target untuk pemalsuan identitas perangkat.
+* **`global_identity_mode`**: File penanda untuk menerapkan pemalsuan identitas secara global.
+
+---
+
+## 2. Identitas Perangkat & Properti Build
+
+* **`spoof_build_vars`**: Properti perangkat yang dipalsukan dalam format `KUNCI=NILAI`:
+  ```properties
+  MANUFACTURER=Google
+  MODEL=Pixel 8 Pro
+  FINGERPRINT=google/husky/husky:14/UQ1A.240105.004/11269998:user/release-keys
+  BRAND=google
+  PRODUCT=husky
+  DEVICE=husky
+  RELEASE=14
+  ID=UQ1A.240105.004
+  INCREMENTAL=11269998
+  TYPE=user
+  TAGS=release-keys
+  ```
+* **`security_patch.txt`**: Tanggal patch keamanan (misal `2026-03-05`). Kosongkan atau hapus file untuk penyelarasan otomatis dengan sistem.
+* **`boot_props_mode`**: Mengontrol mode properti bootloader (`auto`, `force`, atau `disable`).
+
+---
+
+## 3. Keybox Perangkat Keras
+
+* **`keybox.xml`**: Letakkan file XML keybox atestasi perangkat keras langsung di `/data/adb/cleverestricky/keybox.xml`. Pastikan hak akses dibatasi (`chmod 600`).
+* **`keyboxes/`**: Direktori untuk menyimpan beberapa file keybox.
+* **Unggahan tidak pernah menimpa:** Keybox yang dijatuhkan atau ditempel disimpan dengan nama yang diberikan, atau sebagai `keybox.xml` bila tidak ada nama yang diberikan; jika nama itu sudah terpakai, nama kosong berikutnya (`keybox2.xml`, `keybox3.xml`, ...) dipakai otomatis.
+* **`disabled_keyboxes`**: Daftar pengecualian kumpulan. Setiap baris berisi pengenal `lingkup:nama file` (`keyboxes:keybox2.xml`, `root:keybox.xml`) yang cocok dengan nama yang ditampilkan di panel Keybox WebUI. Keybox yang terdaftar tetap terlihat dan dapat dikelola, tetapi tidak pernah dimuat ke kumpulan atestasi. Tombol Nonaktifkan dan Aktifkan di WebUI membaca dan menulis file ini, sehingga dapat juga dikelola secara manual.
+
+---
+
+## 4. DRM & Pengecualian Privasi
+
+* **`drm_packages.txt`**: Aplikasi streaming media yang dikecualikan dari pencegatan Keystore agar Widevine L1 tetap berfungsi:
+  ```text
+  com.netflix.mediaclient
+  com.amazon.avod.thirdpartyclient
+  com.disney.disneyplus
+  ```
+
+---
+
+## 5. Penanda Fitur (Marker Files)
+
+Aktifkan fitur dengan membuat file (`touch <file>`), atau matikan dengan menghapusnya (`rm -f <file>`):
+
+| File Penanda | Fungsi Saat Ada |
+| :--- | :--- |
+| `spoof_enabled` | Mengaktifkan mesin pemalsuan identitas (Spoof Engine). |
+| `spoof_build_identity` | Mengaktifkan pemalsuan properti build. |
+| `auto_keybox_check` | Memvalidasi keybox dan memeriksa status pencabutan secara berkala. |
+| `drm_passthrough` | Mengaktifkan perlindungan DRM passthrough untuk paket di `drm_packages.txt`. |
+| `hide_sensitive_props` | Menyembunyikan properti sensitif root, debug, dan status bootloader. |
+| `tee_broken_mode` | Status migrasi/kompatibilitas warisan. Jika ada, layanan mempertahankan penanganan migrasi warisan; perlindungan inti tidak berubah dan circuit breaker fail-closed diaktifkan secara terpisah saat kegagalan komunikasi TEE perangkat keras. |
+| `debug_logging` | Mengaktifkan pencatatan log detail di `native_runtime.log`. |
+
+---
+
+## Menerapkan Perubahan & Verifikasi
+
+### Menerapkan Konfigurasi
+Perubahan di WebUI diterapkan melalui jalur runtime normal. Jika file konfigurasi atau marker diedit manual, disarankan reboot perangkat setelahnya:
+```sh
+su -c "reboot"
+```
+
+### Memeriksa Log Runtime
+```sh
+su -c "cat /data/adb/cleverestricky/native_runtime.log"
+```
+
+### Memeriksa Proses yang Berjalan
+```sh
+su -c "ps -A | grep -E 'cleverestrickyd|cleverestricky_backend'"
+```
+
+### Mengumpulkan Laporan Diagnostik
+```sh
+su -c "/data/adb/modules/cleverestricky/emergency-report.sh"
+```
+(Di Magisk, tombol Action membuka WebUI; jadi jalankan file ini secara langsung).
+Arsip diagnostik akan disimpan di `/data/adb/cleverestricky/bugreports/`.

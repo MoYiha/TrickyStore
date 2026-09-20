@@ -2,127 +2,40 @@
 
 **语言:** [English](../../../system/Magisk.md) | [Türkçe](../../tr/system/Magisk.md) | **简体中文** | [Español](../../es/system/Magisk.md) | [Deutsch](../../de/system/Magisk.md) | [Русский](../../ru/system/Magisk.md) | [Bahasa Indonesia](../../id/system/Magisk.md) | [हिन्दी](../../hi/system/Magisk.md) | [العربية](../../ar/system/Magisk.md)
 
-## 重要建议
+## 支持声明
 
-> [!CAUTION]
-> **CleveresTricky 不推荐在 Magisk 环境下使用。**
->
-> 现代应用检测框架与 Google Play Integrity 能够主动检测用户态挂载命名空间、root 二进制文件以及 Zygote 注入。Magisk 的用户态架构留下了显眼的检测痕迹，使得长期有效的 root 隐藏变得极其困难。
->
-> 有关内核级与用户态 root 实现的架构对比与隐蔽性分析，请参阅：
+CleveresTricky 正式支持三种 root 环境，并在每种环境下都提供常规 WebUI：
+
+* **[KernelSU](https://kernelsu.org)** - 从管理器应用的模块按钮打开 WebUI。
+* **[APatch](https://apatch.dev)** - 从管理器应用的模块按钮打开 WebUI。
+* **Magisk** - 通过 WebUI 宿主应用从模块 **Action** 按钮打开 WebUI（见下文）。
+
+> [!NOTE]
+> 现代应用检测框架与 Google Play Integrity 会主动检测用户态挂载命名空间与 root 二进制文件，因此内核级方案可提供更强的长期隐藏能力。架构对比请参阅：
 > 👉 **[Advanced Android Root Guide: KernelSU, APatch & Concealment | Yiğit - tryigit.dev](https://tryigit.dev/advanced-android-root-architecture-concealment/)**
->
-> **在条件允许的情况下，请优先选择 [KernelSU](https://kernelsu.org) 或 [APatch](https://apatch.dev)。**
 
 ---
 
-## 无 WebUI 模式（Headless 架构）
+## 在 Magisk 上使用 WebUI
 
-KernelSU 和 APatch 在其管理器应用内内置了模块 WebUI 扩展环境。Magisk 并不支持此项规范。
+Magisk 本身不实现模块 WebUI 接口，因此在 Magisk 下 Action 按钮会在 **[独立 WebUI 宿主应用](https://github.com/adivenxnataly/KsuWebUI)** 中打开 CleveresTricky WebUI：
 
-因此，在 Magisk 下安装时，**CleveresTricky 将以无 WebUI 的后台守护进程模式运行**。核心原生守护进程（`cleverestrickyd`）、后端服务以及 Keystore 拦截器均保持完整功能，但所有设置都需要通过直接编辑 `/data/adb/cleverestricky/` 目录下的文件进行手动配置。
+1. 在 Magisk 应用中打开 CleveresTricky 模块，点击 **Action** 按钮。
+2. 首次使用时，启动器会从 GitHub releases 下载 WebUI 宿主 APK 并安装。下载仅执行一次。
+3. 启动器随后以模块 id `cleverestricky` 打开宿主，该 id 解析为 `/data/adb/modules/cleverestricky/webroot`（`index.html` 及现有的 `bridge.js`、`policy.js` 和 `ux.js`）。
 
----
+名称容易混淆，特此说明术语：
 
-## 手动配置指南
-
-所有模块配置与策略文件均存放在 `/data/adb/cleverestricky/` 目录中。
-
-### 1. 作用域与目标
-
-* **`target.txt`**: 目标包名列表（每行一个包名），用于 Keystore 认证伪装。
-  ```text
-  com.google.android.gms
-  com.google.android.gms.unstable
-  com.android.vending
-  ```
-* **`global_mode`**: 空标记文件。
-  * **存在时**: 全局模式生效（拦截除系统及 root 相关的全部应用）。
-  * **不存在时**: 仅针对 `target.txt` 中明确列出的应用进行拦截。
-  * *命令:* `touch /data/adb/cleverestricky/global_mode`（启用）或 `rm -f /data/adb/cleverestricky/global_mode`（禁用）。
-
-* **`identity_target.txt`**: 针对设备构建属性（Build Props）伪装的目标包名。
-* **`global_identity_mode`**: 空标记文件。存在时对非系统应用全局生效设备身份伪装。
+* **WebUI 宿主应用**是一个独立的 WebUI 宿主/容器应用。它**不是** KernelSU，也**不会**安装任何 root 管理器；设备上唯一的 root 方案仍然是 Magisk。
+* **CleveresTricky WebUI** 是位于 `/data/adb/modules/cleverestricky/webroot` 的模块自带界面。
+* **Root 后端**是 CleveresTricky 自身的原生/Rust 运行时（`cleverestrickyd`、后端、`webui_bridge`），在三种环境下均保持不变。宿主应用仅是具有 root shell 访问能力的 WebView 容器；现有的 `bridge.js` 到 `webui_bridge` 通信路径未经改动。
 
 ---
 
-### 2. 设备身份与属性伪装
+## 手动配置
 
-* **`spoof_build_vars`**: 以 `KEY=VALUE` 格式定义需要伪装的设备属性：
-  ```properties
-  MANUFACTURER=Google
-  MODEL=Pixel 8 Pro
-  FINGERPRINT=google/husky/husky:14/UQ1A.240105.004/11269998:user/release-keys
-  BRAND=google
-  PRODUCT=husky
-  DEVICE=husky
-  RELEASE=14
-  ID=UQ1A.240105.004
-  INCREMENTAL=11269998
-  TYPE=user
-  TAGS=release-keys
-  ```
-* **`security_patch.txt`**: 安全补丁日期（例如 `2026-03-05`）。留空或删除此文件则自动与系统属性对齐。
-* **`boot_props_mode`**: 控制引导加载程序（Bootloader）属性模拟方式（`auto`、`force` 或 `disable`）。
-
----
-
-### 3. 硬件 Keybox
-
-* **`keybox.xml`**: 将有效的硬件 attestation 密钥箱 XML 直接放入 `/data/adb/cleverestricky/keybox.xml`。请确保文件权限受到严格保护（`chmod 600`）。
-* **`keyboxes/`**: 用于存放多个 keybox 文件的子目录。
-* **上传不会覆盖文件：** 拖放或粘贴的 Keybox 按提供的名称保存，未提供名称时保存为 `keybox.xml`；若该名称已被占用，则自动使用下一个可用名称（`keybox2.xml`、`keybox3.xml`……）。
-* **`disabled_keyboxes`**：池停用列表。每行包含一个 `作用域:文件名` 标识符（`keyboxes:keybox2.xml`、`root:keybox.xml`），与 WebUI Keybox 面板中显示的已存文件名一致。列出的 Keybox 仍然可见且可管理，但绝不会加载到证明池中。WebUI 的禁用与启用按钮会读写此文件，因此也可手动维护。
-
----
-
-### 4. DRM 与隐私作用域
-
-* **`drm_packages.txt`**: 需要跳过 Keystore 拦截以保持 Widevine L1 硬件 DRM 正常的媒体应用包名：
-  ```text
-  com.netflix.mediaclient
-  com.amazon.avod.thirdpartyclient
-  com.disney.disneyplus
-  ```
-
----
-
-### 5. 功能开关标记文件
-
-通过创建标记文件（`touch <file>`）启用功能，或通过删除标记文件（`rm -f <file>`）禁用：
-
-| 标记文件 | 存在时的效果 |
-| :--- | :--- |
-| `spoof_enabled` | 启用身份伪装核心引擎。 |
-| `spoof_build_identity` | 启用设备构建属性伪装。 |
-| `auto_keybox_check` | 自动验证 keybox 并检查吊销状态。 |
-| `drm_passthrough` | 为 `drm_packages.txt` 中的包启用 DRM 直通保护。 |
-| `hide_sensitive_props` | 隐藏敏感的 root、调试与引导加载程序状态属性。 |
-| `tee_broken_mode` | 传统迁移/兼容状态。存在时，服务保留传统迁移处理；核心保护不变，硬件 TEE 通信故障时断路器单独激活。 |
-| `debug_logging` | 在 `native_runtime.log` 中记录详细的原生调试日志。 |
-
----
-
-## 生效与验证
-
-### 使配置更改生效
-由于 Magisk 缺乏 WebUI 动态重载通道，修改配置文件或标记后建议重启设备：
+偏好手动编辑文件，或无法打开 WebUI？请参阅独立的[手动配置](ManualConfiguration.md)指南。完整诊断归档：
 ```sh
-su -c "reboot"
-```
-
-### 查看运行日志
-```sh
-su -c "cat /data/adb/cleverestricky/native_runtime.log"
-```
-
-### 验证运行进程
-```sh
-su -c "ps -A | grep -E 'cleverestrickyd|cleverestricky_backend'"
-```
-
-### 生成诊断日志包
-```sh
-su -c "/data/adb/modules/cleverestricky/action.sh"
+su -c "/data/adb/modules/cleverestricky/emergency-report.sh"
 ```
 诊断压缩包将生成在 `/data/adb/cleverestricky/bugreports/` 目录下。

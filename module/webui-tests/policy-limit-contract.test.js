@@ -12,10 +12,18 @@ assert.match(source, /validatePolicyLimits\(normalized\);/, 'policy saves must v
 const categoriesMatch = source.match(/const KEYBOX_PRIORITY_CATEGORIES = \[([\s\S]*?)\];/);
 assert.ok(categoriesMatch, 'keybox priority category allowlist is missing');
 const extractedCategories = Function(`return [${categoriesMatch[1]}];`)();
+const legacyMatch = source.match(/const LEGACY_KEYBOX_PRIORITY_CATEGORIES = \[([\s\S]*?)\];/);
+assert.ok(legacyMatch, 'legacy keybox priority category allowlist is missing');
+const extractedLegacyCategories = Function(`return [${legacyMatch[1]}];`)();
+assert.deepEqual(
+  extractedLegacyCategories,
+  ['VALID_RKP', 'VALID_TEE', 'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_TEE', 'INVALID_REVOKED_RKP', 'INVALID_REVOKED_TEE'],
+  'legacy keybox priority allowlist must cover exactly the six pre-server categories'
+);
 assert.deepEqual(
   extractedCategories,
-  ['VALID_RKP', 'VALID_TEE', 'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_TEE', 'INVALID_REVOKED_RKP', 'INVALID_REVOKED_TEE'],
-  'keybox priority allowlist must cover exactly the six RKP/TEE eligibility categories'
+  ['VALID_RKP', 'VALID_RKP_SERVER', 'VALID_TEE', 'VALID_TEE_SERVER', 'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_RKP_SERVER', 'INVALID_EXPIRED_TEE', 'INVALID_EXPIRED_TEE_SERVER', 'INVALID_REVOKED_RKP', 'INVALID_REVOKED_RKP_SERVER', 'INVALID_REVOKED_TEE', 'INVALID_REVOKED_TEE_SERVER'],
+  'keybox priority allowlist must cover exactly the twelve local/server RKP/TEE eligibility categories'
 );
 
 const start = source.indexOf('function safeClone(value)');
@@ -40,6 +48,7 @@ vm.runInContext(`
   const MAX_TOTAL_ASSIGNMENTS = 2048;
   const MAX_PROFILE_VALUE_LENGTH = 256;
   const KEYBOX_PRIORITY_CATEGORIES = ${JSON.stringify(extractedCategories)};
+  const LEGACY_KEYBOX_PRIORITY_CATEGORIES = ${JSON.stringify(extractedLegacyCategories)};
   ${implementation}
   this.normalizePolicyState = normalizePolicyState;
   this.stateForSave = stateForSave;
@@ -158,6 +167,14 @@ assert.strictEqual(
   snapshot(defaultedKeybox.keyboxPriorityOrder),
   snapshot({ mode: 'default' }),
   'missing priority order must default like the backend'
+);
+
+const legacyOrder = ['VALID_RKP', 'VALID_TEE', 'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_TEE', 'INVALID_REVOKED_RKP', 'INVALID_REVOKED_TEE'];
+const normalizedLegacy = context.normalizePolicyState({ ...policy([]), keyboxPriorityOrder: { mode: 'custom', customOrder: legacyOrder } });
+assert.strictEqual(
+  snapshot(normalizedLegacy.keyboxPriorityOrder),
+  snapshot({ mode: 'custom', customOrder: legacyOrder }),
+  'legacy six-category orders must pass through for backend migration'
 );
 
 for (const broken of [

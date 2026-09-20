@@ -293,7 +293,7 @@ afterEvaluate {
                 into(moduleDir)
                 from(rootProject.layout.projectDirectory.file("README.md"))
                 from(layout.projectDirectory.file("template")) {
-                    exclude("module.prop", "customize.sh", "post-fs-data.sh", "service.sh", "daemon", "webroot/**")
+                    exclude("module.prop", "customize.sh", "post-fs-data.sh", "service.sh", "emergency-report.sh", "daemon", "webroot/**")
                     filter<FixCrLfFilter>("eol" to FixCrLfFilter.CrLf.newInstance("lf"))
                 }
                 from(layout.projectDirectory.file("template")) {
@@ -312,6 +312,7 @@ afterEvaluate {
                         "customize.sh",
                         "post-fs-data.sh",
                         "service.sh",
+                        "emergency-report.sh",
                         "daemon",
                         "webroot/index.html",
                         "webroot/bridge.js",
@@ -416,6 +417,8 @@ afterEvaluate {
                             "service.sh" to "executable",
                             "post-fs-data.sh" to "executable",
                             "action.sh" to "executable",
+                            "emergency-report.sh" to "executable",
+                            "webui-host.sha256" to "regular",
                             "daemon" to "executable",
                             "sepolicy.rule" to "regular",
                             "module.prop" to "regular",

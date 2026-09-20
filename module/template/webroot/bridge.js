@@ -454,7 +454,7 @@ ${nativeSuccessMarker}\
     }
 
     function execHostCommand(command, timeoutMs = 10000) {
-        if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the KernelSU or APatch WebUI button'));
+        if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the WebUI button (KernelSU, APatch, or Magisk Action via the WebUI host app)'));
         const boundedTimeout = Math.min(Math.max(Number(timeoutMs) || 10000, 1000), 30000);
         return new Promise((resolve, reject) => {
             const callbackName = `ct_host_${Date.now()}_${callbackCounter++}`;
@@ -486,7 +486,7 @@ ${nativeSuccessMarker}\
     }
 
     function execNative(args, timeoutMs, expectEnvelope = false, signal = null) {
-        if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the KernelSU or APatch WebUI button'));
+        if (!nativeApi || typeof nativeApi.exec !== 'function') return Promise.reject(new Error('Open this page from the WebUI button (KernelSU, APatch, or Magisk Action via the WebUI host app)'));
         try { throwIfAborted(signal); } catch (error) { return Promise.reject(error); }
         const boundedTimeout = Math.min(Math.max(Number(timeoutMs) || 60000, 1000), 125000);
         return new Promise((resolve, reject) => {

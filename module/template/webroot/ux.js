@@ -48,15 +48,24 @@
             'priority_mode_custom': 'Custom Ordering',
             'priority_mode_default_short': 'Default',
             'priority_mode_custom_short': 'Custom',
-            'priority_order_desc': 'Configure selection preference by security level and validity state. The first non-empty tier is selected.',
+            'priority_order_desc': 'Configure selection preference by security level, validity state, and source (local or server). The first non-empty tier is selected.',
             'save_priority_order': 'Save Priority Order',
             'priority_order_saved': 'Priority order saved',
+            'local': 'Local',
+            'server': 'Server',
             'reset_to_default': 'Reset to Default',
             'block_invalid_keyboxes': 'Block Invalid Keyboxes',
             'valid': 'Valid',
             'invalid_expired': 'Invalid - Expired',
             'invalid_revoked': 'Invalid - Revoked',
             'invalid_verification_failed': 'Invalid - Verification Failed',
+            'app_filter_all': 'All',
+            'app_filter_user': 'User',
+            'app_filter_system': 'System',
+            'no_matching_apps': 'No matching apps. Press Enter to use the typed value.',
+            'keybox_empty_hint': 'Upload a keybox file to get started.',
+            'status_pending_reboot': 'Restart required',
+            'active_profile': 'Active profile',
         },
         tr: {
             'Identity Controls': 'Kimlik Denetimleri', 'Enable only the identity paths you need. Disabled paths do not start optional interceptors.': 'Yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin. Devre dışı yollar isteğe bağlı yakalayıcıları başlatmaz.', 'Identity is currently disabled. Enable only the identity paths you need below.': 'Kimlik şu anda devre dışı. Aşağıdan yalnızca ihtiyacınız olan kimlik yollarını etkinleştirin.', 'Random': 'Rastgele', 'Identity value randomized': 'Kimlik değeri rastgeleleştirildi',
@@ -882,6 +891,9 @@
         'Default (Random in Tier)': 'Varsayılan (Aşama İçi Rastgele)',
         'Custom Ordering': 'Özel Sıralama',
         'Configure selection preference by security level and validity state. The first non-empty tier is selected.': 'Güvenlik düzeyi ve geçerlilik durumuna göre seçim önceliğini yapılandırın. Boş olmayan ilk aşama seçilir.',
+        'Configure selection preference by security level, validity state, and source (local or server). The first non-empty tier is selected.': 'Seçim önceliğini güvenlik düzeyi, geçerlilik durumu ve kaynağa (yerel veya sunucu) göre yapılandırın. Boş olmayan ilk aşama seçilir.',
+        'Local': 'Yerel',
+        'Server': 'Sunucu',
         'Save Priority Order': 'Öncelik Sırasını Kaydet',
         'Reset to Default': 'Varsayılana Sıfırla',
         'Priority order saved': 'Öncelik sırası kaydedildi',
@@ -890,7 +902,9 @@
         'priority_mode_custom': 'Özel Sıralama',
         'priority_mode_default_short': 'Varsayılan',
         'priority_mode_custom_short': 'Özel',
-        'priority_order_desc': 'Güvenlik düzeyi ve geçerlilik durumuna göre seçim önceliğini yapılandırın. Boş olmayan ilk aşama seçilir.',
+        'priority_order_desc': 'Seçim önceliğini güvenlik düzeyi, geçerlilik durumu ve kaynağa (yerel veya sunucu) göre yapılandırın. Boş olmayan ilk aşama seçilir.',
+        'local': 'Yerel',
+        'server': 'Sunucu',
         'save_priority_order': 'Öncelik Sırasını Kaydet',
         'reset_to_default': 'Varsayılana Sıfırla',
         'Valid': 'Geçerli',
@@ -899,7 +913,14 @@
         'Invalid - Verification Failed': 'Geçersiz - Doğrulama Başarısız',
         'Invalid keys blocked': 'Geçersiz anahtarlar engellendi',
         'Expired/revoked permitted (failures blocked)': 'Süresi geçmiş/iptal edilmiş keyboxlara izin verilir (başarısız olanlar engellenir)',
-        'Keybox selection pool': 'Keybox seçim havuzu'
+        'Keybox selection pool': 'Keybox seçim havuzu',
+        'app_filter_all': 'Tümü',
+        'app_filter_user': 'Kullanıcı',
+        'app_filter_system': 'Sistem',
+        'no_matching_apps': 'Eşleşen uygulama yok. Yazılan değeri kullanmak için Enter’a basın.',
+        'keybox_empty_hint': 'Başlamak için bir keybox dosyası yükleyin.',
+        'status_pending_reboot': 'Yeniden başlatma gerekli',
+        'active_profile': 'Etkin profil'
     });
 
     // Complete catalogs share one source key per row to keep all built-in
@@ -1373,6 +1394,9 @@
         ["Default (Random in Tier)", "默认（同层级内随机）", "Predeterminado (Aleatorio en el nivel)", "Standard (Zufällig innerhalb der Stufe)", "По умолчанию (Случайно в уровне)", "Default (Acak dalam Tingkat)", "डिफ़ॉल्ट (श्रेणी में यादृच्छिक)", "افتراضي (عشوائي ضمن الفئة)"],
         ["Custom Ordering", "自定义排序", "Orden personalizado", "Benutzerdefinierte Reihenfolge", "Пользовательский порядок", "Urutan Kustom", "कस्टम क्रम", "ترتيب مخصص"],
         ["Configure selection preference by security level and validity state. The first non-empty tier is selected.", "根据安全级别和有效性状态配置选择偏好。选择第一个非空层级。", "Configure la preferencia de selección por nivel de seguridad y estado de validez. Se selecciona el primer nivel no vacío.", "Auswahlpräferenz nach Sicherheitsstufe und Gültigkeitsstatus konfigurieren. Die erste nicht leere Stufe wird ausgewählt.", "Настройка приоритета выбора по уровню безопасности и статусу действия. Выбирается первый непустой уровень.", "Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan dan status validitas. Tingkat non-kosong pertama dipilih.", "सुरक्षा स्तर और वैधता स्थिति के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।", "تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية. يتم تحديد أول فئة غير فارغة."],
+        ["Configure selection preference by security level, validity state, and source (local or server). The first non-empty tier is selected.", "根据安全级别、有效性状态和来源（本地或服务器）配置选择偏好。选择第一个非空层级。", "Configure la preferencia de selección por nivel de seguridad, estado de validez y origen (local o servidor). Se selecciona el primer nivel no vacío.", "Auswahlpräferenz nach Sicherheitsstufe, Gültigkeitsstatus und Quelle (lokal oder Server) konfigurieren. Die erste nicht leere Stufe wird ausgewählt.", "Настройка приоритета выбора по уровню безопасности, статусу действия и источнику (локальный или серверный). Выбирается первый непустой уровень.", "Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan, status validitas, dan sumber (lokal atau server). Tingkat non-kosong pertama dipilih.", "सुरक्षा स्तर, वैधता स्थिति और स्रोत (स्थानीय या सर्वर) के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।", "تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية والمصدر (محلي أو خادم). يتم تحديد أول فئة غير فارغة."],
+        ["Local", "本地", "Local", "Lokal", "Локальный", "Lokal", "स्थानीय", "محلي"],
+        ["Server", "服务器", "Servidor", "Server", "Сервер", "Server", "सर्वर", "خادم"],
         ["Save Priority Order", "保存优先级排序", "Guardar orden de prioridad", "Prioritätsreihenfolge speichern", "Сохранить приоритет", "Simpan Urutan Prioritas", "प्राथमिकता क्रम सहेजें", "حفظ ترتيب الأولوية"],
         ["Reset to Default", "恢复默认", "Restablecer a predeterminado", "Auf Standard zurücksetzen", "Сбросить по умолчанию", "Reset ke Default", "डिफ़ॉल्ट पर रीसेट करें", "إعادة التعيين إلى الافتراضي"],
         ["Priority order saved", "优先级排序已保存", "Orden de prioridad guardado", "Prioritätsreihenfolge gespeichert", "Приоритет сохранен", "Urutan prioritas disimpan", "प्राथमिकता क्रम सहेजा गया", "تم حفظ ترتيب الأولوية"],
@@ -1381,7 +1405,9 @@
         ["priority_mode_custom", "自定义排序", "Orden personalizado", "Benutzerdefinierte Reihenfolge", "Пользовательский порядок", "Urutan Kustom", "कस्टम क्रम", "ترتيب مخصص"],
         ["priority_mode_default_short", "默认", "Predeterminado", "Standard", "По умолчанию", "Default", "डिफ़ॉल्ट", "افتراضي"],
         ["priority_mode_custom_short", "自定义", "Personalizado", "Benutzerdefiniert", "Пользовательский", "Kustom", "कस्टम", "مخصص"],
-        ["priority_order_desc", "根据安全级别和有效性状态配置选择偏好。选择第一个非空层级。", "Configure la preferencia de selección por nivel de seguridad y estado de validez. Se selecciona el primer nivel no vacío.", "Auswahlpräferenz nach Sicherheitsstufe und Gültigkeitsstatus konfigurieren. Die erste nicht leere Stufe wird ausgewählt.", "Настройка приоритета выбора по уровню безопасности и статусу действия. Выбирается первый непустой уровень.", "Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan dan status validitas. Tingkat non-kosong pertama dipilih.", "सुरक्षा स्तर और वैधता स्थिति के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।", "تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية. يتم تحديد أول فئة غير فارغة."],
+        ["priority_order_desc", "根据安全级别、有效性状态和来源（本地或服务器）配置选择偏好。选择第一个非空层级。", "Configure la preferencia de selección por nivel de seguridad, estado de validez y origen (local o servidor). Se selecciona el primer nivel no vacío.", "Auswahlpräferenz nach Sicherheitsstufe, Gültigkeitsstatus und Quelle (lokal oder Server) konfigurieren. Die erste nicht leere Stufe wird ausgewählt.", "Настройка приоритета выбора по уровню безопасности, статусу действия и источнику (локальный или серверный). Выбирается первый непустой уровень.", "Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan, status validitas, dan sumber (lokal atau server). Tingkat non-kosong pertama dipilih.", "सुरक्षा स्तर, वैधता स्थिति और स्रोत (स्थानीय या सर्वर) के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।", "تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية والمصدر (محلي أو خادم). يتم تحديد أول فئة غير فارغة."],
+        ["local", "本地", "Local", "Lokal", "Локальный", "Lokal", "स्थानीय", "محلي"],
+        ["server", "服务器", "Servidor", "Server", "Сервер", "Server", "सर्वर", "خادم"],
         ["save_priority_order", "保存优先级排序", "Guardar orden de prioridad", "Prioritätsreihenfolge speichern", "Сохранить приоритет", "Simpan Urutan Prioritas", "प्राथमिकता क्रम सहेजें", "حفظ ترتيب الأولوية"],
         ["reset_to_default", "恢复默认", "Restablecer a predeterminado", "Auf Standard zurücksetzen", "Сбросить по умолчанию", "Reset ke Default", "डिफ़ॉल्ट पर रीसेट करें", "إعادة التعيين إلى الافتراضي"],
         ["Invalid - Expired", "无效 - 已过期", "Inválido - Vencido", "Ungültig - Abgelaufen", "Недействителен - Истек", "Tidak Valid - Kedaluwarsa", "अमान्य - समाप्त", "غير صالح - منتهي الصلاحية"],
@@ -1390,6 +1416,13 @@
         ["Invalid keys blocked", "无效密钥已阻止", "Claves inválidas bloqueadas", "Ungültige Schlüssel blockiert", "Недействительные ключи заблокированы", "Kunci tidak valid diblokir", "अमान्य कुंजियाँ ब्लॉक की गईं", "تم حظر المفاتيح غير الصالحة"],
         ["Expired/revoked permitted (failures blocked)", "允许已过期/已吊销（失败项仍被阻止）", "Vencidas/revocadas permitidas (fallos bloqueados)", "Abgelaufene/widerrufene zulässig (Fehler blockiert)", "Истекшие/отозванные разрешены (ошибки заблокированы)", "Kedaluwarsa/dicabut diizinkan (kegagalan diblokir)", "समाप्त/निरस्त की अनुमति है (विफलताएं ब्लॉक रहती हैं)", "مسموح بمنتهية الصلاحية/الملغاة (الفشل محظور)"],
         ["Keybox selection pool", "密钥盒选择池", "Grupo de selección de keyboxes", "Keybox-Auswahlpool", "Пул выбора keybox", "Pool pemilihan keybox", "Keybox चयन पूल", "مجموعة اختيار Keybox"],
+        ["app_filter_all", "全部", "Todas", "Alle", "Все", "Semua", "सभी", "الكل"],
+        ["app_filter_user", "用户应用", "Usuario", "Nutzer", "Пользовательские", "Pengguna", "उपयोगकर्ता", "المستخدم"],
+        ["app_filter_system", "系统应用", "Sistema", "System", "Системные", "Sistem", "सिस्टम", "النظام"],
+        ["no_matching_apps", "没有匹配的应用。按回车使用已输入的值。", "Sin apps coincidentes. Pulsa Intro para usar el valor escrito.", "Keine passenden Apps. Drücke Enter, um den eingegebenen Wert zu verwenden.", "Нет подходящих приложений. Нажмите Enter, чтобы использовать введённое значение.", "Tidak ada aplikasi yang cocok. Tekan Enter untuk memakai nilai yang diketik.", "कोई मेल खाता ऐप नहीं। टाइप किया मान उपयोग करने के लिए Enter दबाएँ।", "لا توجد تطبيقات مطابقة. اضغط Enter لاستخدام القيمة المكتوبة."],
+        ["keybox_empty_hint", "上传密钥盒文件以开始。", "Sube un archivo keybox para empezar.", "Lade eine Keybox-Datei hoch, um zu beginnen.", "Загрузите файл keybox, чтобы начать.", "Unggah file keybox untuk memulai.", "शुरू करने के लिए keybox फ़ाइल अपलोड करें।", "ارفع ملف Keybox للبدء."],
+        ["status_pending_reboot", "需要重启", "Reinicio necesario", "Neustart erforderlich", "Требуется перезагрузка", "Perlu mulai ulang", "रीस्टार्ट आवश्यक", "يلزم إعادة التشغيل"],
+        ["active_profile", "当前配置", "Perfil activo", "Aktives Profil", "Активный профиль", "Profil aktif", "सक्रिय प्रोफ़ाइल", "الملف الشخصي النشط"],
     ];
 
     for (const row of COMPLETE_CATALOG_ROWS) {
@@ -3263,8 +3296,12 @@
             status_valid: 'Valid', status_invalid: 'Invalid', status_error: 'Error', status_unknown: 'Unknown', active_keybox: 'Active Keybox', expires: 'Expires', status_expired: 'Expired', filename: 'Filename', details: 'Details',
             valid: 'Valid', invalid_expired: 'Invalid - Expired', invalid_revoked: 'Invalid - Revoked', invalid_verification_failed: 'Invalid - Verification Failed',
             priority_order_title: 'Keybox Priority Order', priority_mode_default: 'Default (Random in Tier)', priority_mode_custom: 'Custom Ordering', priority_mode_default_short: 'Default', priority_mode_custom_short: 'Custom',
-            priority_order_desc: 'Configure selection preference by security level and validity state. The first non-empty tier is selected.',
-            save_priority_order: 'Save Priority Order', priority_order_saved: 'Priority order saved', reset_to_default: 'Reset to Default'
+            priority_order_desc: 'Configure selection preference by security level, validity state, and source (local or server). The first non-empty tier is selected.',
+            local: 'Local', server: 'Server',
+            save_priority_order: 'Save Priority Order', priority_order_saved: 'Priority order saved', reset_to_default: 'Reset to Default',
+            app_filter_all: 'All', app_filter_user: 'User', app_filter_system: 'System',
+            no_matching_apps: 'No matching apps. Press Enter to use the typed value.',
+            keybox_empty_hint: 'Upload a keybox file to get started.'
         },
         tr: {
             selected: 'seçili', deleteSelected: 'Seçilileri sil', previous: 'Önceki', next: 'Sonraki', page: 'Sayfa {page} / {pages}',
@@ -3278,8 +3315,12 @@
             status_valid: 'Geçerli', status_invalid: 'Geçersiz', status_error: 'Hata', status_unknown: 'Bilinmiyor', active_keybox: 'Etkin keybox', expires: 'Son geçerlilik', status_expired: 'Süresi geçmiş', filename: 'Dosya adı', details: 'Ayrıntılar',
             valid: 'Geçerli', invalid_expired: 'Geçersiz - Süresi Geçmiş', invalid_revoked: 'Geçersiz - İptal Edilmiş', invalid_verification_failed: 'Geçersiz - Doğrulama Başarısız',
             priority_order_title: 'Keybox Öncelik Sıralaması', priority_mode_default: 'Varsayılan (Aşama İçi Rastgele)', priority_mode_custom: 'Özel Sıralama', priority_mode_default_short: 'Varsayılan', priority_mode_custom_short: 'Özel',
-            priority_order_desc: 'Güvenlik düzeyi ve geçerlilik durumuna göre seçim önceliğini yapılandırın. Boş olmayan ilk aşama seçilir.',
-            save_priority_order: 'Öncelik Sırasını Kaydet', priority_order_saved: 'Öncelik sırası kaydedildi', reset_to_default: 'Varsayılana Sıfırla'
+            priority_order_desc: 'Seçim önceliğini güvenlik düzeyi, geçerlilik durumu ve kaynağa (yerel veya sunucu) göre yapılandırın. Boş olmayan ilk aşama seçilir.',
+            local: 'Yerel', server: 'Sunucu',
+            save_priority_order: 'Öncelik Sırasını Kaydet', priority_order_saved: 'Öncelik sırası kaydedildi', reset_to_default: 'Varsayılana Sıfırla',
+            app_filter_all: 'Tümü', app_filter_user: 'Kullanıcı', app_filter_system: 'Sistem',
+            no_matching_apps: 'Eşleşen uygulama yok. Yazılan değeri kullanmak için Enter’a basın.',
+            keybox_empty_hint: 'Başlamak için bir keybox dosyası yükleyin.'
         },
         'zh-CN': {
             selected: '已选择', deleteSelected: '删除所选', previous: '上一页', next: '下一页', page: '第 {page} / {pages} 页',
@@ -3293,8 +3334,12 @@
             status_valid: '有效', status_invalid: '无效', status_error: '错误', status_unknown: '未知', active_keybox: '活动密钥盒', expires: '有效期至', status_expired: '已过期', filename: '文件名', details: '详细信息',
             valid: '有效', invalid_expired: '无效 - 已过期', invalid_revoked: '无效 - 已吊销', invalid_verification_failed: '无效 - 验证失败',
             priority_order_title: '密钥盒优先级排序', priority_mode_default: '默认（同层级内随机）', priority_mode_custom: '自定义排序', priority_mode_default_short: '默认', priority_mode_custom_short: '自定义',
-            priority_order_desc: '根据安全级别和有效性状态配置选择偏好。选择第一个非空层级。',
-            save_priority_order: '保存优先级排序', priority_order_saved: '优先级排序已保存', reset_to_default: '恢复默认'
+            priority_order_desc: '根据安全级别、有效性状态和来源（本地或服务器）配置选择偏好。选择第一个非空层级。',
+            local: '本地', server: '服务器',
+            save_priority_order: '保存优先级排序', priority_order_saved: '优先级排序已保存', reset_to_default: '恢复默认',
+            app_filter_all: '全部', app_filter_user: '用户应用', app_filter_system: '系统应用',
+            no_matching_apps: '没有匹配的应用。按回车使用已输入的值。',
+            keybox_empty_hint: '上传密钥盒文件以开始。'
         },
         es: {
             selected: 'seleccionados', deleteSelected: 'Eliminar seleccionados', previous: 'Anterior', next: 'Siguiente', page: 'Página {page} / {pages}',
@@ -3308,8 +3353,12 @@
             status_valid: 'Válido', status_invalid: 'Inválido', status_error: 'Error', status_unknown: 'Desconocido', active_keybox: 'Keybox activa', expires: 'Vence', status_expired: 'Vencido', filename: 'Nombre del archivo', details: 'Detalles',
             valid: 'Válido', invalid_expired: 'Inválido - Vencido', invalid_revoked: 'Inválido - Revocado', invalid_verification_failed: 'Inválido - Error de verificación',
             priority_order_title: 'Orden de prioridad de Keybox', priority_mode_default: 'Predeterminado (Aleatorio en el nivel)', priority_mode_custom: 'Orden personalizado', priority_mode_default_short: 'Predeterminado', priority_mode_custom_short: 'Personalizado',
-            priority_order_desc: 'Configure la preferencia de selección por nivel de seguridad y estado de validez. Se selecciona el primer nivel no vacío.',
-            save_priority_order: 'Guardar orden de prioridad', priority_order_saved: 'Orden de prioridad guardado', reset_to_default: 'Restablecer a predeterminado'
+            priority_order_desc: 'Configure la preferencia de selección por nivel de seguridad, estado de validez y origen (local o servidor). Se selecciona el primer nivel no vacío.',
+            local: 'Local', server: 'Servidor',
+            save_priority_order: 'Guardar orden de prioridad', priority_order_saved: 'Orden de prioridad guardado', reset_to_default: 'Restablecer a predeterminado',
+            app_filter_all: 'Todas', app_filter_user: 'Usuario', app_filter_system: 'Sistema',
+            no_matching_apps: 'Sin apps coincidentes. Pulsa Intro para usar el valor escrito.',
+            keybox_empty_hint: 'Sube un archivo keybox para empezar.'
         },
         de: {
             selected: 'ausgewählt', deleteSelected: 'Auswahl löschen', previous: 'Zurück', next: 'Weiter', page: 'Seite {page} / {pages}',
@@ -3323,8 +3372,12 @@
             status_valid: 'Gültig', status_invalid: 'Ungültig', status_error: 'Fehler', status_unknown: 'Unbekannt', active_keybox: 'Aktive Keybox', expires: 'Gültig bis', status_expired: 'Abgelaufen', filename: 'Dateiname', details: 'Details',
             valid: 'Gültig', invalid_expired: 'Ungültig - Abgelaufen', invalid_revoked: 'Ungültig - Widerrufen', invalid_verification_failed: 'Ungültig - Überprüfung fehlgeschlagen',
             priority_order_title: 'Keybox-Prioritätsreihenfolge', priority_mode_default: 'Standard (Zufällig innerhalb der Stufe)', priority_mode_custom: 'Benutzerdefinierte Reihenfolge', priority_mode_default_short: 'Standard', priority_mode_custom_short: 'Benutzerdefiniert',
-            priority_order_desc: 'Auswahlpräferenz nach Sicherheitsstufe und Gültigkeitsstatus konfigurieren. Die erste nicht leere Stufe wird ausgewählt.',
-            save_priority_order: 'Prioritätsreihenfolge speichern', priority_order_saved: 'Prioritätsreihenfolge gespeichert', reset_to_default: 'Auf Standard zurücksetzen'
+            priority_order_desc: 'Auswahlpräferenz nach Sicherheitsstufe, Gültigkeitsstatus und Quelle (lokal oder Server) konfigurieren. Die erste nicht leere Stufe wird ausgewählt.',
+            local: 'Lokal', server: 'Server',
+            save_priority_order: 'Prioritätsreihenfolge speichern', priority_order_saved: 'Prioritätsreihenfolge gespeichert', reset_to_default: 'Auf Standard zurücksetzen',
+            app_filter_all: 'Alle', app_filter_user: 'Nutzer', app_filter_system: 'System',
+            no_matching_apps: 'Keine passenden Apps. Drücke Enter, um den eingegebenen Wert zu verwenden.',
+            keybox_empty_hint: 'Lade eine Keybox-Datei hoch, um zu beginnen.'
         },
         ru: {
             selected: 'выбрано', deleteSelected: 'Удалить выбранные', previous: 'Назад', next: 'Далее', page: 'Страница {page} / {pages}',
@@ -3338,8 +3391,12 @@
             status_valid: 'Действителен', status_invalid: 'Недействителен', status_error: 'Ошибка', status_unknown: 'Неизвестно', active_keybox: 'Активный keybox', expires: 'Истекает', status_expired: 'Истек', filename: 'Имя файла', details: 'Подробности',
             valid: 'Действителен', invalid_expired: 'Недействителен - Истек', invalid_revoked: 'Недействителен - Отозван', invalid_verification_failed: 'Недействителен - Сбой проверки',
             priority_order_title: 'Приоритет Keybox', priority_mode_default: 'По умолчанию (Случайно в уровне)', priority_mode_custom: 'Пользовательский порядок', priority_mode_default_short: 'По умолчанию', priority_mode_custom_short: 'Пользовательский',
-            priority_order_desc: 'Настройка приоритета выбора по уровню безопасности и статусу действия. Выбирается первый непустой уровень.',
-            save_priority_order: 'Сохранить приоритет', priority_order_saved: 'Приоритет сохранен', reset_to_default: 'Сбросить по умолчанию'
+            priority_order_desc: 'Настройка приоритета выбора по уровню безопасности, статусу действия и источнику (локальный или серверный). Выбирается первый непустой уровень.',
+            local: 'Локальный', server: 'Сервер',
+            save_priority_order: 'Сохранить приоритет', priority_order_saved: 'Приоритет сохранен', reset_to_default: 'Сбросить по умолчанию',
+            app_filter_all: 'Все', app_filter_user: 'Пользовательские', app_filter_system: 'Системные',
+            no_matching_apps: 'Нет подходящих приложений. Нажмите Enter, чтобы использовать введённое значение.',
+            keybox_empty_hint: 'Загрузите файл keybox, чтобы начать.'
         },
         id: {
             selected: 'dipilih', deleteSelected: 'Hapus pilihan', previous: 'Sebelumnya', next: 'Berikutnya', page: 'Halaman {page} / {pages}',
@@ -3353,8 +3410,12 @@
             status_valid: 'Valid', status_invalid: 'Tidak Valid', status_error: 'Kesalahan', status_unknown: 'Tidak Diketahui', active_keybox: 'Keybox aktif', expires: 'Kedaluwarsa', status_expired: 'Kedaluwarsa', filename: 'Nama file', details: 'Detail',
             valid: 'Valid', invalid_expired: 'Tidak Valid - Kedaluwarsa', invalid_revoked: 'Tidak Valid - Dicabut', invalid_verification_failed: 'Tidak Valid - Verifikasi Gagal',
             priority_order_title: 'Urutan Prioritas Keybox', priority_mode_default: 'Default (Acak dalam Tingkat)', priority_mode_custom: 'Urutan Kustom', priority_mode_default_short: 'Default', priority_mode_custom_short: 'Kustom',
-            priority_order_desc: 'Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan dan status validitas. Tingkat non-kosong pertama dipilih.',
-            save_priority_order: 'Simpan Urutan Prioritas', priority_order_saved: 'Urutan prioritas disimpan', reset_to_default: 'Reset ke Default'
+            priority_order_desc: 'Konfigurasikan preferensi pemilihan berdasarkan tingkat keamanan, status validitas, dan sumber (lokal atau server). Tingkat non-kosong pertama dipilih.',
+            local: 'Lokal', server: 'Server',
+            save_priority_order: 'Simpan Urutan Prioritas', priority_order_saved: 'Urutan prioritas disimpan', reset_to_default: 'Reset ke Default',
+            app_filter_all: 'Semua', app_filter_user: 'Pengguna', app_filter_system: 'Sistem',
+            no_matching_apps: 'Tidak ada aplikasi yang cocok. Tekan Enter untuk memakai nilai yang diketik.',
+            keybox_empty_hint: 'Unggah file keybox untuk memulai.'
         },
         hi: {
             selected: 'चयनित', deleteSelected: 'चयनित हटाएँ', previous: 'पिछला', next: 'अगला', page: 'पृष्ठ {page} / {pages}',
@@ -3368,8 +3429,12 @@
             status_valid: 'मान्य', status_invalid: 'अमान्य', status_error: 'त्रुटि', status_unknown: 'अज्ञात', active_keybox: 'सक्रिय Keybox', expires: 'समाप्ति', status_expired: 'समाप्त', filename: 'फ़ाइल का नाम', details: 'विवरण',
             valid: 'मान्य', invalid_expired: 'अमान्य - समाप्त', invalid_revoked: 'अमान्य - निरस्त', invalid_verification_failed: 'अमान्य - सत्यापन विफल',
             priority_order_title: 'Keybox प्राथमिकता क्रम', priority_mode_default: 'डिफ़ॉल्ट (श्रेणी में यादृच्छिक)', priority_mode_custom: 'कस्टम क्रम', priority_mode_default_short: 'डिफ़ॉल्ट', priority_mode_custom_short: 'कस्टम',
-            priority_order_desc: 'सुरक्षा स्तर और वैधता स्थिति के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।',
-            save_priority_order: 'प्राथमिकता क्रम सहेजें', priority_order_saved: 'प्राथमिकता क्रम सहेजा गया', reset_to_default: 'डिफ़ॉल्ट पर रीसेट करें'
+            priority_order_desc: 'सुरक्षा स्तर, वैधता स्थिति और स्रोत (स्थानीय या सर्वर) के अनुसार चयन प्राथमिकता कॉन्फ़िगर करें। पहला गैर-खाली स्तर चुना जाता है।',
+            local: 'स्थानीय', server: 'सर्वर',
+            save_priority_order: 'प्राथमिकता क्रम सहेजें', priority_order_saved: 'प्राथमिकता क्रम सहेजा गया', reset_to_default: 'डिफ़ॉल्ट पर रीसेट करें',
+            app_filter_all: 'सभी', app_filter_user: 'उपयोगकर्ता', app_filter_system: 'सिस्टम',
+            no_matching_apps: 'कोई मेल खाता ऐप नहीं। टाइप किया मान उपयोग करने के लिए Enter दबाएँ।',
+            keybox_empty_hint: 'शुरू करने के लिए keybox फ़ाइल अपलोड करें।'
         },
         ar: {
             selected: 'محدد', deleteSelected: 'حذف المحدد', previous: 'السابق', next: 'التالي', page: 'الصفحة {page} / {pages}',
@@ -3383,8 +3448,12 @@
             status_valid: 'صالح', status_invalid: 'غير صالح', status_error: 'خطأ', status_unknown: 'غير معروف', active_keybox: 'Keybox نشط', expires: 'تاريخ الانتهاء', status_expired: 'منتهي الصلاحية', filename: 'اسم الملف', details: 'التفاصيل',
             valid: 'صالح', invalid_expired: 'غير صالح - منتهي الصلاحية', invalid_revoked: 'غير صالح - ملغى', invalid_verification_failed: 'غير صالح - فشل التحقق',
             priority_order_title: 'ترتيب أولوية Keybox', priority_mode_default: 'افتراضي (عشوائي ضمن الفئة)', priority_mode_custom: 'ترتيب مخصص', priority_mode_default_short: 'افتراضي', priority_mode_custom_short: 'مخصص',
-            priority_order_desc: 'تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية. يتم تحديد أول فئة غير فارغة.',
-            save_priority_order: 'حفظ ترتيب الأولوية', priority_order_saved: 'تم حفظ ترتيب الأولوية', reset_to_default: 'إعادة التعيين إلى الافتراضي'
+            priority_order_desc: 'تكوين تفضيل التحديد حسب مستوى الأمان وحالة الصلاحية والمصدر (محلي أو خادم). يتم تحديد أول فئة غير فارغة.',
+            local: 'محلي', server: 'خادم',
+            save_priority_order: 'حفظ ترتيب الأولوية', priority_order_saved: 'تم حفظ ترتيب الأولوية', reset_to_default: 'إعادة التعيين إلى الافتراضي',
+            app_filter_all: 'الكل', app_filter_user: 'المستخدم', app_filter_system: 'النظام',
+            no_matching_apps: 'لا توجد تطبيقات مطابقة. اضغط Enter لاستخدام القيمة المكتوبة.',
+            keybox_empty_hint: 'ارفع ملف Keybox للبدء.'
         }
     };
 
@@ -3697,31 +3766,46 @@
         list.innerHTML = '';
 
         if (loading) {
-            const node = document.createElement('div');
-            node.style.cssText = 'padding:10px;text-align:center;color:#888';
-            node.textContent = t('loading');
-            list.appendChild(node);
+            list.setAttribute('aria-busy', 'true');
+            for (let index = 0; index < 3; index++) {
+                const skeleton = document.createElement('div');
+                skeleton.className = 'ct-skeleton';
+                skeleton.style.cssText = 'height:64px;margin-bottom:12px;';
+                skeleton.setAttribute('aria-hidden', 'true');
+                list.appendChild(skeleton);
+            }
+            const live = document.createElement('div');
+            live.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);';
+            live.textContent = t('loading');
+            list.appendChild(live);
             updateControls(pages);
             return;
         }
+        list.removeAttribute('aria-busy');
         if (items.length === 0) {
-            const node = document.createElement('div');
-            node.style.cssText = 'padding:10px;text-align:center;color:#666';
-            node.textContent = inventory.length ? t('noStoredMatch') : t('noStored');
-            list.appendChild(node);
+            const empty = document.createElement('div');
+            empty.className = 'ct-empty';
+            const title = document.createElement('div');
+            title.className = 'ct-empty-title';
+            title.textContent = inventory.length ? t('noStoredMatch') : t('noStored');
+            const desc = document.createElement('div');
+            desc.className = 'ct-empty-desc';
+            desc.textContent = t('keybox_empty_hint');
+            empty.append(title, desc);
+            list.appendChild(empty);
             updateControls(pages);
             return;
         }
 
         items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(item => {
             const row = document.createElement('div');
-            row.className = 'ct-keybox-item row';
-            row.style.cssText = 'padding:10px;border-bottom:1px solid var(--border);display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;width:100%;box-sizing:border-box;flex-wrap:nowrap;' + (item.disabled ? 'opacity:0.55;' : '');
+            row.className = 'ct-keybox-item row ct-keybox-card';
+            row.style.cssText = 'display:flex;flex-direction:row;align-items:flex-start;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;flex-wrap:nowrap;' + (item.disabled ? 'opacity:0.55;' : '');
             const box = document.createElement('input');
             box.type = 'checkbox';
             box.checked = selected.has(item.id);
             box.setAttribute('aria-label', 'Select ' + item.filename);
-            box.style.cssText = 'flex:0 0 20px;width:20px;height:20px;margin:0;cursor:pointer;';
+            box.style.cssText = 'flex:0 0 22px;width:22px;height:22px;margin:2px 0 0;cursor:pointer;';
             box.addEventListener('change', () => {
                 if (box.checked) selected.add(item.id);
                 else selected.delete(item.id);
@@ -3740,6 +3824,33 @@
             attachKeyboxLongPress(nameText, t('filename'), item.filename);
             name.append(nameText);
 
+            if (item.validity_state) {
+                const stateBadge = document.createElement('span');
+                if (item.validity_state === 'INVALID') {
+                    if (item.invalid_reason === 'EXPIRED') {
+                        stateBadge.className = 'ct-badge ct-status-badge ct-badge-expired ct-status-expired';
+                        stateBadge.textContent = t('invalid_expired');
+                    } else if (item.invalid_reason === 'REVOKED') {
+                        stateBadge.className = 'ct-badge ct-status-badge ct-badge-revoked ct-status-revoked';
+                        stateBadge.textContent = t('invalid_revoked');
+                    } else if (item.invalid_reason === 'VERIFICATION_FAILED') {
+                        stateBadge.className = 'ct-badge ct-status-badge ct-badge-invalid ct-status-invalid';
+                        stateBadge.textContent = t('invalid_verification_failed');
+                    } else {
+                        stateBadge.className = 'ct-badge ct-status-badge ct-badge-invalid ct-status-invalid';
+                        stateBadge.textContent = t('status_invalid');
+                    }
+                } else {
+                    stateBadge.className = 'ct-badge ct-status-badge ct-badge-valid ct-status-valid';
+                    stateBadge.textContent = t('valid');
+                }
+                name.append(stateBadge);
+            } else if (isKeyboxExpired(item.not_after)) {
+                const expBadge = document.createElement('span');
+                expBadge.className = 'ct-badge ct-status-badge ct-badge-expired ct-status-expired';
+                expBadge.textContent = t('status_expired');
+                name.append(expBadge);
+            }
             if (item.disabled) {
                 const disabledBadge = document.createElement('span');
                 disabledBadge.className = 'ct-badge ct-badge-invalid';
@@ -3779,33 +3890,6 @@
                 ecBadge.className = 'ct-badge ct-badge-ecdsa';
                 ecBadge.textContent = 'ECDSA';
                 name.append(ecBadge);
-            }
-            if (item.validity_state) {
-                const badge = document.createElement('span');
-                if (item.validity_state === 'INVALID') {
-                    if (item.invalid_reason === 'EXPIRED') {
-                        badge.className = 'ct-badge ct-status-badge ct-badge-expired ct-status-expired';
-                        badge.textContent = t('invalid_expired');
-                    } else if (item.invalid_reason === 'REVOKED') {
-                        badge.className = 'ct-badge ct-status-badge ct-badge-revoked ct-status-revoked';
-                        badge.textContent = t('invalid_revoked');
-                    } else if (item.invalid_reason === 'VERIFICATION_FAILED') {
-                        badge.className = 'ct-badge ct-status-badge ct-badge-invalid ct-status-invalid';
-                        badge.textContent = t('invalid_verification_failed');
-                    } else {
-                        badge.className = 'ct-badge ct-status-badge ct-badge-invalid ct-status-invalid';
-                        badge.textContent = t('status_invalid');
-                    }
-                } else {
-                    badge.className = 'ct-badge ct-status-badge ct-badge-valid ct-status-valid';
-                    badge.textContent = t('valid');
-                }
-                name.append(badge);
-            } else if (isKeyboxExpired(item.not_after)) {
-                const expBadge = document.createElement('span');
-                expBadge.className = 'ct-badge ct-status-badge ct-badge-expired ct-status-expired';
-                expBadge.textContent = t('status_expired');
-                name.append(expBadge);
             }
             const meta = document.createElement('div');
             meta.className = 'ct-keybox-meta';
@@ -4284,6 +4368,21 @@
 
     const DEFAULT_PRIORITY_CATEGORIES = [
         'VALID_RKP',
+        'VALID_RKP_SERVER',
+        'VALID_TEE',
+        'VALID_TEE_SERVER',
+        'INVALID_EXPIRED_RKP',
+        'INVALID_EXPIRED_RKP_SERVER',
+        'INVALID_EXPIRED_TEE',
+        'INVALID_EXPIRED_TEE_SERVER',
+        'INVALID_REVOKED_RKP',
+        'INVALID_REVOKED_RKP_SERVER',
+        'INVALID_REVOKED_TEE',
+        'INVALID_REVOKED_TEE_SERVER'
+    ];
+
+    const LEGACY_PRIORITY_CATEGORIES = [
+        'VALID_RKP',
         'VALID_TEE',
         'INVALID_EXPIRED_RKP',
         'INVALID_EXPIRED_TEE',
@@ -4301,33 +4400,65 @@
             order.every(category => DEFAULT_PRIORITY_CATEGORIES.includes(category));
     }
 
+    function isLegacyPriorityOrder(order) {
+        return Array.isArray(order) &&
+            order.length === LEGACY_PRIORITY_CATEGORIES.length &&
+            new Set(order).size === LEGACY_PRIORITY_CATEGORIES.length &&
+            order.every(category => LEGACY_PRIORITY_CATEGORIES.includes(category));
+    }
+
+    function migrateLegacyPriorityOrder(order) {
+        const migrated = [];
+        for (const category of order) {
+            migrated.push(category);
+            const serverCategory = category + '_SERVER';
+            if (DEFAULT_PRIORITY_CATEGORIES.includes(serverCategory)) {
+                migrated.push(serverCategory);
+            } else {
+                return null;
+            }
+        }
+        return isValidPriorityOrder(migrated) ? migrated : null;
+    }
+
     function normalizeLoadedPriorityOrder(order) {
         if (isValidPriorityOrder(order)) return [...order];
-        // Legacy full 16-category orders project onto the six exposed
-        // categories, preserving their relative order.
-        if (Array.isArray(order) && order.length === 16) {
+        // Legacy six-category orders saved before server tiers existed expand
+        // to local/server pairs, preserving the saved relative order.
+        if (isLegacyPriorityOrder(order)) return migrateLegacyPriorityOrder(order);
+        // Full 32-category orders (and legacy 16-category orders) project onto
+        // the twelve exposed categories, preserving their relative order.
+        if (Array.isArray(order) && (order.length === 32 || order.length === 16)) {
             const projected = order.filter(category => DEFAULT_PRIORITY_CATEGORIES.includes(category));
             if (isValidPriorityOrder(projected)) return projected;
+            const legacyProjected = order.filter(category => LEGACY_PRIORITY_CATEGORIES.includes(category));
+            if (legacyProjected.length === LEGACY_PRIORITY_CATEGORIES.length &&
+                new Set(legacyProjected).size === LEGACY_PRIORITY_CATEGORIES.length) {
+                return migrateLegacyPriorityOrder(legacyProjected);
+            }
         }
         return null;
     }
 
     function formatCategoryLabel(cat) {
-        const parts = cat.split('_');
+        const isServer = cat.endsWith('_SERVER');
+        const base = isServer ? cat.slice(0, -'_SERVER'.length) : cat;
+        const parts = base.split('_');
         const level = parts[parts.length - 1] === 'STRONGBOX' ? 'StrongBox' : (parts[parts.length - 1] === 'UNKNOWN' ? (t('status_unknown') || 'Unknown') : parts[parts.length - 1]);
-        if (cat.startsWith('VALID_')) {
-            return (t('valid') || 'Valid') + ' — ' + level;
+        let prefix;
+        if (base.startsWith('VALID_')) {
+            prefix = (t('valid') || 'Valid') + ' — ' + level;
+        } else if (base.startsWith('INVALID_EXPIRED_')) {
+            prefix = (t('invalid_expired') || 'Invalid - Expired') + ' — ' + level;
+        } else if (base.startsWith('INVALID_REVOKED_')) {
+            prefix = (t('invalid_revoked') || 'Invalid - Revoked') + ' — ' + level;
+        } else if (base.startsWith('INVALID_VERIFICATION_FAILED_')) {
+            prefix = (t('invalid_verification_failed') || 'Invalid - Verification Failed') + ' — ' + level;
+        } else {
+            return cat;
         }
-        if (cat.startsWith('INVALID_EXPIRED_')) {
-            return (t('invalid_expired') || 'Invalid - Expired') + ' — ' + level;
-        }
-        if (cat.startsWith('INVALID_REVOKED_')) {
-            return (t('invalid_revoked') || 'Invalid - Revoked') + ' — ' + level;
-        }
-        if (cat.startsWith('INVALID_VERIFICATION_FAILED_')) {
-            return (t('invalid_verification_failed') || 'Invalid - Verification Failed') + ' — ' + level;
-        }
-        return cat;
+        const source = isServer ? (t('server') || 'Server') : (t('local') || 'Local');
+        return prefix + ' (' + source + ')';
     }
 
     function renderPriorityOrder() {

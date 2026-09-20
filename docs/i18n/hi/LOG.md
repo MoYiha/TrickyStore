@@ -30,16 +30,19 @@ WebUI बिना किसी कंप्यूटर या ADB की आ�
 
 ---
 
-## तरीका 2: वन-क्लिक आपातकालीन बग रिपोर्ट संग्रह (`action.sh`)
+## तरीका 2: वन-क्लिक आपातकालीन बग रिपोर्ट संग्रह (`emergency-report.sh`)
 
 CleveresTricky में एक स्वचालित टूल है जो सिस्टम लॉग, मॉड्यूल स्थिति और रूट परिवेश की जानकारी को एक संपीड़ित फ़ाइल (`.tar.gz`) में संग्रहीत करता है।
 
-### रूट मैनेजर के माध्यम से:
-- **KernelSU** या **APatch** में, CleveresTricky मॉड्यूल कार्ड के आगे दिए गए **Action** बटन पर टैप करें।
+> [!NOTE]
+> Magisk पर मॉड्यूल **Action** बटन WebUI खोलता है (स्टैंडअलोन होस्ट ऐप के माध्यम से)। KernelSU/APatch पर यह यही रिपोर्ट चलाता है।
+
+### रूट प्रबंधक के माध्यम से (KernelSU / APatch):
+- CleveresTricky मॉड्यूल कार्ड के आगे **Action** बटन पर टैप करें।
 
 ### टर्मिनल (Termux / Root Shell) के माध्यम से:
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### रिपोर्ट संग्रह कहाँ मिलेगा:
@@ -115,5 +118,5 @@ adb logcat -d -s cleverestricky CleveresTricky
 
 GitHub पर बग रिपोर्ट दर्ज करते समय कृपया निम्नलिखित विवरण अवश्य दें:
 1. **सपोर्ट डायग्नोस्टिक्स स्नैपशॉट** (WebUI Info टैब से)
-2. **लॉग्स** (Debug Logging चालू के साथ WebUI Logs टैब से, `action.sh` फ़ाइल, या logcat)
+2. **लॉग्स** (Debug Logging चालू के साथ WebUI Logs टैब से, `emergency-report.sh` फ़ाइल, या logcat)
 3. डिवाइस का मॉडल, Android संस्करण और रूट विधि (KernelSU / APatch / Magisk)

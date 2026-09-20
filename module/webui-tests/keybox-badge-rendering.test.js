@@ -47,6 +47,12 @@ function makeElement(tagName) {
     },
     setAttribute(name, value) {
       this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
     }
   };
   Object.defineProperty(element, 'textContent', {
@@ -363,9 +369,9 @@ const expRow = list.children[0];
 const expBody = expRow.children[1];
 const expName = expBody.children[0];
 assert.equal(expName.children[0].textContent, 'expired.xml');
-assert.equal(expName.children[1].className, 'ct-badge ct-badge-strongbox');
-assert.equal(expName.children[2].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired');
-assert.equal(expName.children[2].textContent, 'status_expired');
+assert.equal(expName.children[1].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired', 'validity state must lead technical badges');
+assert.equal(expName.children[1].textContent, 'status_expired');
+assert.equal(expName.children[2].className, 'ct-badge ct-badge-strongbox');
 const expMeta = expBody.children[1];
 assert.ok(expMeta.textContent.includes('2020-01-01'), 'meta must include expiry date');
 
@@ -427,7 +433,7 @@ list.children = [];
 context.renderKeyboxes();
 assert.equal(list.children.length, 2);
 const expTimeName = list.children[0].children[1].children[0];
-assert.equal(expTimeName.children[2].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired');
+assert.equal(expTimeName.children[1].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired', 'validity state must lead technical badges');
 const futTimeName = list.children[1].children[1].children[0];
 assert.equal(futTimeName.children.length, 2); // No expired badge
 

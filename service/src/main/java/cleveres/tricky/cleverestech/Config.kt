@@ -718,8 +718,11 @@ object Config {
                                 val validity = entry?.validityState ?: KeyboxVerifier.ValidityState.VALID
                                 val reason = entry?.invalidReason
                                 // Publish-cached level: no PKIX validation or native inspection per box.
+                                // Origin is a filename-prefix check only; remote content always
+                                // carries the server_ prefix from ServerManager.
                                 val level = CertHack.cachedPriorityLevel(box)
-                                val category = KeyboxPriorityCategory.fromValidityAndLevel(validity, reason, level)
+                                val isServer = KeyboxPriorityCategory.isServerKeybox(box)
+                                val category = KeyboxPriorityCategory.fromValidityLevelAndOrigin(validity, reason, level, isServer)
                                 rankMap[category] ?: Int.MAX_VALUE
                             }
                         } else {

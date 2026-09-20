@@ -30,16 +30,19 @@ The WebUI offers the quickest, easiest way to collect diagnostics without needin
 
 ---
 
-## Method 2: One-Click Emergency Bug Report Archive (`action.sh`)
+## Method 2: One-Click Emergency Bug Report Archive (`emergency-report.sh`)
 
 CleveresTricky includes an automated bug report tool that packages system logs, module state, and root environment information into a compressed archive (`.tar.gz`).
 
-### Via Root Manager:
-- In **KernelSU** or **APatch**, tap the **Action** button next to the CleveresTricky module card.
+> [!NOTE]
+> On Magisk the module **Action** button opens the WebUI (via the standalone host app). On KernelSU/APatch it runs this report.
+
+### Via Root Manager (KernelSU / APatch):
+- Tap the **Action** button next to the CleveresTricky module card.
 
 ### Via Terminal (Termux / Root Shell):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Where to find the report:
@@ -115,5 +118,5 @@ This indicates that the device's hardware TEE or vendor KeyMint HAL is failing t
 
 When reporting a bug on GitHub, please include:
 1. **Support Diagnostics Snapshot** (from WebUI Info tab)
-2. **Logs** (from WebUI Logs tab with Debug Logging enabled, `action.sh` archive, or logcat)
+2. **Logs** (from WebUI Logs tab with Debug Logging enabled, `emergency-report.sh` archive, or logcat)
 3. Device model, Android version, and root manager (KernelSU / APatch / Magisk)

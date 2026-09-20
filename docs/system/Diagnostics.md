@@ -40,7 +40,7 @@ RKP or protected playback differences should be checked with their passthrough c
 
 ## Recovery
 
-Disable Spoof Engine before boot to prevent native injection and early property changes. If the WebUI is unavailable, disable the module from KernelSU or APatch and reboot. Preserve logs and a protected configuration backup before resetting data.
+Disable Spoof Engine before boot to prevent native injection and early property changes. If the WebUI is unavailable, disable the module from KernelSU, APatch, or Magisk and reboot. Preserve logs and a protected configuration backup before resetting data.
 
 [Return to the project overview](../README.md)
 
