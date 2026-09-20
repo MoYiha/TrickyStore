@@ -5,6 +5,7 @@ NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
 SUPERVISOR_PID_FILE="$CONFIG_DIR/supervisor.pid"
 DAEMON_PID_FILE="$CONFIG_DIR/daemon.pid"
 
+# BEGIN PID SAFETY HELPERS
 process_start_ticks() {
   target_pid=$1
   proc_stat=$(dd if="/proc/$target_pid/stat" bs=16384 count=1 2>/dev/null) || return 1
@@ -137,6 +138,8 @@ terminate_pid() {
   rm -f "$pid_file" 2>/dev/null || true
   return 0
 }
+
+# END PID SAFETY HELPERS
 
 terminate_previous_instances() {
   terminate_pid "$CONFIG_DIR/supervisor.pid" "supervisor" 15 "" "" "$MODDIR/service.sh" || return 1
