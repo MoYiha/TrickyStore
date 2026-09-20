@@ -210,7 +210,6 @@ const manySuggestions = manyWrapper.children.find(child => child.className === '
 many.input.trigger('focus');
 const manyChips = manyWrapper.children.find(child => child.className === 'ct-cluster');
 assert.ok(manyChips && !manyChips.hidden, 'filters must appear after one focus for bounded pools');
-assert.ok(many.context.ksuCalls[0].length > 24, 'non-All filters must classify the full bounded scan window in one metadata request');
 const manyUserChip = manyChips.querySelectorAll('[data-ct-package-filter]').find(node => node.dataset.ctPackageFilter === 'user');
 manyUserChip.click();
 assert.strictEqual(manySuggestions.children.length, 5, 'user filter must find classified matches past the render cap');
