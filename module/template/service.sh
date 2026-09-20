@@ -14,6 +14,7 @@ process_start_ticks() {
     *) return 1 ;;
   esac
   stat_fields=${proc_stat##*) }
+  # shellcheck disable=SC2086
   set -- $stat_fields
   [ "$#" -ge 20 ] || return 1
   start_ticks=${20}
