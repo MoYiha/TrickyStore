@@ -1,3 +1,4 @@
+#!/system/bin/sh
 MODDIR=${0%/*}
 CONFIG_DIR="/data/adb/cleverestricky"
 NATIVE_LOG="$CONFIG_DIR/native_runtime.log"
