@@ -93,7 +93,16 @@ extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.sh' "$MODPATH"
 extract "$ZIPFILE" 'action.sh' "$MODPATH"
 extract "$ZIPFILE" 'emergency-report.sh' "$MODPATH"
-extract "$ZIPFILE" 'webui-host.sha256' "$MODPATH"
+
+# webui-host.sha256 is release-pin metadata, not a payload with its own
+# checksum sidecar. Extract it directly and keep the same safe target guards.
+host_pin_target="$MODPATH/webui-host.sha256"
+prepare_extract_target "$host_pin_target"
+unzip -o "$ZIPFILE" 'webui-host.sha256' -d "$MODPATH" >&2   || abort "! Could not extract WebUI host pin"
+if [ -L "$host_pin_target" ] || [ ! -f "$host_pin_target" ]; then
+  abort "! WebUI host pin does not exist safely"
+fi
+
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
