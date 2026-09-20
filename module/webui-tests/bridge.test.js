@@ -22,12 +22,12 @@ assert.ok(!uxSource.includes('ux-base.js'), 'ux.js must be the real UX implement
 assert.ok(!/setInterval\s*\(/.test(uxSource), 'UX presentation must not add permanent polling');
 assert.ok(!/setInterval\s*\(/.test(policySource), 'Policy UI must not add permanent polling');
 
-assert.match(uxSource, /\['en', 'English'\]/);
-assert.match(uxSource, /\['tr', 'Türkçe'\]/);
+assert.match(uxSource, /\['en',\s*'English'\]/);
+assert.match(uxSource, /\['tr',\s*'Türkçe'\]/);
 assert.match(uxSource, /ct_language_panel/);
 assert.match(uxSource, /Open Telegram Community/);
-assert.match(uxSource, /const DIAGNOSTIC_FIELDS = Object\.freeze/);
-assert.match(uxSource, /function formatDiagnosticsSnapshot\(data\)/);
+assert.match(uxSource, /const\s+DIAGNOSTIC_FIELDS\s*=\s*Object\.freeze/);
+assert.match(uxSource, /function\s+formatDiagnosticsSnapshot\(data\)/);
 assert.match(uxSource, /bridge\.fetch\('\/api\/resource_usage'\)/);
 assert.match(uxSource, /Copy a bounded support snapshot without logs, package names, keybox names, identity values, credentials, or key material\./);
 const diagnosticsFormatter = uxSource.slice(
@@ -54,7 +54,7 @@ assert.match(policySource, /installPackagePickers/);
 assert.match(policySource, /slice\(0,24\)/);
 assert.match(policySource, /Estimated impact:/);
 assert.match(policySource, /CPU very low per UID decision; RAM low with a bounded UID cache\./);
-assert.match(policySource, /function installTabNavigationOwner\(\)/);
+assert.match(policySource, /function\s+installTabNavigationOwner\(\)/);
 assert.match(policySource, /event\.stopImmediatePropagation\(\)/);
 assert.ok(!policySource.includes('bindCommunityExternally'), 'Policy must not own the community link');
 assert.ok(!bridgeSource.includes('installIdentityPolicyTransitionWatcher'), 'Policy saves already reconcile live Identity transitions; bridge must not apply them a second time from change events');
@@ -76,7 +76,7 @@ assert.match(indexSource, /policy\.js\?revision=6/);
 assert.match(indexSource, /bridge\.js\?revision=16/);
 assert.match(policySource, /request\('\/api\/packages', requestOptions\)/);
 assert.match(policySource, /bridge\.listPackages\(\)/);
-assert.match(policySource, /function refreshPresentation\(\)/);
+assert.match(policySource, /function\s+refreshPresentation\(\)/);
 assert.match(policySource, /ct_language_selector/);
 assert.ok(!policySource.includes('ct_community_slot'), 'Policy must not create a duplicate community slot');
 assert.ok(!indexSource.includes('<h3>Identity Controls</h3>'), 'Retired Identity Controls panel must stay removed');
