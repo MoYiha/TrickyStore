@@ -68,10 +68,9 @@ prepare_runtime_boot_epoch() {
   chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
   mv -f "$tmp" "$marker" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
 }
+# END BOOT EPOCH HELPERS
 
 prepare_runtime_boot_epoch
-
-# END BOOT EPOCH HELPERS
 
 boot_policy_feature_enabled() {
   feature=$1
