@@ -1777,13 +1777,13 @@ function installPackagePicker(inputId) {
   const render = () => {
     const query = input.value.trim().toLowerCase();
     const names = normalizedPackageNames();
-    const knownFlags = names.some(name => packageIsSystem(name) !== null);
-    chips.hidden = !hostSupportsPackageInfo() || !knownFlags;
     // Non-All filters classify a bounded window first so unclassified
     // packages never leak into the wrong category; All keeps the cheap path.
     const scanLimit = activeFilter === 'all' ? 24 : FILTER_SCAN_LIMIT;
     const pool = names.filter(name => !query || name.toLowerCase().includes(query) || packageDisplayName(name).toLowerCase().includes(query)).slice(0, scanLimit);
     requestPackageLabels(pool, scanLimit);
+    const knownFlags = names.some(name => packageIsSystem(name) !== null);
+    chips.hidden = !hostSupportsPackageInfo() || !knownFlags;
     activeIndex = -1;
     clearActiveDescendant();
     const matches = pool.filter(name => {
