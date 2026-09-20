@@ -126,20 +126,20 @@ context.global = context;
 vm.createContext(context);
 
 // Extract render and renderVerification and priority order functions
-const start = source.indexOf('    function render() {');
-const end = source.indexOf('    function normalizeKeyboxScope(value) {', start);
+const start = source.indexOf('function render()');
+const end = source.indexOf('function normalizeKeyboxScope(value)', start);
 const renderCode = source.slice(start, end);
 
-const startVerify = source.indexOf('    function renderVerification() {');
-const endVerify = source.indexOf('    async function verify() {', startVerify);
+const startVerify = source.indexOf('function renderVerification()');
+const endVerify = source.indexOf('async function verify()', startVerify);
 const verifyCode = source.slice(startVerify, endVerify);
 
-const startExpired = source.indexOf('    function isKeyboxExpired(notAfter) {');
-const endExpired = source.indexOf('    function statusLabel() {', startExpired);
+const startExpired = source.indexOf('function isKeyboxExpired(notAfter)');
+const endExpired = source.indexOf('function statusLabel()', startExpired);
 const expiredCode = source.slice(startExpired, endExpired);
 
-const priorityStart = source.indexOf('    const DEFAULT_PRIORITY_CATEGORIES = [');
-const priorityEnd = source.indexOf('    function scheduleInstallRetry() {', priorityStart);
+const priorityStart = source.indexOf('const DEFAULT_PRIORITY_CATEGORIES=');
+const priorityEnd = source.indexOf('function scheduleInstallRetry()', priorityStart);
 const priorityCode = source.slice(priorityStart, priorityEnd);
 
 vm.runInContext(`
