@@ -117,7 +117,7 @@ const completeSurfaces = [
 
 assert.match(uxSource, /card\.setAttribute\(\s*'aria-label',\s*tr\('CleveresTech Telegram community'\)\)/, 'Telegram card aria-label must use the localization owner');
 assert.match(uxSource, /title\.textContent\s*=\s*tr\('CleveresTech Community'\)/, 'Telegram card title must use the localization owner');
-assert.match(uxSource, /copy\.textContent = tr\('Join our Telegram group for mutual help, testing, discussion, and development of CleveresTricky\.'\)/, 'Telegram card description must use the localization owner');
+assert.match(uxSource, /copy\.textContent\s*=\s*tr\('Join our Telegram group for mutual help, testing, discussion, and development of CleveresTricky\.\'\)/, 'Telegram card description must use the localization owner');
 assert.match(uxSource, /link\.textContent\s*=\s*tr\('Open Telegram Community'\)/, 'Telegram card action must use the localization owner');
 assert.match(indexSource, /id="dropZone"[^>]*aria-label="Upload Keybox or CBOX file"/, 'Keybox drop zone must expose a localized accessible name');
 assert.match(policySource, /const\s+secPatchHelp\s*=\s*helpMarkup\('Security Patch is independent from Identity\./, 'Security Patch must expose a card-level What Does This Do help block');
