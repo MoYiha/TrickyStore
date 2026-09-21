@@ -252,12 +252,16 @@ const newKeys = {
   active_profile: ['Active profile', 'Etkin profil']
 };
 
-// Part E: dashboard status strip contracts.
-assert.ok(policySource.includes('function buildStatusStripMarkup'), 'dashboard status strip builder is missing');
-assert.ok(policySource.includes('ct-status-strip'), 'status strip markup is missing');
-assert.ok(policySource.includes('role="status"'), 'status strip must expose a live status region');
-assert.ok(indexSource.includes('.ct-status-tile'), 'status tile style is missing');
-assert.ok(indexSource.includes('.ct-status-dot[data-state="on"]'), 'status dot states are missing');
+// Part E: dashboard status strip was removed; the feature grid must stay
+// single-column and crush-proof on every viewport.
+assert.ok(!policySource.includes('function buildStatusStripMarkup'), 'status strip builder must be gone');
+assert.ok(!policySource.includes('ct-status-strip'), 'status strip markup must be gone');
+assert.ok(!policySource.includes('function statusTile'), 'status tile builder must be gone');
+assert.ok(!indexSource.includes('.ct-status-tile'), 'status tile style must be gone');
+assert.ok(!indexSource.includes('.ct-status-dot[data-state="on"]'), 'status dot states must be gone');
+assert.ok(policySource.includes('.ct-feature-grid{display:grid;grid-template-columns:minmax(0,1fr)'), 'feature grid must stack to one column');
+assert.ok(policySource.includes('.ct-feature-card .row{margin:0;align-items:center;flex-wrap:wrap'), 'feature card rows must wrap instead of crushing the label');
+assert.ok(policySource.includes('flex:1 1 220px;min-width:0'), 'feature card labels must keep a readable wrap basis');
 
 // Part F: feature state labels and identity summary.
 assert.ok(policySource.includes('data-ct-state-for'), 'feature cards must carry syncable state labels');
