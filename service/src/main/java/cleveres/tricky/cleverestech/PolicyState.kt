@@ -816,6 +816,25 @@ object PolicyState {
         }
     }
 
+    /**
+     * Whether the uid's packages explicitly matched a profile assignment whose
+     * resolved telephony flag is set. The top-level toggle and the
+     * active-profile fallback never select a uid on their own: telephony
+     * spoofing stays confined to explicitly chosen targets so carrier and
+     * provisioning packages keep genuine subscriber values even under global
+     * mode. An explicit false override is honored as an opt-out.
+     */
+    internal fun hasExplicitTelephonyAssignment(uid: Int): Boolean {
+        val current = snapshot
+        if (!current.explicit) return false
+        val packages = Config.getPackages(uid)
+        if (packages.isEmpty()) return false
+        val selection = selectProfile(packages, current)
+        val profile = selection.profile ?: return false
+        if (selection.matchedRule == null) return false
+        return featuresForProfile(profile, current).telephonyIdentity
+    }
+
     fun hasDrmProfileWork(): Boolean {
         val current = snapshot
         return current.profiles.values.any { profile ->

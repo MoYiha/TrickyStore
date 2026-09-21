@@ -171,6 +171,10 @@ object Config {
     var isTelephonyEnabled = false
 
     @Volatile
+    var isGlobalTelephonyMode = false
+        private set
+
+    @Volatile
     var isCameraVisibilityEnabled = false
         private set
 
@@ -286,10 +290,25 @@ object Config {
         identityOverrides.visibleCameraCount.takeIf { isCameraVisibilityEnabled && isTargetedUid(uid) }
 
     fun shouldApplyTelephonyPrivacy(uid: Int): Boolean {
-        val legacyPrivacy = !PolicyState.usesV2() && isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
-        val configuredPrivacy = PolicyState.usesV2() && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
-        return (PolicyState.isFeatureEnabled(PolicyState.Feature.TELEPHONY_IDENTITY, uid) || legacyPrivacy || configuredPrivacy) &&
-            isTargetedUid(uid)
+        if (!isTargetedUid(uid)) return false
+        // An explicit global-telephony opt-in covers every targeted uid; it
+        // exists so users who accept the carrier breakage risk can restore
+        // the old blanket behavior deliberately, with the dashboard warning
+        // shown next to the switch. Without it, telephony spoofing requires
+        // an explicit per-target selection below.
+        if (isGlobalTelephonyMode) return true
+        // Telephony spoofing requires an explicit per-target selection: a
+        // non-inherit privacy mode (legacy rule or profile) or a matched
+        // profile assignment with telephony resolved on. The top-level toggle
+        // alone never selects a uid, so enabling telephony under global mode
+        // no longer sprays one shared subscriber identity across every app,
+        // including carrier and provisioning packages that must keep genuine
+        // values. The toggle stays the master switch for hook registration.
+        if (!PolicyState.usesV2()) {
+            return isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
+        }
+        if (getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT) return true
+        return PolicyState.hasExplicitTelephonyAssignment(uid)
     }
 
     internal fun updateAppConfigs(f: File?) =
@@ -779,6 +798,11 @@ object Config {
         Logger.i("Global mode is ${if (isGlobalMode) "enabled" else "disabled"}")
     }
 
+    private fun updateGlobalTelephonyMode(f: File?) {
+        isGlobalTelephonyMode = isRegularFlagFile(f)
+        Logger.i("Global telephony scope is ${if (isGlobalTelephonyMode) "enabled" else "disabled"}")
+    }
+
     private fun updateGlobalIdentityMode(f: File?) {
         isGlobalIdentityMode = isRegularFlagFile(f)
         identityTargetState.cache.clear()
@@ -853,6 +877,7 @@ object Config {
                 updateGlobalMode(file)
                 updateTargetPackages(File(root, TARGET_FILE))
             }
+            GLOBAL_TELEPHONY_MODE_FILE -> updateGlobalTelephonyMode(file)
             GLOBAL_IDENTITY_MODE_FILE -> {
                 updateGlobalIdentityMode(file)
                 updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
@@ -1812,6 +1837,7 @@ object Config {
     private const val SPOOF_ENABLED_FILE = "spoof_enabled"
     private const val BUILD_IDENTITY_FILE = "spoof_build_identity"
     private const val GLOBAL_MODE_FILE = "global_mode"
+    private const val GLOBAL_TELEPHONY_MODE_FILE = "global_telephony_mode"
     private const val GLOBAL_IDENTITY_MODE_FILE = "global_identity_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val TELEPHONY_FILE = "telephony"
@@ -2566,6 +2592,7 @@ object Config {
         isBuildIdentityEnabled = false
         isTeeBrokenMode = false
         isTelephonyEnabled = false
+        isGlobalTelephonyMode = false
         isCameraVisibilityEnabled = false
         isRkpPassthroughEnabled = false
         isDrmPassthroughEnabled = false

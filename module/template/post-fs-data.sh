@@ -203,6 +203,9 @@ apply_prop() {
 }
 
 remove_prop() {
+  if current_value=$(getprop "$1" 2>/dev/null) && [ -z "$current_value" ]; then
+    return 0
+  fi
   resetprop --delete "$1" >/dev/null 2>&1 || {
     log -t CleveresTricky "Failed to remove a legacy boot property: $1"
     return 1
@@ -253,6 +256,35 @@ apply_core_boot_properties() {
   hide_boot_mode vendor.boot.bootmode || true
 }
 
+mark_region_props_applied() {
+  applied_marker="$CONFIG_DIR/region_props_applied"
+  if [ -L "$applied_marker" ]; then
+    log -t CleveresTricky "Refusing symlinked region reconciliation marker"
+    return 0
+  fi
+  : > "$applied_marker" 2>/dev/null || return 0
+  chmod 600 "$applied_marker" 2>/dev/null || true
+  chown 0:0 "$applied_marker" 2>/dev/null || true
+}
+
+reconcile_stale_region_persist_props() {
+  [ "$CONFIG_ROOT_SAFE" = true ] || return 0
+  command -v resetprop >/dev/null 2>&1 || return 0
+  command -v getprop >/dev/null 2>&1 || return 0
+  applied_marker="$CONFIG_DIR/region_props_applied"
+  [ -f "$applied_marker" ] || return 0
+  [ ! -L "$applied_marker" ] || return 0
+  if optional_marker_enabled regionIdentity spoof_region_cn; then
+    return 0
+  fi
+  current_machres=$(getprop persist.radio.skhwc_matchres 2>/dev/null) || return 0
+  if [ "$current_machres" = "MATCH" ] && ! resetprop -p --delete persist.radio.skhwc_matchres >/dev/null 2>&1; then
+    resetprop --delete persist.radio.skhwc_matchres >/dev/null 2>&1 || return 0
+    return 0
+  fi
+  rm -f "$applied_marker"
+}
+
 apply_optional_identity_properties() {
   [ "$CONFIG_ROOT_SAFE" = true ] || return 0
   command -v resetprop >/dev/null 2>&1 || {
@@ -278,7 +310,9 @@ apply_optional_identity_properties() {
     apply_prop gsm.operator.iso-country cn || true
     apply_prop gsm.sim.operator.iso-country cn || true
     apply_prop ro.boot.hwlevel MP || true
-    apply_prop persist.radio.skhwc_matchres MATCH || true
+    if apply_prop persist.radio.skhwc_matchres MATCH; then
+      mark_region_props_applied
+    fi
   fi
 
   optional_marker_enabled buildIdentity spoof_build_identity || return 0
@@ -398,6 +432,7 @@ apply_early_properties() {
     return 0
   }
   apply_core_boot_properties
+  reconcile_stale_region_persist_props
   apply_optional_identity_properties
 }
 

@@ -232,8 +232,26 @@ object BootLogic {
         val sdk = getSystemProperty("ro.build.version.sdk").toIntOrNull() ?: return
         if (sdk < ANDROID_16_SDK) return
 
-        execChecked(arrayOf("resetprop", "--delete", OEM_UNLOCK_ALLOWED_PROPERTY))
-        if (getSystemProperty(OEM_UNLOCK_ALLOWED_PROPERTY).isNotEmpty()) {
+        removeOemUnlockProperty(
+            currentValue = { getSystemProperty(OEM_UNLOCK_ALLOWED_PROPERTY) },
+            delete = { execChecked(arrayOf("resetprop", "--delete", OEM_UNLOCK_ALLOWED_PROPERTY)) },
+        )
+    }
+
+    /**
+     * Removes the legacy OEM-unlock marker idempotently. An already-absent
+     * property already satisfies the goal state, so only a present value that
+     * survives deletion is a failure. Without this, devices that never carried
+     * the property fail boot compatibility on every boot and retry forever.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun removeOemUnlockProperty(
+        currentValue: () -> String,
+        delete: () -> Unit,
+    ) {
+        if (currentValue().isEmpty()) return
+        delete()
+        if (currentValue().isNotEmpty()) {
             throw IOException("Could not remove a legacy OEM-unlock property")
         }
     }
