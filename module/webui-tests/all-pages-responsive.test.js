@@ -64,7 +64,7 @@ assert.doesNotMatch(
 );
 assert.match(
   uxCssSource,
-  /#ct_keyboxhub_hint \.ct-keyboxhub-action \{[^}]*min-height:44px/s,
+  /#ct_keyboxhub_hint \.ct-keyboxhub-action\s*\{[^}]*min-height:44px/s,
   'KeyboxHub action must retain a mobile-sized touch target',
 );
 assert.match(

@@ -231,14 +231,15 @@ assert.ok(plainSuggestions.children[0].children[0].className === 'ct-appicon-fal
 assert.ok(plainWrapper.children.find(child => child.className === 'ct-cluster').hidden, 'filters must hide without flag data');
 
 // Part C: keybox card hierarchy contracts.
-const renderStart = uxSource.indexOf('function render()');
-const renderEnd = uxSource.indexOf('function normalizeKeyboxScope', renderStart);
+const renderStart = uxSource.search(/function\s+render\s*\(\s*\)/);
+const renderEndMatch = /function\s+normalizeKeyboxScope\s*\(/.exec(uxSource.slice(Math.max(renderStart, 0)));
+const renderEnd = renderEndMatch ? Math.max(renderStart, 0) + renderEndMatch.index : -1;
 assert.ok(renderStart >= 0 && renderEnd > renderStart, 'keybox render block is missing');
 const renderCode = uxSource.slice(renderStart, renderEnd);
 assert.ok(renderCode.includes('ct-keybox-card'), 'keybox rows must use the card class');
 assert.ok(renderCode.includes('ct-empty'), 'keybox list must render a structured empty state');
 assert.ok(renderCode.includes('ct-skeleton'), 'keybox list must render skeletons while loading');
-assert.ok(renderCode.indexOf('stateBadge') < renderCode.indexOf("security_level === 'StrongBox'"), 'validity state must precede technical level badges');
+assert.ok(renderCode.indexOf('stateBadge') < renderCode.search(/security_level\s*===\s*'StrongBox'/), 'validity state must precede technical level badges');
 
 // Part D: localization parity for every new key across all nine locales.
 const newKeys = {
@@ -261,7 +262,7 @@ assert.ok(indexSource.includes('.ct-status-dot[data-state="on"]'), 'status dot s
 // Part F: feature state labels and identity summary.
 assert.ok(policySource.includes('data-ct-state-for'), 'feature cards must carry syncable state labels');
 assert.ok(policySource.includes('function installStateLabelSync'), 'state label sync must be installed once');
-assert.ok(policySource.includes("dataset.ctStateSync === '1'"), 'state sync must guard against duplicate listeners');
+assert.match(policySource, /dataset\.ctStateSync\s*===\s*'1'/, 'state sync must guard against duplicate listeners');
 assert.ok(policySource.includes('ct-identity-summary'), 'identity card must summarize the active profile');
 assert.ok(indexSource.includes('.ct-state-label'), 'state label style is missing');
 assert.ok(indexSource.includes('.ct-identity-summary'), 'identity summary style is missing');

@@ -9,10 +9,10 @@ assert.match(source, /const\s+MAX_PROFILE_APPLICATIONS\s*=\s*256;/, 'WebUI per-p
 assert.match(source, /const\s+MAX_TOTAL_ASSIGNMENTS\s*=\s*2048;/, 'WebUI total assignment limit must match PolicyState');
 assert.match(source, /validatePolicyLimits\(normalized\);/, 'policy saves must validate the complete normalized state');
 
-const categoriesMatch = source.match(/const\\s+KEYBOX_PRIORITY_CATEGORIES\\s*=\\s*\\[([\\s\\S]*?)\\];/);
+const categoriesMatch = source.match(/const\s+KEYBOX_PRIORITY_CATEGORIES\s*=\s*\[([\s\S]*?)\];/);
 assert.ok(categoriesMatch, 'keybox priority category allowlist is missing');
 const extractedCategories = Function(`return [${categoriesMatch[1]}];`)();
-const legacyMatch = source.match(/const\\s+LEGACY_KEYBOX_PRIORITY_CATEGORIES\\s*=\\s*\\[([\\s\\S]*?)\\];/);
+const legacyMatch = source.match(/const\s+LEGACY_KEYBOX_PRIORITY_CATEGORIES\s*=\s*\[([\s\S]*?)\];/);
 assert.ok(legacyMatch, 'legacy keybox priority category allowlist is missing');
 const extractedLegacyCategories = Function(`return [${legacyMatch[1]}];`)();
 assert.deepEqual(

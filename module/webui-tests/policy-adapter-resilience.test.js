@@ -4,12 +4,13 @@ const vm = require('node:vm');
 
 // 1. Verify index.html exports window.fetchAuth
 const indexHtml = fs.readFileSync('module/template/webroot/index.html', 'utf8');
-assert.ok(indexHtml.includes('window.fetchAuth = fetchAuth;'), 'index.html must expose fetchAuth on window');
+assert.match(indexHtml, /window\.fetchAuth\s*=\s*fetchAuth;/, 'index.html must expose fetchAuth on window');
 
 // 2. Verify policy.js delegates request() to global.fetchAuth when available
 const policyJs = fs.readFileSync('module/template/webroot/policy.js', 'utf8');
-assert.ok(
-  policyJs.includes('const fetcher = (typeof global.fetchAuth === \'function\') ? global.fetchAuth : bridge.fetch;'),
+assert.match(
+  policyJs,
+  /const fetcher\s*=\s*\(typeof global\.fetchAuth\s*===\s*'function'\)\s*\?\s*global\.fetchAuth\s*:\s*bridge\.fetch;/,
   'policy.js request() must delegate to global.fetchAuth when present'
 );
 

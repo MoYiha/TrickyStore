@@ -29,12 +29,12 @@ const profileStore = fs.readFileSync(
 
 assert.match(
   policy,
-  /\['identityRefresh', 'Identity refresh', 'Prepares a new identity for the next boot only while this option is enabled\.'\]/,
+  /\['identityRefresh',\s*'Identity refresh',\s*'Prepares a new identity for the next boot only while this option is enabled\.'\]/,
   'global Identity Refresh must keep its next-boot randomization meaning',
 );
 assert.match(
   policy,
-  /feature\[0\] === 'identityRefresh'[\s\S]*?'Auto Identity \(Pixel Beta\)'/,
+  /feature\[0\]\s*===\s*'identityRefresh'[\s\S]*?'Auto Identity \(Pixel Beta\)'/,
   'Profiles must expose identityRefresh as Auto Identity (Pixel Beta)',
 );
 assert.match(

@@ -8,19 +8,19 @@ const appStart = source.indexOf('async function loadAppConfig()');
 const appEnd = source.indexOf('function renderAppTable()', appStart);
 assert.ok(appStart >= 0 && appEnd > appStart, 'loadAppConfig implementation is missing');
 const appSource = source.slice(appStart, appEnd);
-assert.match(appSource, /const previousController = appConfigController/);
+assert.match(appSource, /const previousController\s*=\s*appConfigController/);
 assert.match(appSource, /previousController\.abort\(\)/);
-assert.match(appSource, /fetchAuth\(getAuthUrl\('\/api\/app_config_structured'\), options\)/);
-assert.match(appSource, /if \(controller\.signal\.aborted\) return;/);
+assert.match(appSource, /fetchAuth\(getAuthUrl\('\/api\/app_config_structured'\),\s*options\)/);
+assert.match(appSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 
 const editorStart = source.indexOf('async function loadFile()');
 const editorEnd = source.indexOf('async function handleSave', editorStart);
 assert.ok(editorStart >= 0 && editorEnd > editorStart, 'loadFile implementation is missing');
 const editorSource = source.slice(editorStart, editorEnd);
-assert.match(editorSource, /const previousController = editorFileController/);
+assert.match(editorSource, /const previousController\s*=\s*editorFileController/);
 assert.match(editorSource, /previousController\.abort\(\)/);
-assert.match(editorSource, /fetchAuth\('\/api\/file\?filename=' \+ encodeURIComponent\(f\), \{ signal: controller\.signal \}\)/);
-assert.match(editorSource, /if \(controller\.signal\.aborted\) return;/);
+assert.match(editorSource, /fetchAuth\('\/api\/file\?filename='\s*\+\s*encodeURIComponent\(f\),\s*\{\s*signal:\s*controller\.signal\s*\}\)/);
+assert.match(editorSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 
 const appCalls = [];
 let releaseFirstApp;

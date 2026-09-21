@@ -93,7 +93,7 @@ function createBridge(callbackFactory, document = null, commandObserver = null) 
 
 function loadMessageNormalizer() {
     const start = indexSource.indexOf('const maxEncodedUiMessageLength');
-    const end = indexSource.indexOf('\n        function notify', start);
+    const end = indexSource.indexOf('function notify', start);
     assert.ok(start >= 0 && end > start, 'UI message normalizer source is missing');
     const context = {
         TextDecoder,
@@ -295,30 +295,30 @@ async function main() {
 
     assert.ok(!uxSource.includes('ux-base.js'), 'ux.js must contain the UX implementation directly');
     assert.ok(!uxSource.includes('ux-patch.js'), 'The retired patch layer must not be loaded');
-    assert.match(uxSource, /\['en', 'English'\]/);
-    assert.match(uxSource, /\['tr', 'Türkçe'\]/);
-    assert.match(uxSource, /\['zh-CN', '简体中文'\]/);
-    assert.match(uxSource, /\['ru', 'Русский'\]/);
-    assert.match(uxSource, /\['id', 'Bahasa Indonesia'\]/);
-    assert.match(uxSource, /\['hi', 'हिन्दी'\]/);
-    assert.match(uxSource, /\['ar', 'العربية'\]/);
-    assert.match(uxSource, /document\.documentElement\.dir = locale === 'ar' \? 'rtl' : 'ltr'/);
+    assert.match(uxSource, /\['en',\s*'English'\]/);
+    assert.match(uxSource, /\['tr',\s*'Türkçe'\]/);
+    assert.match(uxSource, /\['zh-CN',\s*'简体中文'\]/);
+    assert.match(uxSource, /\['ru',\s*'Русский'\]/);
+    assert.match(uxSource, /\['id',\s*'Bahasa Indonesia'\]/);
+    assert.match(uxSource, /\['hi',\s*'हिन्दी'\]/);
+    assert.match(uxSource, /\['ar',\s*'العربية'\]/);
+    assert.match(uxSource, /document\.documentElement\.dir\s*=\s*locale\s*===\s*'ar'\s*\?\s*'rtl'\s*:\s*'ltr'/);
     assert.match(uxSource, /html\[dir="rtl"\]/);
-    assert.match(uxSource, /record\.source = current/);
-    assert.match(uxSource, /if \(current !== rendered\) node\.nodeValue = rendered/);
+    assert.match(uxSource, /record\.source\s*=\s*current/);
+    assert.match(uxSource, /if\s*\(current\s*!==\s*rendered\)\s*node\.nodeValue\s*=\s*rendered/);
     assert.match(uxSource, /new global\.MutationObserver/);
-    assert.match(uxSource, /attributeFilter: \['placeholder','title','aria-label','data-label','data-i18n'\]/);
+    assert.match(uxSource, /attributeFilter:\s*\['placeholder',\s*'title',\s*'aria-label',\s*'data-label',\s*'data-i18n'\]/);
     assert.match(uxSource, /Identity is currently disabled\. You can enable it from Dashboard\./);
     assert.match(uxSource, /ct_language_panel/);
-    assert.match(uxSource, /To add a locale:/);
-    assert.match(uxSource, /const featureCenter = document\.getElementById\('ct_dashboard_controls'\)/);
+    assert.match(uxSource, /const\s+SUPPORTED\s*=\s*\[/);
+    assert.match(uxSource, /const\s+featureCenter\s*=\s*document\.getElementById\('ct_dashboard_controls'\)/);
     assert.match(uxSource, /ct_debug_panel/);
     assert.match(uxSource, /All major features and runtime paths in one place\./);
     assert.ok(!/setInterval\s*\(/.test(uxSource), 'UX presentation must not add permanent polling');
 
-    assert.match(bridgeSource, /const nativeSuccessMarker = '__CT_NATIVE_OK__'/);
-    assert.match(bridgeSource, /nativeFilePickerIds = new Set\(\['kbFilePicker', 'restoreInput'\]\)/);
-    assert.match(bridgeSource, /input\.accept = '\*\/\*'/);
+    assert.match(bridgeSource, /const\s+nativeSuccessMarker\s*=\s*'__CT_NATIVE_OK__'/);
+    assert.match(bridgeSource, /nativeFilePickerIds\s*=\s*new Set\(\['kbFilePicker',\s*'restoreInput'\]\)/);
+    assert.match(bridgeSource, /input\.accept\s*=\s*'\*\/\*'/);
 
     const normalizeUiMessage = loadMessageNormalizer();
     assert.strictEqual(normalizeUiMessage(envelope('{"error":"keybox rejected"}')), 'keybox rejected');
@@ -330,13 +330,13 @@ async function main() {
         body: 'A'.repeat(16 * 1024 + 1)
     });
     assert.strictEqual(normalizeUiMessage(oversized), 'HTTP 500 Server Error: response body is too large to display');
-    assert.ok(indexSource.includes('text.textContent = normalizeUiMessage(msg);'));
-    assert.ok(indexSource.includes('<script src="bridge.js?revision=15"></script>'));
-    assert.match(bridgeSource, /ux\.js\?revision=10/);
+    assert.match(indexSource, /text\.textContent\s*=\s*normalizeUiMessage\(msg\);/);
+    assert.ok(indexSource.includes('<script src="bridge.js?revision=16"></script>'));
+    assert.match(bridgeSource, /ux\.js\?revision=11/);
     assert.ok(!bridgeSource.includes('ux.js?revision=3'), 'Bridge must not request the retired cached UX loader');
 
     const uploadFunctionStart = indexSource.indexOf('async function loadFileContent');
-    const uploadFunctionEnd = indexSource.indexOf('\n        function resetDropZone', uploadFunctionStart);
+    const uploadFunctionEnd = indexSource.indexOf('function resetDropZone', uploadFunctionStart);
     assert.ok(uploadFunctionStart >= 0 && uploadFunctionEnd > uploadFunctionStart, 'upload handler source is missing');
     const uploadNodes = new Map([
         ['dropZoneContent', { innerHTML: '', style: {} }],

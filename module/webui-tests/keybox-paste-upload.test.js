@@ -6,7 +6,8 @@ const indexSource = fs.readFileSync('module/template/webroot/index.html', 'utf8'
 
 const fnStart = indexSource.indexOf('function transliterateTurkish(');
 assert.ok(fnStart >= 0, 'transliterateTurkish function must exist in index.html');
-const fnEnd = indexSource.indexOf('const WEB_UI_SETTINGS =', fnStart);
+const settingsMatch = /const\s+WEB_UI_SETTINGS\s*=/.exec(indexSource.slice(fnStart));
+const fnEnd = settingsMatch ? fnStart + settingsMatch.index : -1;
 assert.ok(fnEnd > fnStart, 'savePastedKeybox end boundary must be found');
 
 const implementation = indexSource.slice(fnStart, fnEnd);

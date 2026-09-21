@@ -5,7 +5,7 @@ const manager = fs.readFileSync('service/src/main/java/cleveres/tricky/cleverest
 const binder = fs.readFileSync('module/src/main/cpp/binder_interceptor.cpp','utf8');
 const engine = fs.readFileSync('rust/injector-core/src/engine.rs','utf8');
 assert(policy.includes('<details><summary><strong>Kernel Identity</strong>'), 'kernel UI must stay collapsed');
-assert(policy.includes('children.hidden = !enabled.checked'), 'kernel inputs must be conditional');
+assert(/children\.hidden\s*=\s*!enabled\.checked/.test(policy), 'kernel inputs must be conditional');
 for (const version of ['5.15.208-android14','6.1.172-android14','6.6.139-android15','6.12.81-android16']) assert(manager.includes(version), `missing GKI base ${version}`);
 assert(binder.includes('syscall(SYS_uname, buffer)'), 'hook must obtain genuine uname through raw syscall');
 assert(binder.includes('g_enabled.load'), 'disabled hook must preserve genuine uname');

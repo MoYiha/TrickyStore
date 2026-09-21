@@ -3,13 +3,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
-const start = source.indexOf('async function loadKeyboxes(options = {})');
+const start = source.search(/async\s+function\s+loadKeyboxes\s*\(options\s*=\s*\{\}\)/);
 const end = source.indexOf('function renderKeyboxes()', start);
 assert.ok(start >= 0 && end > start, 'loadKeyboxes implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /Array\.from\(new Set\(data\.filter/);
-assert.match(implementation, /value\.length <= 256/);
-assert.match(implementation, /slice\(0, 4096\)/);
+assert.match(implementation, /value\.length\s*<=\s*256/);
+assert.match(implementation, /slice\(0,\s*4096\)/);
 assert.match(implementation, /Array\.isArray\(data\)/);
 
 const list = { innerHTML: '' };

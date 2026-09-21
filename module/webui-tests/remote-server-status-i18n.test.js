@@ -98,8 +98,8 @@ assert.strictEqual(
     'English locale must preserve canonical OK status'
 );
 
-assert.match(bridgeSource, /addEventListener\('ct_retranslate', refreshRemoteServerStatusCopy\)/);
+assert.match(bridgeSource, /addEventListener\('ct_retranslate',\s*refreshRemoteServerStatusCopy\)/);
 assert.match(bridgeSource, /dataset\.ctRemoteStatusSource/);
-assert.match(bridgeSource, /maxRemoteRetryAfterSeconds = 31 \* 24 \* 60 \* 60/);
+assert.match(bridgeSource, /maxRemoteRetryAfterSeconds\s*=\s*31\s*\*\s*24\s*\*\s*60\s*\*\s*60/);
 
 console.log('Remote server status i18n tests passed');

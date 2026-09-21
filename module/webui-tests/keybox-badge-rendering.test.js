@@ -10,7 +10,7 @@ const longPressEnd = source.indexOf('function appendKeyboxValue(', longPressStar
 assert.ok(longPressStart >= 0 && longPressEnd > longPressStart, 'long-press handler is missing');
 const longPressImplementation = source.slice(longPressStart, longPressEnd);
 assert.match(longPressImplementation, /setTimeout\([\s\S]*650\)/);
-assert.match(longPressImplementation, /showKeyboxValuePopup\(label, value, node\)/);
+assert.match(longPressImplementation, /showKeyboxValuePopup\(label,\s*value,\s*node\)/);
 assert.match(longPressImplementation, /pointerdown/);
 assert.match(source, /async function copyKeyboxValue\(value\)/);
 

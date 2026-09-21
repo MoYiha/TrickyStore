@@ -17,12 +17,12 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /\.log-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) repeat\(3, minmax\(124px, auto\)\)/s,
+  /\.log-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s*repeat\(3,\s*minmax\(124px,\s*auto\)\)/s,
   'Logs toolbar must have a bounded desktop grid',
 );
 assert.match(
   indexSource,
-  /@media screen and \(max-width: 700px\) \{[\s\S]*?\.log-toolbar\s*\{\s*grid-template-columns:\s*1fr;\s*\}/,
+  /@media screen and \(max-width:\s*700px\)\s*\{[\s\S]*?\.log-toolbar\s*\{\s*grid-template-columns:\s*1fr\s*;?\s*\}/,
   'Logs toolbar must stack controls on narrow screens',
 );
 assert.match(
@@ -52,7 +52,7 @@ assert.match(
 );
 assert.match(
   indexSource,
-  /if \(id !== 'log' && logsRequestController\) \{[\s\S]*?logsRequestController\.abort\(\);/,
+  /if\s*\(id\s*!==\s*'log'\s*&&\s*logsRequestController\)\s*\{[\s\S]*?logsRequestController\.abort\(\);/,
   'Leaving Logs must abort a pending refresh',
 );
 

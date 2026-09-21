@@ -3,21 +3,25 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const scopeStart = source.indexOf('    function normalizeKeyboxScope(value) {');
-const start = source.indexOf('    async function deleteOne(item)', scopeStart);
-const end = source.indexOf('    async function reloadAll()', start);
+const indexOfPattern = (pattern, from = 0) => {
+  const match = pattern.exec(source.slice(from));
+  return match ? from + match.index : -1;
+};
+const scopeStart = indexOfPattern(/function\s+normalizeKeyboxScope\s*\(value\)\s*\{/);
+const start = indexOfPattern(/async\s+function\s+deleteOne\s*\(item\)/, scopeStart);
+const end = indexOfPattern(/async\s+function\s+reloadAll\s*\(\)/, start);
 const scopeImplementation = source.slice(scopeStart, start);
-const refreshStart = source.indexOf('    async function refreshInventory(options = {})');
-const refreshEnd = source.indexOf('    function enqueueKeyboxMutation(task)', refreshStart);
+const refreshStart = indexOfPattern(/async\s+function\s+refreshInventory\s*\(options\s*=\s*\{\}\)/);
+const refreshEnd = indexOfPattern(/function\s+enqueueKeyboxMutation\s*\(task\)/, refreshStart);
 assert.ok(scopeStart >= 0 && start > scopeStart, 'Keybox scope normalizer is missing');
 assert.ok(start >= 0 && end > start, 'Keybox delete implementation is missing');
 assert.ok(refreshStart >= 0 && refreshEnd > refreshStart, 'Keybox inventory refresh implementation is missing');
 const implementation = source.slice(start, end);
 const refreshImplementation = source.slice(refreshStart, refreshEnd);
 assert.match(implementation, /deletingIds\.has\(item\.id\)/);
-assert.match(implementation, /if \(bulkDeleteBusy\) return/);
-assert.match(implementation, /bulkDeleteBusy = true/);
-assert.match(implementation, /bulkDeleteBusy = false/);
+assert.match(implementation, /if\s*\(bulkDeleteBusy\)\s*return/);
+assert.match(implementation, /bulkDeleteBusy\s*=\s*true/);
+assert.match(implementation, /bulkDeleteBusy\s*=\s*false/);
 
 const item = { id: 'keyboxes:one.xml', filename: 'one.xml', scope: 'keyboxes' };
 const calls = [];

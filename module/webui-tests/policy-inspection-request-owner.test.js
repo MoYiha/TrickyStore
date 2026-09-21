@@ -15,11 +15,11 @@ const patchSource = extract('async function inspectPatch()', 'function renderPro
 const effectiveSource = extract('async function inspectEffective()', 'function parseSavedBuildIdentity');
 
 assert.match(patchSource, /patchInspectionController\.abort\(\)/);
-assert.match(patchSource, /request\([^\n]+, \{ signal: controller\.signal \}\)/);
-assert.match(patchSource, /if \(controller\.signal\.aborted\) return;/);
+assert.match(patchSource, /request\([\s\S]*?,\s*\{\s*signal:\s*controller\.signal\s*\}\)/);
+assert.match(patchSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 assert.match(effectiveSource, /effectiveInspectionController\.abort\(\)/);
-assert.match(effectiveSource, /request\([^\n]+, \{ signal: controller\.signal \}\)/);
-assert.match(effectiveSource, /if \(controller\.signal\.aborted\) return;/);
+assert.match(effectiveSource, /request\([\s\S]*?,\s*\{\s*signal:\s*controller\.signal\s*\}\)/);
+assert.match(effectiveSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 
 function runInspection(functionSource, kind) {
   const input = { value: 'com.example.old' };

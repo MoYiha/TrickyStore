@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
-const start = source.indexOf('        async function fetchAuth(url, options = {})');
-const end = source.indexOf('        async function downloadBlob(blob, filename)', start);
+const start = source.search(/async\s+function\s+fetchAuth\s*\(\s*url\s*,\s*options\s*=\s*\{\}\s*\)/);
+const endMatch = /async\s+function\s+downloadBlob\s*\(/.exec(source.slice(Math.max(start, 0)));
+const end = endMatch ? Math.max(start, 0) + endMatch.index : -1;
 assert.ok(start >= 0 && end > start, 'fetchAuth implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /Native WebUI bridge is unavailable/);

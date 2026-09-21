@@ -25,8 +25,9 @@ assert.ok(
     'policy.js checked switch knob must be white',
 );
 
-assert.ok(
-    indexHtml.includes('input[type="checkbox"].toggle:checked, input[type="checkbox"].ct-switch:checked { background: var(--success); border-color: var(--success); }'),
+assert.match(
+    indexHtml,
+    /input\[type="checkbox"\]\.toggle:checked\s*,\s*input\[type="checkbox"\]\.ct-switch:checked\s*\{\s*background:\s*var\(--success\)\s*;\s*border-color:\s*var\(--success\)\s*;?\s*\}/,
     'index.html must style checked toggle to var(--success)',
 );
 
@@ -38,11 +39,11 @@ assert.ok(
 
 // 3. Elimination of neon glare shadows
 assert.ok(
-    !indexHtml.includes('rgba(10, 132, 255, 0.35)'),
+    !/rgba\(10,\s*132,\s*255,\s*0?\.35\)/.test(indexHtml),
     'index.html must not have neon blue box-shadow on primary button',
 );
 assert.ok(
-    !indexHtml.includes('rgba(10, 132, 255, 0.45)'),
+    !/rgba\(10,\s*132,\s*255,\s*0?\.45\)/.test(indexHtml),
     'index.html must not have neon blue box-shadow on hover',
 );
 assert.ok(
@@ -51,12 +52,12 @@ assert.ok(
 );
 
 // 4. Color palette alignment
-assert.ok(indexHtml.includes('--color-red: rgb(255, 69, 58);'), 'dark red must match system red');
-assert.ok(indexHtml.includes('--color-orange: rgb(255, 159, 10);'), 'dark orange must match system orange');
-assert.ok(indexHtml.includes('--color-yellow: rgb(255, 214, 10);'), 'dark yellow must match system yellow');
-assert.ok(indexHtml.includes('--color-green: rgb(48, 209, 88);'), 'dark green must match system green');
-assert.ok(indexHtml.includes('--color-blue: rgb(10, 132, 255);'), 'dark blue must match system blue');
-assert.ok(indexHtml.includes('--color-indigo: rgb(94, 92, 230);'), 'dark indigo must match system indigo');
-assert.ok(indexHtml.includes('--color-brown: rgb(172, 142, 104);'), 'dark brown must match system brown');
+assert.match(indexHtml, /--color-red:\s*rgb\(255,\s*69,\s*58\)\s*;/, 'dark red must match system red');
+assert.match(indexHtml, /--color-orange:\s*rgb\(255,\s*159,\s*10\)\s*;/, 'dark orange must match system orange');
+assert.match(indexHtml, /--color-yellow:\s*rgb\(255,\s*214,\s*10\)\s*;/, 'dark yellow must match system yellow');
+assert.match(indexHtml, /--color-green:\s*rgb\(48,\s*209,\s*88\)\s*;/, 'dark green must match system green');
+assert.match(indexHtml, /--color-blue:\s*rgb\(10,\s*132,\s*255\)\s*;/, 'dark blue must match system blue');
+assert.match(indexHtml, /--color-indigo:\s*rgb\(94,\s*92,\s*230\)\s*;/, 'dark indigo must match system indigo');
+assert.match(indexHtml, /--color-brown:\s*rgb\(172,\s*142,\s*104\)\s*;/, 'dark brown must match system brown');
 
 console.log('Toggle states, debug logging switch, and theme palette regression checks passed');

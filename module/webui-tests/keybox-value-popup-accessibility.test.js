@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const start = source.indexOf('    function popupCopy() {');
-const end = source.indexOf('    function statusLabel() {', start);
+const start = source.indexOf('function popupCopy()');
+const end = source.indexOf('function statusLabel()', start);
 assert.ok(start >= 0 && end > start, 'keybox value popup helpers are missing');
 const implementation = source.slice(start, end);
 

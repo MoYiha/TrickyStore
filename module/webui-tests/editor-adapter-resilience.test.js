@@ -6,8 +6,8 @@ const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
 
 // 1. Verify fetchAuth retries across adapter unavailability for idempotent/safe calls
 {
-  const start = source.indexOf('        async function fetchAuth(url, options = {})');
-  const end = source.indexOf('        async function downloadBlob(blob, filename)', start);
+  const start = source.indexOf('async function fetchAuth(url');
+  const end = source.indexOf('async function downloadBlob(', start);
   assert.ok(start >= 0 && end > start, 'fetchAuth implementation must be found');
   const implementation = source.slice(start, end);
 
@@ -81,9 +81,8 @@ const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
 
   // Assert handleSave checks for Loading...
   assert.ok(
-    handleSaveSource.includes("editor.value === 'Loading...'") ||
-    handleSaveSource.includes('editor.value === "Loading..."') ||
-    handleSaveSource.includes("content === 'Loading...'"),
+    /editor\.value\s*===\s*['"]Loading\.\.\.['"]/.test(handleSaveSource) ||
+    /content\s*===\s*['"]Loading\.\.\.['"]/.test(handleSaveSource),
     'handleSave must refuse to save when editor content is "Loading..."'
   );
 
@@ -95,8 +94,7 @@ const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
   const updateBtnSource = source.slice(updateBtnStart, updateBtnEnd);
 
   assert.ok(
-    updateBtnSource.includes("editor.value === 'Loading...'") ||
-    updateBtnSource.includes('editor.value === "Loading..."'),
+    /editor\.value\s*===\s*['"]Loading\.\.\.['"]/.test(updateBtnSource),
     'updateSaveButtonState must disable save button while editor is "Loading..."'
   );
 
@@ -108,7 +106,7 @@ const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
   const switchTabSource = source.slice(switchTabStart, switchTabEnd);
 
   assert.ok(
-    switchTabSource.includes("id === 'editor'") && switchTabSource.includes('loadFile()'),
+    /id\s*===\s*'editor'/.test(switchTabSource) && switchTabSource.includes('loadFile()'),
     'switchTab must reload editor on tab activate if uninitialized or stuck'
   );
 }
