@@ -73,7 +73,7 @@ assert.match(
 );
 assert.match(
   uxCssSource,
-  /#ct_debug_panel \.row\\s*\\{[^}]*flex-direction:\s*row\s*!important/s,
+  /#ct_debug_panel \.row\s*\{[^}]*flex-direction:\s*row\s*!important/s,
   'Debug logging panel row must retain horizontal flex layout',
 );
 assert.match(
@@ -103,7 +103,7 @@ assert.doesNotMatch(
 );
 assert.match(
   indexCssSource,
-  /select\s*\{/[^}]*appearance:\s*none/s,
+  /select\s*\{[^}]*appearance:\s*none/s,
   'select elements must use appearance: none with custom chevron arrow',
 );
 assert.match(
@@ -123,7 +123,7 @@ assert.match(
 );
 assert.match(
   indexCssSource,
-  /button\s*\{/[^}]*text-align:\s*center/s,
+  /button\s*\{[^}]*text-align:\s*center/s,
   'buttons must center text alignment',
 );
 assert.match(
