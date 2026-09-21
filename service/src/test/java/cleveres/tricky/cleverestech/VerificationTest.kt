@@ -135,6 +135,30 @@ class VerificationTest {
         assertTrue(Verification.check(tempDir))
     }
 
+    @Test
+    fun webuiHostPinDataFilePassesVerification() {
+        File(tempDir, "webui-host.sha256").writeText(
+            "1.0-11 c843bab0963807cd844980de42eeb9902c1d1b68b3f5ea13a28ca63150dc2e09 " +
+                "https://github.com/adivenxnataly/KsuWebUI/releases/download/1.0-11/KsuWebUI-1.0-11-release.apk\n",
+        )
+
+        assertTrue(Verification.check(tempDir))
+    }
+
+    @Test
+    fun webuiHostPinContentIsNotParsedAsChecksum() {
+        File(tempDir, "webui-host.sha256").writeText("tampered-pin-content\n")
+
+        assertTrue(Verification.check(tempDir))
+    }
+
+    @Test
+    fun unknownSha256SuffixedFileStillFailsVerification() {
+        File(tempDir, "evil.sha256").writeText("not-a-checksum")
+
+        assertFalse(Verification.check(tempDir))
+    }
+
     private fun writeChecksum(file: File) {
         val md = MessageDigest.getInstance("SHA-256")
         file.forEachBlock { buffer, bytesRead -> md.update(buffer, 0, bytesRead) }
