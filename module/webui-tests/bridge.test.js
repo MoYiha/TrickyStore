@@ -74,7 +74,7 @@ assert.match(indexSource, /Synchronize Runtime/);
 assert.ok(!indexSource.includes('<h3>System Control</h3>'));
 assert.match(indexSource, /policy\.js\?revision=6/);
 assert.match(indexSource, /bridge\.js\?revision=16/);
-assert.match(policySource, /request\('\/api\/packages', requestOptions\)/);
+assert.match(policySource, /request\(\s*'\/api\/packages',\s*requestOptions\)/);
 assert.match(policySource, /bridge\.listPackages\(\)/);
 assert.match(policySource, /function\s+refreshPresentation\(\)/);
 assert.match(policySource, /ct_language_selector/);
