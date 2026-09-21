@@ -34,12 +34,12 @@ const diagnosticsFormatter = uxSource.slice(
     uxSource.indexOf('const DIAGNOSTIC_FIELDS'),
     uxSource.indexOf('async function copyDiagnosticsSnapshot')
 );
-assert.match(diagnosticsFormatter, /native_failure: runtime\.failure/);
+assert.match(diagnosticsFormatter, /native_failure\s*:\s*runtime\.failure/);
 assert.match(diagnosticsFormatter, /schema=2/);
-assert.match(diagnosticsFormatter, /attest_fail_ring: source\.attest_fail_ring/);
-assert.match(diagnosticsFormatter, /manufacturer: source\.manufacturer/);
-assert.match(diagnosticsFormatter, /rom_build_id: source\.rom_build_id/);
-assert.match(diagnosticsFormatter, /security_patch: source\.security_patch/);
+assert.match(diagnosticsFormatter, /attest_fail_ring\s*:\s*source\.attest_fail_ring/);
+assert.match(diagnosticsFormatter, /manufacturer\s*:\s*source\.manufacturer/);
+assert.match(diagnosticsFormatter, /rom_build_id\s*:\s*source\.rom_build_id/);
+assert.match(diagnosticsFormatter, /security_patch\s*:\s*source\.security_patch/);
 ['pid', 'entry', 'timestamp_ms', 'package_name', 'keybox_name', 'filename', 'token', 'auth_data'].forEach(field => {
     assert.ok(!new RegExp(`['"]${field}['"]`).test(diagnosticsFormatter), `Diagnostic snapshot must not expose ${field}`);
 });
