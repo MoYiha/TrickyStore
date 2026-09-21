@@ -263,12 +263,12 @@ assert.ok(policySource.includes('.ct-feature-grid{display:grid;grid-template-col
 assert.ok(policySource.includes('.ct-feature-card .row{margin:0;align-items:center;flex-wrap:wrap'), 'feature card rows must wrap instead of crushing the label');
 assert.ok(policySource.includes('flex:1 1 220px;min-width:0'), 'feature card labels must keep a readable wrap basis');
 
-// Part F: feature state labels and identity summary.
-assert.ok(policySource.includes('data-ct-state-for'), 'feature cards must carry syncable state labels');
-assert.ok(policySource.includes('function installStateLabelSync'), 'state label sync must be installed once');
-assert.match(policySource, /dataset\.ctStateSync\s*===\s*'1'/, 'state sync must guard against duplicate listeners');
+// Part F: state pills were removed (the toggle alone carries state); the
+// identity summary stays.
+assert.ok(!policySource.includes('data-ct-state-for'), 'state pill hooks must be gone');
+assert.ok(!policySource.includes('function installStateLabelSync'), 'state pill sync must be gone');
+assert.ok(!indexSource.includes('.ct-state-label'), 'state pill style must be gone');
 assert.ok(policySource.includes('ct-identity-summary'), 'identity card must summarize the active profile');
-assert.ok(indexSource.includes('.ct-state-label'), 'state label style is missing');
 assert.ok(indexSource.includes('.ct-identity-summary'), 'identity summary style is missing');
 for (const [key, samples] of Object.entries(newKeys)) {
   assert.ok(uxSource.includes(`'${key}':`), `TRANSLATIONS/COPY is missing key: ${key}`);
@@ -278,43 +278,7 @@ for (const [key, samples] of Object.entries(newKeys)) {
   assert.ok(uxSource.includes(`["${key}",`), `complete catalog row is missing for: ${key}`);
 }
 
-// Part G: state label sync installs once and follows switch changes.
-const syncStart = policySource.indexOf('function installStateLabelSync');
-const syncEnd = policySource.indexOf('function identityFeatureCardsMarkup', syncStart);
-assert.ok(syncStart >= 0 && syncEnd > syncStart, 'state sync implementation is missing');
-const syncCode = policySource.slice(syncStart, syncEnd);
-{
-  const label = { dataset: { ctStateFor: 'feat_x' }, textContent: 'Disabled' };
-  const fakeDocument = {
-    documentElement: { dataset: {} },
-    _handlers: {},
-    addEventListener(event, handler) {
-      this._handlers[event] = this._handlers[event] || [];
-      this._handlers[event].push(handler);
-    },
-    querySelectorAll() { return [label]; }
-  };
-  const syncContext = { console, document: fakeDocument };
-  syncContext.window = syncContext;
-  syncContext.global = syncContext;
-  vm.createContext(syncContext);
-  vm.runInContext(`
-    function pickerText(key, fallback) { return fallback; }
-    ${syncCode}
-    this.install = installStateLabelSync;
-    this.fire = (checked) => {
-      const handlers = document._handlers.change || [];
-      handlers.forEach(handler => handler({ target: { type: 'checkbox', id: 'feat_x', checked } }));
-    };
-    this.listenerCount = () => (document._handlers.change || []).length;
-  `, syncContext, { filename: 'policy.js#state-sync' });
-  syncContext.install();
-  syncContext.install();
-  assert.strictEqual(syncContext.listenerCount(), 1, 'state sync must not duplicate document listeners');
-  syncContext.fire(true);
-  assert.strictEqual(label.textContent, 'Enabled', 'state label must follow the switch');
-  syncContext.fire(false);
-  assert.strictEqual(label.textContent, 'Disabled', 'state label must follow the switch back');
-}
+// Part G: no global change-listener sync may remain for the removed pills.
+assert.ok(!policySource.includes('ctStateSync'), 'pill sync epoch flag must be gone');
 
 console.log('UX refresh regression checks passed');
