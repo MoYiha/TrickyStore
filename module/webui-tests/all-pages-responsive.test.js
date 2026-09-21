@@ -20,7 +20,8 @@ const uxSource = fs.readFileSync(
 function normalizeCssContract(source) {
   return source
     .replace(/\s+/g, ' ')
-    .replace(/\s*([{}>])\s*/g, ' $1 ')
+    .replace(/\s*{\s*/g, '{')
+    .replace(/\s*}\s*/g, '}')
     .trim();
 }
 
