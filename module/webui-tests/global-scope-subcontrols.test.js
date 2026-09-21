@@ -71,10 +71,6 @@ assert.ok(
   !policySource.includes('globalIdentityRow'),
   'retired Global Identity row must be gone',
 );
-assert.ok(
-  policySource.includes('<div class="row" style="margin-top:10px"><label for="${prefix}_global_telephony"'),
-  'sub-toggle row must keep breathing room',
-);
 
 // Full nine-locale coverage for the user-visible strings.
 const newKeys = {
@@ -136,6 +132,11 @@ const openHtml = renderIdentityCards({
 assert.ok(openHtml.includes('id="ct_ident_telephony_scope" >'), 'scope block must show while telephony is on');
 assert.ok(openHtml.includes('id="ct_ident_global_telephony" checked'), 'sub-toggle must reflect the stored opt-in');
 assert.ok(openHtml.includes('Telephony for all targets'), 'sub-toggle title must render');
+assert.ok(
+  openHtml.includes('<div class="row" style="margin-top:10px"><label for="ct_ident_global_telephony"'),
+  'rendered sub-toggle row must keep breathing room',
+);
+assert.ok(!openHtml.includes('global_scope_warning'), 'retired carrier warning must not render');
 assert.ok(openHtml.includes('id="ct_ident_attestation_scope" >'), 'attestation block must show while attestation is on');
 assert.ok(openHtml.includes('id="ct_ident_global_attestation" checked'), 'attestation toggle must reflect the stored opt-in');
 assert.ok(openHtml.includes('Attestation for all targets'), 'attestation title must render');

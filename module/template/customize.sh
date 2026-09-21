@@ -187,7 +187,7 @@ for config_file in spoof_build_vars security_patch.txt target.txt identity_targe
   auto_keybox_check block_invalid_keyboxes random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
-  policy_state_v2.last_good.json debug_logging settings_schema_v3 attestation_status_cache.json; do
+  policy_state_v2.last_good.json debug_logging settings_schema_v3 settings_schema_v4 attestation_status_cache.json; do
   config_path="$CONFIG_DIR/$config_file"
   if [ -e "$config_path" ] || [ -L "$config_path" ]; then
     if [ -L "$config_path" ] || [ ! -f "$config_path" ]; then
@@ -206,7 +206,7 @@ if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
   chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
 fi
 
-for marker_file in settings_schema_v3 global_mode auto_keybox_check block_invalid_keyboxes recommended_defaults_pending spoof_switch_initialized; do
+for marker_file in settings_schema_v3 settings_schema_v4 global_mode auto_keybox_check block_invalid_keyboxes recommended_defaults_pending spoof_switch_initialized; do
   if [ -L "$CONFIG_DIR/$marker_file" ]; then
     abort "! Refusing symlinked configuration marker: $marker_file"
   fi

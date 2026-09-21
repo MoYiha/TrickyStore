@@ -69,6 +69,12 @@ if grep -Fq 'extract "$ZIPFILE" '\''webui-host.sha256'\'' "$MODPATH"' "$CUSTOMIZ
   exit 1
 fi
 
+# settings_schema_v4 must be covered by the secured configuration inventory and
+# the symlink marker validation. Otherwise a dangling symlink passes the
+# existence check and its target gets created or truncated as root.
+grep -Fq 'debug_logging settings_schema_v3 settings_schema_v4 attestation_status_cache.json' "$CUSTOMIZE_TEMPLATE" || { echo 'FAIL: customize.sh must secure settings_schema_v4 in the configuration inventory' >&2; exit 1; }
+grep -Fq 'for marker_file in settings_schema_v3 settings_schema_v4' "$CUSTOMIZE_TEMPLATE" || { echo 'FAIL: customize.sh must reject symlinked settings_schema_v4 before migration' >&2; exit 1; }
+
 echo 'host pin extraction contract test passed'
 
 echo 'installer bootstrap verifier security test passed'

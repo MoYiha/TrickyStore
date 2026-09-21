@@ -1837,6 +1837,9 @@ object Config {
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val GLOBAL_TELEPHONY_MODE_FILE = "global_telephony_mode"
     private const val GLOBAL_ATTESTATION_MODE_FILE = "global_attestation_mode"
+    // Retired: no code reads this marker anymore, but profile cleanup still
+    // removes stragglers left by older versions.
+    private const val GLOBAL_IDENTITY_MODE_FILE = "global_identity_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val TELEPHONY_FILE = "telephony"
     private const val CAMERA_VISIBILITY_FILE = "camera_visibility"
