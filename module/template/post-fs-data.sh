@@ -277,9 +277,10 @@ reconcile_stale_region_persist_props() {
   if optional_marker_enabled regionIdentity spoof_region_cn; then
     return 0
   fi
-  current_machres=$(getprop persist.radio.skhwc_matchres 2>/dev/null) || current_machres=
-  if [ "$current_machres" = "MATCH" ]; then
+  current_machres=$(getprop persist.radio.skhwc_matchres 2>/dev/null) || return 0
+  if [ "$current_machres" = "MATCH" ] && ! resetprop -p --delete persist.radio.skhwc_matchres >/dev/null 2>&1; then
     resetprop --delete persist.radio.skhwc_matchres >/dev/null 2>&1 || return 0
+    return 0
   fi
   rm -f "$applied_marker"
 }
