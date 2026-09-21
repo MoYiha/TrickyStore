@@ -115,7 +115,7 @@ const completeSurfaces = [
     'Restores module settings using the built-in default profile and removes configured remote servers. Stored keyboxes and encrypted backups are not deleted.'
 ];
 
-assert.match(uxSource, /card\.setAttribute\('aria-label', tr\('CleveresTech Telegram community'\)\)/, 'Telegram card aria-label must use the localization owner');
+assert.match(uxSource, /card\.setAttribute\(\s*'aria-label',\s*tr\('CleveresTech Telegram community'\)\)/, 'Telegram card aria-label must use the localization owner');
 assert.match(uxSource, /title\.textContent\s*=\s*tr\('CleveresTech Community'\)/, 'Telegram card title must use the localization owner');
 assert.match(uxSource, /copy\.textContent = tr\('Join our Telegram group for mutual help, testing, discussion, and development of CleveresTricky\.'\)/, 'Telegram card description must use the localization owner');
 assert.match(uxSource, /link\.textContent\s*=\s*tr\('Open Telegram Community'\)/, 'Telegram card action must use the localization owner');
