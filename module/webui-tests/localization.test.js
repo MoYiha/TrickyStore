@@ -122,8 +122,8 @@ assert.match(uxSource, /link\.textContent\s*=\s*tr\('Open Telegram Community'\)/
 assert.match(indexSource, /id="dropZone"[^>]*aria-label="Upload Keybox or CBOX file"/, 'Keybox drop zone must expose a localized accessible name');
 assert.match(policySource, /const\s+secPatchHelp\s*=\s*helpMarkup\('Security Patch is independent from Identity\./, 'Security Patch must expose a card-level What Does This Do help block');
 assert.match(policySource, /const\s+drmHelp\s*=\s*helpMarkup\("DRM App Passthrough keeps configured packages/, 'DRM App Passthrough must expose a card-level What Does This Do help block');
-assert.match(policySource, /secPatchOn,secPatchHelp \+ secPatchChildren/, 'Security Patch help must be attached to its card');
-assert.match(policySource, /drmOn,drmHelp \+ drmChildren/, 'DRM App Passthrough help must be attached to its card');
+assert.match(policySource, /secPatchOn\s*,\s*secPatchHelp\s*\+\s*secPatchChildren/, 'Security Patch help must be attached to its card');
+assert.match(policySource, /drmOn\s*,\s*drmHelp\s*\+\s*drmChildren/, 'DRM App Passthrough help must be attached to its card');
 
 const runtimeGlobal = 'Native runtime is active with 4 verified keyboxes. Global application scope is enabled. Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
 const runtimeTargeted = 'Native runtime is active with 2 verified keyboxes. Targeted mode is enabled, so app rules determine scope. Core boot/TEE compatibility remains active independently of Identity Engine; hardware bootloader and root-of-trust state remain genuine.';
