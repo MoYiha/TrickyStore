@@ -20,7 +20,6 @@ Esta guía cubre la configuración manual de CleveresTricky mediante archivos, s
   * *Comando:* `touch /data/adb/cleverestricky/global_mode` (habilitar) o `rm -f /data/adb/cleverestricky/global_mode` (deshabilitar).
 
 * **`identity_target.txt`**: Paquetes objetivo para la suplantación de identidad del dispositivo.
-* **`global_identity_mode`**: Archivo marcador vacío. Si existe, aplica la suplantación de identidad globalmente.
 
 ---
 

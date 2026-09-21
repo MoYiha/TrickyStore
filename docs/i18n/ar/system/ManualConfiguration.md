@@ -20,7 +20,6 @@
   * *الأمر:* `touch /data/adb/cleverestricky/global_mode` (تفعيل) أو `rm -f /data/adb/cleverestricky/global_mode` (تعطيل).
 
 * **`identity_target.txt`**: التطبيقات المستهدفة لتزييف هوية وبنية الجهاز.
-* **`global_identity_mode`**: ملف علامة لتطبيق تزييف الهوية بشكل عام.
 
 ---
 

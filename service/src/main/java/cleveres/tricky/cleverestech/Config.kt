@@ -149,10 +149,6 @@ object Config {
         private set
 
     @Volatile
-    var isGlobalIdentityMode = false
-        private set
-
-    @Volatile
     var isSpoofEnabled = false
         private set
 
@@ -172,6 +168,10 @@ object Config {
 
     @Volatile
     var isGlobalTelephonyMode = false
+        private set
+
+    @Volatile
+    var isGlobalAttestationMode = false
         private set
 
     @Volatile
@@ -462,11 +462,6 @@ object Config {
 
     private fun updateIdentityTargetPackages(f: File?) =
         runCatching {
-            if (isGlobalIdentityMode) {
-                identityTargetState = IdentityTargetState(PackageTrie())
-                Logger.i("Global Identity mode is enabled, skipping updateIdentityTargetPackages execution.")
-                return@runCatching
-            }
             Logger.d("updateIdentityTargetPackages: reading ${f?.absolutePath} (exists=${f?.exists()})")
             val packages =
                 if (f != null && Files.exists(f.toPath(), LinkOption.NOFOLLOW_LINKS)) {
@@ -803,10 +798,9 @@ object Config {
         Logger.i("Global telephony scope is ${if (isGlobalTelephonyMode) "enabled" else "disabled"}")
     }
 
-    private fun updateGlobalIdentityMode(f: File?) {
-        isGlobalIdentityMode = isRegularFlagFile(f)
-        identityTargetState.cache.clear()
-        Logger.i("Global Identity mode is ${if (isGlobalIdentityMode) "enabled" else "disabled"}")
+    private fun updateGlobalAttestationMode(f: File?) {
+        isGlobalAttestationMode = isRegularFlagFile(f)
+        Logger.i("Global attestation scope is ${if (isGlobalAttestationMode) "enabled" else "disabled"}")
     }
 
     private fun updateSpoofEnabled(f: File?) {
@@ -878,10 +872,7 @@ object Config {
                 updateTargetPackages(File(root, TARGET_FILE))
             }
             GLOBAL_TELEPHONY_MODE_FILE -> updateGlobalTelephonyMode(file)
-            GLOBAL_IDENTITY_MODE_FILE -> {
-                updateGlobalIdentityMode(file)
-                updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE))
-            }
+            GLOBAL_ATTESTATION_MODE_FILE -> updateGlobalAttestationMode(file)
             IDENTITY_TARGET_FILE -> updateIdentityTargetPackages(file)
             TEE_BROKEN_MODE_FILE -> {
                 updateTeeBrokenMode(file)
@@ -1040,7 +1031,14 @@ object Config {
             AppPrivacyMode.INHERIT -> Unit
         }
         val global = attestationIds[tag]
-        if (global != null) return global
+        // Shared attestation identifiers follow explicit selection: any app
+        // rule, identity targeting, a matched assignment with attestation
+        // resolved on, or the dedicated blanket opt-in. Per-rule template
+        // values below stay available to explicitly configured apps either way.
+        val selected = getAppConfig(uid) != null || isIdentityTargeted(uid) ||
+            PolicyState.hasExplicitFeatureAssignment(uid, PolicyState.Feature.ATTESTATION_IDENTITY)
+        if (global != null && (isGlobalAttestationMode || selected)) return global
+        if (!selected && !isGlobalAttestationMode) return null
         val value = getBuildVar(tag, uid) ?: return null
         return stringToBytesCache.getOrPut(value) { value.toByteArray(Charsets.UTF_8) }
             .also { if (stringToBytesCache.size > MAX_BUILD_VAR_ENTRIES) stringToBytesCache.clear() }
@@ -1838,7 +1836,7 @@ object Config {
     private const val BUILD_IDENTITY_FILE = "spoof_build_identity"
     private const val GLOBAL_MODE_FILE = "global_mode"
     private const val GLOBAL_TELEPHONY_MODE_FILE = "global_telephony_mode"
-    private const val GLOBAL_IDENTITY_MODE_FILE = "global_identity_mode"
+    private const val GLOBAL_ATTESTATION_MODE_FILE = "global_attestation_mode"
     private const val TEE_BROKEN_MODE_FILE = "tee_broken_mode"
     private const val TELEPHONY_FILE = "telephony"
     private const val CAMERA_VISIBILITY_FILE = "camera_visibility"
@@ -2052,7 +2050,6 @@ object Config {
                 SecureFile.touch(File(root, SPOOF_ENABLED_FILE), 384)
                 SecureFile.touch(File(root, BUILD_IDENTITY_FILE), 384)
                 SecureFile.touch(File(root, GLOBAL_MODE_FILE), 384)
-                SecureFile.touch(File(root, GLOBAL_IDENTITY_MODE_FILE), 384)
                 removeConfigFiles(TEE_BROKEN_MODE_FILE, BootLogic.FILE_HIDE_PROPS, BootLogic.FILE_SPOOF_CN, DRM_PASSTHROUGH_FILE)
                 SecureFile.touch(File(root, RANDOM_ON_BOOT_FILE), 384)
                 SecureFile.touch(File(root, SPOOF_BUILD_VARS_FILE), 384)
@@ -2093,7 +2090,6 @@ object Config {
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
-        updateGlobalIdentityMode(File(root, GLOBAL_IDENTITY_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
         updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
@@ -2204,7 +2200,6 @@ object Config {
                 SPOOF_ENABLED_FILE -> { updateSpoofEnabled(f); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
                 BUILD_IDENTITY_FILE -> updateBuildIdentity(f)
                 GLOBAL_MODE_FILE -> { updateGlobalMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
-                GLOBAL_IDENTITY_MODE_FILE -> { updateGlobalIdentityMode(f); updateIdentityTargetPackages(File(root, IDENTITY_TARGET_FILE)) }
                 TEE_BROKEN_MODE_FILE -> { updateTeeBrokenMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
                 TELEPHONY_FILE -> updateTelephony(f)
                 CAMERA_VISIBILITY_FILE -> updateCameraVisibility(f)
@@ -2246,7 +2241,8 @@ object Config {
         updateSpoofEnabled(File(root, SPOOF_ENABLED_FILE))
         updateBuildIdentity(File(root, BUILD_IDENTITY_FILE))
         updateGlobalMode(File(root, GLOBAL_MODE_FILE))
-        updateGlobalIdentityMode(File(root, GLOBAL_IDENTITY_MODE_FILE))
+        updateGlobalTelephonyMode(File(root, GLOBAL_TELEPHONY_MODE_FILE))
+        updateGlobalAttestationMode(File(root, GLOBAL_ATTESTATION_MODE_FILE))
         updateTeeBrokenMode(File(root, TEE_BROKEN_MODE_FILE))
         updateTelephony(File(root, TELEPHONY_FILE))
         updateCameraVisibility(File(root, CAMERA_VISIBILITY_FILE))
@@ -2544,10 +2540,6 @@ object Config {
     fun isIdentityTargeted(callingUid: Int): Boolean {
         if (callingUid < FIRST_APPLICATION_UID) return false
         if (isProtectedInfrastructureUid(callingUid)) return false
-        if (isGlobalIdentityMode) {
-            val packages = getPackages(callingUid)
-            return packages.isNotEmpty()
-        }
         if (getAppConfig(callingUid) != null) return true
         val state = identityTargetState
         val cached = getCachedDecision(state.cache, callingUid)
@@ -2574,7 +2566,6 @@ object Config {
         targetState = TargetState(PackageTrie())
         identityTargetState = IdentityTargetState(PackageTrie())
         isGlobalMode = false
-        isGlobalIdentityMode = false
         rkpInfrastructureCache.clear()
         buildVars = emptyMap()
         attestationIds = emptyMap()
@@ -2593,6 +2584,7 @@ object Config {
         isTeeBrokenMode = false
         isTelephonyEnabled = false
         isGlobalTelephonyMode = false
+        isGlobalAttestationMode = false
         isCameraVisibilityEnabled = false
         isRkpPassthroughEnabled = false
         isDrmPassthroughEnabled = false

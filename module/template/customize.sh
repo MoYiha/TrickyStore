@@ -183,7 +183,7 @@ for legacy_webui_file in web_port web_token.txt; do
 done
 
 for config_file in spoof_build_vars security_patch.txt target.txt identity_target.txt drm_packages.txt boot_props_mode \
-  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode global_identity_mode global_telephony_mode tee_broken_mode \
+  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode global_identity_mode global_telephony_mode global_attestation_mode tee_broken_mode \
   auto_keybox_check block_invalid_keyboxes random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
@@ -231,6 +231,26 @@ if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   chown 0:0 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not set settings migration marker ownership"
 fi
 
+if [ ! -e "$CONFIG_DIR/settings_schema_v4" ]; then
+  ui_print "- Migrating identity scope to per-domain global switches"
+  if [ -L "$CONFIG_DIR/global_identity_mode" ]; then
+    abort "! Refusing symlinked legacy global identity marker"
+  fi
+  if [ -f "$CONFIG_DIR/global_identity_mode" ]; then
+    for scope_marker in global_telephony_mode global_attestation_mode; do
+      if [ ! -e "$CONFIG_DIR/$scope_marker" ] && [ ! -L "$CONFIG_DIR/$scope_marker" ]; then
+        : > "$CONFIG_DIR/$scope_marker" || abort "! Could not preserve global identity scope: $scope_marker"
+        chmod 600 "$CONFIG_DIR/$scope_marker" || abort "! Could not secure global identity scope: $scope_marker"
+        chown 0:0 "$CONFIG_DIR/$scope_marker" || abort "! Could not set global identity scope ownership: $scope_marker"
+      fi
+    done
+    rm -f "$CONFIG_DIR/global_identity_mode" || abort "! Could not retire the legacy global identity marker"
+  fi
+  : > "$CONFIG_DIR/settings_schema_v4" || abort "! Could not write settings migration marker"
+  chmod 600 "$CONFIG_DIR/settings_schema_v4" || abort "! Could not secure settings migration marker"
+  chown 0:0 "$CONFIG_DIR/settings_schema_v4" || abort "! Could not set settings migration marker ownership"
+fi
+
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
   ui_print "- Applying recommended default settings"
   [ -e "$CONFIG_DIR/global_mode" ] || : > "$CONFIG_DIR/global_mode" \
@@ -256,6 +276,10 @@ fi
 chmod 600 "$CONFIG_DIR/spoof_switch_initialized" || abort "! Could not secure migration marker"
 [ ! -e "$CONFIG_DIR/global_mode" ] || chmod 600 "$CONFIG_DIR/global_mode" \
   || abort "! Could not secure Global Mode switch"
+[ ! -e "$CONFIG_DIR/global_telephony_mode" ] || chmod 600 "$CONFIG_DIR/global_telephony_mode" \
+  || abort "! Could not secure global telephony scope switch"
+[ ! -e "$CONFIG_DIR/global_attestation_mode" ] || chmod 600 "$CONFIG_DIR/global_attestation_mode" \
+  || abort "! Could not secure global attestation scope switch"
 [ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chmod 600 "$CONFIG_DIR/auto_keybox_check" \
   || abort "! Could not secure automatic keybox checking"
 [ ! -e "$CONFIG_DIR/block_invalid_keyboxes" ] || chmod 600 "$CONFIG_DIR/block_invalid_keyboxes" \
@@ -324,8 +348,10 @@ chown 0:0 "$CONFIG_DIR/spoof_build_vars" "$CONFIG_DIR/security_patch.txt" \
   || abort "! Could not set configuration file ownership"
 [ ! -e "$CONFIG_DIR/global_mode" ] || chown 0:0 "$CONFIG_DIR/global_mode" \
   || abort "! Could not set Global Mode switch ownership"
-[ ! -e "$CONFIG_DIR/global_identity_mode" ] || chown 0:0 "$CONFIG_DIR/global_identity_mode" \
-  || abort "! Could not set Global Identity Mode switch ownership"
+[ ! -e "$CONFIG_DIR/global_telephony_mode" ] || chown 0:0 "$CONFIG_DIR/global_telephony_mode" \
+  || abort "! Could not set global telephony scope ownership"
+[ ! -e "$CONFIG_DIR/global_attestation_mode" ] || chown 0:0 "$CONFIG_DIR/global_attestation_mode" \
+  || abort "! Could not set global attestation scope ownership"
 [ ! -e "$CONFIG_DIR/auto_keybox_check" ] || chown 0:0 "$CONFIG_DIR/auto_keybox_check" \
   || abort "! Could not set keybox revocation switch ownership"
 [ ! -e "$CONFIG_DIR/block_invalid_keyboxes" ] || chown 0:0 "$CONFIG_DIR/block_invalid_keyboxes" \

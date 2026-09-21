@@ -20,7 +20,6 @@
   * *Команда:* `touch /data/adb/cleverestricky/global_mode` (включить) или `rm -f /data/adb/cleverestricky/global_mode` (отключить).
 
 * **`identity_target.txt`**: Целевые пакеты для подмены идентификаторов устройства.
-* **`global_identity_mode`**: Пустой файл-маркер для глобального применения подмены идентификаторов.
 
 ---
 

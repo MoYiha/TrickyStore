@@ -20,7 +20,6 @@
   * *कमांड:* `touch /data/adb/cleverestricky/global_mode` (सक्षम करें) या `rm -f /data/adb/cleverestricky/global_mode` (अक्षम करें)।
 
 * **`identity_target.txt`**: डिवाइस पहचान स्पूफिंग के लिए लक्षित ऐप्स।
-* **`global_identity_mode`**: पहचान स्पूफिंग को विश्व स्तर पर लागू करने के लिए मार्कर फ़ाइल।
 
 ---
 

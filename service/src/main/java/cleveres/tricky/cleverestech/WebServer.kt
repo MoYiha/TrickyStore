@@ -3107,6 +3107,7 @@ class WebServer(
                 "spoof_build_identity",
                 "global_mode",
                 "global_telephony_mode",
+                "global_attestation_mode",
                 "auto_keybox_check",
                 "block_invalid_keyboxes",
                 "random_on_boot",
@@ -3114,7 +3115,6 @@ class WebServer(
                 "telephony",
                 "camera_visibility",
                 "drm_passthrough",
-                "global_identity_mode",
             )
         private val EDITABLE_CONFIG_FILES =
             setOf(
@@ -3142,9 +3142,9 @@ class WebServer(
                 "custom_templates",
                 "spoof_enabled",
                 "spoof_build_identity",
-                "global_identity_mode",
                 "global_mode",
                 "global_telephony_mode",
+                "global_attestation_mode",
                 "tee_broken_mode",
                 "auto_keybox_check",
                 "block_invalid_keyboxes",

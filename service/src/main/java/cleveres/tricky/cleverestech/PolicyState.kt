@@ -824,7 +824,18 @@ object PolicyState {
      * provisioning packages keep genuine subscriber values even under global
      * mode. An explicit false override is honored as an opt-out.
      */
-    internal fun hasExplicitTelephonyAssignment(uid: Int): Boolean {
+    internal fun hasExplicitTelephonyAssignment(uid: Int): Boolean =
+        hasExplicitFeatureAssignment(uid, Feature.TELEPHONY_IDENTITY)
+
+    /**
+     * Whether the uid's packages explicitly matched a profile assignment
+     * whose resolved flag for the feature is set. The top-level toggle and
+     * the active-profile fallback never select a uid on their own.
+     */
+    internal fun hasExplicitFeatureAssignment(
+        uid: Int,
+        feature: Feature,
+    ): Boolean {
         val current = snapshot
         if (!current.explicit) return false
         val packages = Config.getPackages(uid)
@@ -832,7 +843,7 @@ object PolicyState {
         val selection = selectProfile(packages, current)
         val profile = selection.profile ?: return false
         if (selection.matchedRule == null) return false
-        return featuresForProfile(profile, current).telephonyIdentity
+        return featuresForProfile(profile, current).enabled(feature)
     }
 
     fun hasDrmProfileWork(): Boolean {
