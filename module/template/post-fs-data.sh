@@ -76,9 +76,6 @@ boot_policy_feature_enabled() {
   feature=$1
   state="$CONFIG_DIR/boot_policy_state"
 
-  # Upgrades may have v2 policy before the managed service has emitted its first
-  # projection. In that case fail closed instead of treating a profile-derived
-  # legacy marker as global policy. Legacy-only installations keep marker fallback.
   if [ ! -e "$state" ] && [ ! -L "$state" ]; then
     legacy_state="$CONFIG_DIR/policy_state_v2.json"
     if [ -e "$legacy_state" ] || [ -L "$legacy_state" ]; then

@@ -17,6 +17,18 @@ const uxSource = fs.readFileSync(
   'utf8',
 );
 
+function normalizeCssContract(source) {
+  return source
+    .replace(/\s+/g, ' ')
+    .replace(/\s*{\s*/g, '{')
+    .replace(/\s*}\s*/g, '}')
+    .trim();
+}
+
+const indexCssSource = normalizeCssContract(indexSource);
+const policyCssSource = normalizeCssContract(policySource);
+const uxCssSource = normalizeCssContract(uxSource);
+
 for (const id of ['srvContentPassword', 'srvContentPublicKey', 'kbFilenameInput']) {
   assert.match(
     indexSource,
@@ -36,37 +48,37 @@ for (const [id, label] of [
 }
 
 assert.match(
-  policySource,
+  policyCssSource,
   /\.ct-help summary\{[^}]*min-height:44px/s,
   'generated help summaries must retain a mobile-sized touch target',
 );
 assert.match(
-  policySource,
+  policyCssSource,
   /\.ct-chip button\{[^}]*min-width:44px[^}]*min-height:44px/s,
   'profile chip remove actions must retain a mobile-sized touch target',
 );
 assert.doesNotMatch(
-  policySource,
+  policyCssSource,
   /\.ct-chip-option\{/,
   'profile chip target styling must use the generated button selector',
 );
 assert.match(
-  uxSource,
-  /#ct_keyboxhub_hint \.ct-keyboxhub-action \{[^}]*min-height:44px/s,
+  uxCssSource,
+  /#ct_keyboxhub_hint \.ct-keyboxhub-action\s*\{[^}]*min-height:44px/s,
   'KeyboxHub action must retain a mobile-sized touch target',
 );
 assert.match(
-  uxSource,
-  /row\.style\.cssText = '[^']*min-height:44px/s,
+  uxCssSource,
+  /row\.style\.cssText\s*=\s*'[^']*min-height:44px/s,
   'ZIP confirmation label row must provide a full-size clickable target',
 );
 assert.match(
-  uxSource,
-  /#ct_debug_panel \.row \{[^}]*flex-direction:\s*row\s*!important/s,
+  uxCssSource,
+  /#ct_debug_panel \.row\s*\{[^}]*flex-direction:\s*row\s*!important/s,
   'Debug logging panel row must retain horizontal flex layout',
 );
 assert.match(
-  uxSource,
+  uxCssSource,
   /#ct_debug_panel \.row > input\[type="checkbox"\]\s*\{[^}]*flex:\s*0 0 48px\s*!important/s,
   'Debug logging switch must retain fixed width dimensions',
 );
@@ -91,12 +103,12 @@ assert.doesNotMatch(
   'Donate tab must not force transparent background',
 );
 assert.match(
-  indexSource,
+  indexCssSource,
   /select\s*\{[^}]*appearance:\s*none/s,
   'select elements must use appearance: none with custom chevron arrow',
 );
 assert.match(
-  indexSource,
+  indexCssSource,
   /select\s*\{[^}]*background-position:\s*right 14px center/s,
   'select elements must position down chevron with right margin',
 );
@@ -106,22 +118,22 @@ assert.doesNotMatch(
   'Dashboard must not contain obsolete status-grid',
 );
 assert.match(
-  indexSource,
+  indexCssSource,
   /::selection\s*\{[^}]*background-color:\s*rgba\(10,\s*132,\s*255/s,
   'theme selection styling must use accent color',
 );
 assert.match(
-  indexSource,
+  indexCssSource,
   /button\s*\{[^}]*text-align:\s*center/s,
   'buttons must center text alignment',
 );
 assert.match(
-  uxSource,
+  uxCssSource,
   /#ct_diagnostics_copy\s*\{[^}]*text-align:\s*center/s,
   'diagnostics copy button must explicitly center text',
 );
 assert.match(
-  uxSource,
+  uxCssSource,
   /#storedKeyboxesList\s+\.ct-keybox-item[^}]*flex-wrap:\s*nowrap/s,
   'stored keyboxes rows must prevent vertical wrap squeezing',
 );
@@ -136,7 +148,7 @@ assert.match(
   'diagnostics copy button must justify-content center',
 );
 assert.doesNotMatch(
-  uxSource,
+  uxCssSource,
   /#ct_diagnostics_panel \.row > \*,/s,
   'diagnostics row children must not have padding-right stripped',
 );

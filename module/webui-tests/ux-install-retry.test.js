@@ -5,14 +5,14 @@ const vm = require('vm');
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
 
 function sliceIife(marker, endMarker) {
-  const start = source.indexOf(marker);
+  const start = source.search(marker);
   const end = source.indexOf(endMarker, start);
   assert.ok(start >= 0 && end > start, `missing UX IIFE: ${marker}`);
   return source.slice(start, end + endMarker.length);
 }
 
-const zipSource = sliceIife('// ZIP keybox import UX;', '})(window);');
-const keyboxSource = sliceIife('// Source-aware Stored Keyboxes and Verification UX.', '})(window);');
+const zipSource = sliceIife(/\(function\s*\(global\)\s*\{\s*'use strict';\s*const\s+MAX_SUPPORTED_FILES\s*=/, '})(window);');
+const keyboxSource = sliceIife(/\(function\s*\(global\)\s*\{\s*'use strict';\s*if\s*\(typeof\s+document\s*===\s*'undefined'\)\s*return;\s*const\s+PAGE_SIZE\s*=/, '})(window);');
 
 function createTimerContext(document) {
   const timers = [];

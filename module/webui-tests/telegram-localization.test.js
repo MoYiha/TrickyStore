@@ -3,11 +3,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const exposeMarker = '    global.CleveresI18n = Object.freeze({';
-assert.ok(source.includes(exposeMarker), 'UX localization export marker is missing');
+const exposeMarker = /global\.CleveresI18n\s*=\s*Object\.freeze\(\{/;
+assert.ok(exposeMarker.test(source), 'UX localization export marker is missing');
 const instrumentedSource = source.replace(
   exposeMarker,
-  '    global.__testEnsureFooterOrder = ensureFooterOrder;\n' + exposeMarker,
+  'global.__testEnsureFooterOrder = ensureFooterOrder;\nglobal.CleveresI18n = Object.freeze({',
 );
 
 function node(text = '') {

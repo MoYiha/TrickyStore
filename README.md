@@ -5,9 +5,9 @@
 [![Release](https://img.shields.io/github/v/release/tryigit/CleveresTricky?display_name=tag&sort=semver&label=Release)](https://github.com/tryigit/CleveresTricky/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/tryigit/CleveresTricky/total?color=0A84FF&label=Downloads)](https://github.com/tryigit/CleveresTricky/releases)
 ![Android](https://img.shields.io/badge/Android-12--17-3DDC84?logo=android&logoColor=white)
-![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch-6f42c1)
+![Module](https://img.shields.io/badge/Module-KernelSU%20%7C%20APatch%20%7C%20Magisk-6f42c1)
 
-CleveresTricky is a KernelSU and APatch module for Android 12-17. It brings Android keystore and attestation compatibility, Keybox/CBOX management, application targeting, optional identity controls, patch-level controls, and privacy tools into one mobile WebUI.
+CleveresTricky is a KernelSU, APatch, and Magisk module for Android 12-17. It brings Android keystore and attestation compatibility, Keybox/CBOX management, application targeting, optional identity controls, patch-level controls, and privacy tools into one mobile WebUI.
 
 Start with the defaults and enable only the features you actually need.
 
@@ -17,13 +17,13 @@ Start with the defaults and enable only the features you actually need.
 - Use Global Mode or target individual applications with per-app rules.
 - Configure optional device/build, attestation, telephony, region, and security patch presentation.
 - Protect Remote Key Provisioning flows and reduce supported DRM identifier exposure without pretending to bypass DRM.
-- Back up settings, inspect effective state, and collect diagnostics from the WebUI or module Action.
+- Back up settings, inspect effective state, and collect diagnostics from the WebUI Logs page or by running `/data/adb/modules/cleverestricky/emergency-report.sh`.
 
 ## Quick start
 
 1. Download the latest release ZIP from the official [Releases](https://github.com/tryigit/CleveresTricky/releases/latest) page.
-2. Install the ZIP from KernelSU or APatch while Android is running.
-3. Open the CleveresTricky WebUI from your module manager.
+2. Install the ZIP from KernelSU, APatch, or Magisk while Android is running.
+3. Open the CleveresTricky WebUI from your module manager (on Magisk, from the module Action button).
 4. Add only a **Keybox or CBOX** that you own or are authorized to test.
 5. Keep the default setup first, then enable identity, application rules, or privacy options only when needed.
 
@@ -33,10 +33,7 @@ No usable Keybox or private attestation key is bundled with the project.
 
 - Android **12-17** / API **31-37**
 - **ARM64** and **x86-64**
-- **KernelSU** and **APatch** (recommended, full WebUI support)
-- **Magisk** (headless / manual configuration via `/data/adb/cleverestricky/`, [not recommended](https://tryigit.dev/advanced-android-root-architecture-concealment/))
-
-Recovery installation is not supported.
+- **KernelSU**, **APatch**, and **Magisk**
 
 ## Important to know
 
@@ -49,7 +46,6 @@ Use only configuration and credentials that you are authorized to use.
 ## Learn more
 
 - [Strong Integrity Guide](docs/security/StrongIntegrityGuide.md) - quick-start guide to passing Google Play Integrity (MEETS_STRONG_INTEGRITY) across Official, AOSP, and Custom ROMs.
-- [Magisk Support Guide](docs/system/Magisk.md) - headless manual configuration and root concealment guidance for Magisk users.
 - [Keybox Manager](docs/security/KeyboxManager.md) - Keybox/CBOX loading, verification, selection, and revocation checks.
 - [Application Scope](docs/identity/ApplicationScope.md) and [Application Rules](docs/identity/ApplicationRules.md) - choose where features apply.
 - [Build Identity](docs/identity/BuildIdentity.md), [Telephony Identity](docs/identity/TelephonyIdentity.md), and [Patch Levels](docs/identity/PatchLevels.md) - optional identity controls.
@@ -59,7 +55,7 @@ Use only configuration and credentials that you are authorized to use.
 
 ## Need help?
 
-Use the **Logs** page in the WebUI or the module **Action** to create an emergency diagnostic report. Review the archive before sharing it because diagnostics can contain device and system information.
+Use the **Logs** page in the WebUI or run `/data/adb/modules/cleverestricky/emergency-report.sh` to create an emergency diagnostic report. Review the archive before sharing it because diagnostics can contain device and system information.
 
 See [Diagnostics](docs/system/Diagnostics.md) for common problems and troubleshooting steps.
 

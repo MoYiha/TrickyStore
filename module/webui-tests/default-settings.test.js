@@ -27,7 +27,7 @@ assert.strictEqual(policy.blockInvalidKeyboxes, true);
 assert.deepStrictEqual(policy.keyboxPriorityOrder, { mode: 'default' });
 
 const installer = fs.readFileSync(path.join(templateRoot, 'customize.sh'), 'utf8');
-const start = installer.indexOf('# Fresh installs use the recommended minimal default:');
+const start = installer.indexOf('ui_print "- Applying recommended default settings"');
 const end = installer.indexOf('if [ ! -f "$CONFIG_DIR/spoof_build_vars" ]', start);
 assert.ok(start >= 0 && end > start, 'recommended default installer block must exist');
 const defaultsBlock = installer.slice(start, end);

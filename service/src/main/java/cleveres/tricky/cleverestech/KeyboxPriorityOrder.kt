@@ -7,31 +7,69 @@ import org.json.JSONObject
 
 enum class KeyboxPriorityCategory {
     VALID_RKP,
+    VALID_RKP_SERVER,
     VALID_STRONGBOX,
+    VALID_STRONGBOX_SERVER,
     VALID_TEE,
+    VALID_TEE_SERVER,
     VALID_UNKNOWN,
+    VALID_UNKNOWN_SERVER,
     INVALID_EXPIRED_RKP,
+    INVALID_EXPIRED_RKP_SERVER,
     INVALID_EXPIRED_STRONGBOX,
+    INVALID_EXPIRED_STRONGBOX_SERVER,
     INVALID_EXPIRED_TEE,
+    INVALID_EXPIRED_TEE_SERVER,
     INVALID_EXPIRED_UNKNOWN,
+    INVALID_EXPIRED_UNKNOWN_SERVER,
     INVALID_REVOKED_RKP,
+    INVALID_REVOKED_RKP_SERVER,
     INVALID_REVOKED_STRONGBOX,
+    INVALID_REVOKED_STRONGBOX_SERVER,
     INVALID_REVOKED_TEE,
+    INVALID_REVOKED_TEE_SERVER,
     INVALID_REVOKED_UNKNOWN,
+    INVALID_REVOKED_UNKNOWN_SERVER,
     INVALID_VERIFICATION_FAILED_RKP,
+    INVALID_VERIFICATION_FAILED_RKP_SERVER,
     INVALID_VERIFICATION_FAILED_STRONGBOX,
+    INVALID_VERIFICATION_FAILED_STRONGBOX_SERVER,
     INVALID_VERIFICATION_FAILED_TEE,
+    INVALID_VERIFICATION_FAILED_TEE_SERVER,
     INVALID_VERIFICATION_FAILED_UNKNOWN,
+    INVALID_VERIFICATION_FAILED_UNKNOWN_SERVER,
     ;
 
     companion object {
         val DEFAULT_ORDER: List<KeyboxPriorityCategory> = entries.toList()
 
-        // The six categories exposed in the WebUI custom-order list. StrongBox and
-        // Unknown levels plus always-blocked verification failures stay valid enum
-        // values, but the UI only exposes RKP/TEE combined with the eligible
-        // invalid reasons (Valid, Expired, Revoked).
+        // The twelve categories exposed in the WebUI custom-order list. StrongBox
+        // and Unknown levels plus always-blocked verification failures stay valid
+        // enum values, but the UI only exposes RKP/TEE combined with the eligible
+        // invalid reasons (Valid, Expired, Revoked), each in a local and a server
+        // variant. Within one validity/level group the local tier sorts before
+        // the server tier, matching the historical stable order where stored and
+        // CBOX sources precede remote content.
         val UI_ORDER: List<KeyboxPriorityCategory> =
+            listOf(
+                VALID_RKP,
+                VALID_RKP_SERVER,
+                VALID_TEE,
+                VALID_TEE_SERVER,
+                INVALID_EXPIRED_RKP,
+                INVALID_EXPIRED_RKP_SERVER,
+                INVALID_EXPIRED_TEE,
+                INVALID_EXPIRED_TEE_SERVER,
+                INVALID_REVOKED_RKP,
+                INVALID_REVOKED_RKP_SERVER,
+                INVALID_REVOKED_TEE,
+                INVALID_REVOKED_TEE_SERVER,
+            )
+
+        // Legacy orders saved before server tiers existed. They contain only the
+        // local (unsuffixed) names and are migrated by expanding every entry to
+        // its local/server pair, preserving the saved relative order.
+        val LEGACY_UI_ORDER: List<KeyboxPriorityCategory> =
             listOf(
                 VALID_RKP,
                 VALID_TEE,
@@ -41,16 +79,57 @@ enum class KeyboxPriorityCategory {
                 INVALID_REVOKED_TEE,
             )
 
-        // Expands a UI six-permutation to the full deterministic order by appending
-        // the remaining categories in default relative order. Full permutations
-        // pass through unchanged.
-        fun expandToFullOrder(order: List<KeyboxPriorityCategory>): List<KeyboxPriorityCategory> =
-            (order + DEFAULT_ORDER).distinct()
+        val LEGACY_FULL_ORDER: List<KeyboxPriorityCategory> =
+            DEFAULT_ORDER.filter { !it.name.endsWith("_SERVER") }
+
+        const val SERVER_FILENAME_PREFIX = "server_"
+
+        @JvmStatic
+        fun isServerKeyboxFilename(filename: String): Boolean = filename.startsWith(SERVER_FILENAME_PREFIX)
+
+        @JvmStatic
+        fun isServerKeybox(box: CertHack.KeyBox?): Boolean {
+            if (box == null) return false
+            return isServerKeyboxFilename(box.filename())
+        }
+
+        // Expands a UI twelve-permutation to the full deterministic order by
+        // appending the remaining categories in default relative order. Full
+        // permutations pass through unchanged. Legacy six/sixteen permutations
+        // migrate first by expanding every entry to its local/server pair.
+        fun expandToFullOrder(order: List<KeyboxPriorityCategory>): List<KeyboxPriorityCategory> {
+            val migrated = migrateLegacyOrder(order)
+            return (migrated + DEFAULT_ORDER).distinct()
+        }
+
+        internal fun migrateLegacyOrder(order: List<KeyboxPriorityCategory>): List<KeyboxPriorityCategory> {
+            if (order.any { it.name.endsWith("_SERVER") }) return order
+            if (order.toSet() != LEGACY_UI_ORDER.toSet() && order.toSet() != LEGACY_FULL_ORDER.toSet()) {
+                return order
+            }
+            val expanded = ArrayList<KeyboxPriorityCategory>(order.size * 2)
+            for (category in order) {
+                expanded.add(category)
+                try {
+                    expanded.add(valueOf("${category.name}_SERVER"))
+                } catch (_: IllegalArgumentException) {
+                    return order
+                }
+            }
+            return expanded
+        }
 
         fun fromValidityAndLevel(
             validityState: KeyboxVerifier.ValidityState,
             invalidReason: KeyboxVerifier.InvalidReason?,
             securityLevel: String,
+        ): KeyboxPriorityCategory = fromValidityLevelAndOrigin(validityState, invalidReason, securityLevel, false)
+
+        fun fromValidityLevelAndOrigin(
+            validityState: KeyboxVerifier.ValidityState,
+            invalidReason: KeyboxVerifier.InvalidReason?,
+            securityLevel: String,
+            isServer: Boolean,
         ): KeyboxPriorityCategory {
             val levelSuffix = when (securityLevel) {
                 "RKP" -> "RKP"
@@ -58,20 +137,21 @@ enum class KeyboxPriorityCategory {
                 "TEE" -> "TEE"
                 else -> "UNKNOWN"
             }
-            return when {
+            val base = when {
                 validityState == KeyboxVerifier.ValidityState.VALID -> {
-                    valueOf("VALID_$levelSuffix")
+                    "VALID_$levelSuffix"
                 }
                 invalidReason == KeyboxVerifier.InvalidReason.EXPIRED -> {
-                    valueOf("INVALID_EXPIRED_$levelSuffix")
+                    "INVALID_EXPIRED_$levelSuffix"
                 }
                 invalidReason == KeyboxVerifier.InvalidReason.REVOKED -> {
-                    valueOf("INVALID_REVOKED_$levelSuffix")
+                    "INVALID_REVOKED_$levelSuffix"
                 }
                 else -> {
-                    valueOf("INVALID_VERIFICATION_FAILED_$levelSuffix")
+                    "INVALID_VERIFICATION_FAILED_$levelSuffix"
                 }
             }
+            return if (isServer) valueOf("${base}_SERVER") else valueOf(base)
         }
     }
 }
@@ -114,7 +194,9 @@ data class KeyboxPriorityPreference(
                 val customOrder = if (mode == Mode.CUSTOM) {
                     if (orderArray == null ||
                         (orderArray.length() != KeyboxPriorityCategory.DEFAULT_ORDER.size &&
-                            orderArray.length() != KeyboxPriorityCategory.UI_ORDER.size)
+                            orderArray.length() != KeyboxPriorityCategory.UI_ORDER.size &&
+                            orderArray.length() != KeyboxPriorityCategory.LEGACY_FULL_ORDER.size &&
+                            orderArray.length() != KeyboxPriorityCategory.LEGACY_UI_ORDER.size)
                     ) {
                         Logger.w("Invalid custom priority order: incomplete; falling back to default")
                         return DEFAULT
@@ -129,15 +211,23 @@ data class KeyboxPriorityPreference(
                             return DEFAULT
                         }
                     }
-                    // Full 16-permutations keep working; the UI submits the six
-                    // exposed categories, which effectiveOrder expands.
-                    if (parsed.toSet() != KeyboxPriorityCategory.DEFAULT_ORDER.toSet() &&
-                        parsed.toSet() != KeyboxPriorityCategory.UI_ORDER.toSet()
-                    ) {
-                        Logger.w("Invalid custom priority order: duplicate or missing category; falling back to default")
-                        return DEFAULT
+                    // Full 32-permutations and UI twelve-permutations pass through;
+                    // the UI list expands via effectiveOrder. Legacy six/sixteen
+                    // permutations migrate by expanding every entry to its
+                    // local/server pair so saved orders keep working.
+                    val parsedSet = parsed.toSet()
+                    val migrated = KeyboxPriorityCategory.migrateLegacyOrder(parsed)
+                    val accepted = when {
+                        parsedSet == KeyboxPriorityCategory.DEFAULT_ORDER.toSet() -> parsed.toList()
+                        parsedSet == KeyboxPriorityCategory.UI_ORDER.toSet() -> parsed.toList()
+                        parsedSet == KeyboxPriorityCategory.LEGACY_FULL_ORDER.toSet() ||
+                            parsedSet == KeyboxPriorityCategory.LEGACY_UI_ORDER.toSet() -> migrated
+                        else -> {
+                            Logger.w("Invalid custom priority order: duplicate or missing category; falling back to default")
+                            return DEFAULT
+                        }
                     }
-                    parsed.toList()
+                    accepted
                 } else {
                     emptyList()
                 }
@@ -198,8 +288,12 @@ object KeyboxPriorityOrder {
             val validity = entry?.validityState ?: KeyboxVerifier.ValidityState.VALID
             val reason = entry?.invalidReason
             // Publish-cached level: no PKIX validation or native inspection per call.
+            // Origin is a filename-prefix check only, so the hot path stays free of
+            // syscalls and crypto. Remote content always carries the server_ prefix
+            // from ServerManager; a local file with that prefix sorts as server tier.
             val level = CertHack.cachedPriorityLevel(box)
-            KeyboxPriorityCategory.fromValidityAndLevel(validity, reason, level)
+            val isServer = KeyboxPriorityCategory.isServerKeybox(box)
+            KeyboxPriorityCategory.fromValidityLevelAndOrigin(validity, reason, level, isServer)
         }
     }
 }

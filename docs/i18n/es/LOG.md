@@ -30,16 +30,19 @@ La WebUI ofrece la forma más rápida y sencilla de recopilar diagnósticos sin 
 
 ---
 
-## Método 2: Archivo de Informe de Emergencia en un Clic (`action.sh`)
+## Método 2: Archivo de Informe de Emergencia en un Clic (`emergency-report.sh`)
 
 CleveresTricky incluye una herramienta automatizada que empaqueta registros del sistema, estado del módulo e información del entorno de root en un archivo comprimido (`.tar.gz`).
 
-### Desde el Administrador de Root:
-- En **KernelSU** o **APatch**, pulsa el botón **Acción (Action)** junto a la tarjeta del módulo CleveresTricky.
+> [!NOTE]
+> En Magisk, el botón **Action** del módulo abre la WebUI (mediante la app anfitriona independiente). En KernelSU/APatch ejecuta este informe.
+
+### Desde el Administrador de Root (KernelSU / APatch):
+- Pulse el botón **Action** junto a la tarjeta del módulo CleveresTricky.
 
 ### Desde la Terminal (Termux / Shell de Root):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### Ubicación del Informe:
@@ -115,5 +118,5 @@ Esto indica que el TEE por hardware del dispositivo o la HAL KeyMint del fabrica
 
 Al abrir una incidencia en GitHub, por favor incluye:
 1. **Instantánea de Diagnóstico de Soporte** (desde la pestaña Información de la WebUI)
-2. **Registros** (de la pestaña Logs con Debug Logging activo, archivo `action.sh` o salida de logcat)
+2. **Registros** (de la pestaña Logs con Debug Logging activo, archivo `emergency-report.sh` o salida de logcat)
 3. Modelo del dispositivo, versión de Android y método de Root (KernelSU / APatch / Magisk)

@@ -7,10 +7,10 @@ const start = source.indexOf('async function performLegacyToggle');
 const end = source.indexOf('function installFeatureCenter()', start);
 assert.ok(start >= 0 && end > start, 'legacy toggle implementation is missing');
 const implementation = source.slice(start, end);
-assert.match(implementation, /legacyToggleQueue\.catch\(\(\) => \{\}\)\.then/);
-assert.match(implementation, /legacyToggleQueue = operation\.catch\(\(\) => \{\}\)/);
-assert.match(source, /if \(this\.disabled\) return;/, 'custom-template save must reject duplicate clicks while pending');
-assert.match(source, /if \(saveButton\.disabled\) return;/, 'kernel identity save must reject duplicate clicks while pending');
+assert.match(implementation, /legacyToggleQueue\.catch\(\(\)\s*=>\s*\{\}\)\.then/);
+assert.match(implementation, /legacyToggleQueue\s*=\s*operation\.catch\(\(\)\s*=>\s*\{\}\)/);
+assert.match(source, /if\s*\(this\.disabled\)\s*return;/, 'custom-template save must reject duplicate clicks while pending');
+assert.match(source, /if\s*\(saveButton\.disabled\)\s*return;/, 'kernel identity save must reject duplicate clicks while pending');
 
 const calls = [];
 let releaseFirst;

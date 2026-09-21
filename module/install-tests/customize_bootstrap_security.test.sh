@@ -61,4 +61,14 @@ if [[ $status -ne 97 ]]; then
   exit 1
 fi
 
+# The WebUI host pin is metadata and must not be routed through the generic
+# payload extractor, which would incorrectly require webui-host.sha256.sha256.
+grep -Fq "unzip -o \"\$ZIPFILE\" 'webui-host.sha256' -d \"\$MODPATH\"" "$CUSTOMIZE_TEMPLATE"   || { echo 'FAIL: customize.sh must extract webui-host.sha256 directly as pin metadata' >&2; exit 1; }
+if grep -Fq 'extract "$ZIPFILE" '\''webui-host.sha256'\'' "$MODPATH"' "$CUSTOMIZE_TEMPLATE"; then
+  echo 'FAIL: webui-host.sha256 must not use the generic checksum-extract path' >&2
+  exit 1
+fi
+
+echo 'host pin extraction contract test passed'
+
 echo 'installer bootstrap verifier security test passed'

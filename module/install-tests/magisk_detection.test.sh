@@ -71,8 +71,20 @@ if ! echo "$output" | grep -q "Installing from Magisk app"; then
   exit 1
 fi
 
-if ! echo "$output" | grep -q "Magisk is NOT recommended"; then
-  echo "FAIL: customize.sh missing recommendation warning for Magisk" >&2
+if echo "$output" | grep -q "Magisk is NOT recommended"; then
+  echo "FAIL: customize.sh still discourages Magisk; Magisk is officially supported" >&2
+  echo "$output" >&2
+  exit 1
+fi
+
+if echo "$output" | grep -q "WebUI is unavailable on Magisk"; then
+  echo "FAIL: customize.sh still claims WebUI is unavailable on Magisk" >&2
+  echo "$output" >&2
+  exit 1
+fi
+
+if ! echo "$output" | grep -q "Magisk is supported"; then
+  echo "FAIL: customize.sh missing official Magisk support message" >&2
   echo "$output" >&2
   exit 1
 fi

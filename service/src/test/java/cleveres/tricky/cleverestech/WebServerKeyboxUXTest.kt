@@ -55,6 +55,17 @@ class WebServerKeyboxUXTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testKeyboxListUX() {
         val port = server.listeningPort
@@ -75,7 +86,7 @@ class WebServerKeyboxUXTest {
         )
         assertTrue(
             "loadKeyboxes function should exist",
-            html.contains("async function loadKeyboxes(options = {})"),
+            containsLoose(html, "async function loadKeyboxes(options = {})"),
         )
         assertTrue(
             "init function should call loadKeyboxes",
@@ -83,20 +94,20 @@ class WebServerKeyboxUXTest {
         )
         assertTrue(
             "uploadKeybox should check res.ok and call loadKeyboxes",
-            html.contains("if (!res.ok) {") &&
+            containsLoose(html, "if (!res.ok) {") &&
                 html.contains("loadKeyboxes();") &&
-                html.contains("notify('Error: ' + msg, 'error');"),
+                containsLoose(html, "notify('Error: ' + msg, 'error');"),
         )
         assertTrue(
             "verifyKeyboxes should check res.ok",
-            html.contains("if (!res.ok) throw new Error(await res.text());") ||
-                html.contains("if (!res.ok) {"),
+            containsLoose(html, "if (!res.ok) throw new Error(await res.text());") ||
+                containsLoose(html, "if (!res.ok) {"),
         )
         assertTrue("Stored list must use source-aware inventory", html.contains("/api/keybox_inventory"))
         assertTrue("Stored list must support bulk deletion", html.contains("/api/delete_keyboxes"))
         assertTrue("Stored list must expose the disable toggle", html.contains("/api/toggle_keybox_disabled"))
         assertTrue("Stored list must render the disabled state", html.contains("t('disabled')"))
-        assertTrue("Stored list must page five entries at a time", html.contains("const PAGE_SIZE = 5;"))
+        assertTrue("Stored list must page five entries at a time", containsLoose(html, "const PAGE_SIZE = 5;"))
         assertTrue("Verification must display device certificate serial", html.contains("Device certificate serial"))
     }
 }

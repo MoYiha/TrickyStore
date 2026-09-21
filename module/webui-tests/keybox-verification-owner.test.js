@@ -3,14 +3,14 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const start = source.indexOf('    async function verify()');
-const end = source.indexOf('    function cancelVerification()', start);
+const start = source.indexOf('async function verify()');
+const end = source.indexOf('function cancelVerification()', start);
 assert.ok(start >= 0 && end > start, 'verification implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /verificationController\.abort\(\)/);
-assert.match(implementation, /signal: controller\.signal/);
-assert.match(implementation, /data\.slice\(0, 4096\)/);
-assert.match(implementation, /String\(item\?\.details \?\? ''\)\.slice\(0, 2048\)/);
+assert.match(implementation, /signal:\s*controller\.signal/);
+assert.match(implementation, /data\.slice\(0,\s*4096\)/);
+assert.match(implementation, /String\(item\?\.details\s*\?\?\s*''\)\.slice\(0,\s*2048\)/);
 
 let releaseFirst;
 const calls = [];

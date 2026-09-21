@@ -3,13 +3,13 @@ const fs = require('fs');
 const vm = require('vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-assert.ok(source.includes('const MAX_SUPPORTED_FILES = 64;'), 'module ZIP keybox limit must match runtime bound');
-assert.ok(source.includes('const MAX_XML_BYTES = 10 * 1024 * 1024;'), 'XML limit must remain 10 MiB');
-assert.ok(source.includes('const MAX_CBOX_BYTES = MAX_XML_BYTES + 36;'), 'CBOX limit must include the envelope header');
+assert.match(source, /const\s+MAX_SUPPORTED_FILES\s*=\s*64\s*;/, 'module ZIP keybox limit must match runtime bound');
+assert.match(source, /const\s+MAX_XML_BYTES\s*=\s*10\s*\*\s*1024\s*\*\s*1024\s*;/, 'XML limit must remain 10 MiB');
+assert.match(source, /const\s+MAX_CBOX_BYTES\s*=\s*MAX_XML_BYTES\s*\+\s*36\s*;/, 'CBOX limit must include the envelope header');
 assert.ok(!source.includes('MAX_TOTAL_XML_BYTES'), 'ZIP importer must not retain the old aggregate XML cap');
 assert.ok(!source.includes('MAX_ARCHIVE_BYTES'), 'ZIP importer must not retain the old aggregate archive cap');
 assert.ok(source.includes("new global.DecompressionStream('deflate-raw')"), 'deflated ZIP entries must use bounded streaming decompression');
-assert.ok(source.includes("ui.summary.textContent = progress"), 'long ZIP imports must expose progress/loading state');
+assert.match(source, /ui\.summary\.textContent\s*=\s*progress/, 'long ZIP imports must expose progress/loading state');
 
 const context = {
   console,

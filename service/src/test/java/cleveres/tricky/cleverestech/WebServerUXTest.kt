@@ -60,6 +60,17 @@ class WebServerUXTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testUXImprovements() {
         val port = server.listeningPort
@@ -128,19 +139,19 @@ class WebServerUXTest {
         assertTrue(html.contains("env(safe-area-inset-bottom)"))
         assertTrue(html.contains("@media (prefers-reduced-motion: reduce)"))
         assertTrue(html.contains("min-height: 48px"))
-        assertTrue(html.contains("height: min(500px, 60dvh) !important"))
+        assertTrue(containsLoose(html, "height: min(500px, 60dvh) !important"))
         assertTrue(html.contains("async function fetchAuth"))
-        assertTrue(html.contains("window.CleveresBridge.fetch(url, options)"))
-        assertTrue(html.contains("<script src=\"bridge.js?revision=15\"></script>"))
-        assertTrue(html.contains("<script src=\"policy.js?revision=5\"></script>"))
+        assertTrue(containsLoose(html, "window.CleveresBridge.fetch(url, options)"))
+        assertTrue(html.contains("<script src=\"bridge.js?revision=16\"></script>"))
+        assertTrue(html.contains("<script src=\"policy.js?revision=6\"></script>"))
         assertTrue(html.contains("function downloadBlob"))
-        assertTrue(html.contains("if (files && files[0]) loadFileContent(files[0]);"))
+        assertTrue(containsLoose(html, "if (files && files[0]) loadFileContent(files[0])"))
         assertFalse(html.contains("kbFilePicker').files = files"))
         assertTrue(html.contains("rel=\"noopener noreferrer\""))
         assertFalse(html.contains("id=\"bootPropsMode\""))
         assertFalse(html.contains("data-setting=\"hide_sensitive_props\""))
         assertFalse(html.contains("data-setting=\"rkp_passthrough\""))
-        assertTrue(html.contains(".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                margin: 0 auto;\n                width: calc(100% - 32px);"))
+        assertTrue(containsLoose(html, ".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                margin: 0 auto;\n                width: calc(100% - 32px);"))
         assertTrue(html.contains("<option value=\"templates.json\">templates.json</option>"))
 
         retiredIdentitySettings.forEach { setting ->
@@ -154,12 +165,12 @@ class WebServerUXTest {
             assertFalse("Duplicate legacy Feature Center control for $setting", html.contains("data-setting=\"$setting\""))
         }
         monitoredSettings.forEach { setting ->
-            assertTrue("Missing resource monitor entry for $setting", html.contains("{ id: '$setting'"))
+            assertTrue("Missing resource monitor entry for $setting", containsLoose(html, "{ id: '$setting'"))
         }
         assertTrue(html.contains("WEB_UI_SETTINGS.includes(f.id)"))
-        assertTrue(html.contains("syncSettingControls(setting, !requestedValue)"))
+        assertTrue(containsLoose(html, "syncSettingControls(setting, !requestedValue)"))
         assertTrue(html.contains("resourceUsageController.abort()"))
-        assertTrue(html.contains("signal: controller.signal"))
+        assertTrue(containsLoose(html, "signal: controller.signal"))
         assertFalse(html.contains(0x2014.toChar()))
     }
 

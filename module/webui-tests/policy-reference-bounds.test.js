@@ -4,25 +4,25 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/policy.js', 'utf8');
 const loadStart = source.indexOf('async function loadReferenceData()');
-const loadEnd = source.indexOf('\nfunction renderAll()', loadStart);
+const loadEnd = source.indexOf('function renderAll()', loadStart);
 assert.ok(loadStart >= 0 && loadEnd > loadStart, 'policy reference loader is missing');
 const loader = source.slice(loadStart, loadEnd);
 assert.match(loader, /referenceDataController\.abort\(\)/);
-assert.match(loader, /request\('\/api\/packages', requestOptions\)/);
-assert.match(loader, /request\('\/api\/keyboxes', requestOptions\)/);
-assert.match(loader, /request\('\/api\/config', requestOptions\)/);
+assert.match(loader, /request\('\/api\/packages',\s*requestOptions\)/);
+assert.match(loader, /request\('\/api\/keyboxes',\s*requestOptions\)/);
+assert.match(loader, /request\('\/api\/config',\s*requestOptions\)/);
 assert.match(loader, /MAX_REFERENCE_PACKAGES/);
 assert.match(loader, /MAX_REFERENCE_KEYBOXES/);
 assert.match(loader, /MAX_REFERENCE_TEMPLATES/);
 assert.match(loader, /Array\.from\(new Set/);
-assert.match(loader, /typeof item === 'string'/);
+assert.match(loader, /typeof item\s*===\s*'string'/);
 
 const normalizeStart = source.indexOf('function normalizedPackageNames()');
-const normalizeEnd = source.indexOf('\nfunction installPackagePicker', normalizeStart);
+const normalizeEnd = source.indexOf('function installPackagePicker', normalizeStart);
 assert.ok(normalizeStart >= 0 && normalizeEnd > normalizeStart, 'package normalization helper is missing');
 const normalizer = source.slice(normalizeStart, normalizeEnd);
 assert.match(normalizer, /MAX_REFERENCE_PACKAGES/);
-assert.match(normalizer, /value\.length <= 255/);
+assert.match(normalizer, /value\.length\s*<=\s*255/);
 assert.match(normalizer, /A-Za-z0-9_\./);
 
 let pendingFirst = [];

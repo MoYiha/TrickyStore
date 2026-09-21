@@ -36,6 +36,12 @@ function makeElement(tagName) {
       this.attributes[name] = String(value);
       // Mirror browser reflection so title-overwrite regressions surface.
       if (name === 'title') this.title = String(value);
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
     }
   };
   Object.defineProperty(element, 'textContent', {
@@ -120,20 +126,20 @@ context.global = context;
 vm.createContext(context);
 
 // Extract render and renderVerification and priority order functions
-const start = source.indexOf('    function render() {');
-const end = source.indexOf('    function normalizeKeyboxScope(value) {', start);
+const start = source.indexOf('function render()');
+const end = source.indexOf('function normalizeKeyboxScope(value)', start);
 const renderCode = source.slice(start, end);
 
-const startVerify = source.indexOf('    function renderVerification() {');
-const endVerify = source.indexOf('    async function verify() {', startVerify);
+const startVerify = source.indexOf('function renderVerification()');
+const endVerify = source.indexOf('async function verify()', startVerify);
 const verifyCode = source.slice(startVerify, endVerify);
 
-const startExpired = source.indexOf('    function isKeyboxExpired(notAfter) {');
-const endExpired = source.indexOf('    function statusLabel() {', startExpired);
+const startExpired = source.indexOf('function isKeyboxExpired(notAfter)');
+const endExpired = source.indexOf('function statusLabel()', startExpired);
 const expiredCode = source.slice(startExpired, endExpired);
 
-const priorityStart = source.indexOf('    const DEFAULT_PRIORITY_CATEGORIES = [');
-const priorityEnd = source.indexOf('    function scheduleInstallRetry() {', priorityStart);
+const priorityStart = source.indexOf('const DEFAULT_PRIORITY_CATEGORIES=');
+const priorityEnd = source.indexOf('function scheduleInstallRetry()', priorityStart);
 const priorityCode = source.slice(priorityStart, priorityEnd);
 
 vm.runInContext(`
@@ -247,7 +253,7 @@ context.renderPriorityOrder();
 assert.equal(priorityList.style.display, 'flex');
 assert.equal(priorityActions.style.display, 'flex');
 assert.equal(priorityModeHint.style.display, 'none', 'mode hint must hide when the list carries the detail');
-assert.equal(priorityList.children.length, 6);
+assert.equal(priorityList.children.length, 12);
 
 // Verify first item has up disabled, last has down disabled
 const firstItem = priorityList.children[0];
@@ -256,14 +262,14 @@ const firstDownBtn = firstItem.children[1].children[1];
 assert.equal(firstUpBtn.disabled, true, 'first item up button must be disabled');
 assert.equal(firstDownBtn.disabled, false, 'first item down button must be enabled');
 
-const lastItem = priorityList.children[5];
+const lastItem = priorityList.children[11];
 const lastUpBtn = lastItem.children[1].children[0];
 const lastDownBtn = lastItem.children[1].children[1];
 assert.equal(lastUpBtn.disabled, false, 'last item up button must be enabled');
 assert.equal(lastDownBtn.disabled, true, 'last item down button must be disabled');
 
 // Every item label keeps its full text available via title and long-press popup
-assert.equal(context.longPressAttachments.length, 6, 'each priority label must offer its full text on long-press');
+assert.equal(context.longPressAttachments.length, 12, 'each priority label must offer its full text on long-press');
 for (const attachment of context.longPressAttachments) {
   assert.ok(attachment.value.length > 0, 'long-press value must not be empty');
   assert.equal(attachment.node.title, attachment.value, 'label title must carry the full text');
@@ -291,8 +297,13 @@ assert.equal(context.getCurrentOrder()[1], initialSecond);
   const params = new URLSearchParams(posts[0].body);
   const data = JSON.parse(params.get('data'));
   assert.equal(data.mode, 'custom');
-  assert.equal(data.customOrder.length, 6);
+  assert.equal(data.customOrder.length, 12);
   assert.equal(data.customOrder[0], 'VALID_RKP');
+  assert.equal(data.customOrder[1], 'VALID_RKP_SERVER');
+  // Every local tier is immediately followed by its server tier by default.
+  for (let i = 0; i < data.customOrder.length; i += 2) {
+    assert.equal(data.customOrder[i + 1], data.customOrder[i] + '_SERVER');
+  }
 
   // Test 8: A complete permutation is accepted from the backend
   const reversedOrder = [...context.getCurrentOrder()].reverse();
@@ -319,7 +330,7 @@ assert.equal(context.getCurrentOrder()[1], initialSecond);
   assert.equal(context.getPriorityMode(), 'default');
   assert.equal(context.getCurrentOrder()[0], 'VALID_RKP');
 
-  // Test 11: Legacy 16-category orders project onto the six exposed categories
+  // Test 11: Legacy 16-category orders project onto the twelve exposed categories
   const legacySixteen = [
     'VALID_RKP', 'VALID_STRONGBOX', 'VALID_TEE', 'VALID_UNKNOWN',
     'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_STRONGBOX', 'INVALID_EXPIRED_TEE', 'INVALID_EXPIRED_UNKNOWN',
@@ -331,10 +342,38 @@ assert.equal(context.getCurrentOrder()[1], initialSecond);
   await context.loadPriorityOrder();
   assert.equal(context.getPriorityMode(), 'custom');
   assert.deepEqual(Array.from(context.getCurrentOrder()), [
-    'VALID_RKP', 'VALID_TEE',
-    'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_TEE',
-    'INVALID_REVOKED_RKP', 'INVALID_REVOKED_TEE'
+    'VALID_RKP', 'VALID_RKP_SERVER',
+    'VALID_TEE', 'VALID_TEE_SERVER',
+    'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_RKP_SERVER',
+    'INVALID_EXPIRED_TEE', 'INVALID_EXPIRED_TEE_SERVER',
+    'INVALID_REVOKED_RKP', 'INVALID_REVOKED_RKP_SERVER',
+    'INVALID_REVOKED_TEE', 'INVALID_REVOKED_TEE_SERVER'
   ]);
+
+  // Test 12: Legacy six-category orders migrate to local/server pairs
+  const legacySix = [
+    'VALID_TEE', 'VALID_RKP',
+    'INVALID_EXPIRED_TEE', 'INVALID_EXPIRED_RKP',
+    'INVALID_REVOKED_TEE', 'INVALID_REVOKED_RKP'
+  ];
+  context.setPriorityResponse({ mode: 'custom', customOrder: legacySix });
+  await context.loadPriorityOrder();
+  assert.equal(context.getPriorityMode(), 'custom');
+  assert.deepEqual(Array.from(context.getCurrentOrder()), [
+    'VALID_TEE', 'VALID_TEE_SERVER',
+    'VALID_RKP', 'VALID_RKP_SERVER',
+    'INVALID_EXPIRED_TEE', 'INVALID_EXPIRED_TEE_SERVER',
+    'INVALID_EXPIRED_RKP', 'INVALID_EXPIRED_RKP_SERVER',
+    'INVALID_REVOKED_TEE', 'INVALID_REVOKED_TEE_SERVER',
+    'INVALID_REVOKED_RKP', 'INVALID_REVOKED_RKP_SERVER'
+  ]);
+
+  // Test 13: Priority labels carry the local/server source.
+  context.renderPriorityOrder();
+  const firstLabel = priorityList.children[0].children[0].children[1];
+  assert.match(firstLabel.textContent, /\(local\)$/i, 'local tiers must be labeled');
+  const secondLabel = priorityList.children[1].children[0].children[1];
+  assert.match(secondLabel.textContent, /\(server\)$/i, 'server tiers must be labeled');
 
   console.log('Keybox priority ordering and explicit validity state tests passed');
 })().catch(err => {

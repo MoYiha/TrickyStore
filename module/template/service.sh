@@ -14,7 +14,6 @@ process_start_ticks() {
     *) return 1 ;;
   esac
   stat_fields=${proc_stat##*) }
-  # All fields after the parenthesized command are kernel-generated scalar tokens.
   # shellcheck disable=SC2086
   set -- $stat_fields
   [ "$#" -ge 20 ] || return 1
@@ -80,10 +79,6 @@ terminate_pid() {
       old_start=${pid_record#* }
       ;;
     *)
-      # A PID-only legacy record cannot prove which same-boot process instance created it.
-      # Probe the current occupant through pidfd without a destructive signal: stale or
-      # identity-mismatched records are safe to discard, while a matching occupant remains
-      # ambiguous and must block startup rather than be signaled.
       old_pid=$pid_record
       if ! helper_pid_valid "$old_pid"; then
         rm -f "$pid_file" 2>/dev/null || true
@@ -144,6 +139,7 @@ terminate_pid() {
   rm -f "$pid_file" 2>/dev/null || true
   return 0
 }
+
 # END PID SAFETY HELPERS
 
 terminate_previous_instances() {

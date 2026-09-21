@@ -55,6 +55,17 @@ class WebServerClipboardTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testClipboardFunctionSignature() {
         val port = server.listeningPort
@@ -63,9 +74,9 @@ class WebServerClipboardTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        assertTrue("copyToClipboard signature invalid", html.contains("function copyToClipboard(text, msg, btn)"))
-        assertTrue("Missing success logic", html.contains("btn.innerText = 'Copied'"))
-        assertTrue("Missing timeout logic", html.contains("setTimeout(() => btn.innerHTML = originalHtml, 2000)"))
+        assertTrue("copyToClipboard signature invalid", containsLoose(html, "function copyToClipboard(text, msg, btn)"))
+        assertTrue("Missing success logic", containsLoose(html, "btn.innerText = 'Copied'"))
+        assertTrue("Missing timeout logic", containsLoose(html, "setTimeout(() => btn.innerHTML = originalHtml, 2000)"))
     }
 
     @Test

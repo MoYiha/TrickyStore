@@ -55,7 +55,7 @@ function loadSwitchTab() {
         scrollTo() {},
         cancelKeyboxVerification: null
     };
-    const start = html.indexOf('function switchTab(id) {');
+    const start = html.indexOf('function switchTab(id)');
     const end = html.indexOf('function handleTabNavigation', start);
     assert.ok(start >= 0 && end > start, 'canonical switchTab controller must remain discoverable');
     const source = html.slice(start, end);
@@ -100,7 +100,7 @@ function testCanonicalInitialStateAndRuntimeSurface() {
     assert.deepStrictEqual(scriptSources, ['bridge.js', 'policy.js'], 'canonical index must statically load only the bridge and policy owners');
     assert.strictEqual((html.match(/<script\b(?![^>]*\bsrc=)[^>]*>/gi) || []).length, 1, 'canonical index must have one inline controller block');
     const bridgeSource = fs.readFileSync(path.resolve(process.cwd(), 'module/template/webroot/bridge.js'), 'utf8');
-    assert.match(bridgeSource, /script\.src = ['"]ux\.js\?revision=[^'"]+['"]/i, 'bridge must dynamically load the single canonical UX owner');
+    assert.match(bridgeSource, /script\.src\s*=\s*['"]ux\.js\?revision=[^'"]+['"]/i, 'bridge must dynamically load the single canonical UX owner');
     assert.doesNotMatch(bridgeSource, /(?:ux-core|zip-import|ux-base|ux-patch)\.js/i, 'bridge must not load retired UX bundles');
 
     assert.match(html, /\.panel-hero\s*\{/i, 'direct-open dashboard must expose the modern hero surface');
@@ -165,10 +165,10 @@ function loadFileFailureHarness() {
         editorFileController: null,
         resourceUsageController: null
     };
-    const loadStart = html.indexOf('async function loadFile() {');
+    const loadStart = html.indexOf('async function loadFile()');
     const loadEnd = html.indexOf('async function handleSave', loadStart);
     assert.ok(loadStart >= 0 && loadEnd > loadStart, 'loadFile implementation is missing');
-    const switchStart = html.indexOf('function switchTab(id) {');
+    const switchStart = html.indexOf('function switchTab(id)');
     const switchEnd = html.indexOf('function handleTabNavigation', switchStart);
     vm.runInNewContext(`${html.slice(loadStart, loadEnd)}\n${html.slice(switchStart, switchEnd)}\nthis.__loadFile = loadFile;\nthis.__switchTab = switchTab;`, context, { filename: 'index.html#file-failure' });
     return { context, editor, fileSelector, tabs, contents, notifications };

@@ -4,7 +4,7 @@
 
 ## Overview
 
-This guide provides step-by-step instructions for passing **Google Play Integrity** (`MEETS_STRONG_INTEGRITY`, `MEETS_DEVICE_INTEGRITY`, `MEETS_BASIC_INTEGRITY`) using **CleveresTricky** on Android 12 through Android 17 with **KernelSU** or **APatch**.
+This guide provides step-by-step instructions for passing **Google Play Integrity** (`MEETS_STRONG_INTEGRITY`, `MEETS_DEVICE_INTEGRITY`, `MEETS_BASIC_INTEGRITY`) using **CleveresTricky** on Android 12 through Android 17 with **KernelSU**, **APatch**, or **Magisk** (on Magisk, the WebUI opens from the module Action button via the standalone WebUI host app).
 
 Whether you want to ensure hardware-backed attestation compatibility for banking apps, games, or Google Wallet, follow the simple instructions below for your specific ROM type.
 
@@ -14,8 +14,8 @@ Whether you want to ensure hardware-backed attestation compatibility for banking
 
 ### 1. Official Stock ROM (Pixel, Xiaomi/HyperOS, Samsung/OneUI, OnePlus/OxygenOS, etc.)
 
-* **Step 1:** Install the latest CleveresTricky module ZIP in KernelSU or APatch.
-* **Step 2:** Open the CleveresTricky WebUI from your module manager and add a valid **Keybox**.
+* **Step 1:** Install the latest CleveresTricky module ZIP in KernelSU, APatch, or Magisk.
+* **Step 2:** Open the CleveresTricky WebUI from your module manager (on Magisk, from the module Action button via the standalone WebUI host app) and add a valid **Keybox**.
 
 **That is all you normally need!** Keep all other settings at their default values.
 
@@ -60,7 +60,7 @@ If your official firmware has not received monthly security updates and has a ve
 
 ### How to Import Your Keybox
 
-1. Open the **CleveresTricky WebUI** from KernelSU or APatch.
+1. Open the **CleveresTricky WebUI** from KernelSU, APatch, or Magisk (Action button).
 2. Navigate to **Keybox Manager**.
 3. Tap **Import / Upload** and select your `.xml` or encrypted `.cbox` file.
 

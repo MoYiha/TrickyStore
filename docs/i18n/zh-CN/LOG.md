@@ -30,16 +30,19 @@ WebUI 提供了最便捷的诊断收集方式，无需 ADB 或电脑支持。
 
 ---
 
-## 方法 2：一键紧急错误报告归档 (`action.sh`)
+## 方法 2：一键紧急错误报告归档 (`emergency-report.sh`)
 
 CleveresTricky 内置了一个自动错误报告工具，可将系统日志、模块状态和 Root 环境信息打包为压缩归档文件（`.tar.gz`）。
 
-### 通过 Root 管理器：
-- 在 **KernelSU** 或 **APatch** 中，点击 CleveresTricky 模块卡片旁边的 **操作 (Action)** 按钮。
+> [!NOTE]
+> 在 Magisk 上，模块 **Action** 按钮用于打开 WebUI（经由独立宿主应用）。在 KernelSU/APatch 上，它运行此报告。
+
+### 通过 Root 管理器（KernelSU / APatch）：
+- 点击 CleveresTricky 模块卡片旁边的 **Action** 按钮。
 
 ### 通过终端 (Termux / Root Shell)：
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### 报告文件位置：
@@ -115,5 +118,5 @@ adb logcat -d -s cleverestricky CleveresTricky
 
 在 GitHub 上提交 Bug 报告时，请附带：
 1. **支持诊断快照**（来自 WebUI 信息标签页）
-2. **日志**（来自 WebUI Logs 开启 Debug Logging 后的输出、`action.sh` 归档或 logcat）
+2. **日志**（来自 WebUI Logs 开启 Debug Logging 后的输出、`emergency-report.sh` 归档或 logcat）
 3. 设备型号、Android 版本及 Root 方式（KernelSU / APatch / Magisk）

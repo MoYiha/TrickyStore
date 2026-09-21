@@ -56,6 +56,17 @@ class WebServerSpinnerTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testSpinnerPresence() {
         val port = server.listeningPort
@@ -64,15 +75,15 @@ class WebServerSpinnerTest {
         val conn = url.openConnection() as HttpURLConnection
         val html = conn.inputStream.bufferedReader().readText()
 
-        assertTrue("Missing Spinner CSS class", html.contains(".spinner {"))
+        assertTrue("Missing Spinner CSS class", containsLoose(html, ".spinner {"))
         assertTrue("Missing Spinner Animation", html.contains("@keyframes spin"))
-        assertTrue("Missing Island Working Spinner Display", html.contains(".island.working .spinner { display: block; }"))
+        assertTrue("Missing Island Working Spinner Display", containsLoose(html, ".island.working .spinner { display: block; }"))
         assertTrue("Missing Spinner Div", html.contains("<div class=\"spinner\"></div>"))
-        assertTrue("Missing notifyTimeout cleanup", html.contains("if (notifyTimeout) clearTimeout(notifyTimeout);"))
-        assertTrue("Working notifications must not auto dismiss", html.contains("if (type !== 'working') {"))
+        assertTrue("Missing notifyTimeout cleanup", containsLoose(html, "if (notifyTimeout) clearTimeout(notifyTimeout);"))
+        assertTrue("Working notifications must not auto dismiss", containsLoose(html, "if (type !== 'working') {"))
         assertTrue(
             "Missing bounded error notification timeout",
-            html.contains("type === 'error' ? 6000 : 3000"),
+            containsLoose(html, "type === 'error' ? 6000 : 3000"),
         )
         assertTrue("Missing sticky safe-area offset", html.contains("env(safe-area-inset-top)"))
         assertFalse(

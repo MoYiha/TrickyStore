@@ -9,5 +9,5 @@ const required = [
   'Template catalog is unavailable','Could not save custom template'
 ];
 for (const key of required) assert(ux.includes(key), `missing localized custom-template string: ${key}`);
-assert(ux.includes("'Custom Templates': 'Özel Şablonlar'"), 'Turkish custom-template translation missing');
+assert(/'Custom Templates'\s*:\s*'Özel Şablonlar'/.test(ux), 'Turkish custom-template translation missing');
 console.log('custom-template localization checks passed');

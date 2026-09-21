@@ -11,6 +11,17 @@ object Verification {
     private val IGNORED_FILES =
         setOf("disable", "remove", "update", "tampered", "supervisor.pid", "daemon.pid", "adapter.pid", "backend.pid")
 
+    /**
+     * Data files that end in ".sha256" but are not checksum sidecars.
+     *
+     * webui-host.sha256 is release metadata (pinned host version, whole-file
+     * hash, download URL), not a checksum for a sibling payload. Its bytes are
+     * pinned by the signed integrity manifest instead, so it must be skipped
+     * when collecting checksum sidecars. Any other ".sha256" file keeps the
+     * fail-closed sidecar parsing below.
+     */
+    private val DATA_FILES_WITH_SHA256_SUFFIX = setOf("webui-host.sha256")
+
     fun check(root: File = File(MODULE_PATH)): Boolean {
         return try {
             checkInternal(root)
@@ -49,6 +60,7 @@ object Verification {
 
         val checksumMap = LinkedHashMap<String, String>()
         for (checksumFile in allFiles.filter { it.name.endsWith(".sha256") }) {
+            if (checksumFile.name in DATA_FILES_WITH_SHA256_SUFFIX) continue
             val expected =
                 readUtf8FileSnapshotBounded(checksumFile, 64, MAX_CHECKSUM_FILE_BYTES)
                     .trim()
@@ -62,6 +74,9 @@ object Verification {
         var isTampered = false
 
         allFiles.forEach { file ->
+            // Checksum sidecars (and the data files listed above, which share
+            // the suffix) carry no payload of their own for this gate. The
+            // host pin stays covered by the signed integrity manifest.
             if (file.name.endsWith(".sha256")) return@forEach
             if (file.parentFile?.absolutePath == root.absolutePath && IGNORED_FILES.contains(file.name)) return@forEach
 

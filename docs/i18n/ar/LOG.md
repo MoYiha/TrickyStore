@@ -30,16 +30,19 @@
 
 ---
 
-## الطريقة 2: حزمة تقرير الأخطاء الطارئ بنقرة واحدة (`action.sh`)
+## الطريقة 2: حزمة تقرير الأخطاء الطارئ بنقرة واحدة (`emergency-report.sh`)
 
 يحتوي CleveresTricky على أداة مؤتمتة تجمع سجلات النظام وحالة الوحدة وبيانات بيئة الروت في أرشيف مضغوط (`.tar.gz`).
 
-### من خلال مدير الروت:
-- في **KernelSU** أو **APatch**، اضغط على زر **إجراء (Action)** بجوار بطاقة وحدة CleveresTricky.
+> [!NOTE]
+> على Magisk، يفتح زر **Action** الخاص بالوحدة WebUI (عبر تطبيق المضيف المستقل). على KernelSU/APatch، يشغّل هذا التقرير.
+
+### من خلال مدير الروت (KernelSU / APatch):
+- اضغط على زر **Action** بجوار بطاقة وحدة CleveresTricky.
 
 ### من خلال Terminal (تطبيق Termux أو سطر أوامر الروت):
 ```bash
-su -c /data/adb/modules/cleverestricky/action.sh
+su -c /data/adb/modules/cleverestricky/emergency-report.sh
 ```
 
 ### موقع ملف التقرير:
@@ -115,5 +118,5 @@ adb logcat -d -s cleverestricky CleveresTricky
 
 عند الإبلاغ عن خطأ على GitHub، يرجى تضمين:
 1. **لقطة تشخيص الدعم** (من علامة تبويب المعلومات في WebUI)
-2. **السجلات** (من تبويب Logs مع تفعيل Debug Logging، أو ملف `action.sh`، أو مخرجات logcat)
+2. **السجلات** (من تبويب Logs مع تفعيل Debug Logging، أو ملف `emergency-report.sh`، أو مخرجات logcat)
 3. طراز الجهاز، إصدار أندرويد، ونوع الروت المستخدم (KernelSU / APatch / Magisk)

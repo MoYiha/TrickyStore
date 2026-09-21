@@ -2,15 +2,20 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
+function indexOfPattern(haystack, pattern, from = 0) {
+  const match = pattern.exec(haystack.slice(from));
+  return match ? from + match.index : -1;
+}
+
 const source = fs.readFileSync('module/template/webroot/index.html', 'utf8');
-const start = source.indexOf('async function loadServers(options = {})');
-const end = source.indexOf('function resetServerForm()', start);
+const start = source.search(/async\s+function\s+loadServers\s*\(\s*options\s*=\s*\{\}\s*\)/);
+const end = indexOfPattern(source, /function\s+resetServerForm\s*\(\s*\)/, Math.max(start, 0));
 assert.ok(start >= 0 && end > start, 'loadServers implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /rawServers/);
-assert.match(implementation, /rawServers\.slice\(0, 256\)/);
-assert.match(implementation, /String\(server\?\.url \?\? ''\)\.slice\(0, 2048\)/);
-assert.match(implementation, /\.filter\(server => server\.id && server\.url\)/);
+assert.match(implementation, /rawServers\.slice\(\s*0\s*,\s*256\s*\)/);
+assert.match(implementation, /String\(server\?\.url\s*\?\?\s*''\)\.slice\(\s*0\s*,\s*2048\s*\)/);
+assert.match(implementation, /\.filter\(\s*server\s*=>\s*server\.id\s*&&\s*server\.url\s*\)/);
 
 const appended = [];
 const hubHint = { id: 'ct_keyboxhub_hint', style: { display: '' } };
@@ -131,7 +136,7 @@ const editServerEnd = source.indexOf('async function addServer()', editServerSta
 assert.ok(editServerStart >= 0 && editServerEnd > editServerStart, 'editServer implementation is missing');
 const editServerImpl = source.slice(editServerStart, editServerEnd);
 
-const resetServerStart = source.indexOf('function resetServerForm()');
+const resetServerStart = source.search(/function\s+resetServerForm\s*\(\s*\)/);
 const resetServerEnd = source.indexOf('function updateAuthFields', resetServerStart);
 assert.ok(resetServerStart >= 0 && resetServerEnd > resetServerStart, 'resetServerForm implementation is missing');
 const resetServerImpl = source.slice(resetServerStart, resetServerEnd);

@@ -3,12 +3,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/bridge.js', 'utf8');
-const start = source.indexOf('    async function performProfileEnabledMutation');
-const end = source.indexOf('    function decorateProfileEnablement', start);
+const start = source.indexOf('async function performProfileEnabledMutation');
+const end = source.indexOf('function decorateProfileEnablement', start);
 assert.ok(start >= 0 && end > start, 'profile mutation implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /profileMutationQueue\.catch/);
-assert.match(implementation, /performProfileEnabledMutation\(profile, enabled\)/);
+assert.match(implementation, /performProfileEnabledMutation\(profile,\s*enabled\)/);
 
 let releaseFirst;
 const calls = [];

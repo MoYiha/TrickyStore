@@ -5,27 +5,27 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const longPressStart = source.indexOf('    function attachKeyboxLongPress(');
-const longPressEnd = source.indexOf('    function appendKeyboxValue(', longPressStart);
+const longPressStart = source.indexOf('function attachKeyboxLongPress(');
+const longPressEnd = source.indexOf('function appendKeyboxValue(', longPressStart);
 assert.ok(longPressStart >= 0 && longPressEnd > longPressStart, 'long-press handler is missing');
 const longPressImplementation = source.slice(longPressStart, longPressEnd);
 assert.match(longPressImplementation, /setTimeout\([\s\S]*650\)/);
-assert.match(longPressImplementation, /showKeyboxValuePopup\(label, value, node\)/);
+assert.match(longPressImplementation, /showKeyboxValuePopup\(label,\s*value,\s*node\)/);
 assert.match(longPressImplementation, /pointerdown/);
 assert.match(source, /async function copyKeyboxValue\(value\)/);
 
-const start = source.indexOf('    function render() {');
-const end = source.indexOf('    function normalizeKeyboxScope(value) {', start);
+const start = source.indexOf('function render()');
+const end = source.indexOf('function normalizeKeyboxScope(value)', start);
 assert.ok(start >= 0 && end > start, 'render implementation is missing');
 const implementation = source.slice(start, end);
 
-const startVerify = source.indexOf('    function renderVerification() {');
-const endVerify = source.indexOf('    async function verify() {', startVerify);
+const startVerify = source.indexOf('function renderVerification()');
+const endVerify = source.indexOf('async function verify()', startVerify);
 assert.ok(startVerify >= 0 && endVerify > startVerify, 'renderVerification implementation is missing');
 const verifyImplementation = source.slice(startVerify, endVerify);
 
-const startExpired = source.indexOf('    function isKeyboxExpired(notAfter) {');
-const endExpired = source.indexOf('    function statusLabel() {', startExpired);
+const startExpired = source.indexOf('function isKeyboxExpired(notAfter)');
+const endExpired = source.indexOf('function statusLabel()', startExpired);
 assert.ok(startExpired >= 0 && endExpired > startExpired, 'isKeyboxExpired implementation is missing');
 const expiredImplementation = source.slice(startExpired, endExpired);
 
@@ -47,6 +47,12 @@ function makeElement(tagName) {
     },
     setAttribute(name, value) {
       this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
     }
   };
   Object.defineProperty(element, 'textContent', {
@@ -363,9 +369,9 @@ const expRow = list.children[0];
 const expBody = expRow.children[1];
 const expName = expBody.children[0];
 assert.equal(expName.children[0].textContent, 'expired.xml');
-assert.equal(expName.children[1].className, 'ct-badge ct-badge-strongbox');
-assert.equal(expName.children[2].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired');
-assert.equal(expName.children[2].textContent, 'status_expired');
+assert.equal(expName.children[1].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired', 'validity state must lead technical badges');
+assert.equal(expName.children[1].textContent, 'status_expired');
+assert.equal(expName.children[2].className, 'ct-badge ct-badge-strongbox');
 const expMeta = expBody.children[1];
 assert.ok(expMeta.textContent.includes('2020-01-01'), 'meta must include expiry date');
 
@@ -427,7 +433,7 @@ list.children = [];
 context.renderKeyboxes();
 assert.equal(list.children.length, 2);
 const expTimeName = list.children[0].children[1].children[0];
-assert.equal(expTimeName.children[2].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired');
+assert.equal(expTimeName.children[1].className, 'ct-badge ct-status-badge ct-badge-expired ct-status-expired', 'validity state must lead technical badges');
 const futTimeName = list.children[1].children[1].children[0];
 assert.equal(futTimeName.children.length, 2); // No expired badge
 

@@ -11,7 +11,7 @@ The Web Interface provides one mobile control surface for core runtime state, id
 The packaged WebUI deliberately uses a fixed runtime layout. New features extend an existing owner instead of adding another JavaScript or CSS layer.
 
 1. `index.html` owns static markup and base static CSS.
-2. `bridge.js` owns the KernelSU/APatch native bridge, bounded transfer helpers, external intents, and minimal bootstrap.
+2. `bridge.js` owns the manager native bridge (KernelSU, APatch, or the standalone WebUI host on Magisk), bounded transfer helpers, external intents, and minimal bootstrap.
 3. `policy.js` owns policy and state API integration plus policy specific dynamic controls and pages.
 4. `ux.js` owns general presentation, localization, guide rendering, community link behavior, and UX compatibility work.
 
@@ -29,7 +29,7 @@ The application selector reads Package Manager through the service and uses the 
 
 ## Native access protection
 
-KernelSU or APatch loads the packaged `webroot` directly. The page uses the module manager native command API and never opens a local TCP port. A small Rust bridge moves bounded requests through root only queue directories to the existing service router.
+The manager (KernelSU, APatch, or the standalone WebUI host on Magisk) loads the packaged `webroot` directly. The page uses the manager native command API and never opens a local TCP port. A small Rust bridge moves bounded requests through root only queue directories to the existing service router.
 
 Request identifiers use operating system randomness. Queue files are regular files with root only modes, published atomically, claimed before execution, removed after use, and expired when stale. The bridge accepts only fixed API paths, methods, parameter shapes, upload fields, response sizes, timeouts, and safe export names. The page uses a restrictive content security policy.
 
@@ -41,6 +41,6 @@ Unsafe paths, symbolic links, oversized input, duplicate archive entries, unknow
 
 ## Recommended use
 
-Open the interface from the module WebUI button in KernelSU or APatch. Fresh installations begin with Global Mode enabled and optional identity spoofing off. Configure key material and application scope first, then use the Identity section only when identity substitution is needed. Use Logs after each material change and restart an application that may cache old results.
+Open the interface from the module WebUI button (KernelSU or APatch) or the module Action button (Magisk, via the standalone WebUI host app). Fresh installations begin with Global Mode enabled and optional identity spoofing off. Configure key material and application scope first, then use the Identity section only when identity substitution is needed. Use Logs after each material change and restart an application that may cache old results.
 
 [Return to the project overview](../README.md)

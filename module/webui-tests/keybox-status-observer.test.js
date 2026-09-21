@@ -21,7 +21,7 @@ test('keybox status observer update is idempotent and cannot self-trigger foreve
     const end = source.indexOf('function filtered()', start);
     assert.ok(start >= 0 && end > start, 'statusLabel block must exist');
     const block = source.slice(start, end);
-    assert.match(block, /const value = t\('keyboxesLoaded', \{ count: match\[1\] \}\);/);
-    assert.match(block, /if \(node\.textContent !== value\) node\.textContent = value;/);
+    assert.match(block, /const value\s*=\s*t\('keyboxesLoaded',\s*\{\s*count:\s*match\[1\]\s*\}\);/);
+    assert.match(block, /if\s*\(node\.textContent\s*!==\s*value\)\s*node\.textContent\s*=\s*value;/);
     assert.doesNotMatch(block, /if \(match\) node\.textContent =/);
 });

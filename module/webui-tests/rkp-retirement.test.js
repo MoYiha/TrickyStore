@@ -10,9 +10,9 @@ test('retired RKP passthrough is presented as always-on protection', () => {
   assert.match(html, /Always on/i);
   assert.doesNotMatch(html, /RKP Bypass/);
 
-  const settings = html.match(/const WEB_UI_SETTINGS = \[([^\]]+)\]/)?.[1] || '';
+  const settings = html.match(/const WEB_UI_SETTINGS\s*=\s*\[([^\]]+)\]/)?.[1] || '';
   assert.doesNotMatch(settings, /rkp_passthrough/);
   assert.doesNotMatch(html, /updateRkpStatus/);
   assert.doesNotMatch(html, /data\.rkp_passthrough/);
-  assert.match(html, /id: 'rkp_protection'.*status: 'Always on'/s);
+  assert.match(html, /id:\s*'rkp_protection'.*status:\s*'Always on'/s);
 });

@@ -46,7 +46,6 @@ prepare_extract_target() {
   fi
 }
 
-# extract <zip> <file> <target dir> [junk paths]
 extract() {
   zip=$1
   file=$2

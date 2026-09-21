@@ -20,6 +20,14 @@ When finalizing or re-finalizing a release after the build has produced the actu
 9. Keep changelog/update/release-metadata changes in one coherent commit when practical. Do not bump the version again merely to finalize metadata unless the maintainer explicitly asks for a new version.
 10. If the exact release build, tag, publish job, or expected asset is missing or failed, make no speculative release-metadata edits. Report the blocker and wait for a verified artifact.
 
+## Pre-release rules
+
+When preparing a new version before the release (version bump + changelog):
+
+1. Write `CHANGELOG.md` entries in plain user-facing language only. Describe what the user gains or how behavior changes; never write technical implementation details (no file names as features, no API names, no internal refactors, no test/CI internals).
+2. Keep only the current version section in `CHANGELOG.md`. When adding the new version section, delete the previous version section so the changelog always describes exactly one release.
+3. Do not mirror changelog entries into `docs/i18n/` or localized README files.
+
 ## Repository-wide engineering contract
 
 CleveresTricky must be treated as one system, not as a collection of unrelated files. A change that looks local may cross Kotlin/Android, module packaging, WebUI, native Binder, Rust backend, cache/serialization, backup/restore, or CI boundaries.

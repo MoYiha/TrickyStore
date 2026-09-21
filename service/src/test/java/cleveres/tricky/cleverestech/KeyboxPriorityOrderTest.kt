@@ -89,9 +89,9 @@ class KeyboxPriorityOrderTest {
     }
 
     @Test
-    fun `custom UI six-permutation is accepted and expanded deterministically`() {
+    fun `custom UI twelve-permutation is accepted and expanded deterministically`() {
         val uiOrder = KeyboxPriorityCategory.UI_ORDER
-        assertEquals(6, uiOrder.size)
+        assertEquals(12, uiOrder.size)
         val submitted = uiOrder.reversed()
         val json = JSONObject().apply {
             put("mode", "custom")
@@ -102,12 +102,103 @@ class KeyboxPriorityOrderTest {
         assertEquals(submitted, restored.customOrder)
 
         val effective = restored.effectiveOrder()
-        assertEquals(16, effective.size)
-        assertEquals(submitted, effective.take(6))
+        assertEquals(32, effective.size)
+        assertEquals(submitted, effective.take(12))
         assertEquals(
             KeyboxPriorityCategory.DEFAULT_ORDER.filter { it !in submitted },
-            effective.drop(6),
+            effective.drop(12),
         )
+    }
+
+    @Test
+    fun `legacy six-permutation migrates to local-server pairs`() {
+        val legacy = KeyboxPriorityCategory.LEGACY_UI_ORDER
+        assertEquals(6, legacy.size)
+        val submitted = legacy.reversed()
+        val json = JSONObject().apply {
+            put("mode", "custom")
+            put("customOrder", JSONArray(submitted.map { it.name }))
+        }
+        val restored = KeyboxPriorityPreference.fromJson(json)
+        assertEquals(KeyboxPriorityPreference.Mode.CUSTOM, restored.mode)
+        val expected = submitted.flatMap { category ->
+            listOf(category, KeyboxPriorityCategory.valueOf("${category.name}_SERVER"))
+        }
+        assertEquals(expected, restored.customOrder)
+        assertEquals(12, restored.customOrder.size)
+        val effective = restored.effectiveOrder()
+        assertEquals(32, effective.size)
+        assertEquals(expected, effective.take(12))
+    }
+
+    @Test
+    fun `legacy sixteen-permutation migrates to thirty-two`() {
+        val legacy = KeyboxPriorityCategory.LEGACY_FULL_ORDER
+        assertEquals(16, legacy.size)
+        val submitted = legacy.reversed()
+        val json = JSONObject().apply {
+            put("mode", "custom")
+            put("customOrder", JSONArray(submitted.map { it.name }))
+        }
+        val restored = KeyboxPriorityPreference.fromJson(json)
+        assertEquals(KeyboxPriorityPreference.Mode.CUSTOM, restored.mode)
+        assertEquals(32, restored.customOrder.size)
+        val expected = submitted.flatMap { category ->
+            listOf(category, KeyboxPriorityCategory.valueOf("${category.name}_SERVER"))
+        }
+        assertEquals(expected, restored.customOrder)
+        assertEquals(expected, restored.effectiveOrder())
+    }
+
+    @Test
+    fun `origin-aware mapping separates local and server tiers`() {
+        assertEquals(
+            KeyboxPriorityCategory.VALID_RKP,
+            KeyboxPriorityCategory.fromValidityLevelAndOrigin(KeyboxVerifier.ValidityState.VALID, null, "RKP", false),
+        )
+        assertEquals(
+            KeyboxPriorityCategory.VALID_RKP_SERVER,
+            KeyboxPriorityCategory.fromValidityLevelAndOrigin(KeyboxVerifier.ValidityState.VALID, null, "RKP", true),
+        )
+        assertEquals(
+            KeyboxPriorityCategory.VALID_TEE_SERVER,
+            KeyboxPriorityCategory.fromValidityLevelAndOrigin(KeyboxVerifier.ValidityState.VALID, null, "TEE", true),
+        )
+        assertEquals(
+            KeyboxPriorityCategory.INVALID_REVOKED_TEE_SERVER,
+            KeyboxPriorityCategory.fromValidityLevelAndOrigin(
+                KeyboxVerifier.ValidityState.INVALID,
+                KeyboxVerifier.InvalidReason.REVOKED,
+                "TEE",
+                true,
+            ),
+        )
+    }
+
+    @Test
+    fun `server filename prefix marks server origin`() {
+        assertEquals(true, KeyboxPriorityCategory.isServerKeyboxFilename("server_feed.xml"))
+        assertEquals(true, KeyboxPriorityCategory.isServerKeyboxFilename("server_feed.cbox"))
+        assertEquals(false, KeyboxPriorityCategory.isServerKeyboxFilename("keybox.xml"))
+        assertEquals(false, KeyboxPriorityCategory.isServerKeyboxFilename("Server_feed.xml"))
+    }
+
+    @Test
+    fun `default order keeps local before server within each group`() {
+        val order = KeyboxPriorityCategory.DEFAULT_ORDER
+        assertEquals(32, order.size)
+        var index = 0
+        while (index < order.size) {
+            val local = order[index]
+            val server = order[index + 1]
+            assertEquals(false, local.name.endsWith("_SERVER"))
+            assertEquals("${local.name}_SERVER", server.name)
+            index += 2
+        }
+        val ui = KeyboxPriorityCategory.UI_ORDER
+        assertEquals(12, ui.size)
+        assertEquals("VALID_RKP", ui.first().name)
+        assertEquals("VALID_RKP_SERVER", ui[1].name)
     }
 
     @Test
@@ -174,6 +265,25 @@ class KeyboxPriorityOrderTest {
         // VALID_RKP is higher than STRONGBOX and TEE in default order
         assertEquals(1, filtered.size)
         assertEquals("rkp", filtered[0].id)
+    }
+
+    @Test
+    fun `server tier is distinct from local tier in custom order`() {
+        val localTee = MockKeyBox("local-tee", "TEE")
+        val serverRkp = MockKeyBox("server-rkp", "RKP")
+        val order = listOf(
+            KeyboxPriorityCategory.VALID_RKP_SERVER,
+            KeyboxPriorityCategory.VALID_TEE,
+        )
+        val filtered = KeyboxPriorityOrder.filterTopPriorityTier(
+            listOf(localTee, serverRkp),
+            KeyboxPriorityCategory.expandToFullOrder(order),
+        ) { kb ->
+            if (kb.id.startsWith("server")) KeyboxPriorityCategory.VALID_RKP_SERVER
+            else KeyboxPriorityCategory.VALID_TEE
+        }
+        assertEquals(1, filtered.size)
+        assertEquals("server-rkp", filtered[0].id)
     }
 
     @Test

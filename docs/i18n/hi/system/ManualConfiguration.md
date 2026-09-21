@@ -1,0 +1,107 @@
+# मैन्युअल कॉन्फ़िगरेशन
+
+**भाषा:** [English](../../../system/ManualConfiguration.md) | [Türkçe](../../tr/system/ManualConfiguration.md) | [简体中文](../../zh-CN/system/ManualConfiguration.md) | [Español](../../es/system/ManualConfiguration.md) | [Deutsch](../../de/system/ManualConfiguration.md) | [Русский](../../ru/system/ManualConfiguration.md) | [Bahasa Indonesia](../../id/system/ManualConfiguration.md) | **हिन्दी** | [العربية](../../ar/system/ManualConfiguration.md)
+
+यह गाइड WebUI का उपयोग किए बिना फ़ाइलों के माध्यम से CleveresTricky के मैन्युअल कॉन्फ़िगरेशन को कवर करता है। सेटिंग्स बदलने का सामान्य तरीका WebUI ही है; यदि आप फ़ाइलें हाथ से संपादित करना पसंद करते हैं या WebUI उपलब्ध नहीं है तो इस गाइड का उपयोग करें। सभी मॉड्यूल सेटिंग्स और नीति फ़ाइलें `/data/adb/cleverestricky/` डायरेक्टरी में स्थित हैं।
+
+---
+
+## 1. दायरा और लक्ष्य ऐप्स
+
+* **`target.txt`**: Keystore अटेस्टेशन स्पूफिंग के लिए लक्षित पैकेज नाम (प्रति पंक्ति एक):
+  ```text
+  com.google.android.gms
+  com.google.android.gms.unstable
+  com.android.vending
+  ```
+* **`global_mode`**: खाली मार्कर फ़ाइल।
+  * **उपस्थित होने पर**: ग्लोबल मोड सक्रिय है (सिस्टम और रूट के अलावा सभी ऐप्स इंटरसेप्ट होते हैं)।
+  * **अनुपस्थित होने पर**: केवल `target.txt` में सूचीबद्ध ऐप्स ही इंटरसेप्ट होते हैं।
+  * *कमांड:* `touch /data/adb/cleverestricky/global_mode` (सक्षम करें) या `rm -f /data/adb/cleverestricky/global_mode` (अक्षम करें)।
+
+* **`identity_target.txt`**: डिवाइस पहचान स्पूफिंग के लिए लक्षित ऐप्स।
+* **`global_identity_mode`**: पहचान स्पूफिंग को विश्व स्तर पर लागू करने के लिए मार्कर फ़ाइल।
+
+---
+
+## 2. डिवाइस पहचान और बिल्ड प्रॉपर्टीज़
+
+* **`spoof_build_vars`**: `KEY=VALUE` प्रारूप में स्पूफ की जाने वाली डिवाइस प्रॉपर्टीज़:
+  ```properties
+  MANUFACTURER=Google
+  MODEL=Pixel 8 Pro
+  FINGERPRINT=google/husky/husky:14/UQ1A.240105.004/11269998:user/release-keys
+  BRAND=google
+  PRODUCT=husky
+  DEVICE=husky
+  RELEASE=14
+  ID=UQ1A.240105.004
+  INCREMENTAL=11269998
+  TYPE=user
+  TAGS=release-keys
+  ```
+* **`security_patch.txt`**: सुरक्षा पैच तिथि (उदा. `2026-03-05`)। स्वचालित संरेखण के लिए इसे खाली छोड़ें।
+* **`boot_props_mode`**: बूटलोडर प्रॉपर्टी सिमुलेशन (`auto`, `force`, या `disable`)।
+
+---
+
+## 3. हार्डवेयर Keybox
+
+* **`keybox.xml`**: अपनी मान्य हार्डवेयर अटेस्टेशन XML फ़ाइल को सीधे `/data/adb/cleverestricky/keybox.xml` पर रखें। अनुमतियाँ सुरक्षित रखें (`chmod 600`)।
+* **`keyboxes/`**: एकाधिक कीबॉक्स फ़ाइलें संग्रहीत करने के लिए डायरेक्टरी।
+* **अपलोड कभी ओवरराइट नहीं करते:** ड्रॉप या पेस्ट किया गया Keybox दिए गए नाम से सहेजा जाता है, या नाम न दिया गया हो तो `keybox.xml` के रूप में; यदि यह नाम पहले से लिया हुआ है तो अगला उपलब्ध नाम (`keybox2.xml`, `keybox3.xml`, ...) स्वतः उपयोग होता है।
+* **`disabled_keyboxes`**: पूल ऑप्ट-आउट सूची। प्रत्येक पंक्ति में एक `स्कोप:फ़ाइलनाम` पहचानकर्ता होता है (`keyboxes:keybox2.xml`, `root:keybox.xml`), जो WebUI Keybox पैनल में दिखा जाने वाले फ़ाइल नामों से मेल खाता है। सूचीबद्ध Keybox दिखाई और प्रबंधनीय बने रहते हैं, परंतु अटेस्टेशन पूल में कभी लोड नहीं होते। WebUI के अक्षम और सक्षम बटन इस फ़ाइल को पढ़ते और लिखते हैं, इसलिए इसे मैन्युअल रूप से भी रखा जा सकता है।
+
+---
+
+## 4. DRM और गोपनीयता दायरा
+
+* **`drm_packages.txt`**: Widevine L1 हार्डवेयर सुरक्षा बनाए रखने के लिए Keystore इंटरसेप्शन से बाहर रखे जाने वाले मीडिया ऐप्स:
+  ```text
+  com.netflix.mediaclient
+  com.amazon.avod.thirdpartyclient
+  com.disney.disneyplus
+  ```
+
+---
+
+## 5. फीचर टॉगल (मार्कर फ़ाइलें)
+
+फ़ीचर चालू करने के लिए फ़ाइल बनाएं (`touch <file>`), और बंद करने के लिए हटाएं (`rm -f <file>`):
+
+| मार्कर फ़ाइल | उपस्थित होने पर प्रभाव |
+| :--- | :--- |
+| `spoof_enabled` | कोर पहचान स्पूफिंग इंजन को सक्रिय करता है। |
+| `spoof_build_identity` | बिल्ड प्रॉपर्टीज़ स्पूफिंग को सक्रिय करता है। |
+| `auto_keybox_check` | कीबॉक्स वैधता और निरस्तीकरण स्थिति की स्वतः जाँच करता है। |
+| `drm_passthrough` | `drm_packages.txt` में सूचीबद्ध ऐप्स के लिए DRM पासथ्रू सक्षम करता है। |
+| `hide_sensitive_props` | संवेदनशील रूट, डीबग और बूटलोडर प्रॉपर्टीज़ को छुपाता है। |
+| `tee_broken_mode` | पुराना माइग्रेशन/अनुकूलता स्थिति। उपस्थित होने पर सेवा पुरानी माइग्रेशन प्रसंस्करण बनाए रखती है; कोर सुरक्षा अपरिवर्तित रहती है और हार्डवेयर TEE संचार विफलता पर सर्किट ब्रेकर अलग से सक्रिय होता है। |
+| `debug_logging` | `native_runtime.log` में विस्तृत डीबग लॉगिंग सक्षम करता है। |
+
+---
+
+## परिवर्तन लागू करना और सत्यापन
+
+### सेटिंग्स लागू करना
+WebUI में किए गए बदलाव सामान्य रनटाइम पथ से लागू होते हैं। यदि कॉन्फ़िगरेशन या मार्कर फ़ाइलें हाथ से संपादित की हैं, तो उसके बाद डिवाइस रीबूट की अनुशंसा की जाती है:
+```sh
+su -c "reboot"
+```
+
+### रनटाइम लॉग देखना
+```sh
+su -c "cat /data/adb/cleverestricky/native_runtime.log"
+```
+
+### चल रही प्रक्रियाओं की पुष्टि
+```sh
+su -c "ps -A | grep -E 'cleverestrickyd|cleverestricky_backend'"
+```
+
+### नैदानिक बग रिपोर्ट तैयार करना
+```sh
+su -c "/data/adb/modules/cleverestricky/emergency-report.sh"
+```
+(Magisk पर Action बटन WebUI खोलता है, इसलिए यह फ़ाइल सीधे चलाएं)।
+तैयार रिपोर्ट `/data/adb/cleverestricky/bugreports/` में सहेजी जाएगी।

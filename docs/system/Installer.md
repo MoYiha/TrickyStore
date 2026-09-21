@@ -4,11 +4,11 @@
 
 ## Purpose
 
-The installer creates a complete KernelSU or APatch module with the service, native payload, scripts, policy, metadata, and integrity records required at runtime.
+The installer creates a complete KernelSU, APatch, or Magisk module with the service, native payload, scripts, policy, metadata, and integrity records required at runtime.
 
 ## Supported path
 
-Installation must run from KernelSU, APatch, or Magisk while Android is active. Android 12 through Android 17 are supported on ARM64 and x86 64. KernelSU and APatch provide full WebUI support; Magisk runs in headless daemon mode configured via `/data/adb/cleverestricky/` (see [Magisk Support](Magisk.md)). Recovery installation paths stop with an explanation before a partial module is left behind.
+Installation must run from KernelSU, APatch, or Magisk while Android is active. Android 12 through Android 17 are supported on ARM64 and x86 64. All three provide full WebUI support; on Magisk the WebUI opens from the module Action button via the standalone WebUI host app (see [Magisk Support](Magisk.md)). Recovery installation paths stop with an explanation before a partial module is left behind.
 
 The installer selects the architecture specific Rust `inject` and `webui_bridge` executables and the `libcleverestricky.so` library. It also installs the daemon, service APK, module metadata, installer script, early boot script, service script, native `webroot`, and SELinux policy required by their lifecycle stage.
 
@@ -42,7 +42,7 @@ When authenticity matters, download from the official project release page and v
 
 5. Reboot Android.
 
-6. **KernelSU / APatch**: Open the module WebUI and review Dashboard and Logs. **Magisk (headless)**: Check runtime status via `su -c "cat /data/adb/cleverestricky/native_runtime.log"`, process inspection (`su -c "ps -A | grep cleverestech"`), or `action.sh` (see [Magisk Support](Magisk.md)).
+6. **KernelSU / APatch**: Open the module WebUI and review Dashboard and Logs. **Magisk**: Tap the module **Action** button to open the WebUI via the WebUI host app (installed automatically on first use). Runtime status can also be checked via `su -c "cat /data/adb/cleverestricky/native_runtime.log"`, process inspection (`su -c "ps -A | grep -E 'cleverestrickyd|cleverestricky_backend'"`), or `emergency-report.sh` (see [Magisk Support](Magisk.md)).
 
 Do not extract or delete template binaries manually. An incomplete payload will fail verification or prevent native runtime activation.
 

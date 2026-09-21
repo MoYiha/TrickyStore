@@ -58,6 +58,17 @@ class WebServerHtmlTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testHtmlStructure() {
         val port = server.listeningPort
@@ -73,9 +84,9 @@ class WebServerHtmlTest {
         assertTrue("Missing Island Container", html.contains("class=\"island-container\""))
         assertTrue("Missing Island", html.contains("id=\"island\""))
         assertTrue("Missing Island Accessibility", html.contains("role=\"status\" aria-live=\"polite\""))
-        assertTrue("Missing notify function", html.contains("function notify(msg, type = 'normal')"))
-        assertTrue("Missing App Table Text Renderer", html.contains("cell.textContent = value"))
-        assertTrue("Missing App Table Accessible Action Attribute", html.contains("button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"))
+        assertTrue("Missing notify function", containsLoose(html, "function notify(msg, type = 'normal')"))
+        assertTrue("Missing App Table Text Renderer", containsLoose(html, "cell.textContent = value"))
+        assertTrue("Missing App Table Accessible Action Attribute", containsLoose(html, "button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"))
         assertTrue("Missing Identifier Header", html.contains("<h3>Attestation and Telephony Identifiers</h3>"))
         assertTrue("Missing IMEI Input", html.contains("id=\"inputImei\""))
         assertTrue("Missing IMEI Label", html.contains("<label for=\"inputImei\""))
@@ -100,8 +111,8 @@ class WebServerHtmlTest {
         assertTrue("Missing App Package Label", html.contains("<label for=\"appPkg\""))
         assertTrue("Missing App Template Label", html.contains("<label for=\"appTemplate\""))
         assertTrue("Missing App Keybox Label", html.contains("<label for=\"appKeybox\""))
-        assertTrue("Missing App Table Text Renderer", html.contains("cell.textContent = value"))
-        assertTrue("Missing App Table Accessible Action Attribute", html.contains("button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"))
+        assertTrue("Missing App Table Text Renderer", containsLoose(html, "cell.textContent = value"))
+        assertTrue("Missing App Table Accessible Action Attribute", containsLoose(html, "button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"))
         assertTrue("Missing Empty State", html.contains("No active rules"))
         assertTrue("Missing App Filter Input", html.contains("id=\"appFilter\""))
         assertTrue("Missing App Filter ARIA Label", html.contains("aria-label=\"Filter rules\""))
@@ -127,7 +138,7 @@ class WebServerHtmlTest {
         assertTrue("Missing Tab Controls", html.contains("aria-controls=\"dashboard\""))
         assertTrue("Missing Tabpanel Role", html.contains("role=\"tabpanel\""))
         assertTrue("Missing Aria Labelledby", html.contains("aria-labelledby=\"tab_dashboard\""))
-        assertTrue("Missing handleTabNavigation JS", html.contains("function handleTabNavigation(e, id)"))
+        assertTrue("Missing handleTabNavigation JS", containsLoose(html, "function handleTabNavigation(e, id)"))
         assertTrue("Missing aria-selected update in switchTab", html.contains("setAttribute('aria-selected'"))
         assertTrue("Missing tabindex update in switchTab", html.contains("setAttribute('tabindex'"))
         assertTrue(
@@ -191,17 +202,17 @@ class WebServerHtmlTest {
 
         assertTrue(
             "Missing focus-visible CSS",
-            html.contains("input[type=\"checkbox\"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"),
+            containsLoose(html, "input[type=\"checkbox\"].toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"),
         )
         assertTrue(
             "Missing disabled toggle CSS",
-            html.contains("input[type=\"checkbox\"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }"),
+            containsLoose(html, "input[type=\"checkbox\"].toggle:disabled { opacity: 0.5; cursor: not-allowed; }"),
         )
-        assertTrue("Missing label cursor CSS", html.contains("label { font-size: 0.88rem; font-weight: 600; color: var(--text-muted); margin-bottom: 7px; cursor: pointer; display: block; letter-spacing: -0.01em; }"))
+        assertTrue("Missing label cursor CSS", containsLoose(html, "label { font-size: 0.88rem; font-weight: 600; color: var(--text-muted); margin-bottom: 7px; cursor: pointer; display: block; letter-spacing: -0.01em; }"))
         assertFalse("Core protection must not expose a safe-mode switch", html.contains("Disable Certificate Substitution (Safe Mode)"))
         assertFalse("Core property hiding must not expose a toggle", html.contains("id=\"hide_sensitive_props\""))
         assertTrue("Missing always-active core notice", html.contains("Bootloader/verified-boot property compatibility"))
-        assertTrue("Missing mobile bottom navigation", html.contains(".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                margin: 0 auto;\n                width: calc(100% - 32px);"))
+        assertTrue("Missing mobile bottom navigation", containsLoose(html, ".tabs {\n                position: fixed;\n                top: auto;\n                bottom: max(16px, env(safe-area-inset-bottom));\n                left: 16px;\n                right: 16px;\n                margin: 0 auto;\n                width: calc(100% - 32px);"))
     }
 
     @Test
@@ -215,10 +226,10 @@ class WebServerHtmlTest {
         assertTrue("Missing oninput handler", html.contains("oninput=\"editorUnsavedBypass = false; updateSaveButtonState()\""))
         assertTrue("Missing handleSave in onkeydown", html.contains("handleSave(document.getElementById('saveBtn'))"))
         assertTrue("Missing handleSave in onclick", html.contains("onclick=\"handleSave(this)\""))
-        assertTrue("Missing originalContent variable", html.contains("let originalContent = '';"))
-        assertTrue("Missing dirty state check", html.contains("if (currentFile && editor.value !== originalContent)"))
+        assertTrue("Missing originalContent variable", containsLoose(html, "let originalContent = '';"))
+        assertTrue("Missing dirty state check", containsLoose(html, "if (currentFile && editor.value !== originalContent)"))
         assertTrue("Missing notify alert", html.contains("notify('You have unsaved changes"))
         assertTrue("Missing updateSaveButtonState function", html.contains("function updateSaveButtonState()"))
-        assertTrue("Missing visual indicator logic", html.contains("btn.innerText = 'Save *';"))
+        assertTrue("Missing visual indicator logic", containsLoose(html, "btn.innerText = 'Save *';"))
     }
 }

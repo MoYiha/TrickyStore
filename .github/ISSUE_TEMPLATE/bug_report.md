@@ -21,7 +21,7 @@ assignees: ''
 ## Support Diagnostics Snapshot (Required)
 
 > **Mandatory.** In WebUI, go to **Info & Resources** -> scroll down to **Support Diagnostics** -> click **Copy Diagnostics**, then paste below.
-> *(If running headless Magisk without WebUI, run `su -c /data/adb/modules/cleverestricky/action.sh` or fill in the Environment fields above).*
+> *(If you cannot open the WebUI, run `su -c /data/adb/modules/cleverestricky/emergency-report.sh` or fill in the Environment fields above).*
 
 <details open>
 <summary>Click to expand Support Diagnostics Snapshot</summary>
@@ -57,7 +57,7 @@ What actually happened?
 >
 > **How to obtain logs:**
 > 1. **WebUI Logs (Easiest)**: Go to WebUI **Logs** tab -> enable **Debug Logging** toggle (turns green) -> reproduce the bug -> click **Copy** -> paste below.
-> 2. **Automated Bug Report**: In KernelSU/APatch tap **Action**, or run `su -c /data/adb/modules/cleverestricky/action.sh` -> attach the archive from `/data/adb/cleverestricky/bugreports/`.
+> 2. **Automated Bug Report**: Run `su -c /data/adb/modules/cleverestricky/emergency-report.sh` -> attach the archive from `/data/adb/cleverestricky/bugreports/`.
 > 3. **Logcat**: Run `adb logcat -d -s cleverestricky CleveresTricky` (or in Termux: `su -c "logcat -d -s cleverestricky CleveresTricky"`).
 
 <details>

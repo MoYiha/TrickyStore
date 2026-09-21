@@ -8,8 +8,8 @@ const end = source.indexOf('function t(', start);
 assert.ok(start >= 0 && end > start, 'loadLanguage implementation is missing');
 const implementation = source.slice(start, end);
 assert.match(implementation, /previousController\.abort\(\)/);
-assert.match(implementation, /fetchAuth\('\/api\/language', \{ signal: controller\.signal \}\)/);
-assert.match(implementation, /if \(controller\.signal\.aborted\) return;/);
+assert.match(implementation, /fetchAuth\('\/api\/language',\s*\{\s*signal:\s*controller\.signal\s*\}\)/);
+assert.match(implementation, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 
 let releaseFirst;
 const calls = [];

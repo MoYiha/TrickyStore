@@ -7,29 +7,29 @@ const switchStart = source.indexOf('function switchTab(id)');
 const switchEnd = source.indexOf('async function fetchLogs()', switchStart);
 assert.ok(switchStart >= 0 && switchEnd > switchStart, 'switchTab implementation is missing');
 const switchSource = source.slice(switchStart, switchEnd);
-assert.match(switchSource, /if \(id !== 'keys'\)[\s\S]*?keyInfoController\.abort\(\)[\s\S]*?serverListController\.abort\(\)[\s\S]*?keyboxListController\.abort\(\)/, 'leaving Keys must abort every pending Keys loader owner');
+assert.match(switchSource, /if\s*\(id\s*!==\s*'keys'\)[\s\S]*?keyInfoController\.abort\(\)[\s\S]*?serverListController\.abort\(\)[\s\S]*?keyboxListController\.abort\(\)/, 'leaving Keys must abort every pending Keys loader owner');
 
 const loadKeyInfoStart = source.indexOf('async function loadKeyInfo()');
 const loadKeyInfoEnd = source.indexOf('async function unlockCbox', loadKeyInfoStart);
 assert.ok(loadKeyInfoStart >= 0 && loadKeyInfoEnd > loadKeyInfoStart, 'loadKeyInfo implementation is missing');
 const loadKeyInfoSource = source.slice(loadKeyInfoStart, loadKeyInfoEnd);
-assert.match(loadKeyInfoSource, /const previousController = keyInfoController/);
+assert.match(loadKeyInfoSource, /const\s+previousController\s*=\s*keyInfoController/);
 assert.match(loadKeyInfoSource, /previousController\.abort\(\)/);
 assert.match(loadKeyInfoSource, /loadKeyboxes\(options\)/);
 assert.match(loadKeyInfoSource, /loadServers\(options\)/);
-assert.match(loadKeyInfoSource, /fetchAuth\('\/api\/config', options\)/);
-assert.match(loadKeyInfoSource, /fetchAuth\('\/api\/cbox_status', options\)/);
-assert.match(loadKeyInfoSource, /if \(controller\.signal\.aborted\) return;/);
+assert.match(loadKeyInfoSource, /fetchAuth\('\/api\/config',\s*options\)/);
+assert.match(loadKeyInfoSource, /fetchAuth\('\/api\/cbox_status',\s*options\)/);
+assert.match(loadKeyInfoSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
 
-const loadServersStart = source.indexOf('async function loadServers(options = {})');
+const loadServersStart = source.search(/async\s+function\s+loadServers\s*\(options\s*=\s*\{\}\)/);
 const loadServersEnd = source.indexOf('function resetServerForm()', loadServersStart);
 assert.ok(loadServersStart >= 0 && loadServersEnd > loadServersStart, 'loadServers implementation is missing');
-assert.match(source.slice(loadServersStart, loadServersEnd), /fetchAuth\('\/api\/servers', requestOptions\)/);
+assert.match(source.slice(loadServersStart, loadServersEnd), /fetchAuth\('\/api\/servers',\s*requestOptions\)/);
 
-const loadKeyboxesStart = source.indexOf('async function loadKeyboxes(options = {})');
+const loadKeyboxesStart = source.search(/async\s+function\s+loadKeyboxes\s*\(options\s*=\s*\{\}\)/);
 const loadKeyboxesEnd = source.indexOf('function renderKeyboxes()', loadKeyboxesStart);
 assert.ok(loadKeyboxesStart >= 0 && loadKeyboxesEnd > loadKeyboxesStart, 'loadKeyboxes implementation is missing');
-assert.match(source.slice(loadKeyboxesStart, loadKeyboxesEnd), /fetchAuth\('\/api\/keyboxes', requestOptions\)/);
+assert.match(source.slice(loadKeyboxesStart, loadKeyboxesEnd), /fetchAuth\('\/api\/keyboxes',\s*requestOptions\)/);
 
 function responseFor(path) {
   return {

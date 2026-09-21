@@ -3,13 +3,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/bridge.js', 'utf8');
-const start = source.indexOf('    async function readPolicyState()');
-const end = source.indexOf('    function setProfileEnabled', start);
+const start = source.indexOf('async function readPolicyState()');
+const end = source.indexOf('function setProfileEnabled', start);
 assert.ok(start >= 0 && end > start, 'bridge policy-state reader is missing');
 const implementation = source.slice(start, end);
-assert.match(implementation, /if \(policyStateRequest\) return policyStateRequest/);
-assert.match(implementation, /policyStateRequest = request/);
-assert.match(implementation, /policyStateRequest === request/);
+assert.match(implementation, /if\s*\(policyStateRequest\)\s*return\s+policyStateRequest/);
+assert.match(implementation, /policyStateRequest\s*=\s*request/);
+assert.match(implementation, /policyStateRequest\s*===\s*request/);
 
 let releaseFirst;
 const calls = [];

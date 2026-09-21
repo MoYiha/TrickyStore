@@ -3,21 +3,27 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const source = fs.readFileSync('module/template/webroot/ux.js', 'utf8');
-const start = source.indexOf('// Source-aware Stored Keyboxes and Verification UX.');
+const refreshInventoryIndex = source.search(/function\s+refreshInventory\s*\(/);
+let start = -1;
+for (const iifeMatch of source.matchAll(/\(function\s*\(global\)\s*\{/g)) {
+  if (iifeMatch.index >= refreshInventoryIndex) break;
+  start = iifeMatch.index;
+}
 const end = source.indexOf('})(window);', start);
 assert.ok(start >= 0 && end > start, 'KeyboxHub UX IIFE is missing');
-const marker = '    function install() {';
-const markerIndex = source.indexOf(marker, start);
+const installMatch = /function\s+install\s*\(\)\s*\{/.exec(source.slice(start, end));
+assert.ok(installMatch, 'KeyboxHub install marker is missing');
+const markerIndex = start + installMatch.index;
 assert.ok(markerIndex > start && markerIndex < end, 'KeyboxHub install marker is missing');
 const keyboxSource = source.slice(start, markerIndex)
   + "    global.__testRefreshInventory = refreshInventory; global.__testInventory = () => inventory;\n"
   + source.slice(markerIndex, end + '})(window);'.length);
 
-assert.match(keyboxSource, /const previousController = inventoryController/);
+assert.match(keyboxSource, /const\s+previousController\s*=\s*inventoryController/);
 assert.match(keyboxSource, /previousController\.abort\(\)/);
-assert.match(keyboxSource, /global\.fetchAuth\('\/api\/keybox_inventory', requestOptions\)/);
-assert.match(keyboxSource, /if \(controller\.signal\.aborted\) return;/);
-assert.match(keyboxSource, /if \(inventoryController !== controller\) return;/);
+assert.match(keyboxSource, /global\.fetchAuth\('\/api\/keybox_inventory',\s*requestOptions\)/);
+assert.match(keyboxSource, /if\s*\(controller\.signal\.aborted\)\s*return;/);
+assert.match(keyboxSource, /if\s*\(inventoryController\s*!==\s*controller\)\s*return;/);
 
 let releaseFirst;
 const calls = [];

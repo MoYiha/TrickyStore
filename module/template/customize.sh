@@ -17,13 +17,10 @@ elif [ "$BOOTMODE" ] && [ "$APATCH" ]; then
 elif [ "$MAGISK_VER_CODE" ] || { [ "$BOOTMODE" ] && [ -d /data/adb/magisk ]; }; then
   ui_print "- Installing from Magisk app"
   ui_print "- Magisk version: ${MAGISK_VER:-unknown} (${MAGISK_VER_CODE:-unknown})"
-  ui_print "*********************************************************"
-  ui_print "! NOTICE: Magisk is NOT recommended for CleveresTricky."
-  ui_print "! KernelSU or APatch is strongly recommended."
-  ui_print "! Learn why: https://tryigit.dev/advanced-android-root-architecture-concealment/"
-  ui_print "! WebUI is unavailable on Magisk."
-  ui_print "! Configure manually in: /data/adb/cleverestricky/"
-  ui_print "*********************************************************"
+  ui_print "- Magisk is supported. KernelSU and APatch are supported as well."
+  ui_print "- WebUI works on all three: on Magisk press Action to open it"
+  ui_print "  via a standalone WebUI host app (a WebView container,"
+  ui_print "  container, not a root manager). It installs on first use."
 else
   ui_print "*********************************************************"
   ui_print "! Install from recovery or unsupported root is not supported"
@@ -95,6 +92,15 @@ extract "$ZIPFILE" 'module.prop'     "$MODPATH"
 extract "$ZIPFILE" 'post-fs-data.sh' "$MODPATH"
 extract "$ZIPFILE" 'service.sh' "$MODPATH"
 extract "$ZIPFILE" 'action.sh' "$MODPATH"
+extract "$ZIPFILE" 'emergency-report.sh' "$MODPATH"
+
+host_pin_target="$MODPATH/webui-host.sha256"
+prepare_extract_target "$host_pin_target"
+unzip -o "$ZIPFILE" 'webui-host.sha256' -d "$MODPATH" >&2   || abort "! Could not extract WebUI host pin"
+if [ -L "$host_pin_target" ] || [ ! -f "$host_pin_target" ]; then
+  abort "! WebUI host pin does not exist safely"
+fi
+
 extract "$ZIPFILE" 'service.apk'     "$MODPATH"
 extract "$ZIPFILE" 'sepolicy.rule'   "$MODPATH"
 extract "$ZIPFILE" 'daemon'          "$MODPATH"
@@ -141,7 +147,7 @@ case "$ARCH" in
     ;;
 esac
 
-for module_payload in module.prop post-fs-data.sh service.sh action.sh service.apk sepolicy.rule daemon \
+for module_payload in module.prop post-fs-data.sh service.sh action.sh emergency-report.sh webui-host.sha256 service.apk sepolicy.rule daemon \
   "lib$SONAME.so" inject webui_bridge cleverestrickyd cleverestricky_backend integrity_manifest.json; do
   payload_path="$MODPATH/$module_payload"
   if [ -L "$payload_path" ] || [ ! -f "$payload_path" ]; then
@@ -150,9 +156,11 @@ for module_payload in module.prop post-fs-data.sh service.sh action.sh service.a
 done
 
 chmod 755 "$MODPATH/inject" "$MODPATH/webui_bridge" "$MODPATH/cleverestrickyd" \
-  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/post-fs-data.sh" \
+  "$MODPATH/cleverestricky_backend" "$MODPATH/daemon" "$MODPATH/service.sh" "$MODPATH/action.sh" "$MODPATH/emergency-report.sh" "$MODPATH/post-fs-data.sh" \
   || abort "! Could not set module executable permissions"
 chmod 644 "$MODPATH/integrity_manifest.json" || abort "! Could not set integrity manifest permissions"
+chmod 644 "$MODPATH/webui-host.sha256" || abort "! Could not set host pin permissions"
+chown 0:0 "$MODPATH/webui-host.sha256" || abort "! Could not set host pin ownership"
 
 CONFIG_DIR=/data/adb/cleverestricky
 if [ -L "$CONFIG_DIR" ]; then
@@ -198,18 +206,12 @@ if [ -e "$CONFIG_DIR/keyboxes" ] || [ -L "$CONFIG_DIR/keyboxes" ]; then
   chown 0:0 "$CONFIG_DIR/keyboxes" || abort "! Could not set keybox directory ownership"
 fi
 
-# Marker files below are created with truncating writes, so a planted symlink must
-# abort the install instead of redirecting a root write outside the config dir.
 for marker_file in settings_schema_v3 global_mode auto_keybox_check block_invalid_keyboxes recommended_defaults_pending spoof_switch_initialized; do
   if [ -L "$CONFIG_DIR/$marker_file" ]; then
     abort "! Refusing symlinked configuration marker: $marker_file"
   fi
 done
 
-# Schema v3 retires the historical RKP user switch. RKP infrastructure UIDs are
-# protected by the runtime unconditionally, so retaining this file only creates
-# conflicting Dashboard/Resources state. CBOX device caches are disposable and
-# are regenerated after an upgrade to avoid carrying stale serialization state.
 if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   ui_print "- Migrating persisted settings to schema v3"
   if [ -e "$CONFIG_DIR/rkp_passthrough" ]; then
@@ -229,10 +231,6 @@ if [ ! -e "$CONFIG_DIR/settings_schema_v3" ]; then
   chown 0:0 "$CONFIG_DIR/settings_schema_v3" || abort "! Could not set settings migration marker ownership"
 fi
 
-# Fresh installs use the recommended minimal default: global core coverage and
-# automatic keybox checking are enabled; identity/privacy extras stay off. The
-# v2 patch policy follows the device's captured/property patch level and only
-# advances stale values through Automatic mode.
 if [ ! -e "$CONFIG_DIR/spoof_switch_initialized" ]; then
   ui_print "- Applying recommended default settings"
   [ -e "$CONFIG_DIR/global_mode" ] || : > "$CONFIG_DIR/global_mode" \
@@ -307,8 +305,6 @@ if [ ! -f "$CONFIG_DIR/drm_packages.txt" ]; then
 fi
 chmod 600 "$CONFIG_DIR/drm_packages.txt" || abort "! Could not secure drm_packages.txt"
 
-# Kept as an internal identity-build compatibility policy. Core bootloader/TEE
-# property protection ignores this file and is always applied.
 if [ ! -f "$CONFIG_DIR/boot_props_mode" ]; then
   ui_print "- Adding automatic identity-build compatibility policy"
   extract "$ZIPFILE" 'boot_props_mode' "$TMPDIR"
