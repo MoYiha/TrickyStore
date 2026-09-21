@@ -55,6 +55,17 @@ class WebServerLabelTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testKeyboxContentLabel() {
         val port = server.listeningPort
@@ -79,7 +90,8 @@ class WebServerLabelTest {
 
         assertTrue(
             "Delete rule button should have a title attribute",
-            html.contains("button.title = `${'$'}{label} rule`") && html.contains("button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"),
+            containsLoose(html, "button.title = `${'$'}{label} rule`") &&
+                containsLoose(html, "button.setAttribute('aria-label', `${'$'}{label} rule for ${'$'}{packageName}`)"),
         )
     }
 }

@@ -57,6 +57,17 @@ class WebServerPaletteTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testPaletteImprovements() {
         val port = server.listeningPort
@@ -67,8 +78,8 @@ class WebServerPaletteTest {
 
         assertTrue(
             "CSS should include button:disabled styling",
-            html.contains("button:disabled { opacity: 0.5; cursor: not-allowed; }") ||
-                html.contains("textarea:disabled, input:disabled, select:disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }"),
+            containsLoose(html, "button:disabled { opacity: 0.5; cursor: not-allowed; }") ||
+                containsLoose(html, "textarea:disabled, input:disabled, select:disabled, button:disabled { opacity: 0.5; cursor: not-allowed; }"),
         )
         assertTrue(
             "Add Rule button should have ID and be disabled by default",
@@ -98,29 +109,31 @@ class WebServerPaletteTest {
 
         assertTrue(
             "removeAppRule should trigger requireConfirm dialog",
-            html.contains("requireConfirm(removeButton, () => runWithState(removeButton") && html.contains("removeAppRule"),
+            containsLoose(html, "requireConfirm(removeButton, () => runWithState(removeButton") && html.contains("removeAppRule"),
         )
         assertTrue(
             "deleteKeybox should trigger requireConfirm dialog",
-            html.contains("requireConfirm(remove, () => runWithState(remove") && html.contains("deleteKeybox"),
+            containsLoose(html, "requireConfirm(remove, () => runWithState(remove") && html.contains("deleteKeybox"),
         )
         assertTrue(
             "saveAppConfig should check res.ok",
-            html.contains(
+            containsLoose(
+                html,
                 "if (res.ok) {",
-            ) && html.contains("notify('App Config Saved');") && html.contains("notify('Save Failed: ' + txt, 'error');"),
+            ) && html.contains("notify('App Config Saved');") && containsLoose(html, "notify('Save Failed: ' + txt, 'error')"),
         )
         assertTrue(
             "saveFile should check res.ok",
-            html.contains(
+            containsLoose(
+                html,
                 "if (res.ok) {",
-            ) && html.contains("notify('File Saved');") && html.contains("notify('Save Failed: ' + txt, 'error');"),
+            ) && html.contains("notify('File Saved');") && containsLoose(html, "notify('Save Failed: ' + txt, 'error')"),
         )
         assertTrue(
             "toggle should check res.ok",
-            html.contains("if (!res.ok) {") &&
-                html.contains("const message = await res.text();") &&
-                html.contains("throw new Error('Server returned ' + res.status + ': ' + message);") &&
+            containsLoose(html, "if (!res.ok) {") &&
+                containsLoose(html, "const message = await res.text();") &&
+                containsLoose(html, "throw new Error('Server returned ' + res.status + ': ' + message)") &&
                 html.contains("notify('Setting Updated');"),
         )
         assertTrue(
@@ -137,7 +150,7 @@ class WebServerPaletteTest {
         )
         assertTrue(
             "addAppRule should contain regex validation",
-            html.contains("const pkgRegex = /^[a-zA-Z0-9_.*]+$/;") && html.contains("if (!pkgRegex.test(pkg))"),
+            containsLoose(html, "const pkgRegex = /^[a-zA-Z0-9_.*]+$/;") && containsLoose(html, "if (!pkgRegex.test(pkg))"),
         )
     }
 
@@ -155,14 +168,15 @@ class WebServerPaletteTest {
         )
         assertTrue(
             "processFile should update dropZoneContent",
-            html.contains("const dz = document.getElementById('dropZoneContent');") &&
-                html.contains(
+            containsLoose(html, "const dz = document.getElementById('dropZoneContent');") &&
+                containsLoose(
+                    html,
                     "dz.innerHTML = '<div style=\"font-size: 1.2em; margin-bottom: 10px; color:var(--accent); font-weight:bold; display: flex; align-items: center; justify-content: center;\"><div class=\"inline-spinner\"></div>Uploading: ' + safeFileName + '...</div>';",
                 ),
         )
         assertTrue(
             "processFile should update border color",
-            html.contains("document.getElementById('dropZone').style.borderColor = 'var(--success)';"),
+            containsLoose(html, "document.getElementById('dropZone').style.borderColor = 'var(--success)';"),
         )
         assertTrue(
             "resetDropZone function should exist",
@@ -170,7 +184,7 @@ class WebServerPaletteTest {
         )
         assertTrue(
             "resetDropZone should restore default content",
-            html.contains("dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color: #888;\">[ Drag &amp; Drop ]</div>"),
+            containsLoose(html, "dz.innerHTML = '<div style=\"font-size: 1.5em; margin-bottom: 10px; color: #888;\">[ Drag &amp; Drop ]</div>"),
         )
         assertTrue(
             "uploadKeybox should call resetDropZone",

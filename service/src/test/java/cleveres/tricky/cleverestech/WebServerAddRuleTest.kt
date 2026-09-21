@@ -55,6 +55,17 @@ class WebServerAddRuleTest {
         ManagedOpaqueKeyOracle.readFromXml(null)
     }
 
+    private fun compactView(text: String): String =
+        text
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\\s*([{}:;,()=+<>|&?!*/-])\\s*"), "${'$'}1")
+            .replace(";}", "}")
+
+    private fun containsLoose(
+        html: String,
+        needle: String,
+    ): Boolean = compactView(html).contains(compactView(needle))
+
     @Test
     fun testAddRuleEnterKeySupport() {
         val port = server.listeningPort
@@ -77,13 +88,13 @@ class WebServerAddRuleTest {
         )
         assertTrue(
             "addAppRule should reset and focus input on success",
-            html.contains("pkgInput.value = '';") &&
-                html.contains("document.getElementById('appKeybox').value = '';") &&
+            containsLoose(html, "pkgInput.value = '';") &&
+                containsLoose(html, "document.getElementById('appKeybox').value = '';") &&
                 html.contains("pkgInput.focus();"),
         )
         assertTrue(
             "addAppRule should notify success",
-            html.contains("notify(existingIdx !== -1 ? 'Rule Updated' : 'Rule Added');"),
+            containsLoose(html, "notify(existingIdx !== -1 ? 'Rule Updated' : 'Rule Added')"),
         )
     }
 }
