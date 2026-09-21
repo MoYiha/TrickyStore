@@ -286,10 +286,19 @@ object Config {
         identityOverrides.visibleCameraCount.takeIf { isCameraVisibilityEnabled && isTargetedUid(uid) }
 
     fun shouldApplyTelephonyPrivacy(uid: Int): Boolean {
-        val legacyPrivacy = !PolicyState.usesV2() && isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
-        val configuredPrivacy = PolicyState.usesV2() && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
-        return (PolicyState.isFeatureEnabled(PolicyState.Feature.TELEPHONY_IDENTITY, uid) || legacyPrivacy || configuredPrivacy) &&
-            isTargetedUid(uid)
+        if (!isTargetedUid(uid)) return false
+        // Telephony spoofing requires an explicit per-target selection: a
+        // non-inherit privacy mode (legacy rule or profile) or a matched
+        // profile assignment with telephony resolved on. The top-level toggle
+        // alone never selects a uid, so enabling telephony under global mode
+        // no longer sprays one shared subscriber identity across every app,
+        // including carrier and provisioning packages that must keep genuine
+        // values. The toggle stays the master switch for hook registration.
+        if (!PolicyState.usesV2()) {
+            return isSpoofEnabled && getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT
+        }
+        if (getAppPrivacyMode(uid) != AppPrivacyMode.INHERIT) return true
+        return PolicyState.hasExplicitTelephonyAssignment(uid)
     }
 
     internal fun updateAppConfigs(f: File?) =
