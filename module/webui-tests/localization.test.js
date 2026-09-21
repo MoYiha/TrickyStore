@@ -226,13 +226,13 @@ assert.strictEqual(
 
 // Verify bridge.js normalizeLocale handles all lowercase/uppercase/underscore variants
 const bridgeSource = fs.readFileSync('module/template/webroot/bridge.js', 'utf8');
-const bridgeNormMatch = bridgeSource.match(/function\s+normalizeLocale\([^)]*\)\{[\s\S]*?\}(?=function\s+extensionLocale)/);
+const bridgeNormMatch = bridgeSource.match(/function\s+normalizeLocale\([^)]*\)\{[\s\S]*?\}(?=\s*function\s+extensionLocale)/);
 assert.ok(bridgeNormMatch, 'normalizeLocale must exist in bridge.js');
 const supportedLocales = new Set(['en', 'tr', 'zh-CN', 'es', 'de', 'ru', 'id', 'hi', 'ar']);
 const bridgeNormalizeLocale = new Function('supportedLocales', `return (${bridgeNormMatch[0]});`)(supportedLocales);
 
 // Verify ux.js second normalizeSupportedLocale (ZIP importer)
-const zipNormMatches = [...uxSource.matchAll(/function\s+normalizeSupportedLocale\([^)]*\)\{[\s\S]*?\}(?=function\s+read(?:Saved)?Locale)/g)];
+const zipNormMatches = [...uxSource.matchAll(/function\s+normalizeSupportedLocale\([^)]*\)\{[\s\S]*?\}(?=\s*function\s+read(?:Saved)?Locale)/g)];
 assert.strictEqual(zipNormMatches.length, 2, 'ux.js must define normalizeSupportedLocale in both IIFEs');
 const SUPPORTED_LOCALES = new Set(['en', 'tr', 'zh-CN', 'es', 'de', 'ru', 'id', 'hi', 'ar']);
 const zipNormalizeLocale = new Function('SUPPORTED_LOCALES', `return (${zipNormMatches[1][0]});`)(SUPPORTED_LOCALES);
