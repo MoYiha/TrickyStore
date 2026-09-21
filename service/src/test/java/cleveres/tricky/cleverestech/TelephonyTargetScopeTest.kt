@@ -17,7 +17,8 @@ import java.io.File
  * top-level toggle remains the master switch for hook registration, but it
  * alone never selects a uid; otherwise enabling telephony under global mode
  * sprays one shared subscriber identity across every app, including carrier
- * and provisioning packages that must keep genuine values.
+ * and provisioning packages that must keep genuine values. The explicit
+ * global-telephony opt-in restores blanket coverage deliberately.
  */
 class TelephonyTargetScopeTest {
     @get:Rule
@@ -32,6 +33,7 @@ class TelephonyTargetScopeTest {
         SecureFile.impl = MockSecureFileOperations()
         configDir = tempFolder.newFolder("config")
         Config.setRootForTesting(configDir)
+        PolicyState.setRootForTesting(configDir)
     }
 
     @After
@@ -41,12 +43,16 @@ class TelephonyTargetScopeTest {
         SecureFile.impl = SecureFile.DefaultSecureFileOperations()
     }
 
+    private fun enableMarker(name: String) {
+        File(configDir, name).createNewFile()
+        Config.refreshRuntimeSetting(name)
+    }
+
     @Test
     fun `legacy toggle alone never selects a uid`() {
-        Config.isSpoofEnabled = true
-        Config.isTelephonyEnabled = true
-        Config.isGlobalMode = true
-        PolicyState.setRootForTesting(configDir)
+        enableMarker("spoof_enabled")
+        enableMarker("telephony")
+        enableMarker("global_mode")
         Config.setPackagesForTesting(12_001, arrayOf("com.example.app"))
 
         assertFalse(Config.shouldApplyTelephonyPrivacy(12_001))
@@ -55,10 +61,7 @@ class TelephonyTargetScopeTest {
     @Test
     fun `legacy isolate rule stays scoped with toggle off`() {
         writeRules("com.example.app null null isolate\n")
-        Config.isSpoofEnabled = true
-        Config.isTelephonyEnabled = false
-        Config.isGlobalMode = false
-        PolicyState.setRootForTesting(configDir)
+        enableMarker("spoof_enabled")
         Config.setPackagesForTesting(12_002, arrayOf("com.example.app"))
 
         assertTrue(Config.shouldApplyTelephonyPrivacy(12_002))
@@ -67,10 +70,8 @@ class TelephonyTargetScopeTest {
     @Test
     fun `legacy redact rule stays scoped`() {
         writeRules("com.example.app null null redact\n")
-        Config.isSpoofEnabled = true
-        Config.isTelephonyEnabled = true
-        Config.isGlobalMode = false
-        PolicyState.setRootForTesting(configDir)
+        enableMarker("spoof_enabled")
+        enableMarker("telephony")
         Config.setPackagesForTesting(12_003, arrayOf("com.example.app"))
 
         assertTrue(Config.shouldApplyTelephonyPrivacy(12_003))
@@ -79,23 +80,42 @@ class TelephonyTargetScopeTest {
     @Test
     fun `legacy untargeted uid stays genuine`() {
         writeRules("com.example.app null null isolate\n")
-        Config.isSpoofEnabled = true
-        Config.isTelephonyEnabled = true
-        Config.isGlobalMode = false
-        PolicyState.setRootForTesting(configDir)
+        enableMarker("spoof_enabled")
+        enableMarker("telephony")
         Config.setPackagesForTesting(12_004, arrayOf("com.example.other"))
 
         assertFalse(Config.shouldApplyTelephonyPrivacy(12_004))
     }
 
     @Test
-    fun `top-level toggle alone never selects an unassigned uid`() {
-        installV2(telephony = true, profiles = JSONArray())
-        Config.isGlobalMode = true
+    fun `global telephony opt-in covers targeted uids`() {
+        enableMarker("spoof_enabled")
+        enableMarker("telephony")
+        enableMarker("global_mode")
+        enableMarker("global_telephony_mode")
         Config.setPackagesForTesting(12_005, arrayOf("com.example.app"))
 
+        assertTrue(Config.shouldApplyTelephonyPrivacy(12_005))
+    }
+
+    @Test
+    fun `global telephony opt-in stays inside targeting`() {
+        enableMarker("spoof_enabled")
+        enableMarker("telephony")
+        enableMarker("global_telephony_mode")
+        Config.setPackagesForTesting(12_006, arrayOf("com.example.app"))
+
+        assertFalse(Config.shouldApplyTelephonyPrivacy(12_006))
+    }
+
+    @Test
+    fun `top-level toggle alone never selects an unassigned uid`() {
+        installV2(telephony = true, profiles = JSONArray())
+        enableMarker("global_mode")
+        Config.setPackagesForTesting(12_007, arrayOf("com.example.app"))
+
         assertTrue(Config.shouldInterceptTelephony)
-        assertFalse(Config.shouldApplyTelephonyPrivacy(12_005))
+        assertFalse(Config.shouldApplyTelephonyPrivacy(12_007))
     }
 
     @Test
@@ -111,10 +131,10 @@ class TelephonyTargetScopeTest {
                     ),
                 ),
         )
-        Config.isGlobalMode = true
-        Config.setPackagesForTesting(12_006, arrayOf("com.example.bank"))
+        enableMarker("global_mode")
+        Config.setPackagesForTesting(12_008, arrayOf("com.example.bank"))
 
-        assertTrue(Config.shouldApplyTelephonyPrivacy(12_006))
+        assertTrue(Config.shouldApplyTelephonyPrivacy(12_008))
     }
 
     @Test
@@ -130,10 +150,10 @@ class TelephonyTargetScopeTest {
                     ),
                 ),
         )
-        Config.isGlobalMode = true
-        Config.setPackagesForTesting(12_007, arrayOf("com.example.bank"))
+        enableMarker("global_mode")
+        Config.setPackagesForTesting(12_009, arrayOf("com.example.bank"))
 
-        assertTrue(Config.shouldApplyTelephonyPrivacy(12_007))
+        assertTrue(Config.shouldApplyTelephonyPrivacy(12_009))
     }
 
     @Test
@@ -149,20 +169,19 @@ class TelephonyTargetScopeTest {
                     ),
                 ),
         )
-        Config.isGlobalMode = true
-        Config.setPackagesForTesting(12_008, arrayOf("com.example.quiet"))
+        enableMarker("global_mode")
+        Config.setPackagesForTesting(12_010, arrayOf("com.example.quiet"))
 
-        assertFalse(Config.shouldApplyTelephonyPrivacy(12_008))
+        assertFalse(Config.shouldApplyTelephonyPrivacy(12_010))
     }
 
     @Test
     fun `non-inherit privacy rule applies without profile`() {
         writeRules("com.example.app null null redact\n")
         installV2(telephony = false, profiles = JSONArray())
-        Config.isGlobalMode = false
-        Config.setPackagesForTesting(12_009, arrayOf("com.example.app"))
+        Config.setPackagesForTesting(12_011, arrayOf("com.example.app"))
 
-        assertTrue(Config.shouldApplyTelephonyPrivacy(12_009))
+        assertTrue(Config.shouldApplyTelephonyPrivacy(12_011))
     }
 
     @Test
@@ -178,10 +197,30 @@ class TelephonyTargetScopeTest {
                     ),
                 ),
         )
-        Config.isGlobalMode = true
-        Config.setPackagesForTesting(12_010, arrayOf())
+        enableMarker("global_mode")
+        Config.setPackagesForTesting(12_012, arrayOf())
 
-        assertFalse(Config.shouldApplyTelephonyPrivacy(12_010))
+        assertFalse(Config.shouldApplyTelephonyPrivacy(12_012))
+    }
+
+    @Test
+    fun `global telephony opt-in covers assigned uids without global mode`() {
+        installV2(
+            telephony = false,
+            profiles =
+                JSONArray().put(
+                    profile(
+                        "Bank",
+                        arrayOf("com.example.bank"),
+                        features = JSONObject().put("telephonyIdentity", true),
+                        template = "pixel8pro",
+                    ),
+                ),
+        )
+        enableMarker("global_telephony_mode")
+        Config.setPackagesForTesting(12_013, arrayOf("com.example.bank"))
+
+        assertTrue(Config.shouldApplyTelephonyPrivacy(12_013))
     }
 
     private fun writeRules(text: String) {
@@ -221,11 +260,16 @@ class TelephonyTargetScopeTest {
         name: String,
         applications: Array<String>,
         features: JSONObject,
-    ): JSONObject =
-        JSONObject()
-            .put("name", name)
-            .put("applications", JSONArray(applications.toList()))
-            .put("privacy", "inherit")
-            .put("features", features)
-            .put("securityPatch", JSONObject())
+        template: String? = null,
+    ): JSONObject {
+        val json =
+            JSONObject()
+                .put("name", name)
+                .put("applications", JSONArray(applications.toList()))
+                .put("privacy", "inherit")
+                .put("features", features)
+                .put("securityPatch", JSONObject())
+        if (template != null) json.put("template", template)
+        return json
+    }
 }

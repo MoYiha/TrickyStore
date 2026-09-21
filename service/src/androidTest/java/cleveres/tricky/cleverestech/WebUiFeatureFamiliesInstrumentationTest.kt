@@ -243,6 +243,7 @@ class WebUiFeatureFamiliesInstrumentationTest {
                 "spoof_enabled",
                 "spoof_build_identity",
                 "global_mode",
+                "global_telephony_mode",
                 "auto_keybox_check",
                 "random_on_boot",
                 "spoof_region_cn",

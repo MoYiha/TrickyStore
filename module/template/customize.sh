@@ -183,7 +183,7 @@ for legacy_webui_file in web_port web_token.txt; do
 done
 
 for config_file in spoof_build_vars security_patch.txt target.txt identity_target.txt drm_packages.txt boot_props_mode \
-  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode global_identity_mode tee_broken_mode \
+  spoof_enabled spoof_switch_initialized spoof_build_identity global_mode global_identity_mode global_telephony_mode tee_broken_mode \
   auto_keybox_check block_invalid_keyboxes random_on_boot rkp_passthrough drm_passthrough hide_sensitive_props \
   spoof_region_cn telephony privacy_seed boot_key boot_hash app_config templates.json custom_templates module_hash \
   servers.json keybox.xml lang.json spoof_build_vars.next apply_profile policy_state_v2.json \
