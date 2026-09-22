@@ -1,3 +1,5 @@
+import java.util.concurrent.TimeUnit
+
 pluginManagement {
     repositories {
         google()
@@ -30,6 +32,9 @@ gradle.rootProject {
     allprojects {
         buildscript.configurations.all {
             resolutionStrategy {
+                // Re-resolve floating versions hourly so newest releases apply.
+                cacheDynamicVersionsFor(1, TimeUnit.HOURS)
+                cacheChangingModulesFor(1, TimeUnit.HOURS)
                 force("io.netty:netty-codec-http:latest.release")
                 force("io.netty:netty-codec-http2:latest.release")
                 force("io.netty:netty-codec:latest.release")
@@ -45,6 +50,8 @@ gradle.rootProject {
         }
         configurations.all {
             resolutionStrategy {
+                cacheDynamicVersionsFor(1, TimeUnit.HOURS)
+                cacheChangingModulesFor(1, TimeUnit.HOURS)
                 force("io.netty:netty-codec-http:latest.release")
                 force("io.netty:netty-codec-http2:latest.release")
                 force("io.netty:netty-codec:latest.release")

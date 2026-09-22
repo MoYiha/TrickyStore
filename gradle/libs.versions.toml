@@ -1,9 +1,9 @@
 [versions]
-agp = "9.4.1"
+agp = "latest.release"
 bcpkix-jdk18on = "latest.release"
 bcprov-jdk18on = "latest.release"
 bcutil-jdk18on = "latest.release"
-kotlin = "2.4.20"
+kotlin = "latest.release"
 annotation = "latest.release"
 junit = "latest.release"
 compose-bom = "latest.release"
@@ -20,8 +20,8 @@ remap = "latest.release"
 
 [libraries]
 nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "latest.release" }
-# Keep KGP's Maven coordinate explicit so Dependabot can map security advisories
-# to the shared Kotlin plugin version instead of treating it as transitive only.
+# Keep KGP's Maven coordinate explicit; the plugin version itself floats with
+# the kotlin ref above, and the watchdog snapshots its buildscript resolution.
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
@@ -34,7 +34,7 @@ json = { module = "org.json:json", version.ref = "json" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 remap-annotation = { module = "li.songe.remap:remap-annotation", version.ref = "remap" }
 remap-processor = { module = "li.songe.remap:remap-processor", version.ref = "remap" }
-cxx = { module = "org.lsposed.libcxx:libcxx", version = "29.0.14206865" }
+cxx = { module = "org.lsposed.libcxx:libcxx", version = "latest.release" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -52,6 +52,6 @@ androidx-material-icons-extended = { group = "androidx.compose.material", name =
 agp-app = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "1.4" }
+lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "latest.release" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 remap = { id = "li.songe.remap", version.ref = "remap" }
