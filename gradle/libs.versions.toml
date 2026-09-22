@@ -1,12 +1,14 @@
 [versions]
-# Ranges list every version so the pre-release rejection rule can filter to
-# newest stable. Floors are last-known-good; everything floats open-ended,
-# including majors. Breakage is fixed forward, not fenced out.
-agp = "[9.4,)"
+# Plugin markers cannot express "stable only" (no componentSelection API in
+# pluginManagement), and their metadata tops at alphas today (AGP 9.5.0-alpha,
+# KGP 2.4.20-RC). Markers stay pinned; hourly Dependabot with the increase
+# strategy tracks stable releases instead. Libraries keep open ranges: the
+# rejection rule above applies to them.
+agp = "9.4.1"
 bcpkix-jdk18on = "[1.86,)"
 bcprov-jdk18on = "[1.86,)"
 bcutil-jdk18on = "[1.86,)"
-kotlin = "[2.4,)"
+kotlin = "2.4.20"
 annotation = "[1.10,)"
 junit = "[4.13.2,)"
 compose-bom = "[2026.09.00,)"
@@ -19,7 +21,7 @@ coroutines = "[1.10,)"
 kxml = "2.3.0"
 json = "[20260814,)"
 mockito = "[5.23,)"
-remap = "[0.1.5,)"
+remap = "0.1.5"
 
 [libraries]
 nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "[2.3.1,)" }
@@ -55,6 +57,6 @@ androidx-material-icons-extended = { group = "androidx.compose.material", name =
 agp-app = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "[1.4,)" }
+lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "1.4" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 remap = { id = "li.songe.remap", version.ref = "remap" }
