@@ -48,12 +48,12 @@ gradle.rootProject {
                         }
                     }
                 }
-                force("io.netty:netty-codec-http:latest.release")
-                force("io.netty:netty-codec-http2:latest.release")
-                force("io.netty:netty-codec:latest.release")
-                force("io.netty:netty-handler-proxy:latest.release")
-                force("ch.qos.logback:logback-core:latest.release")
-                force("ch.qos.logback:logback-classic:latest.release")
+                force("io.netty:netty-codec-http:[4.2.18,4.3)")
+                force("io.netty:netty-codec-http2:[4.2.18,4.3)")
+                force("io.netty:netty-codec:[4.2.18,4.3)")
+                force("io.netty:netty-handler-proxy:[4.2.18,4.3)")
+                force("ch.qos.logback:logback-core:[1.6.3,2.0)")
+                force("ch.qos.logback:logback-classic:[1.6.3,2.0)")
                 // AGP/lint drag a stale bcprov into the plugin classpath that
                 // Dependabot cannot bump directly; always follow the newest
                 // release instead of locking. The 1.85 CVE floor is enforced
@@ -61,9 +61,9 @@ gradle.rootProject {
                 // bcpkix/bcutil ride along: IANAObjectIdentifiers exists in
                 // both jars, so a stale sibling shadowing the forced copy
                 // breaks provider init with NoSuchFieldError.
-                force("org.bouncycastle:bcprov-jdk18on:latest.release")
-                force("org.bouncycastle:bcpkix-jdk18on:latest.release")
-                force("org.bouncycastle:bcutil-jdk18on:latest.release")
+                force("org.bouncycastle:bcprov-jdk18on:[1.86,2.0)")
+                force("org.bouncycastle:bcpkix-jdk18on:[1.86,2.0)")
+                force("org.bouncycastle:bcutil-jdk18on:[1.86,2.0)")
             }
         }
         configurations.all {
@@ -81,15 +81,15 @@ gradle.rootProject {
                         }
                     }
                 }
-                force("io.netty:netty-codec-http:latest.release")
-                force("io.netty:netty-codec-http2:latest.release")
-                force("io.netty:netty-codec:latest.release")
-                force("io.netty:netty-handler-proxy:latest.release")
-                force("ch.qos.logback:logback-core:latest.release")
-                force("ch.qos.logback:logback-classic:latest.release")
-                force("org.bouncycastle:bcprov-jdk18on:latest.release")
-                force("org.bouncycastle:bcpkix-jdk18on:latest.release")
-                force("org.bouncycastle:bcutil-jdk18on:latest.release")
+                force("io.netty:netty-codec-http:[4.2.18,4.3)")
+                force("io.netty:netty-codec-http2:[4.2.18,4.3)")
+                force("io.netty:netty-codec:[4.2.18,4.3)")
+                force("io.netty:netty-handler-proxy:[4.2.18,4.3)")
+                force("ch.qos.logback:logback-core:[1.6.3,2.0)")
+                force("ch.qos.logback:logback-classic:[1.6.3,2.0)")
+                force("org.bouncycastle:bcprov-jdk18on:[1.86,2.0)")
+                force("org.bouncycastle:bcpkix-jdk18on:[1.86,2.0)")
+                force("org.bouncycastle:bcutil-jdk18on:[1.86,2.0)")
             }
         }
     }

@@ -1,28 +1,29 @@
 [versions]
-# Toolchain stays pinned: plugin markers cannot express "stable only", so a
-# floating marker would adopt alphas (like activity-compose did for libs).
-# Dependabot tracks these hourly instead.
-agp = "9.4.1"
-bcpkix-jdk18on = "latest.release"
-bcprov-jdk18on = "latest.release"
-bcutil-jdk18on = "latest.release"
+# Toolchain markers cannot express "stable only", but ranges list every
+# version so the pre-release rejection rule can filter them. Ceilings stay
+# below the next breaking major on purpose; the hourly scan reports when a
+# new major waits beyond a ceiling.
+agp = "[9.4,10.0)"
+bcpkix-jdk18on = "[1.86,2.0)"
+bcprov-jdk18on = "[1.86,2.0)"
+bcutil-jdk18on = "[1.86,2.0)"
 kotlin = "2.4.20"
-annotation = "latest.release"
-junit = "latest.release"
-compose-bom = "latest.release"
-activity-compose = "latest.release"
-androidx-test-ext-junit = "latest.release"
-espresso-core = "latest.release"
-androidx-test-runner = "latest.release"
-robolectric = "latest.release"
-coroutines = "latest.release"
-kxml = "latest.release"
-json = "latest.release"
-mockito = "latest.release"
-remap = "0.1.5"
+annotation = "[1.10,2.0)"
+junit = "4.13.2"
+compose-bom = "[2026.09.00,)"
+activity-compose = "[1.13,2.0)"
+androidx-test-ext-junit = "[1.3,2.0)"
+espresso-core = "[3.7,4.0)"
+androidx-test-runner = "[1.7,2.0)"
+robolectric = "[4.17,5.0)"
+coroutines = "[1.10,2.0)"
+kxml = "2.3.0"
+json = "[20260814,)"
+mockito = "[5.23,6.0)"
+remap = "[0.1.5,0.2)"
 
 [libraries]
-nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "latest.release" }
+nanohttpd = { module = "org.nanohttpd:nanohttpd", version = "[2.3.1,3.0)" }
 # Keep KGP's Maven coordinate explicit; the plugin version itself floats with
 # the kotlin ref above, and the watchdog snapshots its buildscript resolution.
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -37,7 +38,7 @@ json = { module = "org.json:json", version.ref = "json" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 remap-annotation = { module = "li.songe.remap:remap-annotation", version.ref = "remap" }
 remap-processor = { module = "li.songe.remap:remap-processor", version.ref = "remap" }
-cxx = { module = "org.lsposed.libcxx:libcxx", version = "29.0.14206865" }
+cxx = { module = "org.lsposed.libcxx:libcxx", version = "[29,30)" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity-compose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -55,6 +56,6 @@ androidx-material-icons-extended = { group = "androidx.compose.material", name =
 agp-app = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 jetbrains-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "1.4" }
+lsplugin-cmaker = { id = "org.lsposed.lsplugin.cmaker", version = "[1.4,2.0)" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 remap = { id = "li.songe.remap", version.ref = "remap" }
