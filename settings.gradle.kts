@@ -36,9 +36,11 @@ gradle.rootProject {
                 force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
-                // AGP/lint pull a vulnerable bcprov into the plugin classpath;
-                // pin it to the patched version used by the direct dependency.
-                force("org.bouncycastle:bcprov-jdk18on:1.86")
+                // AGP/lint drag a stale bcprov into the plugin classpath that
+                // Dependabot cannot bump directly; always follow the newest
+                // release instead of locking. The 1.85 CVE floor is enforced
+                // by the security workflow baseline, not by this selector.
+                force("org.bouncycastle:bcprov-jdk18on:latest.release")
             }
         }
         configurations.all {
@@ -49,7 +51,7 @@ gradle.rootProject {
                 force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
-                force("org.bouncycastle:bcprov-jdk18on:1.86")
+                force("org.bouncycastle:bcprov-jdk18on:latest.release")
             }
         }
     }
