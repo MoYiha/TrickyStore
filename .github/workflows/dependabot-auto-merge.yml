@@ -1,14 +1,10 @@
 name: Dependabot Auto Merge
 
+# DISABLED: all merges are manual. Interim releases ship whenever the
+# maintainer decides, so no automation may merge on its own. Kept on
+# manual dispatch only so the gate logic stays reviewable.
 on:
-  workflow_run:
-    workflows:
-      - "Build"
-      - "Security Regression"
-      - "Native Hardening"
-      - "Rust Fuzz Smoke"
-      - "Rust Lockfile Check"
-    types: [completed]
+  workflow_dispatch:
 
 permissions:
   actions: read

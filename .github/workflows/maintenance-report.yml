@@ -2,8 +2,8 @@ name: "Monthly Maintenance Report"
 
 # Read-only monthly ritual report (29th): summarizes what got updated during
 # the month for review. It changes nothing itself; updating happens elsewhere
-# (floating Gradle resolution, the daily cargo-update PR, Dependabot PRs).
-# Maintenance lands on the 1st by merging the open update PRs.
+# (floating Gradle resolution, the hourly cargo-update PR, Dependabot PRs).
+# All merges are manual, including interim releases.
 # NOTE: February in non-leap years has no 29th; trigger manually if needed.
 on:
   schedule:
@@ -72,7 +72,7 @@ jobs:
           {
             echo "# Monthly maintenance report - $MONTH_LABEL"
             echo
-            echo "Review below, then do maintenance on the 1st by merging the open update PRs. This report changes nothing itself."
+            echo "Review below, then merge the open update PRs manually whenever ready - including interim releases, not only on the 1st. This report changes nothing itself."
             echo
             echo "## Merged dependency changes this month"
             echo
@@ -92,7 +92,7 @@ jobs:
               echo "none"
             fi
             echo
-            echo "## Open update PRs (merge these on the 1st)"
+            echo "## Open update PRs (merge manually whenever ready)"
             echo
             if [[ -s "$OPEN_PRS" ]]; then
               cat "$OPEN_PRS"
