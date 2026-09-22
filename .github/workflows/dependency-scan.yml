@@ -71,7 +71,7 @@ jobs:
             curl --fail --silent --show-error --location --max-time 20 \
               "$base/$gpath/$name/maven-metadata.xml" 2>/dev/null \
               | grep -o '<version>[^<]*</version>' \
-              | sed 's/<[^>]*>//g' | LC_ALL=C sort -uV | tail -n 1 || true
+              | sed 's/<[^>]*>//g' | grep -viE -e '[-](alpha|beta|rc|preview|snapshot|m[0-9])' | LC_ALL=C sort -uV | tail -n 1 || true
           }
 
           GRADLE_TABLE="$(mktemp)"
@@ -124,6 +124,10 @@ jobs:
             if [[ -z "$newest" ]]; then
               echo "::warning::crates.io lookup failed: $crate"
               UNRESOLVED=$((UNRESOLVED + 1))
+              continue
+            fi
+            if [[ "$newest" =~ -(alpha|beta|rc|preview|snapshot|m[0-9]) ]]; then
+              echo "::warning::newest $crate is pre-release ($newest); builds ignore it, skipping"
               continue
             fi
             if [[ "$locked" != "$newest" ]]; then

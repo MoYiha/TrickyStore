@@ -35,6 +35,16 @@ gradle.rootProject {
                 // Re-resolve floating versions hourly so newest releases apply.
                 cacheDynamicVersionsFor(1, TimeUnit.HOURS)
                 cacheChangingModulesFor(1, TimeUnit.HOURS)
+                // Registries point <release> at alphas (e.g. activity-compose
+                // 1.14.0-alpha02); accept newest stable only.
+                componentSelection {
+                    all {
+                        val v = candidate.version.lowercase()
+                        if (v.contains("-alpha") || v.contains("-beta") || v.contains("-rc") || v.contains("-m") || v.contains("-preview") || v.contains("-snapshot") || v.contains(".alpha") || v.contains(".beta")) {
+                            reject("Pre-release versions are not accepted")
+                        }
+                    }
+                }
                 force("io.netty:netty-codec-http:latest.release")
                 force("io.netty:netty-codec-http2:latest.release")
                 force("io.netty:netty-codec:latest.release")
@@ -57,6 +67,14 @@ gradle.rootProject {
             resolutionStrategy {
                 cacheDynamicVersionsFor(1, TimeUnit.HOURS)
                 cacheChangingModulesFor(1, TimeUnit.HOURS)
+                componentSelection {
+                    all {
+                        val v = candidate.version.lowercase()
+                        if (v.contains("-alpha") || v.contains("-beta") || v.contains("-rc") || v.contains("-m") || v.contains("-preview") || v.contains("-snapshot") || v.contains(".alpha") || v.contains(".beta")) {
+                            reject("Pre-release versions are not accepted")
+                        }
+                    }
+                }
                 force("io.netty:netty-codec-http:latest.release")
                 force("io.netty:netty-codec-http2:latest.release")
                 force("io.netty:netty-codec:latest.release")
