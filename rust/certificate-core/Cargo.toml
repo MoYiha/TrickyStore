@@ -17,8 +17,8 @@ p256 = { version = "*", features = ["ecdsa", "pkcs8"] }
 rsa = { version = "*", features = ["sha2"] }
 rsa-sha2 = { package = "sha2", version = "=0.10.9", features = ["oid"] }
 rsa-signature = { package = "signature", version = "=2.2.0" }
-sha2 = { version = "*", features = ["oid"] }
-signature = "*"
+sha2 = { version = ">=0.11", features = ["oid"] }
+signature = ">=3"
 x509-cert = { version = "*", default-features = false, features = ["pem", "std"] }
 zeroize = "*"
 getrandom = { workspace = true }
