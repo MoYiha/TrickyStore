@@ -87,6 +87,39 @@ for (const [key, samples] of Object.entries(newKeys)) {
   assert.ok(uxSource.includes(`["${key}",`), `complete catalog row is missing for: ${key}`);
 }
 
+// Every rendered scope leaf must carry its translation key so the runtime
+// localizer can re-resolve it on language switch instead of freezing the
+// render-time language into the DOM.
+const scopeI18nKeys = [
+  'global_telephony_title',
+  'global_telephony_desc',
+  'global_attestation_title',
+  'global_attestation_desc',
+];
+const localeIdsMatch = uxSource.match(/LOCALE_IDS=\[([^\]]*)\]/);
+assert.ok(localeIdsMatch, 'locale id list is missing');
+const localeIds = [...localeIdsMatch[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+assert.deepStrictEqual(
+  localeIds,
+  ['zh-CN', 'es', 'de', 'ru', 'id', 'hi', 'ar'],
+  'locale id order must match catalog columns',
+);
+function catalogRow(key) {
+  const start = uxSource.indexOf(`["${key}",`);
+  assert.ok(start >= 0, `complete catalog row is missing for: ${key}`);
+  const end = uxSource.indexOf(']', start);
+  const cells = uxSource.slice(start, end).split('","').map(cell => cell.replace(/^(\["?|")/, '').trim());
+  return cells;
+}
+for (const key of scopeI18nKeys) {
+  const cells = catalogRow(key);
+  assert.strictEqual(cells[0], key, `catalog row starts with the wrong key: ${key}`);
+  assert.strictEqual(cells.length, localeIds.length + 1, `catalog row has wrong cell count for: ${key}`);
+  for (const cell of cells) {
+    assert.ok(cell.length > 0, `catalog row has an empty cell for: ${key}`);
+  }
+}
+
 // Behavior: execute the real identityFeatureCardsMarkup with stubbed
 // collaborators and prove the scope block follows the telephony feature.
 const cardsStart = policySource.indexOf('function identityFeatureCardsMarkup');
@@ -138,7 +171,12 @@ assert.ok(
 );
 assert.ok(!openHtml.includes('global_scope_warning'), 'retired carrier warning must not render');
 assert.ok(openHtml.includes('id="ct_ident_attestation_scope" >'), 'attestation block must show while attestation is on');
-assert.ok(openHtml.includes('id="ct_ident_global_attestation" checked'), 'attestation toggle must reflect the stored opt-in');
+for (const key of scopeI18nKeys) {
+  assert.ok(
+    openHtml.includes(`data-i18n="${key}"`),
+    `rendered scope leaf must carry its translation key for re-localization: ${key}`,
+  );
+}assert.ok(openHtml.includes('id="ct_ident_global_attestation" checked'), 'attestation toggle must reflect the stored opt-in');
 assert.ok(openHtml.includes('Attestation for all targets'), 'attestation title must render');
 
 const legacyHtml = renderIdentityCards({
