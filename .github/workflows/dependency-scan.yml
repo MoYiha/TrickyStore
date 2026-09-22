@@ -1,0 +1,195 @@
+name: "Dependency Scan"
+
+# Hourly read-only drift dashboard (no toolchain, no file writes, no branches).
+# Lists registry newest releases, Rust crates newer than the lock, and wrapper
+# status in one rolling issue. Updating happens elsewhere: Gradle floats by
+# itself, the hourly cargo-update PR advances the lock when merged.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: dependency-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: "Scan registries and maintain dashboard"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Scan and maintain dashboard issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CENTRAL="https://repo.maven.apache.org/maven2"
+          GOOGLE="https://dl.google.com/dl/android/maven2"
+          PORTAL="https://plugins.gradle.org/m2"
+
+          # Add new direct dependencies here so the hourly scan keeps covering
+          # them. Format: "group|name|repo".
+          MAP=(
+            "junit|junit|central"
+            "androidx.annotation|annotation|google"
+            "org.jetbrains.kotlinx|kotlinx-coroutines-android|central"
+            "org.nanohttpd|nanohttpd|central"
+            "org.bouncycastle|bcprov-jdk18on|central"
+            "org.bouncycastle|bcpkix-jdk18on|central"
+            "org.bouncycastle|bcutil-jdk18on|central"
+            "net.sf.kxml|kxml2|central"
+            "org.json|json|central"
+            "org.mockito|mockito-core|central"
+            "androidx.test.ext|junit|google"
+            "androidx.test.espresso|espresso-core|google"
+            "androidx.test|runner|google"
+            "li.songe.remap|remap-annotation|central"
+            "li.songe.remap|remap-processor|central"
+            "androidx.activity|activity-compose|google"
+            "androidx.compose|compose-bom|google"
+            "org.robolectric|robolectric|central"
+            "com.android.tools.build|gradle|google"
+            "org.jetbrains.kotlin|kotlin-gradle-plugin|central"
+            "org.lsposed.libcxx|libcxx|central"
+            "org.lsposed.lsplugin.cmaker|org.lsposed.lsplugin.cmaker.gradle.plugin|portal"
+          )
+
+          newest_maven() {
+            local base="$1" group="$2" name="$3"
+            local gpath="${group//.//}"
+            curl --fail --silent --show-error --location --max-time 20 \
+              "$base/$gpath/$name/maven-metadata.xml" 2>/dev/null \
+              | grep -o '<version>[^<]*</version>' \
+              | sed 's/<[^>]*>//g' | grep -viE -e '[-](alpha|beta|rc|preview|snapshot|m[0-9])' | LC_ALL=C sort -uV | tail -n 1 || true
+          }
+
+          GRADLE_TABLE="$(mktemp)"
+          UNRESOLVED=0
+          for entry in "${MAP[@]}"; do
+            group="${entry%%|*}"
+            rest="${entry#*|}"
+            name="${rest%%|*}"
+            repo="${rest##*|}"
+            case "$repo" in
+              central) base="$CENTRAL" ;;
+              google) base="$GOOGLE" ;;
+              portal) base="$PORTAL" ;;
+            esac
+            ver="$(newest_maven "$base" "$group" "$name")"
+            if [[ -z "$ver" ]]; then
+              echo "::warning::metadata lookup failed: $group:$name"
+              UNRESOLVED=$((UNRESOLVED + 1))
+              continue
+            fi
+            echo "- $group:$name newest: $ver" >> "$GRADLE_TABLE"
+          done
+
+          python3 - <<'PYEOF' > /tmp/crates.txt
+          import glob
+          import io
+          import tomllib
+          names = set()
+          for f in sorted(glob.glob('rust/**/Cargo.toml', recursive=True)):
+              with io.open(f, 'rb') as fh:
+                  doc = tomllib.load(fh)
+              for section in ('dependencies', 'dev-dependencies', 'build-dependencies', 'workspace.dependencies'):
+                  table = doc.get(section, {})
+                  if not isinstance(table, dict):
+                      continue
+                  for key, val in table.items():
+                      if isinstance(val, dict) and 'package' in val:
+                          names.add(val['package'])
+                      else:
+                          names.add(key)
+          print('\n'.join(sorted(names)))
+          PYEOF
+          awk '/^\[\[package\]\]/{ name=""; ver=""; next } /^name = /{ gsub(/"/, "", $3); name=$3 } /^version = / && name != "" { gsub(/"/, "", $3); print name"=" $3; name="" }' rust/Cargo.lock | LC_ALL=C sort -u > /tmp/locked.txt
+
+          CARGO_TABLE="$(mktemp)"
+          while IFS= read -r crate; do
+            [[ -z "$crate" ]] && continue
+            locked=$(grep -E -e "^${crate}=" /tmp/locked.txt | cut -d= -f2 | LC_ALL=C sort -uV | tail -n1 || true)
+            newest=$(curl --fail --silent --show-error --location --max-time 20 -A "CleveresTricky-Dependency-Scan/1.0" "https://crates.io/api/v1/crates/${crate}" 2>/dev/null | grep -o '"max_version":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
+            if [[ -z "$newest" ]]; then
+              echo "::warning::crates.io lookup failed: $crate"
+              UNRESOLVED=$((UNRESOLVED + 1))
+              continue
+            fi
+            if [[ "$newest" =~ -(alpha|beta|rc|preview|snapshot|m[0-9]) ]]; then
+              echo "::warning::newest $crate is pre-release ($newest); builds ignore it, skipping"
+              continue
+            fi
+            if [[ "$locked" != "$newest" ]]; then
+              echo "- $crate: ${locked:-(absent)} -> $newest" >> "$CARGO_TABLE"
+            fi
+            sleep 1
+          done < /tmp/crates.txt
+
+          WRAPPER_LINE="gradle wrapper: check skipped"
+          CURRENT_WRAPPER=$(sed -n 's/^distributionUrl=.*gradle-\([0-9.]*\)-bin.zip/\1/p' gradle/wrapper/gradle-wrapper.properties | head -n1)
+          LATEST_GRADLE=$(curl --fail --silent --show-error --location --max-time 30 https://services.gradle.org/versions/current 2>/dev/null | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | grep -o '[0-9][0-9.]*' || true)
+          if [[ -n "$CURRENT_WRAPPER" && -n "$LATEST_GRADLE" ]]; then
+            if [[ "$CURRENT_WRAPPER" == "$LATEST_GRADLE" ]]; then
+              WRAPPER_LINE="gradle wrapper ${CURRENT_WRAPPER} is current"
+            else
+              WRAPPER_LINE="gradle wrapper ${CURRENT_WRAPPER} -> ${LATEST_GRADLE} available (manual update)"
+            fi
+          fi
+
+          if [[ "$UNRESOLVED" -gt 0 ]]; then
+            echo "Incomplete scan ($UNRESOLVED failed lookups); keeping last dashboard."
+            exit 0
+          fi
+
+          CORE_FILE="$(mktemp)"
+          {
+            echo "# Dependency drift dashboard"
+            echo
+            echo "Updated hourly. Gradle floats automatically; Rust advances when the cargo-update PR merges."
+            echo
+            echo "## Gradle newest releases"
+            echo
+            cat "$GRADLE_TABLE"
+            echo
+            echo "## Rust crates newer than Cargo.lock"
+            echo
+            if [[ -s "$CARGO_TABLE" ]]; then
+              cat "$CARGO_TABLE"
+            else
+              echo "lock is current"
+            fi
+            echo
+            echo "## Wrapper"
+            echo
+            echo "$WRAPPER_LINE"
+          } > "$CORE_FILE"
+
+          EXISTING=$(gh issue list --label dependencies --state open --json number,title --jq '[.[] | select(.title=="Dependency drift dashboard")][0].number // empty' || true)
+          if [[ -n "$EXISTING" ]]; then
+            OLD_CORE="$(mktemp)"
+            gh issue view "$EXISTING" --json body --jq .body | grep -v '^_Last scan:' > "$OLD_CORE" || true
+            if cmp -s "$OLD_CORE" "$CORE_FILE"; then
+              echo "Dashboard unchanged."
+              exit 0
+            fi
+            TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            { cat "$CORE_FILE"; echo; echo "_Last scan: ${TS}_"; } > /tmp/body.txt
+            gh issue edit "$EXISTING" --body-file /tmp/body.txt
+            { echo "Drift changed:"; echo; cat "$CORE_FILE"; } > /tmp/comment.txt
+            gh issue comment "$EXISTING" --body-file /tmp/comment.txt
+          else
+            TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            { cat "$CORE_FILE"; echo; echo "_Last scan: ${TS}_"; } > /tmp/body.txt
+            gh issue create --title "Dependency drift dashboard" --label dependencies --assignee tryigit --body-file /tmp/body.txt
+          fi

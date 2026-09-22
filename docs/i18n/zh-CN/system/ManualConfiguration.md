@@ -20,7 +20,8 @@
   * *命令:* `touch /data/adb/cleverestricky/global_mode`（启用）或 `rm -f /data/adb/cleverestricky/global_mode`（禁用）。
 
 * **`identity_target.txt`**: 针对设备构建属性（Build Props）伪装的目标包名。
-* **`global_identity_mode`**: 空标记文件。存在时对非系统应用全局生效设备身份伪装。
+* **`global_telephony_mode`**: 空标记文件。存在时电话身份覆盖应用于所有目标应用；否则仅应用于明确选定的目标。
+* **`global_attestation_mode`**: 空标记文件。存在时证明标识符应用于所有目标应用；否则仅应用于明确选定的目标。
 
 ---
 

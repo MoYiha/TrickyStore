@@ -20,7 +20,8 @@ Panduan ini mencakup konfigurasi manual CleveresTricky melalui file tanpa menggu
   * *Perintah:* `touch /data/adb/cleverestricky/global_mode` (aktifkan) atau `rm -f /data/adb/cleverestricky/global_mode` (nonaktifkan).
 
 * **`identity_target.txt`**: Paket target untuk pemalsuan identitas perangkat.
-* **`global_identity_mode`**: File penanda untuk menerapkan pemalsuan identitas secara global.
+* **`global_telephony_mode`**: File penanda kosong. Jika ada, override telefoni berlaku untuk semua aplikasi target; jika tidak, hanya untuk target yang dipilih secara eksplisit.
+* **`global_attestation_mode`**: File penanda kosong. Jika ada, pengenal attestasi berlaku untuk semua aplikasi target; jika tidak, hanya untuk target yang dipilih secara eksplisit.
 
 ---
 

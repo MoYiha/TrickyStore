@@ -1,5 +1,8 @@
 name: Dependabot Auto Merge
 
+# Merges fully green update PRs hourly without human action: Dependabot PRs
+# and the automation-owned cargo-update rolling PR. Interim releases ship
+# whenever decided; this only merges dependency updates that pass every gate.
 on:
   workflow_run:
     workflows:
@@ -42,10 +45,18 @@ jobs:
           state="$(jq -r '.state' <<<"$pr_json")"
           draft="$(jq -r '.draft' <<<"$pr_json")"
           base_ref="$(jq -r '.base.ref' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr_json")"
           current_sha="$(jq -r '.head.sha' <<<"$pr_json")"
 
-          if [[ "$author" != "dependabot[bot]" || "$state" != "open" || "$draft" != "false" || "$base_ref" != "master" ]]; then
-            echo "Not an open Dependabot PR targeting master."
+          allowed=false
+          if [[ "$author" == "dependabot[bot]" ]]; then
+            allowed=true
+          fi
+          if [[ "$author" == "github-actions[bot]" && "$head_ref" == "chore/cargo-update" ]]; then
+            allowed=true
+          fi
+          if [[ "$allowed" != "true" || "$state" != "open" || "$draft" != "false" || "$base_ref" != "master" ]]; then
+            echo "Not an auto-mergeable update PR targeting master."
             exit 0
           fi
           if [[ "$current_sha" != "$HEAD_SHA" ]]; then

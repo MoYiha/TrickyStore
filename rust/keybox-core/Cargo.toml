@@ -6,9 +6,9 @@ description = "Bounded keybox key-material normalization for CleveresTricky"
 license = "GPL-3.0-only"
 
 [dependencies]
-p256 = { version = "0.14.0", features = ["pkcs8"] }
-rsa = "0.9.8"
-zeroize = "1.8"
+p256 = { version = "*", features = ["pkcs8"] }
+rsa = "*"
+zeroize = "*"
 
 [dev-dependencies]
 cleverestricky-xml-core = { path = "../xml-core" }

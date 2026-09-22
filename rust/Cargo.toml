@@ -20,12 +20,14 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-# API-coupled storage crypto lane. Workspace members inherit these versions so
-# Dependabot cannot leave one crate on an older incompatible crypto stack.
-aes-gcm = { version = "=0.11.1", features = ["zeroize"] }
-getrandom = "=0.4.3"
-pbkdf2 = { version = "=0.13.0", features = ["sha2"] }
-criterion = { version = "0.8", features = ["html_reports"] }
+# API-coupled storage crypto lane. Workspace members share one floating
+# requirement so no crate lags on an older incompatible crypto stack.
+# The committed Cargo.lock pins actual builds; the monthly maintenance
+# report refreshes it to newest releases.
+aes-gcm = { version = "*", features = ["zeroize"] }
+getrandom = "*"
+pbkdf2 = { version = "*", features = ["sha2"] }
+criterion = { version = "*", features = ["html_reports"] }
 
 [profile.release]
 lto = "fat"

@@ -20,7 +20,8 @@ This guide covers file-based manual configuration of CleveresTricky without usin
   * *Command:* `touch /data/adb/cleverestricky/global_mode` (enable) or `rm -f /data/adb/cleverestricky/global_mode` (disable).
 
 * **`identity_target.txt`**: Package names targeted for device build property spoofing.
-* **`global_identity_mode`**: Empty marker file. If present, applies identity property spoofing globally.
+* **`global_telephony_mode`**: Empty marker file. If present, telephony overrides apply to every targeted app; otherwise only to explicitly selected targets.
+* **`global_attestation_mode`**: Empty marker file. If present, attestation identifiers apply to every targeted app; otherwise only to explicitly selected targets.
 
 ---
 

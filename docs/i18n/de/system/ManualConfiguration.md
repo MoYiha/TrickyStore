@@ -20,7 +20,8 @@ Diese Anleitung beschreibt die manuelle Konfiguration von CleveresTricky über D
   * *Befehl:* `touch /data/adb/cleverestricky/global_mode` (aktivieren) bzw. `rm -f /data/adb/cleverestricky/global_mode` (deaktivieren).
 
 * **`identity_target.txt`**: Zielpakete für die Verschleierung der Geräteidentität und Build-Eigenschaften.
-* **`global_identity_mode`**: Leere Marker-Datei. Wenn vorhanden, gilt die Identitätsverschleierung global.
+* **`global_telephony_mode`**: Leere Marker-Datei. Wenn vorhanden, gelten Telefonie-Überschreibungen für alle Ziel-Apps; andernfalls nur für explizit ausgewählte Ziele.
+* **`global_attestation_mode`**: Leere Marker-Datei. Wenn vorhanden, gelten Attestierungs-IDs für alle Ziel-Apps; andernfalls nur für explizit ausgewählte Ziele.
 
 ---
 

@@ -50,6 +50,13 @@ android {
         }
     }
 
+    lint {
+        // Third-party lint jars float with the dependencies and their API
+        // validation fails when a library outruns the AGP lint runner; skip
+        // external checks like :service does and keep first-party lint intact.
+        checkDependencies = false
+    }
+
     signingConfigs {
         if (releaseSigningConfigured) {
             create("release") {

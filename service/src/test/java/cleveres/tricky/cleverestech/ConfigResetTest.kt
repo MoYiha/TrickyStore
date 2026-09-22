@@ -29,13 +29,18 @@ class ConfigResetTest {
         globalModeField.isAccessible = true
         globalModeField.set(Config, true)
 
-        val globalIdentityField = Config::class.java.getDeclaredField("isGlobalIdentityMode")
-        globalIdentityField.isAccessible = true
-        globalIdentityField.set(Config, true)
+        val globalTelephonyField = Config::class.java.getDeclaredField("isGlobalTelephonyMode")
+        globalTelephonyField.isAccessible = true
+        globalTelephonyField.set(Config, true)
+
+        val globalAttestationField = Config::class.java.getDeclaredField("isGlobalAttestationMode")
+        globalAttestationField.isAccessible = true
+        globalAttestationField.set(Config, true)
 
         Config.reset()
 
         org.junit.Assert.assertFalse("Reset must reset isGlobalMode to false", Config.isGlobalMode)
-        org.junit.Assert.assertFalse("Reset must reset isGlobalIdentityMode to false", Config.isGlobalIdentityMode)
+        org.junit.Assert.assertFalse("Reset must reset isGlobalTelephonyMode to false", Config.isGlobalTelephonyMode)
+        org.junit.Assert.assertFalse("Reset must reset isGlobalAttestationMode to false", Config.isGlobalAttestationMode)
     }
 }

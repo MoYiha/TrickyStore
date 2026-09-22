@@ -244,13 +244,13 @@ class WebUiFeatureFamiliesInstrumentationTest {
                 "spoof_build_identity",
                 "global_mode",
                 "global_telephony_mode",
+                "global_attestation_mode",
                 "auto_keybox_check",
                 "random_on_boot",
                 "spoof_region_cn",
                 "telephony",
                 "camera_visibility",
                 "drm_passthrough",
-                "global_identity_mode",
                 "block_invalid_keyboxes",
             )
 
@@ -263,7 +263,6 @@ class WebUiFeatureFamiliesInstrumentationTest {
                     "auto_keybox_check",
                     "random_on_boot",
                     "telephony",
-                    "global_identity_mode",
                     "block_invalid_keyboxes",
                 ),
                 "daily" to setOf(

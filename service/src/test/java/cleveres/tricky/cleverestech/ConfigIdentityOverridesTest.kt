@@ -31,6 +31,10 @@ class ConfigIdentityOverridesTest {
         assertNull(Config.getAttestationId("IMEI", 10_001))
         File(root, "spoof_enabled").createNewFile()
         Config.refreshRuntimeSetting("spoof_enabled")
+        // The mapping under test predates explicit selection; restore the
+        // blanket precondition so the stored values flow again.
+        File(root, "global_attestation_mode").createNewFile()
+        Config.refreshRuntimeSetting("global_attestation_mode")
         assertEquals(imei, String(requireNotNull(Config.getAttestationId("IMEI", 10_001))))
     }
 
@@ -102,6 +106,8 @@ class ConfigIdentityOverridesTest {
 
         File(root, "spoof_enabled").createNewFile()
         Config.refreshRuntimeSetting("spoof_enabled")
+        File(root, "global_attestation_mode").createNewFile()
+        Config.refreshRuntimeSetting("global_attestation_mode")
         assertEquals("DEVICE_SERIAL_99", String(requireNotNull(Config.getAttestationId("SERIAL", 10_001))))
         assertEquals(imei, String(requireNotNull(Config.getAttestationId("IMEI", 10_001))))
         assertEquals("A100000927F4E3", String(requireNotNull(Config.getAttestationId("MEID", 10_001))))

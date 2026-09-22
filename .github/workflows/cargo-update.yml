@@ -1,0 +1,82 @@
+name: "Cargo Update"
+
+# Hourly Rust updater: refreshes Cargo.lock to newest releases and maintains
+# one rolling PR. Merging is manual and is what actually advances Rust builds;
+# reporting happens in the hourly dashboard and the monthly report.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: cargo-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: "Refresh Cargo lock and maintain update PR"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # PAT (not GITHUB_TOKEN): PRs opened with GITHUB_TOKEN need manual
+          # workflow approval, which would starve CI and the auto-merge gate.
+          token: ${{ secrets.CARGO_UPDATE_TOKEN }}
+          submodules: false
+          fetch-depth: 0
+
+      - name: Require automation token
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.CARGO_UPDATE_TOKEN }}" ]]; then
+            echo "::error::cargo-update needs the CARGO_UPDATE_TOKEN secret so its PRs run CI without manual approval: Settings > Secrets and variables > Actions > New repository secret (classic PAT with repo scope, or fine-grained with Contents and Pull requests read/write)."
+            exit 1
+          fi
+
+      - name: Refresh lockfile and maintain update PR
+        env:
+          GH_TOKEN: ${{ secrets.CARGO_UPDATE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd rust
+          cargo update -w
+          cd ..
+          if git diff --quiet -- rust/Cargo.lock; then
+            echo "Cargo lock is current."
+            exit 0
+          fi
+          cp rust/Cargo.lock /tmp/new-Cargo.lock
+          BRANCH="chore/cargo-update"
+          git fetch origin "$BRANCH" 2>/dev/null || true
+          if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
+            git checkout -B "$BRANCH" "origin/$BRANCH"
+          else
+            git checkout -B "$BRANCH"
+          fi
+          cp /tmp/new-Cargo.lock rust/Cargo.lock
+          git add rust/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Update branch already up to date."
+          else
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore(deps): refresh Cargo lock"
+            git push --force-with-lease origin "$BRANCH"
+          fi
+          BODY_FILE="$(mktemp)"
+          {
+            echo "Automated hourly Cargo lock refresh. Merge to advance Rust builds whenever ready; CI on this PR validates the new resolutions."
+            echo
+            echo '```diff'
+            git diff origin/master...HEAD --stat -- rust/Cargo.lock | head -n 30
+            echo '```'
+          } > "$BODY_FILE"
+          if ! gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
+            gh pr create --title "chore(deps): refresh Cargo lock" --label dependencies --reviewer tryigit --assignee tryigit --body-file "$BODY_FILE"
+          else
+            gh pr edit "$BRANCH" --body-file "$BODY_FILE"
+          fi

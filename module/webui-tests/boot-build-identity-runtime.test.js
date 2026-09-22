@@ -164,6 +164,17 @@ fs.writeFileSync(db, JSON.stringify(props, null, 2));
     'a core boot-property failure must not suppress enabled Build Identity',
   );
 
+  // The retired global identity marker is no longer required: Build Identity
+  // applies from its own toggle.
+  fs.unlinkSync(path.join(configDir, 'global_identity_mode'));
+  writeProps(propDb, physical);
+  execute(postFs, env);
+  assertIdentity(
+    readProps(propDb),
+    pixel,
+    'build props must apply without the retired global identity marker',
+  );
+
   // KernelSU/APatch can load module system.prop data after regular post-fs-data
   // scripts. Model a competing identity provider overwriting CT at that point.
   // post-mount must reassert CT before application processes snapshot Build.*.

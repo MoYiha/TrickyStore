@@ -70,7 +70,7 @@ class ConfigTargetStateTest {
     }
 
     @Test
-    fun `isIdentityTargeted behaves correctly in targeted mode and global identity mode`() {
+    fun `isIdentityTargeted behaves correctly in targeted mode`() {
         val appUid = 10_010
         val systemUid = 1000
         val nonTargetUid = 10_011
@@ -83,17 +83,10 @@ class ConfigTargetStateTest {
         trie.add("com.android.vending", true)
         val idState = createIdentityTargetState(trie)
         setPrivateField(Config, "identityTargetState", idState)
-        setPrivateField(Config, "isGlobalIdentityMode", false)
 
         assertTrue("Targeted app in identity_target.txt must be targeted for identity", Config.isIdentityTargeted(appUid))
-        assertFalse("Untargeted app must not be targeted for identity when global identity mode is off", Config.isIdentityTargeted(nonTargetUid))
+        assertFalse("Untargeted app must not be targeted for identity", Config.isIdentityTargeted(nonTargetUid))
         assertFalse("System UID must never be targeted for identity", Config.isIdentityTargeted(systemUid))
-
-        // Enable Global Identity Mode
-        setPrivateField(Config, "isGlobalIdentityMode", true)
-        assertTrue("Untargeted app must be targeted when global identity mode is on", Config.isIdentityTargeted(nonTargetUid))
-        assertTrue("Targeted app must still be targeted when global identity mode is on", Config.isIdentityTargeted(appUid))
-        assertFalse("System UID must still be protected when global identity mode is on", Config.isIdentityTargeted(systemUid))
     }
 
     @Test
@@ -110,7 +103,6 @@ class ConfigTargetStateTest {
         trie.add("com.android.vending", true)
         val idState = createIdentityTargetState(trie)
         setPrivateField(Config, "identityTargetState", idState)
-        setPrivateField(Config, "isGlobalIdentityMode", false)
         setPrivateField(Config, "isSpoofEnabled", true)
         setPrivateField(Config, "attestationIds", mapOf("BRAND" to "google".toByteArray(Charsets.UTF_8)))
 
@@ -173,10 +165,10 @@ class ConfigTargetStateTest {
             // RKP infrastructure must be rejected unconditionally even though V2 attestation identity is enabled
             assertNull("RKP infrastructure must never receive spoofed attestation ID", Config.getAttestationId("BRAND", rkpUid))
 
-            // Normal app must receive spoofed attestation ID under V2
+            // Unassigned apps stay genuine under V2: the top-level flag alone
+            // never selects a uid (explicit selection or blanket opt-in required)
             val targetBrand = Config.getAttestationId("BRAND", targetUid)
-            assertNotNull("Normal app under V2 attestation identity must receive attestation ID", targetBrand)
-            assertEquals("google", String(requireNotNull(targetBrand)))
+            assertNull("Unassigned app must not receive spoofed attestation ID without explicit selection", targetBrand)
         } finally {
             PolicyState.resetForTesting()
         }

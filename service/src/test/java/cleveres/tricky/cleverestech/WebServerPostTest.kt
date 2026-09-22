@@ -4,6 +4,7 @@ import cleveres.tricky.cleverestech.util.SecureFile
 import cleveres.tricky.cleverestech.util.SecureFileOperations
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -145,7 +146,28 @@ class WebServerPostTest {
     }
 
     @Test
-    fun testSetGlobalIdentityMode() {
+    fun testSetGlobalScopeModes() {
+        val port = server.listeningPort
+        val token = server.token
+        val toggleUrl = URL("http://localhost:$port/api/toggle?token=$token")
+
+        for (setting in listOf("global_telephony_mode", "global_attestation_mode")) {
+            val conn = toggleUrl.openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+
+            val postData = "setting=$setting&value=true"
+            conn.outputStream.use { it.write(postData.toByteArray(StandardCharsets.UTF_8)) }
+
+            assertEquals(200, conn.responseCode)
+            val savedFile = File(configDir, setting)
+            assertTrue("$setting should exist", savedFile.exists())
+        }
+    }
+
+    @Test
+    fun testRetiredGlobalIdentityModeIsRejected() {
         val port = server.listeningPort
         val token = server.token
         val toggleUrl = URL("http://localhost:$port/api/toggle?token=$token")
@@ -158,8 +180,7 @@ class WebServerPostTest {
         val postData = "setting=global_identity_mode&value=true"
         conn.outputStream.use { it.write(postData.toByteArray(StandardCharsets.UTF_8)) }
 
-        assertEquals(200, conn.responseCode)
-        val savedFile = File(configDir, "global_identity_mode")
-        assertTrue("global_identity_mode should exist", savedFile.exists())
+        assertEquals(400, conn.responseCode)
+        assertFalse("retired global_identity_mode must not be created", File(configDir, "global_identity_mode").exists())
     }
 }

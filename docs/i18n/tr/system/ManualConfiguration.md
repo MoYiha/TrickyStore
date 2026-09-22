@@ -20,7 +20,8 @@ Bu kılavuz, WebUI kullanılmadan dosyalar üzerinden manuel yapılandırma anla
   * *Komut:* `touch /data/adb/cleverestricky/global_mode` (aç) veya `rm -f /data/adb/cleverestricky/global_mode` (kapat).
 
 * **`identity_target.txt`**: Cihaz kimliği ve build özellikleri taklit edilecek hedef paketler.
-* **`global_identity_mode`**: Boş işaretçi dosyası. Varsa kimlik taklidi tüm sistem dışı uygulamalara uygulanır.
+* **`global_telephony_mode`**: Boş işaretçi dosyası. Varsa telefon kimliği geçersiz kılmaları tüm hedef uygulamalara uygulanır; yoksa yalnızca açıkça seçilen hedeflere uygulanır.
+* **`global_attestation_mode`**: Boş işaretçi dosyası. Varsa attestasyon tanımlayıcıları tüm hedef uygulamalara uygulanır; yoksa yalnızca açıkça seçilen hedeflere uygulanır.
 
 ---
 

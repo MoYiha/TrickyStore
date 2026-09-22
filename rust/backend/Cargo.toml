@@ -11,7 +11,7 @@ name = "cleverestricky_backend"
 path = "src/main.rs"
 
 [dependencies]
-base64 = "=0.23.1"
+base64 = "*"
 cleverestricky-cbox-recovery-core = { path = "../cbox-recovery-core" }
 cleverestricky-certificate-core = { path = "../certificate-core" }
 cleverestricky-crl-core = { path = "../crl-core" }
@@ -19,12 +19,12 @@ cleverestricky-crypto-core = { path = "../crypto-core" }
 cleverestricky-keybox-core = { path = "../keybox-core" }
 cleverestricky-service-core = { path = "../service-core" }
 cleverestricky-xml-core = { path = "../xml-core" }
-x509-der = { package = "der", version = "=0.8.1", features = ["alloc", "oid"] }
+x509-der = { package = "der", version = "*", features = ["alloc", "oid"] }
 getrandom = { workspace = true }
-libc = "0.2"
-sha2 = "=0.11.0"
-x509-cert = { version = "=0.3.0", default-features = false, features = ["std"] }
-zeroize = "1.8"
+libc = "*"
+sha2 = "*"
+x509-cert = { version = "*", default-features = false, features = ["std"] }
+zeroize = "*"
 
 [dev-dependencies]
-base64 = "=0.23.1"
+base64 = "*"

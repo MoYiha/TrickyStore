@@ -13,12 +13,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 aes-gcm = { workspace = true }
 getrandom = { workspace = true }
-jni = { version = "=0.22.4", default-features = false }
+jni = { version = "*", default-features = false }
 pbkdf2 = { workspace = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.11"
-zeroize = { version = "1.8", features = ["derive"] }
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+sha2 = "*"
+zeroize = { version = "*", features = ["derive"] }
 cleverestricky-service-core = { path = "../service-core" }
 cleverestricky-xml-core = { path = "../xml-core" }
 

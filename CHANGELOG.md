@@ -8,5 +8,6 @@
 - **Profiles and patch pages:** a new Profiles tab holds per-app privacy, keybox, and identity sets, plus a dedicated Security Patch page for system, vendor, and boot levels.
 - **Smarter app picker:** package search now shows icons with All, User, and System filters plus keyboard navigation.
 - **Telephony stays with its targets:** telephony overrides now apply only to apps you explicitly selected instead of every app, so carrier and banking apps keep their genuine values. A separate opt-in under Global Keybox restores the old blanket behavior, with a warning that full-global scope can break carrier features such as VoLTE and VoNR.
+- **Attestation follows the same rule:** attestation identifiers now apply only to apps you explicitly selected instead of every app. A second opt-in next to the telephony one restores the old blanket behavior, and upgrading carries your previous blanket choice over automatically.
 - **Disabled means disabled:** turning the region override off now fully clears its leftover modem setting on the next boot instead of leaving it behind.
 - **Quieter, steadier boots:** startup no longer reports false errors or retries work that already finished.
