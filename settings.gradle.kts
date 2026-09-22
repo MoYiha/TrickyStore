@@ -45,7 +45,12 @@ gradle.rootProject {
                 // Dependabot cannot bump directly; always follow the newest
                 // release instead of locking. The 1.85 CVE floor is enforced
                 // by the security workflow baseline, not by this selector.
+                // bcpkix/bcutil ride along: IANAObjectIdentifiers exists in
+                // both jars, so a stale sibling shadowing the forced copy
+                // breaks provider init with NoSuchFieldError.
                 force("org.bouncycastle:bcprov-jdk18on:latest.release")
+                force("org.bouncycastle:bcpkix-jdk18on:latest.release")
+                force("org.bouncycastle:bcutil-jdk18on:latest.release")
             }
         }
         configurations.all {
@@ -59,6 +64,8 @@ gradle.rootProject {
                 force("ch.qos.logback:logback-core:latest.release")
                 force("ch.qos.logback:logback-classic:latest.release")
                 force("org.bouncycastle:bcprov-jdk18on:latest.release")
+                force("org.bouncycastle:bcpkix-jdk18on:latest.release")
+                force("org.bouncycastle:bcutil-jdk18on:latest.release")
             }
         }
     }
