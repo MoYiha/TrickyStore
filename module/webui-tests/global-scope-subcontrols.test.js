@@ -74,10 +74,10 @@ assert.ok(
 
 // Full nine-locale coverage for the user-visible strings.
 const newKeys = {
-  global_telephony_title: ['Telephony for all targets', 'Tüm hedeflere telefoni'],
+  global_telephony_title: ['Telephony for all targets', 'Tüm hedefler için Telefon kimliği'],
   global_telephony_desc: ['Apply telephony overrides to every targeted app', 'Telefon kimliği'],
-  global_attestation_title: ['Attestation for all targets', 'Tüm hedeflere attestasyon'],
-  global_attestation_desc: ['Apply attestation identifiers to every targeted app', 'Attestasyon tanımlayıcılarını'],
+  global_attestation_title: ['Attestation for all targets', 'Tüm hedefler için Attestation kimliği'],
+  global_attestation_desc: ['Apply attestation identifiers to every targeted app', 'Attestation tanımlayıcılarını'],
 };
 for (const [key, samples] of Object.entries(newKeys)) {
   assert.ok(uxSource.includes(`'${key}':`), `TRANSLATIONS/COPY is missing key: ${key}`);
