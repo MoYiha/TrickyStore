@@ -13,8 +13,8 @@ getrandom = { workspace = true }
 p256 = { version = "*", features = ["ecdsa", "pkcs8"] }
 pbkdf2 = { workspace = true }
 rsa = { version = "*", features = ["sha2"] }
-rsa-sha2 = { package = "sha2", version = "*", features = ["oid"] }
-rsa-signature = { package = "signature", version = "*" }
+rsa-sha2 = { package = "sha2", version = "=0.10.9", features = ["oid"] }
+rsa-signature = { package = "signature", version = "=2.2.0" }
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
 sha2 = { version = "*", features = ["oid"] }

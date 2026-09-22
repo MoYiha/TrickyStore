@@ -15,8 +15,8 @@ attestation-der = { package = "der", version = "*", features = ["alloc", "oid", 
 cleverestricky-attestation-core = { path = "../attestation-core" }
 p256 = { version = "*", features = ["ecdsa", "pkcs8"] }
 rsa = { version = "*", features = ["sha2"] }
-rsa-sha2 = { package = "sha2", version = "*", features = ["oid"] }
-rsa-signature = { package = "signature", version = "*" }
+rsa-sha2 = { package = "sha2", version = "=0.10.9", features = ["oid"] }
+rsa-signature = { package = "signature", version = "=2.2.0" }
 sha2 = { version = "*", features = ["oid"] }
 signature = "*"
 x509-cert = { version = "*", default-features = false, features = ["pem", "std"] }

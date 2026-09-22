@@ -1,17 +1,17 @@
 name: "Dependency Scan"
 
-# Hourly metadata-only drift detection (no Gradle/Rust toolchain needed).
-# Compares registry newest releases against the committed snapshot and the
-# Cargo lock, and maintains one rolling PR. Real resolution happens in CI
-# and in the monthly maintenance report; this scan only reports.
+# Hourly read-only drift dashboard (no toolchain, no writes to tracked files).
+# Compares registry newest releases against the build inputs and maintains one
+# rolling issue. Updating happens elsewhere (floating Gradle resolution, the
+# daily cargo-update PR); the monthly report summarizes for maintenance.
 on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  issues: write
 
 concurrency:
   group: dependency-scan
@@ -19,63 +19,49 @@ concurrency:
 
 jobs:
   scan:
-    name: "Scan registries and maintain drift PR"
+    name: "Scan registries and maintain dashboard"
     runs-on: ubuntu-latest
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
-          fetch-depth: 0
 
-      - name: Scan and maintain drift PR
+      - name: Scan and maintain dashboard issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          SNAPSHOT="gradle/resolved-versions.snapshot"
-          BRANCH="chore/dependency-snapshot"
-
           CENTRAL="https://repo.maven.apache.org/maven2"
           GOOGLE="https://dl.google.com/dl/android/maven2"
           PORTAL="https://plugins.gradle.org/m2"
 
-          # Static artifact-to-config mapping. New direct dependencies are
-          # picked up by the monthly real resolution; add them here afterwards
-          # so the hourly scan keeps covering them. Format: "src|group|name|repo".
+          # Format: "group|name|repo". Add new direct dependencies here so the
+          # hourly scan keeps covering them.
           MAP=(
-            ":service:debugUnitTestRuntimeClasspath|junit|junit|central"
-            ":service:debugUnitTestRuntimeClasspath|androidx.annotation|annotation|google"
-            ":service:debugUnitTestRuntimeClasspath|org.jetbrains.kotlinx|kotlinx-coroutines-android|central"
-            ":service:debugUnitTestRuntimeClasspath|org.nanohttpd|nanohttpd|central"
-            ":service:debugUnitTestRuntimeClasspath|org.bouncycastle|bcprov-jdk18on|central"
-            ":service:debugUnitTestRuntimeClasspath|org.bouncycastle|bcpkix-jdk18on|central"
-            ":service:debugUnitTestRuntimeClasspath|org.bouncycastle|bcutil-jdk18on|central"
-            ":service:debugUnitTestRuntimeClasspath|net.sf.kxml|kxml2|central"
-            ":service:debugUnitTestRuntimeClasspath|org.json|json|central"
-            ":service:debugUnitTestRuntimeClasspath|org.mockito|mockito-core|central"
-            ":service:debugAndroidTestRuntimeClasspath|androidx.test.ext|junit|google"
-            ":service:debugAndroidTestRuntimeClasspath|androidx.test.espresso|espresso-core|google"
-            ":service:debugAndroidTestRuntimeClasspath|androidx.test|runner|google"
-            ":stub:debugCompileClasspath|androidx.annotation|annotation|google"
-            ":stub:debugCompileClasspath|li.songe.remap|remap-annotation|central"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|androidx.activity|activity-compose|google"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|androidx.compose|compose-bom|google"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|androidx.annotation|annotation|google"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|junit|junit|central"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|androidx.test.ext|junit|google"
-            ":encryptor-app:debugUnitTestRuntimeClasspath|org.robolectric|robolectric|central"
-            "buildscript|org.bouncycastle|bcprov-jdk18on|central"
-            "buildscript|io.netty|netty-codec-http|central"
-            "buildscript|io.netty|netty-codec-http2|central"
-            "buildscript|io.netty|netty-codec|central"
-            "buildscript|io.netty|netty-handler-proxy|central"
-            "buildscript|ch.qos.logback|logback-core|central"
-            "buildscript|ch.qos.logback|logback-classic|central"
-            "buildscript|com.android.tools.build|gradle|google"
-            "buildscript|org.jetbrains.kotlin|kotlin-gradle-plugin|central"
-            "buildscript|org.lsposed.lsplugin.cmaker|org.lsposed.lsplugin.cmaker.gradle.plugin|portal"
+            "junit|junit|central"
+            "androidx.annotation|annotation|google"
+            "org.jetbrains.kotlinx|kotlinx-coroutines-android|central"
+            "org.nanohttpd|nanohttpd|central"
+            "org.bouncycastle|bcprov-jdk18on|central"
+            "org.bouncycastle|bcpkix-jdk18on|central"
+            "org.bouncycastle|bcutil-jdk18on|central"
+            "net.sf.kxml|kxml2|central"
+            "org.json|json|central"
+            "org.mockito|mockito-core|central"
+            "androidx.test.ext|junit|google"
+            "androidx.test.espresso|espresso-core|google"
+            "androidx.test|runner|google"
+            "li.songe.remap|remap-annotation|central"
+            "li.songe.remap|remap-processor|central"
+            "androidx.activity|activity-compose|google"
+            "androidx.compose|compose-bom|google"
+            "org.robolectric|robolectric|central"
+            "com.android.tools.build|gradle|google"
+            "org.jetbrains.kotlin|kotlin-gradle-plugin|central"
+            "org.lsposed.libcxx|libcxx|central"
+            "org.lsposed.lsplugin.cmaker|org.lsposed.lsplugin.cmaker.gradle.plugin|portal"
           )
 
           newest_maven() {
@@ -87,13 +73,11 @@ jobs:
               | sed 's/<[^>]*>//g' | LC_ALL=C sort -uV | tail -n 1 || true
           }
 
-          FRESH="$(mktemp)"
+          GRADLE_TABLE="$(mktemp)"
           UNRESOLVED=0
           for entry in "${MAP[@]}"; do
-            src="${entry%%|*}"
+            group="${entry%%|*}"
             rest="${entry#*|}"
-            group="${rest%%|*}"
-            rest="${rest#*|}"
             name="${rest%%|*}"
             repo="${rest##*|}"
             case "$repo" in
@@ -107,23 +91,9 @@ jobs:
               UNRESOLVED=$((UNRESOLVED + 1))
               continue
             fi
-            echo "$src $group:$name=$ver" >> "$FRESH"
+            echo "- $group:$name newest: $ver" >> "$GRADLE_TABLE"
           done
-          LC_ALL=C sort -u -o "$FRESH" "$FRESH"
 
-          # Preserve snapshot lines this scan does not cover (e.g. added by
-          # monthly real resolution); only mapped keys get refreshed.
-          awk '{ k=$1" "$2; sub(/=.*$/, "", k); print k }' "$FRESH" | LC_ALL=C sort -u > /tmp/fresh.keys
-          {
-            grep -v '^#' "$SNAPSHOT" | awk 'NR==FNR { seen[$0]=1; next } { k=$1" "$2; sub(/=.*$/, "", k); if (!(k in seen)) print }' /tmp/fresh.keys -
-            cat "$FRESH"
-          } > /tmp/merged.body
-          {
-            grep '^#' "$SNAPSHOT"
-            LC_ALL=C sort -u /tmp/merged.body
-          } > /tmp/merged.snapshot
-
-          # Rust: direct crates vs locked versions (lock is the only pin).
           python3 - <<'PYEOF' > /tmp/crates.txt
           import glob
           import io
@@ -145,7 +115,7 @@ jobs:
           PYEOF
           awk '/^\[\[package\]\]/{ name=""; ver=""; next } /^name = /{ gsub(/"/, "", $3); name=$3 } /^version = / && name != "" { gsub(/"/, "", $3); print name"=" $3; name="" }' rust/Cargo.lock | LC_ALL=C sort -u > /tmp/locked.txt
 
-          CARGO_DRIFT="$(mktemp)"
+          CARGO_TABLE="$(mktemp)"
           while IFS= read -r crate; do
             [[ -z "$crate" ]] && continue
             locked=$(grep -E -e "^${crate}=" /tmp/locked.txt | cut -d= -f2 | LC_ALL=C sort -uV | tail -n1 || true)
@@ -155,7 +125,7 @@ jobs:
               continue
             fi
             if [[ "$locked" != "$newest" ]]; then
-              echo "- $crate: ${locked:-(absent)} -> $newest" >> "$CARGO_DRIFT"
+              echo "- $crate: ${locked:-(absent)} -> $newest" >> "$CARGO_TABLE"
             fi
             sleep 1
           done < /tmp/crates.txt
@@ -171,42 +141,24 @@ jobs:
             fi
           fi
 
-          GRADLE_DRIFT=false
-          if ! cmp -s <(grep -v '^#' "$SNAPSHOT") <(grep -v '^#' /tmp/merged.snapshot); then
-            GRADLE_DRIFT=true
-          fi
-          CARGO_COUNT=$(wc -l < "$CARGO_DRIFT" | tr -d ' ')
-          WRAPPER_DRIFT=false
-          if [[ "$WRAPPER_LINE" == *" available "* ]]; then
-            WRAPPER_DRIFT=true
-          fi
-
-          if ! $GRADLE_DRIFT && [[ "$CARGO_COUNT" -eq 0 ]] && ! $WRAPPER_DRIFT; then
-            echo "No drift detected."
-            if gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
-              gh pr close "$BRANCH" --delete-branch
-            fi
-            exit 0
-          fi
-
-          BODY_FILE="$(mktemp)"
+          CORE_FILE="$(mktemp)"
           {
-            echo "Automated hourly dependency scan (metadata-derived; real resolution happens in CI and the monthly report)."
+            echo "# Dependency drift dashboard"
             echo
-            if $GRADLE_DRIFT; then
-              echo "## Gradle drift (registry newest vs snapshot)"
-              echo
-              echo '```diff'
-              diff -u <(grep -v '^#' "$SNAPSHOT") <(grep -v '^#' /tmp/merged.snapshot) | head -c 4000 || true
-              echo '```'
-              echo
+            echo "Updated hourly. Gradle floats automatically; Rust advances via the daily cargo-update PR."
+            echo
+            echo "## Gradle newest releases"
+            echo
+            cat "$GRADLE_TABLE"
+            echo
+            echo "## Rust crates newer than Cargo.lock"
+            echo
+            if [[ -s "$CARGO_TABLE" ]]; then
+              cat "$CARGO_TABLE"
+            else
+              echo "lock is current"
             fi
-            if [[ "$CARGO_COUNT" -gt 0 ]]; then
-              echo "## Rust crates with newer releases (lock -> crates.io)"
-              echo
-              cat "$CARGO_DRIFT"
-              echo
-            fi
+            echo
             echo "## Wrapper"
             echo
             echo "$WRAPPER_LINE"
@@ -214,24 +166,23 @@ jobs:
               echo
               echo "_$UNRESOLVED registry lookups failed this run; see warnings above._"
             fi
-          } > "$BODY_FILE"
+          } > "$CORE_FILE"
 
-          git fetch origin "$BRANCH" 2>/dev/null || true
-          if git rev-parse --verify "origin/$BRANCH" >/dev/null 2>&1; then
-            git checkout -B "$BRANCH" "origin/$BRANCH"
+          EXISTING=$(gh issue list --label dependencies --state open --json number,title --jq '[.[] | select(.title=="Dependency drift dashboard")][0].number // empty' || true)
+          if [[ -n "$EXISTING" ]]; then
+            OLD_CORE="$(mktemp)"
+            gh issue view "$EXISTING" --json body --jq .body | grep -v '^_Last scan:' > "$OLD_CORE" || true
+            if cmp -s "$OLD_CORE" "$CORE_FILE"; then
+              echo "Dashboard unchanged."
+              exit 0
+            fi
+            TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            { cat "$CORE_FILE"; echo; echo "_Last scan: $TS_"; } > /tmp/body.txt
+            gh issue edit "$EXISTING" --body-file /tmp/body.txt
+            { echo "Drift changed:"; echo; cat "$CORE_FILE"; } > /tmp/comment.txt
+            gh issue comment "$EXISTING" --body-file /tmp/comment.txt
           else
-            git checkout -B "$BRANCH"
-          fi
-          cp /tmp/merged.snapshot "$SNAPSHOT"
-          git add "$SNAPSHOT"
-          if git diff --cached --quiet; then
-            echo "Snapshot file unchanged (non-file drift only)."
-          else
-            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "chore(deps): hourly dependency snapshot"
-            git push --force-with-lease origin "$BRANCH"
-          fi
-          if ! gh pr view "$BRANCH" --json number --jq .number >/dev/null 2>&1; then
-            gh pr create --title "chore(deps): dependency updates detected" --label dependencies --reviewer tryigit --assignee tryigit --body-file "$BODY_FILE"
-          else
-            gh pr edit "$BRANCH" --body-file "$BODY_FILE"
+            TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            { cat "$CORE_FILE"; echo; echo "_Last scan: $TS_"; } > /tmp/body.txt
+            gh issue create --title "Dependency drift dashboard" --label dependencies --assignee tryigit --body-file /tmp/body.txt
           fi
