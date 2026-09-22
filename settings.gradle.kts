@@ -39,6 +39,9 @@ gradle.rootProject {
                 // 1.14.0-alpha02); accept newest stable only.
                 componentSelection {
                     all {
+                        // Jetifier never left beta: 1.0.0-beta10 is its final
+                        // form and AGP requires it exactly.
+                        if (candidate.group == "com.android.tools.build.jetifier") return@all
                         val v = candidate.version.lowercase()
                         if (v.contains("-alpha") || v.contains("-beta") || v.contains("-rc") || v.contains("-m") || v.contains("-preview") || v.contains("-snapshot") || v.contains(".alpha") || v.contains(".beta")) {
                             reject("Pre-release versions are not accepted")
@@ -69,6 +72,9 @@ gradle.rootProject {
                 cacheChangingModulesFor(1, TimeUnit.HOURS)
                 componentSelection {
                     all {
+                        // Jetifier never left beta: 1.0.0-beta10 is its final
+                        // form and AGP requires it exactly.
+                        if (candidate.group == "com.android.tools.build.jetifier") return@all
                         val v = candidate.version.lowercase()
                         if (v.contains("-alpha") || v.contains("-beta") || v.contains("-rc") || v.contains("-m") || v.contains("-preview") || v.contains("-snapshot") || v.contains(".alpha") || v.contains(".beta")) {
                             reject("Pre-release versions are not accepted")
