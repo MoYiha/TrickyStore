@@ -89,6 +89,12 @@ public class CertHackOrderTest {
                 new File(System.getProperty("java.io.tmpdir"), "cleverestricky-cert-hack-order"));
     }
 
+    private void setGlobalAttestationMode(boolean enabled) throws Exception {
+        Field field = Config.class.getDeclaredField("isGlobalAttestationMode");
+        field.setAccessible(true);
+        field.setBoolean(Config.INSTANCE, enabled);
+    }
+
     private void resetConfig() {
         Config.INSTANCE.reset();
     }
@@ -142,15 +148,7 @@ public class CertHackOrderTest {
         setSpoofEnabled(true);
         // Shared identifiers follow explicit selection; restore the blanket
         // precondition so the ordering coverage below keeps exercising values.
-        File configRoot =
-                new File(System.getProperty("java.io.tmpdir"), "cleverestricky-cert-hack-order");
-        configRoot.mkdirs();
-        try {
-            new File(configRoot, "global_attestation_mode").createNewFile();
-        } catch (java.io.IOException e) {
-            throw new RuntimeException(e);
-        }
-        Config.INSTANCE.refreshRuntimeSetting("global_attestation_mode");
+        setGlobalAttestationMode(true);
 
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
         kpg.initialize(2048);
