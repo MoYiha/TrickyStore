@@ -24,12 +24,23 @@ jobs:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # PAT (not GITHUB_TOKEN): PRs opened with GITHUB_TOKEN need manual
+          # workflow approval, which would starve CI and the auto-merge gate.
+          token: ${{ secrets.CARGO_UPDATE_TOKEN }}
           submodules: false
           fetch-depth: 0
 
+      - name: Require automation token
+        shell: bash
+        run: |
+          if [[ -z "${{ secrets.CARGO_UPDATE_TOKEN }}" ]]; then
+            echo "::error::cargo-update needs the CARGO_UPDATE_TOKEN secret so its PRs run CI without manual approval: Settings > Secrets and variables > Actions > New repository secret (classic PAT with repo scope, or fine-grained with Contents and Pull requests read/write)."
+            exit 1
+          fi
+
       - name: Refresh lockfile and maintain update PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.CARGO_UPDATE_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail

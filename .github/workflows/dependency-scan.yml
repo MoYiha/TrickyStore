@@ -180,12 +180,12 @@ jobs:
               exit 0
             fi
             TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            { cat "$CORE_FILE"; echo; echo "_Last scan: $TS_"; } > /tmp/body.txt
+            { cat "$CORE_FILE"; echo; echo "_Last scan: ${TS}_"; } > /tmp/body.txt
             gh issue edit "$EXISTING" --body-file /tmp/body.txt
             { echo "Drift changed:"; echo; cat "$CORE_FILE"; } > /tmp/comment.txt
             gh issue comment "$EXISTING" --body-file /tmp/comment.txt
           else
             TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-            { cat "$CORE_FILE"; echo; echo "_Last scan: $TS_"; } > /tmp/body.txt
+            { cat "$CORE_FILE"; echo; echo "_Last scan: ${TS}_"; } > /tmp/body.txt
             gh issue create --title "Dependency drift dashboard" --label dependencies --assignee tryigit --body-file /tmp/body.txt
           fi
