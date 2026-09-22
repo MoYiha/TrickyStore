@@ -10,7 +10,7 @@ license = "GPL-3.0-only"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "=0.4.13"
+libfuzzer-sys = "*"
 cleverestricky-attestation-core = { path = "../attestation-core" }
 cleverestricky-backend = { path = "../backend" }
 cleverestricky-cbox-recovery-core = { path = "../cbox-recovery-core" }
