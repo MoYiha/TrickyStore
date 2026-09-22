@@ -36,6 +36,9 @@ gradle.rootProject {
                 force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
+                // AGP/lint pull a vulnerable bcprov into the plugin classpath;
+                // pin it to the patched version used by the direct dependency.
+                force("org.bouncycastle:bcprov-jdk18on:1.86")
             }
         }
         configurations.all {
@@ -46,6 +49,7 @@ gradle.rootProject {
                 force("io.netty:netty-handler-proxy:4.2.18.Final")
                 force("ch.qos.logback:logback-core:1.6.3")
                 force("ch.qos.logback:logback-classic:1.6.3")
+                force("org.bouncycastle:bcprov-jdk18on:1.86")
             }
         }
     }

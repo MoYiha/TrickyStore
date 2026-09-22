@@ -87,9 +87,9 @@ jobs:
               exit 1
             fi
           done
-          enforce_minimum bcprov-jdk18on 1.84 debugUnitTestRuntimeClasspath
-          enforce_minimum bcpkix-jdk18on 1.84 debugUnitTestRuntimeClasspath
-          enforce_minimum bcutil-jdk18on 1.84 debugUnitTestRuntimeClasspath
+          enforce_minimum bcprov-jdk18on 1.85 debugUnitTestRuntimeClasspath
+          enforce_minimum bcpkix-jdk18on 1.85 debugUnitTestRuntimeClasspath
+          enforce_minimum bcutil-jdk18on 1.85 debugUnitTestRuntimeClasspath
 
       - name: Validate installer extraction security
         shell: bash
