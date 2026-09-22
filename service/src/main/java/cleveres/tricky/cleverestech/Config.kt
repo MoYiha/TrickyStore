@@ -475,6 +475,9 @@ object Config {
                     parsePackages(emptySequence())
                 }
             identityTargetState = IdentityTargetState(packages)
+            // Target membership feeds attestation scope, while the
+            // certificate cache is keyed by leaf bytes alone.
+            CertHack.clearCertificateCache()
             Logger.i { "Updated identity target packages: ${packages.size}" }
         }.onFailure {
             Logger.e("failed to update identity target files", it)
@@ -799,7 +802,12 @@ object Config {
     }
 
     private fun updateGlobalAttestationMode(f: File?) {
-        isGlobalAttestationMode = isRegularFlagFile(f)
+        val enabled = isRegularFlagFile(f)
+        val changed = isGlobalAttestationMode != enabled
+        isGlobalAttestationMode = enabled
+        // Scope flips change rewrite output for the same leaf, while the
+        // certificate cache is keyed by leaf bytes alone.
+        if (changed) CertHack.clearCertificateCache()
         Logger.i("Global attestation scope is ${if (isGlobalAttestationMode) "enabled" else "disabled"}")
     }
 
@@ -2203,6 +2211,8 @@ object Config {
                 SPOOF_ENABLED_FILE -> { updateSpoofEnabled(f); updateRandomOnBoot(File(root, RANDOM_ON_BOOT_FILE)) }
                 BUILD_IDENTITY_FILE -> updateBuildIdentity(f)
                 GLOBAL_MODE_FILE -> { updateGlobalMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
+                GLOBAL_TELEPHONY_MODE_FILE -> updateGlobalTelephonyMode(f)
+                GLOBAL_ATTESTATION_MODE_FILE -> updateGlobalAttestationMode(f)
                 TEE_BROKEN_MODE_FILE -> { updateTeeBrokenMode(f); updateTargetPackages(File(root, TARGET_FILE)) }
                 TELEPHONY_FILE -> updateTelephony(f)
                 CAMERA_VISIBILITY_FILE -> updateCameraVisibility(f)

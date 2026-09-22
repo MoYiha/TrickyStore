@@ -34,6 +34,7 @@ import org.junit.runners.JUnit4;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -90,9 +91,20 @@ public class CertHackOrderTest {
     }
 
     private void setGlobalAttestationMode(boolean enabled) throws Exception {
-        Field field = Config.class.getDeclaredField("isGlobalAttestationMode");
-        field.setAccessible(true);
-        field.setBoolean(Config.INSTANCE, enabled);
+        // Go through the real update path (not a bare field write) so the
+        // production cache-invalidation behavior is exercised as well.
+        File configRoot =
+                new File(System.getProperty("java.io.tmpdir"), "cleverestricky-cert-hack-order");
+        configRoot.mkdirs();
+        File marker = new File(configRoot, "global_attestation_mode");
+        if (enabled) {
+            marker.createNewFile();
+        } else {
+            marker.delete();
+        }
+        Method update = Config.class.getDeclaredMethod("updateGlobalAttestationMode", File.class);
+        update.setAccessible(true);
+        update.invoke(Config.INSTANCE, new Object[] {enabled ? marker : null});
     }
 
     private void resetConfig() {
@@ -140,20 +152,7 @@ public class CertHackOrderTest {
         return new JcaX509CertificateConverter().getCertificate(builder.build(signer));
     }
 
-    @Test
-    public void testAttestationIdOrdering() throws Exception {
-        resetConfig();
-        byte[] expectedBrand = "Google".getBytes(StandardCharsets.UTF_8);
-        setAttestationId("BRAND", expectedBrand);
-        setSpoofEnabled(true);
-        // Shared identifiers follow explicit selection; restore the blanket
-        // precondition so the ordering coverage below keeps exercising values.
-        setGlobalAttestationMode(true);
-
-        KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
-        kpg.initialize(2048);
-        KeyPair kp = kpg.generateKeyPair();
-        X509Certificate cert = generateCertWithIdentityAndPatchLevels(kp);
+    private Object installKeyboxState(KeyPair kp, X509Certificate cert) throws Exception {
         CertHack.KeyBox keyBox = ManagedOpaqueKeyOracle.wrap(
                 kp, Collections.singletonList(cert), "test.xml");
 
@@ -170,6 +169,49 @@ public class CertHackOrderTest {
         stateField.setAccessible(true);
         Object previousState = stateField.get(null);
         stateField.set(null, newState);
+        return previousState;
+    }
+
+    private void restoreKeyboxState(Object previousState) throws Exception {
+        Field stateField = CertHack.class.getDeclaredField("state");
+        stateField.setAccessible(true);
+        stateField.set(null, previousState);
+    }
+
+    private static byte[] brandOf(X509Certificate certificate) throws Exception {
+        byte[] extBytes = certificate.getExtensionValue("1.3.6.1.4.1.11129.2.1.17");
+        ASN1Primitive extStruct = ASN1Primitive.fromByteArray(
+                ASN1OctetString.getInstance(extBytes).getOctets());
+        ASN1Sequence seq = ASN1Sequence.getInstance(extStruct);
+        ASN1Sequence teeEnforced = (ASN1Sequence) seq.getObjectAt(7);
+        for (ASN1Encodable encodable : teeEnforced) {
+            ASN1TaggedObject taggedObject = (ASN1TaggedObject) encodable;
+            if (taggedObject.getTagNo() == 710) {
+                return ASN1OctetString.getInstance(taggedObject.getBaseObject()).getOctets();
+            }
+        }
+        Assert.fail("BRAND (710) missing");
+        return null;
+    }
+
+    @Test
+    public void testAttestationIdOrdering() throws Exception {
+        resetConfig();
+        byte[] expectedBrand = "Google".getBytes(StandardCharsets.UTF_8);
+        setAttestationId("BRAND", expectedBrand);
+        setSpoofEnabled(true);
+        // Shared identifiers follow explicit selection; restore the blanket
+        // precondition so the ordering coverage below keeps exercising values.
+        setGlobalAttestationMode(true);
+        // The scope update clears the certificate cache; the unit backend has
+        // no clear override, so re-establish the healthy-graph precondition.
+        CertHack.resetGraphHealthForTesting();
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
+        kpg.initialize(2048);
+        KeyPair kp = kpg.generateKeyPair();
+        X509Certificate cert = generateCertWithIdentityAndPatchLevels(kp);
+        Object previousState = installKeyboxState(kp, cert);
 
         try {
             Certificate[] hackedChain = CertHack.hackCertificateChain(new Certificate[]{cert}, 10_000, true);
@@ -217,8 +259,41 @@ public class CertHackOrderTest {
             Assert.assertEquals(Integer.valueOf(20240205), vendorPatch);
             Assert.assertEquals(Integer.valueOf(20240305), bootPatch);
         } finally {
-            stateField.set(null, previousState);
+            restoreKeyboxState(previousState);
             resetConfig();
+            CertHack.resetGraphHealthForTesting();
+        }
+    }
+
+    @Test
+    public void testGlobalAttestationToggleServesFreshCertificates() throws Exception {
+        resetConfig();
+        byte[] sharedBrand = "Google".getBytes(StandardCharsets.UTF_8);
+        byte[] genuineBrand = "OriginalBrand".getBytes(StandardCharsets.UTF_8);
+        setAttestationId("BRAND", sharedBrand);
+        setSpoofEnabled(true);
+        setGlobalAttestationMode(true);
+        CertHack.resetGraphHealthForTesting();
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
+        kpg.initialize(2048);
+        KeyPair kp = kpg.generateKeyPair();
+        X509Certificate cert = generateCertWithIdentityAndPatchLevels(kp);
+        Object previousState = installKeyboxState(kp, cert);
+
+        try {
+            Certificate[] first = CertHack.hackCertificateChain(new Certificate[]{cert}, 10_000, true);
+            Assert.assertArrayEquals(sharedBrand, brandOf((X509Certificate) first[0]));
+
+            setGlobalAttestationMode(false);
+            CertHack.resetGraphHealthForTesting();
+
+            Certificate[] second = CertHack.hackCertificateChain(new Certificate[]{cert}, 10_000, true);
+            Assert.assertArrayEquals(genuineBrand, brandOf((X509Certificate) second[0]));
+        } finally {
+            restoreKeyboxState(previousState);
+            resetConfig();
+            CertHack.resetGraphHealthForTesting();
         }
     }
 }
