@@ -142,7 +142,8 @@ class AttestationTargetScopeTest {
 
     @Test
     fun `v2 blanket opt-in restores shared identifiers`() {
-        installV2(attestation = false, profiles = JSONArray())
+        // The opt-in is scope, not master: the feature itself must be on.
+        installV2(attestation = true, profiles = JSONArray())
         enableMarker("global_mode")
         enableMarker("global_attestation_mode")
         setAttestationIds("IMEI" to "355000000000001".toByteArray(Charsets.UTF_8))

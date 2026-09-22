@@ -63,6 +63,10 @@ class ConfigEnhancementTest {
             Config.setRootForTesting(root)
             File(root, "spoof_enabled").createNewFile()
             Config.refreshRuntimeSetting("spoof_enabled")
+            // Shared identifiers follow explicit selection; the blanket
+            // opt-in restores the historical fallback plumbing under test.
+            File(root, "global_attestation_mode").createNewFile()
+            Config.refreshRuntimeSetting("global_attestation_mode")
 
             // Clear build vars
             Config.updateBuildVars(null)

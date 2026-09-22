@@ -140,6 +140,17 @@ public class CertHackOrderTest {
         byte[] expectedBrand = "Google".getBytes(StandardCharsets.UTF_8);
         setAttestationId("BRAND", expectedBrand);
         setSpoofEnabled(true);
+        // Shared identifiers follow explicit selection; restore the blanket
+        // precondition so the ordering coverage below keeps exercising values.
+        File configRoot =
+                new File(System.getProperty("java.io.tmpdir"), "cleverestricky-cert-hack-order");
+        configRoot.mkdirs();
+        try {
+            new File(configRoot, "global_attestation_mode").createNewFile();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e);
+        }
+        Config.INSTANCE.refreshRuntimeSetting("global_attestation_mode");
 
         KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
         kpg.initialize(2048);
