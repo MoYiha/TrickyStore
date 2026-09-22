@@ -49,6 +49,10 @@ jobs:
               echo "::error::Missing version for org.bouncycastle:${artifact}"
               exit 1
             fi
+            if [[ "$version" == *"latest"* || "$version" == *"+"* || "$version" == "["* ]]; then
+              echo "Skipping existence check for dynamic selector org.bouncycastle:${artifact}:${version} (Gradle resolution is the gate)"
+              continue
+            fi
             url="https://repo.maven.apache.org/maven2/org/bouncycastle/${artifact}/${version}/${artifact}-${version}.pom"
             echo "Checking org.bouncycastle:${artifact}:${version}"
             curl --fail --silent --show-error --location --user-agent "CleveresTricky-CI/1.0" --retry 3 --retry-all-errors --output /dev/null "$url"
