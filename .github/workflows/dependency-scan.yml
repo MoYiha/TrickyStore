@@ -26,6 +26,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Scan and maintain dashboard issue
         env:
@@ -122,6 +123,7 @@ jobs:
             newest=$(curl --fail --silent --show-error --location --max-time 20 -A "CleveresTricky-Dependency-Scan/1.0" "https://crates.io/api/v1/crates/${crate}" 2>/dev/null | grep -o '"max_version":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
             if [[ -z "$newest" ]]; then
               echo "::warning::crates.io lookup failed: $crate"
+              UNRESOLVED=$((UNRESOLVED + 1))
               continue
             fi
             if [[ "$locked" != "$newest" ]]; then
@@ -162,11 +164,12 @@ jobs:
             echo "## Wrapper"
             echo
             echo "$WRAPPER_LINE"
-            if [[ "$UNRESOLVED" -gt 0 ]]; then
-              echo
-              echo "_$UNRESOLVED registry lookups failed this run; see warnings above._"
-            fi
           } > "$CORE_FILE"
+
+          if [[ "$UNRESOLVED" -gt 0 ]]; then
+            echo "Incomplete scan ($UNRESOLVED failed lookups); keeping last dashboard."
+            exit 0
+          fi
 
           EXISTING=$(gh issue list --label dependencies --state open --json number,title --jq '[.[] | select(.title=="Dependency drift dashboard")][0].number // empty' || true)
           if [[ -n "$EXISTING" ]]; then

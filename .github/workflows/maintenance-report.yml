@@ -28,6 +28,7 @@ jobs:
         with:
           submodules: false
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Collect history and open report issue
         env:

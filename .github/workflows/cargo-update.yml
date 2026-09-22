@@ -1,12 +1,12 @@
 name: "Cargo Update"
 
-# Daily Rust updater: refreshes Cargo.lock to newest releases and maintains
+# Hourly Rust updater: refreshes Cargo.lock to newest releases and maintains
 # one rolling PR. Merging (e.g. during 1st-of-month maintenance) is what
 # actually advances Rust builds; reporting happens in the hourly dashboard
 # and the monthly report.
 on:
   schedule:
-    - cron: "0 5 * * *"
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -59,7 +59,7 @@ jobs:
           fi
           BODY_FILE="$(mktemp)"
           {
-            echo "Automated daily Cargo lock refresh. Merge to advance Rust builds (e.g. during 1st-of-month maintenance); CI on this PR validates the new resolutions."
+            echo "Automated hourly Cargo lock refresh. Merge to advance Rust builds (e.g. during 1st-of-month maintenance); CI on this PR validates the new resolutions."
             echo
             echo '```diff'
             git diff origin/master...HEAD --stat -- rust/Cargo.lock | head -n 30
