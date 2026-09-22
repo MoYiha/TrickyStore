@@ -1,9 +1,9 @@
 name: "Dependency Scan"
 
-# Hourly read-only drift dashboard (no toolchain, no writes to tracked files).
-# Compares registry newest releases against the build inputs and maintains one
-# rolling issue. Updating happens elsewhere (floating Gradle resolution, the
-# daily cargo-update PR); the monthly report summarizes for maintenance.
+# Hourly read-only drift dashboard (no toolchain, no file writes, no branches).
+# Lists registry newest releases, Rust crates newer than the lock, and wrapper
+# status in one rolling issue. Updating happens elsewhere: Gradle floats by
+# itself, the hourly cargo-update PR advances the lock when merged.
 on:
   schedule:
     - cron: "0 * * * *"
@@ -38,8 +38,8 @@ jobs:
           GOOGLE="https://dl.google.com/dl/android/maven2"
           PORTAL="https://plugins.gradle.org/m2"
 
-          # Format: "group|name|repo". Add new direct dependencies here so the
-          # hourly scan keeps covering them.
+          # Add new direct dependencies here so the hourly scan keeps covering
+          # them. Format: "group|name|repo".
           MAP=(
             "junit|junit|central"
             "androidx.annotation|annotation|google"
@@ -143,11 +143,16 @@ jobs:
             fi
           fi
 
+          if [[ "$UNRESOLVED" -gt 0 ]]; then
+            echo "Incomplete scan ($UNRESOLVED failed lookups); keeping last dashboard."
+            exit 0
+          fi
+
           CORE_FILE="$(mktemp)"
           {
             echo "# Dependency drift dashboard"
             echo
-            echo "Updated hourly. Gradle floats automatically; Rust advances via the daily cargo-update PR."
+            echo "Updated hourly. Gradle floats automatically; Rust advances when the cargo-update PR merges."
             echo
             echo "## Gradle newest releases"
             echo
@@ -165,11 +170,6 @@ jobs:
             echo
             echo "$WRAPPER_LINE"
           } > "$CORE_FILE"
-
-          if [[ "$UNRESOLVED" -gt 0 ]]; then
-            echo "Incomplete scan ($UNRESOLVED failed lookups); keeping last dashboard."
-            exit 0
-          fi
 
           EXISTING=$(gh issue list --label dependencies --state open --json number,title --jq '[.[] | select(.title=="Dependency drift dashboard")][0].number // empty' || true)
           if [[ -n "$EXISTING" ]]; then
